@@ -1,0 +1,511 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   EduQuest — perceived-speed.css
+   Drop into <head> AFTER world-boss.css and campaign.css (or append to base.css).
+   Provides:
+     1. Shimmer skeleton loader   → .skeleton-shimmer  +  layout templates
+     2. Spring micro-interactions → .spring-pop / .spring-bounce + token physics
+     3. Optimistic claim states   → .claiming / .claimed-ok / .claimed-error
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   §1  SHIMMER SKELETON  — reusable moving-gradient placeholder
+   Usage:  add .skeleton-shimmer to any placeholder element.
+   Paired layout templates below match real component dimensions exactly.
+   ────────────────────────────────────────────────────────────────────────────── */
+
+/* Base shimmer token — every skeleton inherits this */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: transparent !important;
+  pointer-events: none;
+  user-select: none;
+}
+.skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent           0%,
+    transparent          38%,
+    rgba(208,188,255,0.07) 50%,
+    rgba(255,255,255,0.10) 54%,
+    rgba(208,188,255,0.07) 58%,
+    transparent          68%,
+    transparent         100%
+  );
+  background-size: 220% 100%;
+  animation: skShimmerSlide 1.55s ease-in-out infinite;
+}
+@keyframes skShimmerSlide {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -60%  0; }
+}
+
+/* ── Skeleton: World-Boss status panel (wblr-stage top row) ── */
+.sk-boss-panel {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 20px;
+  background: rgba(20,8,40,.8);
+}
+.sk-boss-panel .sk-hero-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.sk-boss-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sk-boss-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sk-line-lg  { height: 20px; border-radius: 6px; width: 60%; }
+.sk-line-md  { height: 14px; border-radius: 6px; width: 80%; }
+.sk-line-sm  { height: 10px; border-radius: 6px; width: 45%; }
+.sk-line-xs  { height: 8px;  border-radius: 4px; width: 30%; }
+.sk-hp-bar   { height: 18px; border-radius: 999px; width: 100%; }
+.sk-stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.sk-stat-cell {
+  height: 56px;
+  border-radius: 12px;
+}
+
+/* ── Skeleton: Achievement badge grid ── */
+.sk-badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+  padding: 4px 0;
+}
+.sk-badge-card {
+  height: 230px;
+  border-radius: 16px;
+}
+/* inner lines inside a badge card — rendered via pseudo-elements so one element is enough */
+.sk-badge-card::before {
+  content: '';
+  position: absolute;
+  inset: auto 16px 60px;
+  height: 10px;
+  border-radius: 6px;
+  background: rgba(255,255,255,.06);
+}
+.sk-badge-card::after {
+  /* override the shimmer travel so it also covers the ::before stripe */
+  background: linear-gradient(
+    105deg,
+    transparent           0%,
+    transparent          38%,
+    rgba(208,188,255,0.07) 50%,
+    rgba(255,255,255,0.10) 54%,
+    rgba(208,188,255,0.07) 58%,
+    transparent          68%,
+    transparent         100%
+  );
+  background-size: 220% 100%;
+  animation: skShimmerSlide 1.55s ease-in-out infinite;
+}
+
+/* ── Skeleton: Loot reward card grid (wblr-rewards-grid) ── */
+.sk-loot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+.sk-loot-card {
+  height: 140px;
+  border-radius: 12px;
+}
+
+/* ── Skeleton: Mail list ── */
+.sk-mail-list { display: flex; flex-direction: column; gap: 8px; }
+.sk-mail-item {
+  height: 72px;
+  border-radius: 14px;
+}
+
+/* ── Skeleton: single feed-row placeholder ── */
+.sk-feed-row  { height: 44px; border-radius: 10px; }
+
+/* Stagger delay helpers so cards don't all pulse in sync */
+.skeleton-shimmer:nth-child(2)::after { animation-delay: .15s; }
+.skeleton-shimmer:nth-child(3)::after { animation-delay: .30s; }
+.skeleton-shimmer:nth-child(4)::after { animation-delay: .45s; }
+.skeleton-shimmer:nth-child(5)::after { animation-delay: .60s; }
+.skeleton-shimmer:nth-child(6)::after { animation-delay: .75s; }
+
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   §2  SPRING / PHYSICS MICRO-INTERACTIONS
+   Fine-tuned cubic-bezier curves that model real spring physics:
+     • .spring-pop      — short overshoot, snappy settle  (buttons, badges landing)
+     • .spring-bounce   — visible bounce with rebound      (token landing, modal open)
+     • .spring-slide-up — slides up with overshoot finish  (toast, HUD chip)
+   Apply via JS:  element.classList.add('spring-pop');
+                  element.addEventListener('animationend', () =>
+                    element.classList.remove('spring-pop'), { once: true });
+   Or as permanent entrance animation via modifier classes below.
+   ────────────────────────────────────────────────────────────────────────────── */
+
+/* Spring easing custom properties — reference from JS if needed */
+:root {
+  --spring-snappy:  cubic-bezier(0.34, 1.56, 0.64, 1);   /* short overshoot  */
+  --spring-bouncy:  cubic-bezier(0.22, 1.40, 0.36, 1);   /* visible bounce   */
+  --spring-settle:  cubic-bezier(0.17, 0.67, 0.34, 1.20);/* large overshoot  */
+  --spring-smooth:  cubic-bezier(0.25, 0.46, 0.45, 0.94);/* no overshoot     */
+  --spring-exit:    cubic-bezier(0.36, 0, 0.66, -0.56);  /* retracts inward  */
+}
+
+/* ── One-shot entrance animations ── */
+@keyframes springPopIn {
+  0%   { transform: scale(0.55) rotate(-4deg); opacity: 0; }
+  55%  { transform: scale(1.12) rotate( 1deg); opacity: 1; }
+  75%  { transform: scale(0.96) rotate( 0deg); }
+  100% { transform: scale(1)    rotate( 0deg); opacity: 1; }
+}
+@keyframes springBounceIn {
+  0%   { transform: scale(0.3)  translateY(30px); opacity: 0; }
+  40%  { transform: scale(1.18) translateY(-10px); opacity: 1; }
+  65%  { transform: scale(0.94) translateY(  3px); }
+  80%  { transform: scale(1.05) translateY( -2px); }
+  100% { transform: scale(1)    translateY(  0px); opacity: 1; }
+}
+@keyframes springSlideUp {
+  0%   { transform: translateY(14px) scale(0.94); opacity: 0; }
+  55%  { transform: translateY(-4px) scale(1.02); opacity: 1; }
+  80%  { transform: translateY( 2px) scale(0.99); }
+  100% { transform: translateY( 0px) scale(1);    opacity: 1; }
+}
+@keyframes springDropIn {
+  0%   { transform: translateY(-22px) scale(0.92); opacity: 0; }
+  55%  { transform: translateY(  6px) scale(1.04); opacity: 1; }
+  80%  { transform: translateY( -2px) scale(0.99); }
+  100% { transform: translateY(  0px) scale(1);    opacity: 1; }
+}
+@keyframes springExitDown {
+  0%   { transform: scale(1)    translateY(0);   opacity: 1; }
+  30%  { transform: scale(1.08) translateY(-4px); }
+  100% { transform: scale(0.5)  translateY(28px); opacity: 0; }
+}
+
+.spring-pop      { animation: springPopIn    0.42s var(--spring-snappy)  both; }
+.spring-bounce   { animation: springBounceIn 0.54s var(--spring-bouncy)  both; }
+.spring-slide-up { animation: springSlideUp  0.38s var(--spring-snappy)  both; }
+.spring-drop-in  { animation: springDropIn   0.38s var(--spring-snappy)  both; }
+.spring-exit     { animation: springExitDown 0.28s var(--spring-exit)    both; }
+
+/* Delay utilities for staggered groups */
+.spring-delay-1  { animation-delay: 0.05s; }
+.spring-delay-2  { animation-delay: 0.10s; }
+.spring-delay-3  { animation-delay: 0.15s; }
+.spring-delay-4  { animation-delay: 0.20s; }
+.spring-delay-5  { animation-delay: 0.25s; }
+.spring-delay-6  { animation-delay: 0.30s; }
+
+/* ── Hover / active spring on interactive elements ── */
+/* Applied to token, badge-card, claim-btn automatically below */
+.spring-hover {
+  transition:
+    transform  0.22s var(--spring-snappy),
+    filter     0.18s ease,
+    box-shadow 0.18s ease;
+  will-change: transform;
+}
+.spring-hover:hover  { transform: scale(1.07) translateY(-2px); }
+.spring-hover:active { transform: scale(0.95); transition-duration: 0.10s; }
+
+/* ── Override cbl-token burst & float with spring physics ── */
+/* These supersede the existing cbl-burst keyframe easing */
+.cbl-token {
+  animation-timing-function: var(--spring-settle) !important;
+  transition:
+    transform  0.18s var(--spring-snappy),
+    filter     0.15s ease,
+    opacity    0.18s ease !important;
+}
+.cbl-token:hover {
+  transform: scale(1.20) translateY(-4px) !important;
+  filter: brightness(1.28) drop-shadow(0 6px 18px rgba(255,185,95,.45)) !important;
+}
+.cbl-token:active {
+  transform: scale(0.92) !important;
+  transition-duration: 0.08s !important;
+}
+
+/* Rain tokens in the wblr-rain-container */
+.wblr-token {
+  position: absolute;
+  top: -86px;
+  width: 82px;
+  min-height: 70px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(35,31,56,.92);
+  box-shadow: 0 12px 34px rgba(0,0,0,.42);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  pointer-events: auto;
+  animation: wblrFallSpring linear infinite;
+  backdrop-filter: blur(10px);
+  padding: 8px;
+  text-align: center;
+  /* Spring physics layer on top of the falling animation */
+  transition:
+    transform  0.20s var(--spring-snappy),
+    filter     0.15s ease,
+    opacity    0.20s ease;
+  will-change: transform, opacity;
+}
+.wblr-token:hover {
+  transform: translateY(0) scale(1.12) rotate(-2deg);
+  filter: brightness(1.22) drop-shadow(0 6px 20px rgba(255,255,255,.12));
+  z-index: 5;
+}
+.wblr-token:active {
+  transform: scale(0.90) !important;
+  transition-duration: 0.08s !important;
+}
+/* Spring-landing effect: play after token settles in claim zone */
+.wblr-token.landing {
+  animation: wblrTokenLand 0.44s var(--spring-bouncy) both !important;
+}
+@keyframes wblrFallSpring {
+  0%   { transform: translate3d(var(--drift-start,0),  -100px, 0) rotate(-5deg); }
+  50%  { transform: translate3d(var(--drift-mid,20px),  48vh,  0) rotate( 8deg); }
+  100% { transform: translate3d(var(--drift-end,-10px), calc(100vh + 120px), 0) rotate(-7deg); }
+}
+@keyframes wblrTokenLand {
+  0%   { transform: scale(1.0)  translateY( 0); }
+  30%  { transform: scale(0.88) translateY( 6px); }
+  60%  { transform: scale(1.10) translateY(-4px); }
+  80%  { transform: scale(0.97) translateY( 2px); }
+  100% { transform: scale(1.0)  translateY( 0); }
+}
+.wblr-token.claimed {
+  animation: wblrTokenClaimed 0.24s var(--spring-exit) both !important;
+  pointer-events: none;
+}
+@keyframes wblrTokenClaimed {
+  0%   { transform: scale(1);    opacity: 1; }
+  40%  { transform: scale(1.22); opacity: 0.7; }
+  100% { transform: scale(0.2)  rotate(20deg); opacity: 0; }
+}
+
+/* ── Badge cards — spring entrance on render ── */
+.ach-badge-card {
+  animation: springBounceIn 0.48s var(--spring-bouncy) both;
+  transition:
+    transform  0.22s var(--spring-snappy),
+    box-shadow 0.20s ease,
+    border-color 0.20s ease;
+}
+.ach-badge-card:hover {
+  transform: translateY(-4px) scale(1.03);
+}
+
+/* ── Claim button spring interactions ── */
+.ach-claim-btn,
+.wblr-claim-btn,
+.mail-claim-btn {
+  transition:
+    transform    0.20s var(--spring-snappy),
+    background   0.18s ease,
+    box-shadow   0.18s ease,
+    opacity      0.14s ease !important;
+  will-change: transform;
+}
+.ach-claim-btn:hover:not(:disabled),
+.wblr-claim-btn:hover:not(:disabled),
+.mail-claim-btn:hover:not(:disabled) {
+  transform: scale(1.06) translateY(-1px);
+  box-shadow: 0 6px 22px rgba(139,92,246,.4);
+}
+.ach-claim-btn:active:not(:disabled),
+.wblr-claim-btn:active:not(:disabled),
+.mail-claim-btn:active:not(:disabled) {
+  transform: scale(0.94);
+  transition-duration: 0.08s;
+}
+
+/* ── HUD chips spring entrance ── */
+.wblr-hud-chip {
+  animation: springSlideUp 0.32s var(--spring-snappy) both;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: rgba(35,31,56,.85);
+  border: 1px solid rgba(255,255,255,.1);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--on-surface);
+  backdrop-filter: blur(10px);
+}
+
+/* ── Loot summary reward cards ── */
+.wblr-reward-card {
+  transition:
+    transform    0.22s var(--spring-snappy),
+    box-shadow   0.20s ease;
+}
+.wblr-reward-card:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 10px 30px rgba(0,0,0,.3);
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   §3  OPTIMISTIC CLAIM STATES
+   Applied by the JS claim handlers before/after the service call.
+
+   State machine:
+     Default           → normal button  (label: "🎁 Claim")
+     .btn-claiming     → processing     (spinner, dimmed, locked)
+     .btn-claimed-ok   → success        (✓ green, no pointer)
+     .btn-claimed-err  → rollback state (red flash, reactivates)
+   ────────────────────────────────────────────────────────────────────────────── */
+
+/* ── Claiming: optimistic lock while service call in-flight ── */
+.btn-claiming {
+  opacity: 0.7 !important;
+  pointer-events: none !important;
+  cursor: wait !important;
+  position: relative;
+  overflow: hidden;
+}
+/* Spinning shimmer sweep across the button */
+.btn-claiming::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,0.18) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: claimBtnSweep 0.9s ease-in-out infinite;
+}
+@keyframes claimBtnSweep {
+  0%   { background-position:  200% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* ── Claimed OK: instant visual confirmation ── */
+.btn-claimed-ok {
+  background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+  box-shadow: 0 0 0 0 rgba(34,197,94,0.6) !important;
+  color: #fff !important;
+  pointer-events: none !important;
+  animation: claimOkPulse 0.50s var(--spring-snappy) both;
+}
+@keyframes claimOkPulse {
+  0%   { transform: scale(0.88); box-shadow: 0 0 0  0px rgba(34,197,94,0.6); }
+  55%  { transform: scale(1.12); box-shadow: 0 0 0 12px rgba(34,197,94,0);   }
+  80%  { transform: scale(0.97); }
+  100% { transform: scale(1);    box-shadow: 0 0 0  0px rgba(34,197,94,0);   }
+}
+
+/* ── Claimed error / rollback ── */
+.btn-claimed-err {
+  background: linear-gradient(135deg, #ef4444, #b91c1c) !important;
+  animation: claimErrShake 0.40s ease both;
+}
+@keyframes claimErrShake {
+  0%,100% { transform: translateX(0); }
+  15%     { transform: translateX(-6px); }
+  30%     { transform: translateX( 6px); }
+  45%     { transform: translateX(-4px); }
+  60%     { transform: translateX( 4px); }
+  75%     { transform: translateX(-2px); }
+}
+
+/* ── Claim drop animation: reward badge bursting from the token ── */
+@keyframes rewardDrop {
+  0%   { transform: translate(-50%,-50%) scale(0.3) rotate(-12deg); opacity: 0; }
+  45%  { transform: translate(-50%,-50%) scale(1.22) rotate(  4deg); opacity: 1; }
+  70%  { transform: translate(-50%,-50%) scale(0.95) rotate( -1deg); }
+  100% { transform: translate(-50%,-50%) scale(1)    rotate(  0deg); opacity: 1; }
+}
+.reward-drop-badge {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 9900;
+  transform: translate(-50%,-50%);
+  animation: rewardDrop 0.55s var(--spring-bouncy) both;
+  pointer-events: none;
+}
+
+/* ── Toast spring entrance (overrides existing spawnToastIn) ── */
+@keyframes toastSpringIn {
+  0%   { transform: translateX(calc(100% + 20px)) scale(0.85); opacity: 0; }
+  55%  { transform: translateX(-6px)               scale(1.03); opacity: 1; }
+  80%  { transform: translateX( 2px)               scale(0.99); }
+  100% { transform: translateX(0)                  scale(1);    opacity: 1; }
+}
+.toast { animation: toastSpringIn 0.38s var(--spring-snappy) both !important; }
+
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   §4  REWARD DROP PARTICLE RING  (fires on successful loot claim)
+   The JS injects .claim-burst-ring into <body> briefly.
+   ────────────────────────────────────────────────────────────────────────────── */
+
+@keyframes burstRingExpand {
+  0%   { width:  0; height:  0; opacity: 0.9; }
+  100% { width: 180px; height: 180px; opacity: 0; }
+}
+.claim-burst-ring {
+  position: fixed;
+  border-radius: 50%;
+  border: 3px solid var(--ring-color, #d0bcff);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 9800;
+  animation: burstRingExpand 0.60s var(--spring-smooth) both;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   §5  UTILITY — skeleton container fade-out transition
+   When real content replaces a skeleton, animate the swap.
+   Add .sk-fading to the skeleton wrapper, then replace innerHTML.
+   ────────────────────────────────────────────────────────────────────────────── */
+
+.sk-fading {
+  animation: skFadeOut 0.22s ease forwards;
+}
+@keyframes skFadeOut {
+  to { opacity: 0; transform: scale(0.98); }
+}
+/* Content that replaces skeleton gets a fade-in */
+.sk-content-in {
+  animation: skContentIn 0.30s var(--spring-snappy) both;
+}
+@keyframes skContentIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}

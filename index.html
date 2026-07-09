@@ -1,0 +1,2096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EduQuest — Gamified Classroom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,600;0,700;0,800;0,900;1,800&family=Space+Grotesk:wght@400;500;600;700&family=Orbitron:wght@700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles/base.css">
+<link rel="stylesheet" href="./styles/modules/leaderboard.css">
+<link rel="stylesheet" href="./styles/modules/achievements.css">
+<link rel="stylesheet" href="./styles/modules/attendance.css">
+<link rel="stylesheet" href="./styles/modules/shop.css">
+<link rel="stylesheet" href="./styles/modules/titles.css">
+<link rel="stylesheet" href="./styles/modules/campaign.css">
+<link rel="stylesheet" href="./styles/modules/recitation.css">
+<link rel="stylesheet" href="./styles/modules/profile.css">
+<link rel="stylesheet" href="./styles/modules/registrations.css">
+<link rel="stylesheet" href="./styles/modules/sections.css">
+<link rel="stylesheet" href="./styles/modules/enrollment.css">
+<link rel="stylesheet" href="./styles/modules/boss-studio.css">
+<link rel="stylesheet" href="./styles/modules/world-boss.css">
+<link rel="stylesheet" href="./styles/modules/mail.css">
+<!-- AFTER world-boss.css and campaign.css -->
+<link rel="stylesheet" href="./styles/modules/perceived-speed.css">
+</head>
+<body>
+<div id="app">
+
+<!-- ═══════════════ LOGIN ═══════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-text">EDUQUEST</div>
+      <div class="login-logo-sub">⚔️ Gamified Classroom Experience</div>
+    </div>
+    <div class="role-grid">
+      <div class="role-btn active" id="role-student" onclick="selectRole('student')">
+        <div class="role-icon">🎓</div>
+        <div class="role-name">Student</div>
+        <div class="role-hint">Quest mode</div>
+      </div>
+      <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
+        <div class="role-icon">🛡️</div>
+        <div class="role-name">Teacher</div>
+        <div class="role-hint">Full control</div>
+      </div>
+    </div>
+    <div class="login-demo" id="demo-creds">
+      <div id="demo-text">
+        <b style="color:#d0bcff">Log in with your email and password.</b><br>
+        <span style="font-size:12px;color:var(--text-muted)">New student? Register below to request an account.</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input type="email" id="login-user" placeholder="Enter email" autocomplete="off" style="width:100%">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <div style="position:relative">
+        <input type="password" id="login-pass" placeholder="Enter password" style="width:100%;padding-right:40px" onkeydown="if(event.key==='Enter')doLogin()">
+        <button type="button" class="reg-pw-toggle-btn" tabindex="-1" aria-label="Show password" onclick="regTogglePasswordVisibility('login-pass', this)">
+          <span class="material-symbols-outlined" style="font-size:18px">visibility</span>
+        </button>
+      </div>
+    </div>
+    <div id="login-err" style="color:#ffb4ab;font-size:13px;margin-bottom:10px;display:none">❌ Incorrect email or password.</div>
+    <div id="login-pending-err" style="color:#ffb95f;font-size:13px;margin-bottom:10px;display:none;background:rgba(255,185,95,.08);border:1px solid rgba(255,185,95,.25);padding:10px 14px;border-radius:10px">⏳ Your account is awaiting approval from your teacher.</div>
+    <button class="btn btn-primary btn-block" style="padding:13px;font-size:15px;position:relative;overflow:hidden" onclick="doLogin()">
+      Enter Quest →
+    </button>
+    <div style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">
+      New student? <a style="color:var(--primary);font-weight:700;cursor:pointer;text-decoration:none" onclick="showRegScreen()">Create an account →</a>
+      <br>
+      <a style="color:var(--primary);font-weight:700;cursor:pointer;text-decoration:none;display:inline-block;margin-top:6px" onclick="showRegStatusScreen()">Check my registration status →</a>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ REGISTRATION SCREEN ═══════════════ -->
+<div id="reg-screen">
+  <div class="reg-card" id="reg-card-content">
+    <!-- dynamically filled by showRegScreen() -->
+  </div>
+</div>
+
+<!-- ═══════════════ PASSWORD RECOVERY SCREEN (chunk A4) ═══════════════ -->
+<div id="recovery-screen">
+  <div class="reg-card" id="recovery-card-content">
+    <!-- dynamically filled by showRecoveryScreen() in recovery.js -->
+  </div>
+</div>
+
+<!-- ═══════════════ TEACHER INVITE COMPLETION SCREEN (chunk A5) ═══════════════ -->
+<div id="teacher-invite-screen">
+  <div class="reg-card" id="teacher-invite-card-content">
+    <!-- dynamically filled by showTeacherInviteScreen() in modules/admin/teacher-invite.js -->
+  </div>
+</div>
+
+<!-- ═══════════════ MAIN APP ═══════════════ -->
+<div id="main-app" style="display:none">
+
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div style="display:flex;align-items:center;gap:14px">
+      <button class="icon-btn hamburger" onclick="toggleSidebar()" title="Menu">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+      <div class="logo" onclick="navTo(currentRole==='student'?'s-dashboard':'a-dashboard')">EDU<span>QUEST</span></div>
+    </div>
+    <div class="topbar-right">
+      <!-- WORLD BOSS TOPBAR WIDGET -->
+      <div id="wb-topbar-widget" onclick="navTo('s-world-boss')">
+        <div class="wb-event-live-dot"></div>
+        <div class="wb-widget-icon">💀</div>
+        <div class="wb-widget-info">
+          <div class="wb-widget-name" id="wb-widget-name">BOSS RAID</div>
+          <div class="wb-widget-hp-bar"><div id="wb-widget-hp-fill" style="width:100%"></div></div>
+          <div class="wb-widget-sub">
+            <span class="wb-hp-txt" id="wb-widget-hp-txt">LIVE</span>
+            <span id="wb-widget-pct">100%</span>
+          </div>
+        </div>
+      </div>
+      <div class="coin-pill" id="topbar-coins">
+        <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">monetization_on</span>
+        <span id="topbar-coin-val">0</span>
+      </div>
+      <button class="icon-btn"><span class="material-symbols-outlined">notifications</span></button>
+      <div class="topbar-avatar" id="topbar-av" title="View Profile" style="cursor:pointer;position:relative;overflow:hidden"></div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div class="sidebar-player">
+      <div class="sidebar-player-row">
+        <div class="sidebar-avatar" id="sb-avatar"></div>
+        <div>
+          <div class="sidebar-player-name" id="sb-name"></div>
+          <div class="sidebar-player-sub" id="sb-tier"></div>
+        </div>
+      </div>
+      <div class="xp-bar-wrap">
+        <div class="xp-bar-fill" id="sb-xp-fill" style="width:0%"></div>
+      </div>
+      <div class="xp-bar-labels">
+        <span style="color:var(--primary);font-size:10px;font-weight:700" id="sb-xp-label"></span>
+        <span style="color:var(--text-muted);font-size:10px;font-weight:700" id="sb-xp-next"></span>
+      </div>
+    </div>
+    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    <div class="sidebar-bottom">
+      <button class="sidebar-logout" onclick="doLogout()">
+        <span class="material-symbols-outlined">logout</span>
+        Sign Out
+      </button>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div id="main-content">
+
+    <!-- STUDENT PAGES -->
+    <div id="s-dashboard" class="page"></div>
+    <div id="s-quizzes" class="page"></div>
+    <div id="s-quiz-active" class="page" style="padding:28px"></div>
+    <div id="s-store" class="page"></div>
+    <div id="s-inventory" class="page"></div>
+    <div id="s-leaderboard" class="page"></div>
+    <div id="s-badges" class="page"></div>
+    <div id="s-world-boss" class="page"></div>
+    <div id="s-orders" class="page"></div>
+    <div id="s-mail" class="page"></div>
+    <div id="s-attendance" class="page"></div>
+    <div id="s-classroom" class="page"></div>
+    <div id="a-classroom" class="page"></div>
+    <div id="a-classroom-monitor" class="page"></div>
+    <!-- ADMIN PAGES -->
+    <div id="a-dashboard" class="page"></div>
+    <div id="a-scanner" class="page"></div>
+    <div id="a-store" class="page"></div>
+    <div id="a-pos" class="page"></div>
+    <div id="a-quizzes" class="page"></div>
+    <div id="a-analytics" class="page"></div>
+    <div id="a-stagemap" class="page"></div>
+    <div id="a-bossevents" class="page"></div>
+    <div id="a-achievements" class="page"></div>
+    <div id="a-titles" class="page"></div>
+    <div id="a-promotions" class="page"></div>
+    <div id="a-sections" class="page"></div>
+    <div id="a-enrollment" class="page"></div>
+    <div id="a-registrations" class="page"></div>
+    <div id="a-mail" class="page"></div>
+    <div id="a-nav-manager" class="page"></div>
+    <div id="a-boss-studio" class="page"></div>
+    <div id="a-leaderboard" class="page"></div>
+    <div id="a-teachers" class="page"></div>
+    <div id="a-starter-pack" class="page"></div>
+    <div id="a-settings" class="page"></div>
+    <div id="a-content-oversight" class="page"></div>
+    <div id="a-audit-log" class="page"></div>
+
+  </div>
+</div>
+
+<!-- MODALS -->
+<div id="modal-overlay" class="modal-overlay" style="display:none" onclick="closeModal(event)">
+  <div class="modal-box md" id="modal-box" onclick="event.stopPropagation()">
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ═══ BOSS STUDIO — FULL-SCREEN EDITOR OVERLAY ═══ -->
+<div id="bs-editor-overlay">
+  <!-- ═══ COMMAND BAR ═══ -->
+  <div class="bs-overlay-bar">
+    <button class="bs-overlay-back" onclick="window._bsCloseEditor()">
+      <span class="material-symbols-outlined">arrow_back</span>Library
+    </button>
+
+    <!-- Boss identity breadcrumb -->
+    <div class="bs-bar-id-chip">
+      <div>
+        <div class="bs-bar-boss-name" id="bs-eo-title">New Boss Profile</div>
+        <div class="bs-bar-boss-sub">Boss Visual Profile</div>
+      </div>
+      <div class="bs-bar-dirty-dot" id="bs-dirty-dot" title="Unsaved changes"></div>
+    </div>
+
+    <!-- Readiness indicator -->
+    <div class="bs-bar-readiness low" id="bs-readiness-pill">
+      <span class="material-symbols-outlined">radio_button_unchecked</span>
+      <span id="bs-readiness-label">Not Ready</span>
+    </div>
+
+    <div class="bs-overlay-actions">
+      <button class="btn btn-ghost btn-sm" onclick="window._bsCloseEditor()">Discard</button>
+      <button class="btn btn-primary" style="font-family:var(--fh);font-weight:800;padding:8px 20px;font-size:13px" onclick="bsSaveForm()">
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">save</span> Save Boss
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ EDITOR BODY ═══ -->
+  <div class="bs-editor-body">
+
+    <!-- ── LEFT: BOSS CINEMA STAGE ── -->
+    <div class="bs-editor-preview-col" id="bs-eo-preview-col">
+      <!-- Atmospheric background -->
+      <div class="bs-cinema-bg" id="bs-cinema-bg"></div>
+      <div class="bs-cinema-floor" id="bs-cinema-floor"></div>
+      <div class="bs-cinema-arena" id="bs-cinema-arena"></div>
+
+      <!-- Giant boss sprite -->
+      <div class="bs-cinema-sprite-wrap">
+        <div class="bsed-stage" id="bsed-main-stage" style="--bs-stage-glow:rgba(139,92,246,0.25)">
+          <div class="bsed-stage-art" id="bsed-stage-art"><span style="font-size:140px">💀</span></div>
+        </div>
+      </div>
+
+      <!-- Boss HUD at bottom -->
+      <div class="bs-cinema-hud">
+
+        <!-- Tags row -->
+        <div class="bs-cinema-tags" id="bsed-tag-preview"></div>
+
+        <!-- Nameplate -->
+        <div class="bs-cinema-nameplate">
+          <div class="bs-cinema-boss-name" id="bsed-nameplate">New Boss</div>
+          <div class="bs-cinema-boss-title" id="bsed-nameplate-sub">Boss Visual Profile</div>
+        </div>
+
+        <!-- HP bar -->
+        <div class="bs-cinema-hp-wrap">
+          <div class="bs-cinema-hp-header">
+            <div class="bs-cinema-hp-label">Boss HP</div>
+            <div class="bs-cinema-hp-val">100%</div>
+          </div>
+          <div class="bs-cinema-hp-track">
+            <div class="bs-cinema-hp-fill" id="bsed-hp-fill"></div>
+          </div>
+        </div>
+
+        <!-- State animation previewer -->
+        <div class="bs-cinema-states">
+          <button class="bs-cinema-state-btn active" id="bsed-btn-idle" onclick="window._bsEditorPlayState('idle')">
+            <span class="material-symbols-outlined">play_circle</span>
+            <span class="state-label">Idle</span>
+          </button>
+          <button class="bs-cinema-state-btn" id="bsed-btn-cast" onclick="window._bsEditorPlayState('cast')">
+            <span class="material-symbols-outlined">bolt</span>
+            <span class="state-label">Cast</span>
+          </button>
+          <button class="bs-cinema-state-btn" id="bsed-btn-hit" onclick="window._bsEditorPlayState('hit')">
+            <span class="material-symbols-outlined">gpp_bad</span>
+            <span class="state-label">Hit</span>
+          </button>
+          <button class="bs-cinema-state-btn rage-btn" id="bsed-btn-rage" onclick="window._bsEditorPlayState('rage')">
+            <span class="material-symbols-outlined">local_fire_department</span>
+            <span class="state-label">Rage</span>
+          </button>
+        </div>
+
+        <!-- Slot readiness pips -->
+        <div class="bs-cinema-pips-row">
+          <div class="bs-cinema-pip-label">Animation Slots</div>
+          <div class="bs-cinema-pips" id="bsed-slot-pips">
+            <div class="bs-cinema-pip" id="bsed-pip-idle" title="Idle"></div>
+            <div class="bs-cinema-pip" id="bsed-pip-cast" title="Cast"></div>
+            <div class="bs-cinema-pip" id="bsed-pip-hit" title="Hit"></div>
+            <div class="bs-cinema-pip rage-pip" id="bsed-pip-rage" title="Rage"></div>
+          </div>
+        </div>
+
+        <!-- Color theme strip -->
+        <div class="bs-cinema-theme-row" id="bsed-theme-strip">
+          <div class="bs-cinema-theme-chip">
+            <div class="bs-cinema-theme-swatch" id="bsed-ts-theme" style="background:#8b5cf6"></div>
+            <div class="bs-cinema-theme-info">
+              <div class="bs-cinema-theme-lbl">Theme</div>
+              <div class="bs-cinema-theme-val" id="bsed-ts-theme-val">#8b5cf6</div>
+            </div>
+          </div>
+          <div class="bs-cinema-theme-chip">
+            <div class="bs-cinema-theme-swatch" id="bsed-ts-aura" style="background:#EC4899"></div>
+            <div class="bs-cinema-theme-info">
+              <div class="bs-cinema-theme-lbl">Aura</div>
+              <div class="bs-cinema-theme-val" id="bsed-ts-aura-val">#EC4899</div>
+            </div>
+          </div>
+          <div class="bs-cinema-theme-chip">
+            <div class="bs-cinema-theme-swatch" id="bsed-ts-accent" style="background:#d0bcff"></div>
+            <div class="bs-cinema-theme-info">
+              <div class="bs-cinema-theme-lbl">Accent</div>
+              <div class="bs-cinema-theme-val" id="bsed-ts-accent-val">#d0bcff</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: TOOL PANEL (rendered by JS) ── -->
+    <div class="bs-editor-form-col" id="bs-eo-form-col"></div>
+
+  </div>
+</div>
+
+<!-- ═══ BOSS STUDIO — FULL-SCREEN ENCOUNTER PREVIEW OVERLAY ═══ -->
+<div id="bs-encounter-overlay">
+  <div class="bs-encounter-bg" id="bs-enc-bg"></div>
+  <div class="bs-overlay-bar" style="position:relative;z-index:10">
+    <button class="bs-overlay-back" onclick="window._bsCloseEncounter()">
+      <span class="material-symbols-outlined">arrow_back</span>Boss Library
+    </button>
+    <div class="bs-overlay-title" id="bs-enc-bar-title">Preview</div>
+    <div class="bs-overlay-actions">
+      <button class="btn btn-danger btn-sm" id="bs-enc-delete-btn">
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">delete</span>
+      </button>
+      <button class="btn btn-primary btn-sm" id="bs-enc-edit-btn">
+        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">edit</span> Edit
+      </button>
+    </div>
+  </div>
+  <div class="bs-encounter-body" id="bs-encounter-body"></div>
+</div>
+
+<!-- ═══ PROFILE OVERLAY ═══ -->
+<div id="profile-overlay" onclick="profileOverlayClick(event)">
+  <div class="profile-panel" id="profile-panel">
+    <button class="profile-close-btn" onclick="closeProfile()" title="Close">
+      <span class="material-symbols-outlined" style="font-size:18px">close</span>
+    </button>
+
+    <!-- Hero -->
+    <div class="profile-hero" id="prof-hero">
+      <div class="profile-hero-inner">
+        <div class="profile-avatar-wrap" onclick="profileAvatarClick()">
+          <div class="profile-avatar" id="prof-avatar">
+            <span id="prof-av-init"></span>
+          </div>
+          <div class="profile-avatar-edit-overlay">
+            <span class="material-symbols-outlined">photo_camera</span>
+          </div>
+          <div class="profile-avatar-badge">
+            <span class="material-symbols-outlined">edit</span>
+          </div>
+        </div>
+        <div class="profile-hero-info">
+          <div class="profile-display-name" id="prof-display-name"></div>
+          <div class="profile-username-row">
+            <div class="profile-username" id="prof-username"></div>
+            <div class="profile-role-chip" id="prof-role-chip"></div>
+          </div>
+          <div class="profile-join-date" id="prof-join-date">
+            <span class="material-symbols-outlined">calendar_month</span>
+            <span id="prof-join-text"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats strip -->
+    <div class="profile-stats-strip" id="prof-stats-strip"></div>
+
+    <!-- Tabs -->
+    <div class="profile-tabs">
+      <button class="profile-tab active" id="ptab-overview" onclick="switchProfileTab('overview')">Overview</button>
+      <button class="profile-tab" id="ptab-edit" onclick="switchProfileTab('edit')">Edit Profile</button>
+      <button class="profile-tab" id="ptab-account" onclick="switchProfileTab('account')">Account</button>
+    </div>
+
+    <!-- Tab body -->
+    <div class="profile-tab-content" id="prof-tab-body"></div>
+  </div>
+</div>
+
+<!-- Hidden file input for profile picture upload -->
+<input type="file" id="profile-pic-input" accept="image/*" style="display:none" onchange="handleProfilePicUpload(event)">
+
+<!-- STAGE MAP BUTTON -->
+<button id="stage-map-btn" onclick="openStageMap()" style="display:none" title="Quest Map">
+  <div class="notif-dot" id="stage-notif">!</div>
+  <div class="sbtn-icon">🗺️</div>
+  <div class="sbtn-label">MAP</div>
+</button>
+
+<!-- ═══ CAMPAIGN STAGE ENGINE OVERLAY ═══ -->
+<div id="campaign-overlay">
+  <div class="camp-scene" id="camp-scene">
+    <!-- Parallax background -->
+    <div class="camp-bg" id="camp-bg"></div>
+
+    <!-- HUD -->
+    <div class="camp-hud">
+      <div class="camp-hud-left">
+        <button onclick="confirmExitCampaign()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:var(--text-muted);padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:var(--fb);font-weight:700;">✕ EXIT</button>
+        <div>
+          <div class="camp-stage-label" id="camp-stage-label">STAGE 1</div>
+          <div class="camp-title-hud" id="camp-title-hud">Loading...</div>
+        </div>
+      </div>
+      <div class="camp-lives" id="camp-lives"></div>
+    </div>
+
+    <!-- Enemy HP bar (boss only) -->
+    <div class="camp-enemy-bar" id="camp-enemy-bar" style="display:none">
+      <div class="camp-enemy-name" id="camp-enemy-name">BOSS</div>
+      <div class="camp-enemy-hp-wrap"><div class="camp-enemy-hp-fill" id="camp-enemy-hp" style="width:100%"></div></div>
+    </div>
+
+    <!-- Story narration panel (shown during story scenes) -->
+    <div class="camp-story-panel" id="camp-story-panel">
+      <div class="camp-speaker" id="camp-speaker">NARRATOR</div>
+      <div class="camp-narration" id="camp-narration"><span id="camp-narr-text"></span><span class="camp-cursor"></span></div>
+      <div class="camp-continue-hint" id="camp-continue-hint" style="display:none">▼ CLICK OR PRESS SPACE TO CONTINUE</div>
+    </div>
+
+    <!-- Encounter / question panel -->
+    <div class="camp-encounter" id="camp-encounter" style="display:none">
+      <div class="camp-enemy-sprite" id="camp-enemy-sprite">👹</div>
+      <div class="camp-enemy-title" id="camp-enemy-title">ENEMY ENCOUNTER</div>
+      <div class="camp-question-box">
+        <div class="camp-question-text" id="camp-q-text"></div>
+        <div class="camp-options" id="camp-options"></div>
+      </div>
+      <div style="margin-top:14px;font-family:var(--fm);font-size:9px;color:rgba(208,188,255,.4);letter-spacing:.1em" id="camp-q-progress"></div>
+    </div>
+
+    <!-- Result screen (victory/defeat) -->
+    <div class="camp-result" id="camp-result" style="display:none">
+      <div class="camp-result-emoji" id="camp-res-emoji"></div>
+      <div class="camp-result-title" id="camp-res-title"></div>
+      <div class="camp-result-sub" id="camp-res-sub"></div>
+      <div class="camp-rewards-row" id="camp-rewards-row"></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
+        <button id="camp-res-retry" class="btn btn-ghost" style="display:none" onclick="retryCampaign()">⟳ Retry Stage</button>
+        <button id="camp-res-exit" class="btn btn-primary" onclick="exitCampaign()">← Back to Map</button>
+        <button id="camp-res-next" class="btn btn-success" style="display:none" onclick="nextStageCampaign()">Next Stage →</button>
+      </div>
+    </div>
+
+    <!-- ═══ WORLD BOSS DEFEAT NARRATION PANEL ═══ -->
+    <!-- Shown immediately after boss HP hits 0. Uses the existing story-panel styling.  -->
+    <!-- Click / Space advances to the Victory panel.                                    -->
+    <div class="camp-boss-defeat" id="camp-boss-defeat" style="display:none">
+      <div class="cbd-portrait" id="cbd-portrait"></div>
+      <div class="cbd-title" id="cbd-title"></div>
+      <div class="cbd-lines" id="cbd-lines"></div>
+      <div class="cbd-hint" id="cbd-hint" style="display:none">▼ CLICK OR PRESS SPACE TO CONTINUE</div>
+    </div>
+
+    <!-- ═══ WORLD BOSS VICTORY PANEL ═══ -->
+    <!-- Clean victory screen shown after narration. No stats, no rankings.             -->
+    <!-- Shows: victory banner · boss info · victory message · continue button.         -->
+    <div class="camp-boss-victory" id="camp-boss-victory" style="display:none">
+      <canvas class="cbv-fireworks" id="cbv-fw-canvas"></canvas>
+      <div class="cbv-inner">
+        <div class="cbv-banner" id="cbv-banner"></div>
+        <div class="cbv-boss-card" id="cbv-boss-card"></div>
+        <div class="cbv-message" id="cbv-message"></div>
+        <button class="cbv-continue-btn" id="cbv-continue-btn">⚔ Claim Your Rewards</button>
+      </div>
+    </div>
+
+    <!-- ═══ REWARD EXPLOSION PANEL ═══ -->
+    <!-- Shown after Victory Screen: rewards burst from the boss and scatter the field. -->
+    <!-- Students click tokens directly on the battlefield to claim them.               -->
+    <div class="camp-boss-loot" id="camp-boss-loot" style="display:none">
+      <!-- Header -->
+      <div class="cbl-header">
+        <div class="cbl-kicker">LOOT DROP RUSH</div>
+        <div class="cbl-title" id="cbl-title">BOSS LOOT EXPLOSION</div>
+        <div class="cbl-sub" id="cbl-sub">Click rewards before they're gone!</div>
+      </div>
+      <!-- Battlefield: boss glyph + tokens burst outward here -->
+      <div class="cbl-battlefield" id="cbl-battlefield">
+        <div class="cbl-shockwave"></div>
+        <div class="cbl-shockwave cbl-shockwave2"></div>
+        <div class="cbl-shockwave cbl-shockwave3"></div>
+        <div class="cbl-boss-core" id="cbl-boss-core">💀</div>
+      </div>
+      <!-- Bottom HUD -->
+      <div class="cbl-hud" id="cbl-hud">
+        <div class="cbl-hud-stats" id="cbl-hud-stats">
+          <div class="cbl-stat"><span id="cbl-remaining">0</span><div class="l">Remaining</div></div>
+          <div style="width:1px;height:28px;background:rgba(255,255,255,.1)"></div>
+          <div class="cbl-stat"><span id="cbl-claimed-count">0</span><div class="l">Claimed</div></div>
+        </div>
+        <div class="cbl-feed" id="cbl-feed"></div>
+        <button class="cbl-lobby-btn" id="cbl-lobby-btn" style="display:none">← Return to Lobby</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- STAGE MAP OVERLAY -->
+<div id="stage-map-overlay">
+  <div id="stage-map-panel">
+    <!-- Header -->
+    <div class="smap-header">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
+        <div>
+          <div style="font-family:var(--fm);font-size:9px;color:var(--primary);letter-spacing:.18em;margin-bottom:8px">PROGRESSION_MAP // WORLD_SELECT</div>
+          <div class="smap-title">⚔️ QUEST MAP</div>
+          <div class="smap-sub">Complete stages to unlock new worlds and earn legendary rewards</div>
+        </div>
+        <button onclick="closeStageMap()" style="background:rgba(255,255,255,.06);border:1px solid var(--border2);border-radius:10px;padding:8px 16px;font-size:13px;color:var(--text-muted);cursor:pointer;font-family:var(--fb);font-weight:700;transition:all .18s;flex-shrink:0" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--text-muted)'">✕ CLOSE</button>
+      </div>
+      <!-- Player progress -->
+      <div style="margin-top:16px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div id="smap-av" style="width:34px;height:34px;border-radius:50%;border:2px solid rgba(208,188,255,.5);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:11px;font-weight:900;color:var(--primary)"></div>
+            <div>
+              <div id="smap-name" style="font-family:var(--fh);font-size:14px;font-weight:800;color:var(--on-surface)"></div>
+              <div id="smap-tier" style="font-family:var(--fm);font-size:9px;color:var(--primary);letter-spacing:.06em;margin-top:2px"></div>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div id="smap-stages-done" style="font-family:var(--fm);font-size:16px;font-weight:900;color:var(--primary)"></div>
+            <div style="font-family:var(--fm);font-size:8px;color:var(--text-muted);letter-spacing:.08em">STAGES CLEARED</div>
+          </div>
+        </div>
+        <div style="background:rgba(255,255,255,.05);border-radius:20px;height:5px;overflow:hidden">
+          <div id="smap-prog-bar" style="height:100%;border-radius:20px;background:linear-gradient(90deg,#8b5cf6,#4edea3);transition:width 1s ease"></div>
+        </div>
+      </div>
+    </div>
+    <!-- World tabs -->
+    <div class="world-tabs" id="world-tabs-sm"></div>
+    <!-- Map body -->
+    <div class="smap-body" id="smap-body"></div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────────────────
+     SUPABASE CONFIG — must load before db-service.js, which reads these
+     two globals to construct its client. Replace with your own project's
+     values from Project Settings → API in the Supabase dashboard.
+     ───────────────────────────────────────────────────────────────────────── -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+  window.__EDUQUEST_SUPABASE_URL__      = 'https://ptxzsllndtacrnpaoxvq.supabase.co';
+  window.__EDUQUEST_SUPABASE_ANON_KEY__ = 'sb_publishable_Zpty0lLj66Ri4sWqin2QMw_ksF_vBT8';
+</script>
+
+<script src="./db-service.js"></script>
+<script src="./dsm-service.js"></script>
+<script src="./db-schema.js"></script>
+<script src="./modules/core/state-manager.js"></script>   <!-- AppStore v2: debounced persistence + targeted selectors -->
+<script src="./modules/core/active-section.js"></script> <!-- Phase 14: cross-tab synced active section (window.ActiveSection) -->
+<script src="./db-migrations.js"></script>
+<script src="./app-state.js"></script>
+<script src="./dom.js"></script>
+<script src="./utils.js"></script>
+<script src="./nav.js"></script>
+<script src="./topbar.js"></script>
+<script src="./auth.js"></script>
+<script src="./recovery.js"></script>
+
+<!-- ─────────────────────────────────────────────────────────────────────────
+     GLOBALS BOOTSTRAP — loadDB, saveDB, DB, currentUser, currentRole
+     Must be declared before any module scripts that reference them.
+
+     [SUPABASE MIGRATION] AppStore's init() is now async (it awaits
+     DBService.initRemote() to hydrate from Supabase before _state is
+     readable). The only change here is wrapping the existing boot logic
+     in `AppStore.ready.then(...)` so it runs AFTER that hydration
+     completes, instead of assuming AppStore is ready the instant this
+     script tag is reached. Everything inside the callback is byte-for-byte
+     the same as before.
+     ───────────────────────────────────────────────────────────────────────── -->
+<script>
+// ═══════════════════════════════════════════
+//  STATE & STORAGE
+// ═══════════════════════════════════════════
+// ── FIXED: Core Leveling Math declared first to prevent boot errors ──
+window.XP_PER_LEVEL = 1000; 
+window.getLevel = function(xp) { 
+  return Math.floor(xp / window.XP_PER_LEVEL); 
+};
+window.getNowLabel = function() {
+  return new Date().toLocaleString('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+// Use `var` (not `let`) so DB is also window.DB — this keeps the lexical variable
+// and window.DB as the same storage slot, fixing the syncFromLegacy() stale-read bug.
+var DB;
+let currentUser = null, currentRole = null, selectedLoginRole = 'student';
+
+AppStore.ready.then(function () {
+  DB = AppStore.getState();
+  runMigrations();
+  // Push the post-migration DB explicitly into AppStore so _state is always current.
+  AppStore.syncFromLegacy(DB);
+
+  // DSM (Navigation Manager) hydration — see EduQuest_Pending_Fixes_Report.md
+  // §1 / dsm-service.js. Runs alongside (not blocking) the DB hydration
+  // above: dsm-manager.js's dsmLoad() is only ever first called from
+  // bootApp() → setupSidebar() after a successful login, which is always
+  // well after this script tag finishes running, so there is no ordering
+  // requirement between this and the DB/AppStore hydration above — it just
+  // needs to have started.
+  if (typeof DSMService !== 'undefined' && typeof DSMService.initRemote === 'function') {
+    DSMService.initRemote().catch(function (e) {
+      console.warn('[DSMService] initRemote() rejected; Navigation Manager will fall back to local cache:', e);
+    });
+  }
+});
+</script>
+
+<!-- ─────────────────────────────────────────────────────────────────────────
+     SHARED — Universal Reward Presentation System (modules/shared/)
+     window.eqRewardPresent(...) — used by both Mail and Achievements below.
+     ───────────────────────────────────────────────────────────────────────── -->
+<script src="./modules/shared/reward-presenter.js"></script>
+
+<!-- ─────────────────────────────────────────────────────────────────────────
+     PHASE 3 MODULE WIRING — Day 1: Mail (modules/mail/)
+     ───────────────────────────────────────────────────────────────────────── -->
+<script src="./modules/mail/mail-engine.js"></script>
+<script src="./modules/mail/student-inbox.js"></script>
+<script src="./modules/mail/admin-compose.js"></script>
+<script src="./modules/mail/index.js"></script>
+
+<!-- ─────────────────────────────────────────────────────────────────────────
+     PHASE 3 MODULE WIRING — All Modules
+     ───────────────────────────────────────────────────────────────────────── -->
+
+<!-- Leaderboard -->
+<script src="./modules/leaderboard/eql-engine.js"></script>
+<script src="./modules/leaderboard/hall-of-fame.js"></script>
+<script src="./modules/leaderboard/admin-leaderboard.js"></script>
+<script src="./modules/leaderboard/index.js"></script>
+
+<!-- Recitation -->
+<script src="./modules/recitation/logger.js"></script>
+<script src="./modules/recitation/progress.js"></script>
+<script src="./modules/recitation/recitation_index.js"></script>
+
+<!-- Section Maker (Phase 4) — loads before Attendance/Seating/Registrations
+     since all three read class lists via SectionService / getActiveClassIds() /
+     getClassLabel(). See Section_Maker_Feature_Spec.md. -->
+<script src="./modules/admin/sections-service.js"></script>
+<script src="./modules/admin/sections.js"></script>
+<script src="./modules/admin/sections_index.js"></script>
+
+<!-- Attendance -->
+<!-- Legacy att_editor.js / att_bulk_edit.js / att_scanner.js removed (Investigation
+     Report §1): they read and wrote DB.attendanceSessions, a dead local-only array
+     that nothing has written to since the Phase 1 RFID/NFC system shipped. renderScanner()
+     wasn't even wired to nav.js anymore (a-scanner routes to renderRfidScanner()), and
+     the "Attendance Edit" admin column duplicated what Live Monitor's Manual Override
+     already does correctly against attendanceLogs. -->
+<script src="./modules/attendance/attendance-service.js"></script>
+<script src="./modules/attendance/att_scanner_rfid.js"></script>
+<script src="./modules/attendance/att_index.js"></script>
+
+<!-- Smart Card Enrollment Hub (Phase 4) — loads after attendance-service.js
+     (shares the public.rfid_cards data shape) and sections-service.js
+     (reads draft.classSections for the Section Filter Dropdown). -->
+<script src="./modules/enrollment/enrollment-service.js"></script>
+<script src="./modules/enrollment/enrollment-hub.js"></script>
+<script src="./modules/seat-arrangement/classroom-service.js"></script>
+<script src="./modules/seat-arrangement/recitation-service.js"></script>
+<script src="./modules/seat-arrangement/classroom_builder.js"></script>
+<script src="./modules/seat-arrangement/classroom_index.js"></script>
+<script src="./modules/seat-arrangement/live_monitor.js"></script>
+
+<!-- Shop -->
+<script src="./modules/shop/shop_store.js"></script>
+<script src="./modules/shop/shop_inventory.js"></script>
+<script src="./modules/shop/shop_orders.js"></script>
+<script src="./modules/shop/shop_pos_terminal.js"></script>
+<script src="./modules/shop/shop_promotions.js"></script>
+<script src="./modules/shop/shop_admin_store.js"></script>
+<script src="./modules/shop/shop_index.js"></script>
+
+<!-- Achievements -->
+<script src="./modules/achievements/ach_engine.js"></script>
+<script src="./modules/achievements/ach_student_page.js"></script>
+<script src="./modules/achievements/ach_admin_page.js"></script>
+<script src="./modules/achievements/ach_index.js"></script>
+
+<!-- Titles -->
+<script src="./modules/titles/titles_badge_renderer.js"></script>
+<script src="./modules/titles/titles_designer.js"></script>
+<script src="./modules/titles/titles_student_page.js"></script>
+<script src="./modules/titles/titles_admin_page.js"></script>
+<script src="./modules/titles/titles_sidebar_refresh.js"></script>
+<script src="./modules/titles/titles_index.js"></script>
+
+<!-- Campaign -->
+<script src="./modules/campaign/campaign_engine.js"></script>
+<script src="./modules/campaign/campaign_stage_map.js"></script>
+<script src="./modules/campaign/campaign_admin_map_editor.js"></script>
+<script src="./modules/campaign/campaign_index.js"></script>
+
+<!-- Boss Studio -->
+<script src="./modules/boss-studio/bs_storage.js"></script>
+<script src="./modules/boss-studio/bs_library.js"></script>
+<script src="./modules/boss-studio/bs_animation_library.js"></script>
+<script src="./modules/boss-studio/bs_editor.js"></script>
+<script src="./modules/boss-studio/bs_bve_engine.js"></script>
+<script src="./modules/boss-studio/bs_index.js"></script>
+
+<!-- World Boss -->
+<!--
+  LOAD ORDER FIX: admin-page.js defines the BASE _bossEventCardHTML() and
+  openBossForm(). loot-rain.js / skills.js / phases.js / rage.js each wrap
+  those two functions to inject their own card strip + config button, guarded
+  by `if (typeof _bossEventCardHTML !== 'function') return;` — exactly like
+  the original. In the original single-file script, the base functions were
+  defined first (much earlier in the file) so those guards always passed.
+  Here, admin-page.js was previously loaded LAST among these files, so the
+  guards silently failed and none of the Skills/Phases/Rage "Configure"
+  buttons or status strips, nor the Loot Rush button's calling card-row
+  pieces ever made it onto the boss card — only the unwrapped base render
+  ever ran. Moving admin-page.js to load first within this group (mirroring
+  its position in the original) fixes this without touching any module's
+  internal logic.
+-->
+<script src="./modules/world-boss/combat-settings.js"></script>
+<script src="./modules/world-boss/admin-page.js"></script>
+<script src="./modules/world-boss/loot-service.js"></script>   <!-- LootService v2: domain service layer -->
+<script src="./modules/world-boss/loot-rain.js"></script>
+<script src="./modules/world-boss/skills.js"></script>
+<script src="./modules/world-boss/phases.js"></script>
+<script src="./modules/world-boss/rage.js"></script>
+<script src="./modules/world-boss/summon-notify.js"></script>
+<script src="./modules/world-boss/minions.js"></script>
+<script src="./modules/world-boss/leaderboard.js"></script>
+<script src="./modules/world-boss/student-page.js"></script>
+<script src="./modules/world-boss/battle-overlay.js"></script>
+<script src="./modules/world-boss/raid-flow.js"></script>
+<script src="./modules/world-boss/bve-patches.js"></script>
+<script src="./modules/world-boss/index.js"></script>
+
+<!-- Admin -->
+<script src="./modules/admin/student-manager.js"></script>
+<script src="./modules/admin/analytics.js"></script>
+<script src="./modules/admin/quiz-builder.js"></script>
+<script src="./modules/admin/registrations-service.js"></script>
+<script src="./modules/admin/registrations.js"></script>
+<script src="./modules/admin/teacher-directory-service.js"></script>
+<script src="./modules/admin/teacher-directory.js"></script>
+<script src="./modules/admin/content-oversight-service.js"></script>
+<script src="./modules/admin/content-oversight.js"></script>
+<script src="./modules/admin/starter-pack-service.js"></script>
+<script src="./modules/admin/starter-pack-editor.js"></script>
+<script src="./modules/admin/teacher-invite-service.js"></script>
+<script src="./modules/admin/teacher-invite.js"></script>
+<script src="./modules/admin/audit-log-service.js"></script>
+<script src="./modules/admin/audit-log.js"></script>
+<script src="./modules/admin/ownership-service.js"></script>
+<script src="./modules/admin/school-settings-service.js"></script>
+<script src="./modules/admin/school-settings.js"></script>
+<script src="./modules/admin/dsm-manager.js"></script>
+<script src="./modules/admin/index.js"></script>
+
+<script>
+// ── STUDENT DASHBOARD ──
+function renderStudentDashboard(){
+  const st = currentUser;
+  st.level = window.getLevel(st.xp); 
+  
+  // 2. Base the next level threshold and percentages on 1000 XP increments
+  const xpCurrentLevelBase = st.level * window.XP_PER_LEVEL;
+  const xpInCurrentLevel = st.xp - xpCurrentLevelBase;
+  const xpPct = Math.min(100, Math.round((xpInCurrentLevel / window.XP_PER_LEVEL) * 100));
+  const xpNext = (st.level + 1) * window.XP_PER_LEVEL;
+  const logs=DB.pointLog.filter(l=>l.studentId===st.id).slice(0,6);
+  // Phase 27: same section-scoping gate as renderStudentQuizzes() below —
+  // this dashboard widget reads DB.quizzes independently and has its own
+  // clickable "Begin Quest" cards, so it needs the same filter or a
+  // section-restricted quiz would still be startable from here.
+  const dashSectionAssignments = DB.quizSectionAssignments || {};
+  const dashMyClassId          = st.classId || 'default-class';
+  const dashInMySection = (q) => {
+    const assigned = dashSectionAssignments[q.id];
+    return !assigned || assigned.length === 0 || assigned.includes(dashMyClassId);
+  };
+  const pending=DB.quizzes.filter(q=>!st.completedQuizzes.includes(q.id) && dashInMySection(q));
+  const sorted=[...DB.students].sort((a,b)=>b.xp-a.xp);
+  const myRank=sorted.findIndex(s=>s.id===st.id)+1;
+  const r=44,circ=2*Math.PI*r,dashOff=circ-(circ*(xpPct/100));
+  const qrIdx=DB.students.indexOf(st);
+
+  document.getElementById('s-dashboard').innerHTML=`
+  <!-- HERO CARD -->
+  <div class="dash-hero">
+    <div class="dash-hero-inner">
+      <div class="dash-xp-ring" style="position:relative;flex-shrink:0">
+        <svg width="110" height="110" style="transform:rotate(-90deg)">
+          <circle cx="55" cy="55" r="${r}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="7"/>
+          <circle cx="55" cy="55" r="${r}" fill="none" stroke="url(#xpG)" stroke-width="7" stroke-linecap="round"
+            stroke-dasharray="${circ}" stroke-dashoffset="${dashOff}" style="transition:stroke-dashoffset .8s"/>
+          <defs><linearGradient id="xpG" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#4edea3"/>
+          </linearGradient></defs>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+          <div style="width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:17px;background:${st.color+'33'};color:${st.color};border:2px solid ${st.color+'55'}">${st.init}</div>
+        </div>
+        <div class="level-badge">LVL ${st.level}</div>
+      </div>
+      <div class="dash-hero-info">
+        <div class="dash-hero-name">${st.name}</div>
+        <div class="dash-hero-sub" style="margin-bottom:14px">${st.tier} &nbsp;·&nbsp; <span style="color:var(--primary)">Rank #${myRank}</span> &nbsp;·&nbsp; Level ${st.level} → ${st.level+1}</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <div style="flex:1;background:rgba(255,255,255,.06);border-radius:20px;height:10px;overflow:hidden;border:1px solid rgba(255,255,255,.04)">
+            <div style="height:100%;border-radius:20px;background:linear-gradient(90deg,#8b5cf6,#d0bcff);width:${xpPct}%;box-shadow:0 0 8px rgba(139,92,246,.5)"></div>
+          </div>
+          <span style="font-size:12px;color:var(--primary);font-weight:700;white-space:nowrap">${xpPct}%</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted)">${(xpNext-st.xp).toLocaleString()} XP to next level</div>
+      </div>
+      <div class="dash-hero-right">
+        <div class="coin-display">
+          <div class="val float">🪙 ${st.coins.toLocaleString()}</div>
+          <div class="lbl">Coins Available</div>
+        </div>
+        <button class="btn btn-orange btn-block" onclick="navTo('s-store')">🛍️ Visit Armory</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STAT GRID -->
+  <div class="stat-grid" style="margin-bottom:28px">
+    <div class="stat-card"><div class="val" style="color:#d0bcff">${st.xp.toLocaleString()}</div><div class="lbl">Total XP</div></div>
+    <div class="stat-card"><div class="val" style="color:#ffb95f">${st.coins.toLocaleString()}</div><div class="lbl">Coins</div></div>
+    <div class="stat-card"><div class="val" style="color:#4edea3">${st.attendance}%</div><div class="lbl">Attendance</div></div>
+    <div class="stat-card"><div class="val" style="color:#fb923c">${st.quizAvg}%</div><div class="lbl">Quiz Avg</div></div>
+  </div>
+
+  <!-- ATTENTION PANEL: unclaimed achievements + unread mail -->
+  ${(()=>{
+    const unlocks=(DB.achievementUnlocks||{})[st.id]||[];
+    const unclaimed=unlocks.filter(u=>!u.claimed).length;
+    const mails=(DB.mail||[]).filter(m=>m.to==='all'||(Array.isArray(m.to)&&m.to.includes(st.id)));
+    const unread=mails.filter(m=>!((m.readBy||{})[st.id])).length;
+    const unclaimedMailRewards=mails.filter(m=>m.hasReward&&!((m.claimedBy||{})[st.id])).length;
+    const notifs=[];
+    if(unclaimed>0) notifs.push({icon:'🎁',color:'#d0bcff',bg:'rgba(208,188,255,.07)',border:'rgba(208,188,255,.25)',title:unclaimed+' Achievement Reward'+(unclaimed>1?'s':'')+' Ready to Claim',sub:'Go to Achievements to collect your rewards.',action:'navTo(\'s-badges\')',btnLabel:'Claim Now',btnColor:'#8b5cf6'});
+    if(unclaimedMailRewards>0) notifs.push({icon:'📬',color:'#ffb95f',bg:'rgba(255,185,95,.07)',border:'rgba(255,185,95,.25)',title:unclaimedMailRewards+' Mail Reward'+(unclaimedMailRewards>1?'s':'')+' Unclaimed',sub:'Your teacher sent you rewards. Open your mail to claim them.',action:'navTo(\'s-mail\')',btnLabel:'Open Mail',btnColor:'#f59e0b'});
+    else if(unread>0) notifs.push({icon:'📨',color:'rgba(255,185,95,.7)',bg:'rgba(255,185,95,.04)',border:'rgba(255,185,95,.18)',title:unread+' Unread Message'+(unread>1?'s':'')+'',sub:'Your teacher sent you a message.',action:'navTo(\'s-mail\')',btnLabel:'Read Mail',btnColor:'#ca8a04'});
+    if(!notifs.length) return '';
+    return `<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px">`+
+      notifs.map(n=>`<div style="background:${n.bg};border:1px solid ${n.border};border-radius:14px;padding:13px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="font-size:24px;flex-shrink:0;animation:achBadgePulse 2s ease-in-out infinite">${n.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:var(--fh);font-size:14px;font-weight:900;color:${n.color}">${n.title}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${n.sub}</div>
+        </div>
+        <button class="btn btn-sm" style="background:${n.btnColor}22;border:1px solid ${n.btnColor}55;color:${n.btnColor};font-weight:800;flex-shrink:0;white-space:nowrap" onclick="${n.action}">${n.btnLabel} →</button>
+      </div>`).join('')+`</div>`;
+  })()}
+
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
+    <div>
+      <!-- ACTIVE QUESTS -->
+      ${pending.length ? `
+      <div class="section-header">
+        <span class="material-symbols-outlined">swords</span>
+        <h2>Active Quests</h2>
+        <span class="badge-pill bp-green">${pending.length} available</span>
+      </div>
+      <div class="quest-grid" style="grid-template-columns:1fr 1fr;margin-bottom:24px">
+        ${pending.slice(0,2).map((q,qi)=>`
+        <div class="quest-card" onclick="startQuiz('${q.id}')">
+          <div class="quest-img-wrap">
+            <div class="quest-img-placeholder">${['🧬','🔢','🌍','⚗️','💻'][qi%5]}</div>
+            ${qi===0?'<div class="quest-badge hot">🔥 Active</div>':'<div class="quest-badge new">✨ New</div>'}
+          </div>
+          <div class="quest-body">
+            <div class="quest-title">${q.title}</div>
+            <div class="quest-desc">${q.desc}</div>
+            <div class="quest-meta">
+              <div class="quest-rewards">
+                <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
+                <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${q.coinReward}</div>
+              </div>
+              <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
+            </div>
+            <button class="quest-btn primary">⚔ Begin Quest</button>
+          </div>
+        </div>`).join('')}
+      </div>` : `
+      <div class="section-header"><span class="material-symbols-outlined">swords</span><h2>Active Quests</h2></div>
+      <div style="text-align:center;padding:48px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;margin-bottom:24px;backdrop-filter:blur(12px)">
+        <div style="font-size:48px;margin-bottom:12px">🏆</div>
+        <div style="font-family:var(--fh);font-size:16px;font-weight:800;margin-bottom:6px">All Quests Complete!</div>
+        <div style="color:var(--text-muted);font-size:13px">Check back when new quests are posted.</div>
+      </div>`}
+
+      <!-- POINT LOG -->
+      <div class="section-header"><span class="material-symbols-outlined">receipt_long</span><h2>Point Activity</h2></div>
+      <div class="glass-card" style="padding:16px">
+        <div class="pt-events">
+          ${logs.length ? logs.map(e=>`
+          <div class="pt-event">
+            <div class="pt-delta" style="color:${e.pts>0?'#4edea3':'#ffb4ab'}">${e.pts>0?'+':''}${e.pts}</div>
+            <div class="pt-info"><div class="pt-what">${e.what}</div><div class="pt-when">${e.when}</div></div>
+          </div>`).join('') : '<div style="color:var(--text-muted);text-align:center;padding:16px;font-size:13px">No activity yet</div>'}
+        </div>
+      </div>
+    </div>
+
+    <!-- SIDEBAR COL -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <!-- LEADERBOARD MINI -->
+      <div class="section-header"><span class="material-symbols-outlined">military_tech</span><h2>Rankings</h2></div>
+      <div class="glass-card" style="padding:16px">
+        ${sorted.slice(0,5).map((s,i)=>{
+          const medals=['🥇','🥈','🥉','4.','5.'];const isMe=s.id===st.id;
+          return `<div class="lb-row" style="padding:8px 10px;background:${isMe?'rgba(208,188,255,0.08)':'transparent'};border:${isMe?'1px solid rgba(208,188,255,0.2)':'1px solid transparent'};margin-bottom:6px">
+            <div class="lb-rank">${i<3?medals[i]:`<span style="font-size:12px;font-weight:700;color:var(--text-muted)">${medals[i]}</span>`}</div>
+            <div class="lb-av" style="background:${s.color+'22'};color:${s.color};border-color:${s.color+'44'}">${s.init}</div>
+            <div class="lb-name">${s.name.split(' ')[0]}${isMe?` <span class="badge-pill bp-primary" style="font-size:9px;padding:1px 6px">You</span>`:''}</div>
+            <div class="lb-xp">${s.xp.toLocaleString()}</div>
+          </div>`;}).join('')}
+        <button class="btn btn-ghost btn-block btn-sm" style="margin-top:8px" onclick="navTo('s-leaderboard')">Full Rankings →</button>
+      </div>
+
+      <!-- QR CODE -->
+      <div class="glass-card">
+        <h3>🔲 Your QR Code</h3>
+        <div class="qr-card">
+          <div class="qr-svg-wrap">
+            <svg width="82" height="82" viewBox="0 0 80 80">
+              <rect x="4" y="4" width="26" height="26" rx="3" fill="none" stroke="#d0bcff" stroke-width="2.5"/>
+              <rect x="10" y="10" width="14" height="14" fill="#d0bcff"/>
+              <rect x="50" y="4" width="26" height="26" rx="3" fill="none" stroke="#d0bcff" stroke-width="2.5"/>
+              <rect x="56" y="10" width="14" height="14" fill="#d0bcff"/>
+              <rect x="4" y="50" width="26" height="26" rx="3" fill="none" stroke="#d0bcff" stroke-width="2.5"/>
+              <rect x="10" y="56" width="14" height="14" fill="#d0bcff"/>
+              <rect x="38" y="38" width="6" height="6" fill="#4edea3"/>
+              <rect x="50" y="38" width="6" height="6" fill="#4edea3"/>
+              <rect x="62" y="38" width="6" height="6" fill="#4edea3"/>
+              <rect x="38" y="50" width="6" height="6" fill="#4edea3"/>
+              <rect x="50" y="62" width="6" height="6" fill="#4edea3"/>
+              <rect x="62" y="50" width="6" height="6" fill="#4edea3"/>
+            </svg>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">ID: #SQ-2024-0${qrIdx+81}</div>
+          <div style="font-size:10px;color:rgba(208,188,255,.8);margin-top:4px;font-weight:700;letter-spacing:.08em">SCAN TO REGISTER</div>
+        </div>
+      </div>
+
+      <!-- GOALS -->
+      <div class="glass-card">
+        <h3>🎯 Active Goals</h3>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:12px">Perfect Attendance</span><span class="badge-pill bp-green">${st.attendance}%</span></div>
+          <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden;margin-bottom:14px"><div style="height:100%;border-radius:20px;width:${st.attendance}%;background:linear-gradient(90deg,#4edea3,#06b6d4);box-shadow:0 0 8px rgba(78,222,163,.5)"></div></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:12px">Reach Level ${st.level+1}</span><span class="badge-pill bp-primary">${xpPct}%</span></div>
+          <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden"><div style="height:100%;border-radius:20px;width:${xpPct}%;background:linear-gradient(90deg,#8b5cf6,#d0bcff);box-shadow:0 0 8px rgba(139,92,246,.5)"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  updateTopbar();
+}
+
+// ── STUDENT QUIZZES (Quest Board) ──
+function renderStudentQuizzes(){
+  const st=currentUser;
+  // Phase 27 (closes the gap flagged in quiz-builder.js's Phase 15 comment
+  // and SYNC_AUDIT_REPORT.md): same "opt-in scoping" semantics as
+  // achievements' renderBadges() — a quiz with no rows in
+  // quizSectionAssignments is unassigned → visible to everyone; a quiz
+  // assigned to one or more sections is only shown to students in one of
+  // those sections. Already-completed quizzes stay visible regardless, so
+  // a student can't lose access to their own quest history because of a
+  // later reassignment.
+  const sectionAssignments = DB.quizSectionAssignments || {};
+  const myClassId          = st.classId || 'default-class';
+  const inMySection = (q) => {
+    const assigned = sectionAssignments[q.id];
+    return !assigned || assigned.length === 0 || assigned.includes(myClassId);
+  };
+  const visibleQuizzes = DB.quizzes.filter(q => inMySection(q) || st.completedQuizzes.includes(q.id));
+  const done=visibleQuizzes.filter(q=>st.completedQuizzes.includes(q.id));
+  const pending=visibleQuizzes.filter(q=>!st.completedQuizzes.includes(q.id));
+
+  document.getElementById('s-quizzes').innerHTML=`
+  <!-- HERO BANNER -->
+  <div class="page-hero" style="background-image:linear-gradient(135deg,rgba(26,20,56,0.98),rgba(35,25,72,0.95));margin-bottom:32px">
+    <div class="page-hero-bg"></div><div class="page-hero-bg2"></div>
+    <div style="position:relative;z-index:1">
+      <div class="page-hero-label">⚔️ Mission Board</div>
+      <h1 style="font-family:var(--fh);font-size:32px;font-weight:900;letter-spacing:-.5px;color:var(--on-surface);margin-bottom:8px">The Quest Board</h1>
+      <p style="font-size:14px;color:var(--text-muted);max-width:480px;line-height:1.6">Sharpen your skills and earn legendary loot. Each completed quest brings you closer to the Master's Tier.</p>
+      <div class="page-hero-stats">
+        <div class="hero-stat-pill">
+          <div class="val" style="color:var(--primary)">${pending.length}</div>
+          <div class="lbl">Available</div>
+        </div>
+        <div class="hero-stat-pill">
+          <div class="val" style="color:var(--secondary)">${done.length}</div>
+          <div class="lbl">Completed</div>
+        </div>
+        <div class="hero-stat-pill">
+          <div class="val" style="color:var(--tertiary)">🔥 ${st.completedQuizzes.length>2?Math.floor(st.completedQuizzes.length/2)+'x':'0x'}</div>
+          <div class="lbl">Streak</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  ${pending.length ? `
+  <div class="section-header">
+    <span class="material-symbols-outlined">explore</span>
+    <h2>Active Quests</h2>
+    <span class="badge-pill bp-primary">${pending.length} available</span>
+  </div>
+  <div class="quest-grid">
+    ${pending.map((q,qi)=>`
+    <div class="quest-card" onclick="startQuiz('${q.id}')">
+      <div class="quest-img-wrap">
+        <div class="quest-img-placeholder">${['🧬','🔢','🌍','⚗️','💻','🔭','📐','🦠'][qi%8]}</div>
+        <div class="quest-badge ${qi===0?'hot':'new'}">${qi===0?'🔥 Hot Quest':'✨ New'}</div>
+      </div>
+      <div class="quest-body">
+        <div class="quest-title">${q.title}</div>
+        <div class="quest-desc">${q.desc}</div>
+        <div class="quest-meta">
+          <div class="quest-rewards">
+            <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
+            <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${q.coinReward}</div>
+          </div>
+          <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
+        </div>
+        <button class="quest-btn primary">⚔ Begin Quest</button>
+      </div>
+    </div>`).join('')}
+  </div>` : `
+  <div style="text-align:center;padding:64px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;margin-bottom:24px;backdrop-filter:blur(12px)">
+    <div style="font-size:56px;margin-bottom:16px">🏆</div>
+    <div style="font-family:var(--fh);font-size:20px;font-weight:900;margin-bottom:8px">All Quests Complete!</div>
+    <div style="color:var(--text-muted);font-size:14px">Awaiting new missions from your instructor.</div>
+  </div>`}
+
+  ${done.length ? `
+  <div class="section-header" style="margin-top:12px">
+    <span class="material-symbols-outlined" style="color:var(--secondary)">verified</span>
+    <h2 style="color:var(--secondary)">Completed Quests</h2>
+    <span class="badge-pill bp-green">${done.length} cleared</span>
+  </div>
+  <div class="completed-list">
+    ${done.map(q=>{
+      const history=(DB.quizHistory||{})[st.id]||[];
+      const entry=history.filter(h=>h.quizId===q.id).pop();
+      const scoreDisplay=entry?entry.score+'%':'✓';
+      return `
+    <div class="completed-row">
+      <div class="completed-icon"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">check_circle</span></div>
+      <div class="completed-info">
+        <div class="completed-title">${q.title}</div>
+        <div class="completed-sub">${q.desc}</div>
+      </div>
+      <div class="completed-score">
+        <div class="lbl">SCORE</div>
+        <div class="val">${scoreDisplay}</div>
+      </div>
+    </div>`;}).join('')}
+  </div>` : ''}`;
+}
+
+// ── ACTIVE QUIZ ──
+let activeQuiz=null,quizAnswers=[],quizCurrent=0,quizTimer=null,quizTimeLeft=0;
+
+function startQuiz(qid){
+  activeQuiz=DB.quizzes.find(q=>q.id===qid);if(!activeQuiz)return;
+  // Critical Fix #5: Block replay — check completedQuizzes AFTER fresh DB load
+  DB=loadDB();
+  const freshStudent=DB.students.find(s=>s.id===currentUser.id);
+  if(freshStudent&&(freshStudent.completedQuizzes||[]).includes(qid)){
+    toast('✅ You already completed this quest!','#4edea3');
+    return;
+  }
+  quizAnswers=new Array(activeQuiz.questions.length).fill(null);quizCurrent=0;
+  quizTimeLeft=activeQuiz.timeLimit*60;
+  showPage('s-quiz-active');renderQuizQuestion();startQuizTimer();
+}
+function startQuizTimer(){
+  clearInterval(quizTimer);
+  quizTimer=setInterval(()=>{
+    quizTimeLeft--;
+    const el=document.getElementById('quiz-timer');
+    if(el){
+      const m=Math.floor(quizTimeLeft/60),s=quizTimeLeft%60;
+      el.textContent=`${m}:${s.toString().padStart(2,'0')}`;
+      if(quizTimeLeft<=60)el.className='quiz-timer urgent';
+    }
+    if(quizTimeLeft<=0){clearInterval(quizTimer);finishQuiz();}
+  },1000);
+}
+function renderQuizQuestion(){
+  const q=activeQuiz.questions[quizCurrent];const total=activeQuiz.questions.length;
+  const fillPct=Math.round((quizCurrent+1)/total*100);
+  const letters=['A','B','C','D','E'];
+  document.getElementById('s-quiz-active').innerHTML=`
+  <div class="quiz-arena">
+    <div class="quiz-hud">
+      <div class="quiz-title-label">[ ${activeQuiz.title.toUpperCase().replace(/\s+/g,'_')} ]</div>
+      <div class="quiz-timer" id="quiz-timer">--:--</div>
+      <button class="quiz-abort" onclick="exitQuiz()">✕ Abort</button>
+    </div>
+    <div class="quiz-progress-track">
+      <div class="quiz-progress-bar"><div class="quiz-progress-fill" style="width:${fillPct}%"></div></div>
+      <div class="quiz-progress-labels">
+        <span style="color:var(--text-muted)">Q.${String(quizCurrent+1).padStart(2,'0')} / ${String(total).padStart(2,'0')}</span>
+        <span style="color:var(--primary)">${fillPct}% COMPLETE</span>
+      </div>
+    </div>
+    <div class="quiz-question-card">
+      <div class="quiz-q-label">QUESTION_${String(quizCurrent+1).padStart(2,'0')} // SELECT CORRECT RESPONSE</div>
+      <div class="quiz-q-text">${q.q}</div>
+    </div>
+    <div class="quiz-options" id="quiz-opts">
+      ${q.opts.map((opt,i)=>`
+      <button class="quiz-opt" id="opt-${i}" onclick="selectOpt(${i})">
+        <div class="quiz-opt-letter">${letters[i]}</div>
+        <span class="quiz-opt-text">${opt}</span>
+      </button>`).join('')}
+    </div>
+    <div class="quiz-nav">
+      ${quizCurrent>0?`<button class="quiz-nav-prev" onclick="quizPrev()">← Prev</button>`:''}
+      <button class="quiz-nav-next" id="btn-next" disabled onclick="quizNext()">
+        ${quizCurrent===total-1?'▶ Submit Quest':'Next →'}
+      </button>
+    </div>
+  </div>
+  <div class="quiz-side-panel">
+    <div class="quiz-side-stat">
+      <span class="material-symbols-outlined" style="color:var(--secondary);font-variation-settings:'FILL' 1">military_tech</span>
+      <div class="val" style="color:var(--secondary)">${Math.floor(quizCurrent/2)||1}x</div>
+      <div class="lbl">Streak</div>
+    </div>
+    <div class="quiz-side-stat">
+      <span class="material-symbols-outlined" style="color:var(--tertiary);font-variation-settings:'FILL' 1">auto_fix_high</span>
+      <div class="val" style="color:var(--tertiary)">2</div>
+      <div class="lbl">Hints</div>
+    </div>
+  </div>`;
+  const timerEl=document.getElementById('quiz-timer');
+  if(timerEl){const m=Math.floor(quizTimeLeft/60),s=quizTimeLeft%60;timerEl.textContent=`${m}:${s.toString().padStart(2,'0')}`;if(quizTimeLeft<=60)timerEl.className='quiz-timer urgent';}
+  if(quizAnswers[quizCurrent]!==null)selectOpt(quizAnswers[quizCurrent],true);
+}
+function selectOpt(i,restore=false){
+  document.querySelectorAll('.quiz-opt').forEach(o=>{o.className='quiz-opt';});
+  document.getElementById('opt-'+i)?.classList.add('selected');
+  quizAnswers[quizCurrent]=i;
+  const btn=document.getElementById('btn-next');
+  if(btn){btn.disabled=false;}
+}
+function quizNext(){if(quizAnswers[quizCurrent]===null)return;if(quizCurrent===activeQuiz.questions.length-1){clearInterval(quizTimer);finishQuiz();}else{quizCurrent++;renderQuizQuestion();}}
+function quizPrev(){if(quizCurrent>0){quizCurrent--;renderQuizQuestion();}}
+function exitQuiz(){clearInterval(quizTimer);activeQuiz=null;navTo('s-quizzes');}
+function finishQuiz() {
+  clearInterval(quizTimer);
+
+  const stIdx = DB.students.findIndex(s => s.id === currentUser.id);
+
+  // ── FIXED: Quiz Replay Guard (Duplicate Completion Check) ──
+  if (DB.students[stIdx].completedQuizzes.includes(activeQuiz.id)) {
+    activeQuiz = null;
+    navTo('s-quizzes');
+    toast('⚠️ Quest already submitted from another tab.', '#ffb4ab');
+    return;
+  }
+
+  let correct = 0;
+  activeQuiz.questions.forEach((q, i) => { if (quizAnswers[i] === q.answer) correct++; });
+  const total = activeQuiz.questions.length;
+  const score = Math.round((correct / total) * 100);
+  const xpGain = Math.round((activeQuiz.xpReward * score) / 100);
+  const coinGain = Math.round((activeQuiz.coinReward * score) / 100);
+
+  // Grant rewards securely
+  DB.students[stIdx].xp += xpGain;
+  DB.students[stIdx].coins += coinGain;
+  DB.students[stIdx].completedQuizzes.push(activeQuiz.id);
+
+  // Store per-quiz score for history
+  if (!DB.quizHistory) DB.quizHistory = {};
+  if (!DB.quizHistory[currentUser.id]) DB.quizHistory[currentUser.id] = [];
+  DB.quizHistory[currentUser.id].push({ quizId: activeQuiz.id, score, completedAt: new Date().toISOString() });
+
+  // ── FIXED: Safe Quiz Average Calculation (Prevents NaN%) ──
+  const history = DB.quizHistory[currentUser.id];
+  if (history && history.length > 0) {
+    const totalScore = history.reduce((sum, entry) => sum + entry.score, 0);
+    DB.students[stIdx].quizAvg = Math.round(totalScore / history.length);
+  } else {
+    DB.students[stIdx].quizAvg = 0; // Fallback for brand new students
+  }
+
+  // ── FIXED: Centralized Level Trigger ──
+  window.checkLevelUp(DB.students[stIdx]);
+
+  // ── FIXED: Real Timestamp & Point Accuracy (Logging XP instead of Coins) ──
+  DB.pointLog.unshift({
+    studentId: currentUser.id,
+    what: `Quest: ${activeQuiz.title} (${score}%)`,
+    pts: xpGain, 
+    when: window.getNowLabel() 
+  });
+
+  currentUser = DB.students[stIdx];
+  saveDB();
+
+  const pass = score >= 60;
+  document.getElementById('s-quiz-active').innerHTML = `
+  <div class="results-wrap fade-in">
+    <div class="results-emoji">${pass ? '🏆' : '💀'}</div>
+    <div class="results-title" style="color:${pass ? '#4edea3' : '#ffb4ab'}">${pass ? 'Quest Complete!' : 'Quest Failed'}</div>
+    <div class="results-sub">${activeQuiz.title.toUpperCase().replace(/\s+/g, '_')}</div>
+    <div class="results-score-card" style="border:1px solid ${pass ? 'rgba(78,222,163,.3)' : 'rgba(255,180,171,.25)'}">
+      <div class="results-big-score" style="color:${score >= 80 ? '#4edea3' : score >= 60 ? '#ffb95f' : '#ffb4ab'}">${score}<span style="font-size:28px">%</span></div>
+      <div class="results-sub-score">${correct} / ${total} CORRECT</div>
+      <div class="results-rewards">
+        <div class="results-reward"><div class="val" style="color:#d0bcff">+${xpGain}</div><div class="lbl">XP Earned</div></div>
+        <div class="results-reward"><div class="val" style="color:#ffb95f">+${coinGain}</div><div class="lbl">Coins</div></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:8px">
+      <button class="btn btn-ghost" style="flex:1" onclick="navTo('s-quizzes')">← Quest Board</button>
+      <button class="btn btn-primary" style="flex:1" onclick="navTo('s-dashboard')">🏠 Dashboard</button>
+    </div>
+  </div>`;
+  updateTopbar();
+}
+function profEnsureFields(user) {
+  // Ensure all profile fields exist on a user record
+  if (!user) return;
+  if (!user.firstName) {
+    const parts = (user.name || '').split(' ');
+    user.firstName = parts[0] || '';
+    user.lastName = parts.slice(1).join(' ') || '';
+  }
+  if (!user.displayName) user.displayName = user.name || user.id;
+  if (!user.email) user.email = '';
+  if (!user.joinDate) user.joinDate = todayStr();
+  if (!user.profilePic) user.profilePic = '';
+}
+
+function profGetCurrent() {
+  // Returns freshest copy merged with DB
+  if (!currentUser) return null;
+  if (currentRole === 'admin') {
+    profEnsureFields(DB.admin);
+    return DB.admin;
+  }
+  if (currentRole === 'teacher') {
+    // Role split fix: teachers are never in DB.students, and DB.admin is a
+    // single shared legacy record that may belong to a DIFFERENT staff
+    // member — writing a teacher's own profile into it would corrupt that
+    // other account. currentUser is already correctly shaped from auth.js's
+    // profiles-row bridge, so just ensure fields on it directly.
+    profEnsureFields(currentUser);
+    return currentUser;
+  }
+  const st = DB.students.find(s => s.id === currentUser.id);
+  if (st) {
+    profEnsureFields(st);
+    currentUser = st;
+  }
+  return currentUser;
+}
+
+function profInitAll() {
+  // Ensure all users have profile fields (run on boot)
+  profEnsureFields(DB.admin);
+  DB.students.forEach(s => profEnsureFields(s));
+}
+
+/* ── Avatar rendering helpers (used everywhere) ── */
+
+function getAvatarHTML(user, size, radius='50%') {
+  // Returns inner HTML for an avatar element
+  if (!user) return '';
+  if (user.profilePic) {
+    return `<img class="av-img" src="${user.profilePic}" alt="${user.init||''}" onerror="this.style.display='none'">`;
+  }
+  return `<span class="av-init">${user.init || (user.name||'?').charAt(0)}</span>`;
+}
+
+function renderAvatarEl(el, user, isSquare) {
+  // Updates a DOM element to show avatar or initials correctly
+  if (!el || !user) return;
+  if (user.profilePic) {
+    el.innerHTML = `<img class="${isSquare ? 'av-img' : 'av-img'}" src="${user.profilePic}" alt="${user.init||''}"
+      style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:${isSquare?'10px':'50%'};z-index:2"
+      onerror="this.remove()">`;
+    el.style.position = 'relative';
+  } else {
+    // Remove any stale image
+    const img = el.querySelector('img.av-img');
+    if (img) img.remove();
+    el.textContent = user.init || (user.name||'?').charAt(0);
+  }
+}
+
+/* ── Topbar / sidebar / global avatar refresh ── */
+
+function refreshAllAvatars() {
+  if (!currentUser) return;
+  const user = profGetCurrent();
+
+  // 1. Topbar avatar
+  const topAv = document.getElementById('topbar-av');
+  if (topAv) {
+    const init = currentRole === 'student' ? user.init : 'MS';
+    const color = currentRole === 'student' ? user.color : '#ffb4ab';
+    topAv.style.background = `linear-gradient(135deg,${color}44,${color}22)`;
+    topAv.style.color = color;
+    if (user.profilePic) {
+      topAv.innerHTML = `<img class="av-img" src="${user.profilePic}" alt="${init}"
+        style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:50%;z-index:2"
+        onerror="this.remove()">`;
+      topAv.style.position = 'relative';
+      topAv.style.overflow = 'hidden';
+    } else {
+      const img = topAv.querySelector('img.av-img');
+      if (img) img.remove();
+      topAv.textContent = init;
+    }
+  }
+
+  // 2. Sidebar avatar
+  const sbAv = document.getElementById('sb-avatar');
+  if (sbAv && currentRole === 'student') {
+    sbAv.style.cssText = `width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:14px;flex-shrink:0;border:2px solid ${user.color}55;background:${user.color}22;color:${user.color};position:relative;overflow:hidden`;
+    if (user.profilePic) {
+      sbAv.innerHTML = `<img class="av-img" src="${user.profilePic}" alt="${user.init}"
+        style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:10px;z-index:2"
+        onerror="this.remove()">`;
+    } else {
+      const img = sbAv.querySelector('img.av-img');
+      if (img) img.remove();
+      sbAv.textContent = user.init;
+    }
+  }
+
+  // 3. Sidebar name / tier
+  const sbName = document.getElementById('sb-name');
+  const sbTier = document.getElementById('sb-tier');
+  if (sbName && currentRole === 'student') {
+    sbName.textContent = user.displayName || (user.firstName + ' ' + user.lastName).trim() || user.name;
+  }
+
+  // 4. Topbar coin display (name may have changed)
+  const coinVal = document.getElementById('topbar-coin-val');
+  if (coinVal && currentRole === 'student') {
+    coinVal.textContent = (user.coins || 0).toLocaleString();
+  }
+}
+
+/* ── Profile modal open / close ── */
+
+function openProfile() {
+  _profPendingPic = null; // always start clean
+  profInitAll();
+  const user = profGetCurrent();
+  if (!user) return;
+
+  // Populate hero
+  _profRenderHero(user);
+  _profRenderStats(user);
+  switchProfileTab('overview');
+
+  document.getElementById('profile-overlay').classList.add('open');
+}
+
+function closeProfile() {
+  _profPendingPic = null; // discard any unsaved photo change
+  document.getElementById('profile-overlay').classList.remove('open');
+}
+
+function profileOverlayClick(e) {
+  if (e.target === document.getElementById('profile-overlay')) closeProfile();
+}
+
+function profileAvatarClick() {
+  // Opens the edit-profile tab and focuses the pic section
+  switchProfileTab('edit');
+  setTimeout(() => {
+    const el = document.getElementById('prof-pic-section');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 120);
+}
+
+/* ── Hero section ── */
+
+function _profRenderHero(user) {
+  const av = document.getElementById('prof-avatar');
+  const avInit = document.getElementById('prof-av-init');
+  const color = user.color || '#8b5cf6';
+
+  av.style.background = `linear-gradient(135deg,${color}44,${color}22)`;
+  av.style.borderColor = color + '88';
+  av.style.color = color;
+
+  if (user.profilePic) {
+    // Remove old init, inject image
+    let img = av.querySelector('img');
+    if (!img) {
+      img = document.createElement('img');
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:50%;z-index:2';
+      img.onerror = function() { this.remove(); avInit.style.display = ''; };
+      av.appendChild(img);
+    }
+    img.src = user.profilePic;
+    avInit.style.display = 'none';
+  } else {
+    const img = av.querySelector('img');
+    if (img) img.remove();
+    avInit.style.display = '';
+    avInit.textContent = user.init || (user.name||'?').charAt(0);
+  }
+
+  const displayName = user.displayName || user.name || user.id;
+  document.getElementById('prof-display-name').textContent = displayName;
+  document.getElementById('prof-username').textContent = '@' + (user.id || user.username || '');
+  // Role split fix: this used to only distinguish 'admin' vs "everything
+  // else" (which meant a teacher account saw "Student" here). Show the
+  // actual role.
+  document.getElementById('prof-role-chip').innerHTML =
+    currentRole === 'admin'    ? '<span class="material-symbols-outlined" style="font-size:13px">shield</span> Administrator'
+    : currentRole === 'teacher' ? '<span class="material-symbols-outlined" style="font-size:13px">shield</span> Teacher'
+    : '<span class="material-symbols-outlined" style="font-size:13px">school</span> Student';
+  document.getElementById('prof-join-text').textContent = 'Joined ' + (user.joinDate || todayStr());
+}
+
+/* ── Stats strip ── */
+
+function _profRenderStats(user) {
+  const strip = document.getElementById('prof-stats-strip');
+  if (!strip) return;
+  // Role split fix: this used to only check 'admin', so a teacher fell
+  // through to the student-stats branch below and crashed on
+  // user.completedQuizzes.length (teachers have no such field) — which is
+  // why the profile page appeared to silently fail for teacher accounts.
+  // Students/quizzes/etc. here are already scoped to the teacher's own
+  // class(es) server-side by RLS, so this staff view is accurate for both.
+  if (currentRole === 'admin' || currentRole === 'teacher') {
+    strip.innerHTML = `
+      <div class="profile-stat"><div class="val" style="color:#d0bcff">${DB.students.length}</div><div class="lbl">Students</div></div>
+      <div class="profile-stat"><div class="val" style="color:#ffb95f">${DB.quizzes.length}</div><div class="lbl">Quests</div></div>
+      <div class="profile-stat"><div class="val" style="color:#4edea3">${(DB.bossEvents||[]).length}</div><div class="lbl">Bosses</div></div>
+      <div class="profile-stat"><div class="val" style="color:#EC4899">${(DB.redemptions||[]).length}</div><div class="lbl">Redemptions</div></div>`;
+    return;
+  }
+  const xpNext = (user.level + 1) * 1200;
+  const xpPct = Math.min(100, Math.round(user.xp / xpNext * 100));
+  strip.innerHTML = `
+    <div class="profile-stat"><div class="val" style="color:var(--primary)">${user.level}</div><div class="lbl">Level</div></div>
+    <div class="profile-stat"><div class="val" style="color:#d0bcff">${user.xp.toLocaleString()}</div><div class="lbl">XP</div></div>
+    <div class="profile-stat"><div class="val" style="color:#ffb95f">${user.coins.toLocaleString()}</div><div class="lbl">Coins</div></div>
+    <div class="profile-stat"><div class="val" style="color:#4edea3">${user.completedQuizzes.length}</div><div class="lbl">Quests Done</div></div>`;
+}
+
+/* ── Tab switching ── */
+
+function switchProfileTab(tab) {
+  // If navigating away from edit without saving, discard pending photo
+  if (tab !== 'edit' && _profPendingPic !== null) {
+    _profPendingPic = null;
+  }
+
+  document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
+  const btn = document.getElementById('ptab-' + tab);
+  if (btn) btn.classList.add('active');
+
+  const user = profGetCurrent();
+  const body = document.getElementById('prof-tab-body');
+  if (!body) return;
+
+  if (tab === 'overview') body.innerHTML = _profOverviewHTML(user);
+  else if (tab === 'edit')  body.innerHTML = _profEditHTML(user);
+  else if (tab === 'account') body.innerHTML = _profAccountHTML(user);
+}
+
+/* ── Overview tab ── */
+
+function _profOverviewHTML(user) {
+  // Role split fix: this used to only check 'admin', so a teacher fell
+  // through to the "Student overview" branch below and tried to render a
+  // teacher account as if it were a student's own quest/achievement profile.
+  if (currentRole === 'admin' || currentRole === 'teacher') {
+    const isAdmin = currentRole === 'admin';
+    return `
+    <div class="profile-section-title"><span class="material-symbols-outlined">admin_panel_settings</span>${isAdmin ? 'Administrator Account' : 'Teacher Account'}</div>
+    <div style="background:rgba(255,180,171,0.07);border:1px solid rgba(255,180,171,0.2);border-radius:14px;padding:18px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="font-size:36px">🛡️</div>
+        <div>
+          <div style="font-family:var(--fh);font-size:15px;font-weight:800;color:var(--on-surface);margin-bottom:3px">${user.name}</div>
+          <div style="font-size:12px;color:var(--text-muted)">${isAdmin ? 'Full administrative access · Teacher account' : 'Teacher account'}</div>
+        </div>
+      </div>
+    </div>
+    <div class="profile-section-title"><span class="material-symbols-outlined">groups</span>Class Overview</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+      <div class="profile-boss-chip" style="background:rgba(208,188,255,0.08);border-color:rgba(208,188,255,0.2)">
+        <div class="v" style="color:var(--primary)">${DB.students.length}</div>
+        <div class="l">Total Students</div>
+      </div>
+      <div class="profile-boss-chip" style="background:rgba(78,222,163,0.06);border-color:rgba(78,222,163,0.18)">
+        <div class="v" style="color:#4edea3">${DB.quizzes.length}</div>
+        <div class="l">Active Quests</div>
+      </div>
+      <div class="profile-boss-chip" style="background:rgba(255,185,95,0.07);border-color:rgba(255,185,95,0.22)">
+        <div class="v" style="color:var(--tertiary)">${(DB.store||[]).length}</div>
+        <div class="l">Store Items</div>
+      </div>
+      <div class="profile-boss-chip" style="background:rgba(236,72,153,0.06);border-color:rgba(236,72,153,0.2)">
+        <div class="v" style="color:#EC4899">${(DB.bossEvents||[]).length}</div>
+        <div class="l">Boss Events</div>
+      </div>
+    </div>`;
+  }
+
+  // Student overview
+  const allBossParticipants = DB.bossParticipants || {};
+  let totalDmg = 0, totalCorrect = 0, totalCrits = 0, bossCount = 0;
+  Object.values(allBossParticipants).forEach(bossRoster => {
+    const rec = bossRoster[user.id];
+    if (rec) { totalDmg += rec.totalDamage || 0; totalCorrect += rec.correctAnswers || 0; totalCrits += rec.critHits || 0; bossCount++; }
+  });
+
+  // Achievements (dynamic — read from achievement engine)
+  const earnedUnlocks=(DB.achievementUnlocks||{})[user.id]||[];
+  const achs=earnedUnlocks.map(u=>{
+    const a=(DB.achievements||[]).find(x=>x.id===u.achId);
+    return a?{icon:a.icon||'🏅',label:a.name}:null;
+  }).filter(Boolean).slice(0,8);
+  if(achs.length===0)achs.push({icon:'🌱',label:'Rising Scholar'});
+
+  const xpNext = (user.level + 1) * 1200;
+  const xpPct = Math.min(100, Math.round(user.xp / xpNext * 100));
+  const ownProfile = currentRole === 'student' && currentUser && currentUser.id === user.id;
+  const unlockedTitles = ownProfile ? tsGetUnlockedTitles(user.id) : [];
+
+  // Build equipped title HTML for profile overlay (uses window.tsBuildBadgeHTML if available)
+  const _profEquippedTitle = (function(){
+    try{
+      const tid = (DB.equippedTitles || {})[user.id];
+      if(!tid) return '';
+      const t = (DB.titles || []).find(x => x.id === tid && x.active);
+      if(!t) return '';
+      const badgeHTML = typeof tsBuildBadgeHTML === 'function' ? tsBuildBadgeHTML(t) : '';
+      if(!badgeHTML) return '';
+      return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px">Equipped Title</div>
+        ${badgeHTML}
+      </div>`;
+    }catch(e){ return ''; }
+  })();
+
+  const _profTitlePanel = ownProfile ? `<div style="margin-top:14px;padding:16px;background:rgba(208,188,255,0.08);border:1px solid rgba(208,188,255,0.2);border-radius:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+        <div>
+          <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Titles & Achievements</div>
+          <div style="font-size:13px;font-weight:700;color:var(--on-surface)">${unlockedTitles.length} unlocked title${unlockedTitles.length === 1 ? '' : 's'}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="tsOpenTitlesFromProfile()">Manage Titles</button>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.5">
+        ${unlockedTitles.length ? 'Equip a title from your Achievements page to show it on your profile and leaderboard.' : 'Unlock a title by earning achievements, then equip it from the Achievements page.'}
+      </div>
+    </div>` : '';
+
+  return `
+  <div class="profile-section-title"><span class="material-symbols-outlined">person</span>About</div>
+  <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px">Full Name</div><div style="font-size:13px;font-weight:700;color:var(--on-surface)">${user.firstName||''} ${user.lastName||''}</div></div>
+      <div><div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px">Username</div><div style="font-size:13px;font-weight:700;color:var(--primary)">@${user.id}</div></div>
+      <div><div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px">Tier</div><div style="font-size:13px;font-weight:700;color:var(--secondary)">${user.tier || 'Scholar'}</div></div>
+      <div><div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px">Rank</div><div style="font-size:13px;font-weight:700;color:var(--tertiary)">#${user.rank || '?'}</div></div>
+    </div>
+    ${_profEquippedTitle}
+    ${_profTitlePanel}
+    <div style="margin-top:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span style="font-size:11px;color:var(--text-muted)">XP Progress to Level ${user.level + 1}</span>
+        <span style="font-size:11px;color:var(--primary);font-weight:700">${xpPct}%</span>
+      </div>
+      <div style="background:rgba(255,255,255,0.06);border-radius:20px;height:7px;overflow:hidden">
+        <div style="height:100%;border-radius:20px;background:linear-gradient(90deg,#8b5cf6,#d0bcff);width:${xpPct}%;box-shadow:0 0 8px rgba(139,92,246,0.5)"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:4px">${(xpNext - user.xp).toLocaleString()} XP to next level</div>
+    </div>
+  </div>
+
+  <div class="profile-section-title"><span class="material-symbols-outlined">workspace_premium</span>Achievements <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(${achs.length})</span></div>
+  <div class="profile-achievements">
+    ${achs.map(a => `<div class="profile-ach-chip">${a.icon} ${a.label}</div>`).join('')}
+  </div>
+
+  <div class="profile-section-title"><span class="material-symbols-outlined">swords</span>Quest Statistics</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+    <div style="background:rgba(208,188,255,0.07);border:1px solid rgba(208,188,255,0.2);border-radius:12px;padding:12px;text-align:center">
+      <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:var(--primary);margin-bottom:3px">${user.completedQuizzes.length}</div>
+      <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">Quests Done</div>
+    </div>
+    <div style="background:rgba(255,185,95,0.07);border:1px solid rgba(255,185,95,0.2);border-radius:12px;padding:12px;text-align:center">
+      <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:var(--tertiary);margin-bottom:3px">${user.quizAvg}%</div>
+      <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">Quiz Avg</div>
+    </div>
+    <div style="background:rgba(78,222,163,0.06);border:1px solid rgba(78,222,163,0.18);border-radius:12px;padding:12px;text-align:center">
+      <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:#4edea3;margin-bottom:3px">${user.attendance}%</div>
+      <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">Attendance</div>
+    </div>
+  </div>
+
+  <div class="profile-section-title"><span class="material-symbols-outlined">local_fire_department</span>Boss Raid Stats</div>
+  <div class="profile-boss-grid">
+    <div class="profile-boss-chip">
+      <div class="v">${bossCount}</div>
+      <div class="l">Raids Joined</div>
+    </div>
+    <div class="profile-boss-chip">
+      <div class="v">${totalDmg.toLocaleString()}</div>
+      <div class="l">Total Damage</div>
+    </div>
+    <div class="profile-boss-chip">
+      <div class="v">${totalCorrect}</div>
+      <div class="l">Correct Hits</div>
+    </div>
+    <div class="profile-boss-chip">
+      <div class="v">${totalCrits}</div>
+      <div class="l">Critical Hits</div>
+    </div>
+    <div class="profile-boss-chip">
+      <div class="v">${user.coins.toLocaleString()}</div>
+      <div class="l">Coins Held</div>
+    </div>
+    <div class="profile-boss-chip">
+      <div class="v">${user.level}</div>
+      <div class="l">Current Level</div>
+    </div>
+  </div>`;
+}
+
+/* ── Edit Profile tab ── */
+
+function _profEditHTML(user) {
+  const picHtml = user.profilePic
+    ? `<img src="${user.profilePic}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:50%;" onerror="this.remove()">`
+    : `<span style="font-family:var(--fh);font-weight:900;font-size:18px;color:${user.color||'var(--primary)'}">${user.init||'?'}</span>`;
+
+  return `
+  <div id="prof-pic-section" class="profile-pic-section">
+    <div class="profile-pic-preview" style="background:${(user.color||'#8b5cf6')+'22'};border-color:${(user.color||'#8b5cf6')+'55'};position:relative;overflow:hidden">
+      ${picHtml}
+    </div>
+    <div>
+      <div style="font-family:var(--fh);font-size:13px;font-weight:700;color:var(--on-surface);margin-bottom:8px">Profile Picture</div>
+      <div class="profile-pic-actions">
+        <button class="btn btn-primary btn-sm" onclick="document.getElementById('profile-pic-input').click()">
+          <span class="material-symbols-outlined" style="font-size:14px">upload</span> Upload Photo
+        </button>
+        ${user.profilePic ? `<button class="btn btn-ghost btn-sm" onclick="removeProfilePic()">
+          <span class="material-symbols-outlined" style="font-size:14px">delete</span> Remove Photo
+        </button>` : ''}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:8px">JPG, PNG, or GIF · Stored locally</div>
+    </div>
+  </div>
+
+  <div class="profile-section-title"><span class="material-symbols-outlined">badge</span>Display Name</div>
+  <div class="profile-form-group">
+    <label class="form-label">Display Name <span style="color:var(--text-muted);font-size:11px">(shown throughout the app)</span></label>
+    <input type="text" id="prof-displayname" value="${_esc(user.displayName || user.name)}" placeholder="How you appear in the app" style="width:100%">
+  </div>
+
+  <div class="profile-section-title" style="margin-top:18px"><span class="material-symbols-outlined">person</span>Personal Info</div>
+  <div class="profile-form-row">
+    <div class="profile-form-group">
+      <label class="form-label">First Name</label>
+      <input type="text" id="prof-firstname" value="${_esc(user.firstName || '')}" placeholder="First name" style="width:100%">
+    </div>
+    <div class="profile-form-group">
+      <label class="form-label">Last Name</label>
+      <input type="text" id="prof-lastname" value="${_esc(user.lastName || '')}" placeholder="Last name" style="width:100%">
+    </div>
+  </div>
+  <div class="profile-form-group">
+    <label class="form-label">Username <span style="color:var(--text-muted);font-size:11px">(login ID — must be unique)</span></label>
+    <input type="text" id="prof-newid" value="${_esc(user.id)}" placeholder="username" style="width:100%" ${currentRole==='admin'?'':'readonly style="width:100%;opacity:0.6;cursor:not-allowed"'}>
+    ${currentRole!=='admin'?`<div style="font-size:11px;color:var(--text-muted);margin-top:4px">Only admins can change login username</div>`:''}
+  </div>
+  <div id="prof-edit-err" style="color:#ffb4ab;font-size:13px;display:none;margin-bottom:8px"></div>
+  <div class="profile-save-row">
+    <button class="btn btn-ghost" onclick="closeProfile()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveProfileEdit()">
+      <span class="material-symbols-outlined" style="font-size:15px">save</span> Save Changes
+    </button>
+  </div>`;
+}
+
+/* ── Account Settings tab ── */
+
+function _profAccountHTML(user) {
+  const isStudent = currentRole === 'student';
+  return `
+  ${isStudent ? `
+  <div class="profile-section-title"><span class="material-symbols-outlined">mail</span>Email Address</div>
+  <div class="profile-form-group">
+    <label class="form-label">Email</label>
+    <input type="email" id="prof-email" value="${_esc(user.email || '')}" placeholder="your@email.com" style="width:100%">
+  </div>
+  <div id="prof-email-err" style="color:#ffb4ab;font-size:12px;display:none;margin-top:-10px;margin-bottom:10px"></div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
+    <button class="btn btn-primary btn-sm" onclick="saveEmail()">
+      <span class="material-symbols-outlined" style="font-size:14px">save</span> Save Email
+    </button>
+  </div>
+  <div style="height:1px;background:var(--border);margin-bottom:20px"></div>` : ''}
+
+  <div class="profile-section-title"><span class="material-symbols-outlined">lock</span>Change Password</div>
+  <div class="profile-form-group">
+    <label class="form-label">Current Password <span style="color:#EC4899">*</span></label>
+    <div style="position:relative">
+      <input type="password" id="prof-cur-pass" placeholder="Enter current password" style="width:100%;padding-right:40px">
+      <button type="button" class="reg-pw-toggle-btn" tabindex="-1" aria-label="Show password" onclick="regTogglePasswordVisibility('prof-cur-pass', this)">
+        <span class="material-symbols-outlined" style="font-size:18px">visibility</span>
+      </button>
+    </div>
+  </div>
+  <div class="profile-form-row">
+    <div class="profile-form-group">
+      <label class="form-label">New Password</label>
+      <div style="position:relative">
+        <input type="password" id="prof-new-pass" placeholder="New password" style="width:100%;padding-right:40px">
+        <button type="button" class="reg-pw-toggle-btn" tabindex="-1" aria-label="Show password" onclick="regTogglePasswordVisibility('prof-new-pass', this)">
+          <span class="material-symbols-outlined" style="font-size:18px">visibility</span>
+        </button>
+      </div>
+    </div>
+    <div class="profile-form-group">
+      <label class="form-label">Confirm Password</label>
+      <div style="position:relative">
+        <input type="password" id="prof-conf-pass" placeholder="Confirm new password" style="width:100%;padding-right:40px">
+        <button type="button" class="reg-pw-toggle-btn" tabindex="-1" aria-label="Show password" onclick="regTogglePasswordVisibility('prof-conf-pass', this)">
+          <span class="material-symbols-outlined" style="font-size:18px">visibility</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div id="prof-pass-err" style="color:#ffb4ab;font-size:12px;display:none;margin-top:-10px;margin-bottom:10px"></div>
+  <div style="display:flex;justify-content:flex-end">
+    <button class="btn btn-primary" onclick="savePassword()">
+      <span class="material-symbols-outlined" style="font-size:15px">lock_reset</span> Change Password
+    </button>
+  </div>`;
+}
+
+/* ── Save: Profile Edit ── */
+
+function saveProfileEdit() {
+  const errEl = document.getElementById('prof-edit-err');
+  if (errEl) errEl.style.display = 'none';
+
+  const displayName = (document.getElementById('prof-displayname')?.value || '').trim();
+  const firstName   = (document.getElementById('prof-firstname')?.value   || '').trim();
+  const lastName    = (document.getElementById('prof-lastname')?.value    || '').trim();
+
+  if (!displayName) {
+    if (errEl) { errEl.textContent = 'Display name cannot be empty.'; errEl.style.display = 'block'; }
+    return;
+  }
+
+  DB = loadDB();
+  profInitAll();
+
+  if (currentRole === 'admin') {
+    const newId = (document.getElementById('prof-newid')?.value || '').trim().toLowerCase();
+    if (!newId) { if (errEl) { errEl.textContent = 'Username is required.'; errEl.style.display = 'block'; } return; }
+    DB.admin.firstName = firstName;
+    DB.admin.lastName = lastName;
+    DB.admin.displayName = displayName;
+    DB.admin.name = firstName && lastName ? firstName + ' ' + lastName : displayName;
+    // Critical Fix #6: Actually persist the new username so future logins work
+    DB.admin.id = newId;
+    // Commit any staged picture change
+    if (_profPendingPic !== null) DB.admin.profilePic = _profPendingPic;
+    currentUser = DB.admin;
+  } else if (currentRole === 'teacher') {
+    // Role split fix: this branch used to be missing entirely, so a teacher
+    // fell into the student branch below, DB.students.findIndex() always
+    // returned -1 for a teacher id, and `if (stIdx < 0) return;` silently
+    // discarded the edit with no error shown.
+    //
+    // Teachers aren't in DB.students, and writing into DB.admin isn't safe
+    // either — DB.admin is a single shared legacy record that may represent
+    // a DIFFERENT staff member's profile, so overwriting it here would
+    // corrupt that other account. Updating currentUser directly is the
+    // correct in-session fix.
+    //
+    // NOTE (real gap, out of scope for this fix): this whole panel writes
+    // to local fields only — display name changes here aren't pushed to the
+    // profiles table in Supabase, and there's no username-change RPC for
+    // teachers the way DB.admin.id reassignment fakes for the legacy admin
+    // record above. A teacher's display name edit will look saved for the
+    // rest of this session but won't survive a fresh Supabase pull or a
+    // login from another device until a real update_own_profile()-style RPC
+    // is built. Flagging rather than building that RPC here since it's a
+    // bigger, security-relevant change (needs its own SECURITY DEFINER
+    // function + RLS review) outside the "fix the role display" scope of
+    // this pass.
+    currentUser.firstName = firstName;
+    currentUser.lastName = lastName;
+    currentUser.displayName = displayName;
+    currentUser.name = firstName && lastName ? firstName + ' ' + lastName : displayName;
+    if (_profPendingPic !== null) currentUser.profilePic = _profPendingPic;
+  } else {
+    const stIdx = DB.students.findIndex(s => s.id === currentUser.id);
+    if (stIdx < 0) return;
+    DB.students[stIdx].firstName = firstName;
+    DB.students[stIdx].lastName = lastName;
+    DB.students[stIdx].displayName = displayName;
+    DB.students[stIdx].name = firstName && lastName ? firstName + ' ' + lastName : displayName;
+    DB.students[stIdx].init = _makeInit(firstName, lastName, displayName);
+    // Commit any staged picture change
+    if (_profPendingPic !== null) DB.students[stIdx].profilePic = _profPendingPic;
+    currentUser = DB.students[stIdx];
+  }
+
+  saveDB();
+  _profPendingPic = null; // clear staging
+
+  toast('✅ Profile updated!', '#4edea3');
+  // Refresh hero + all avatars
+  profInitAll();
+  _profRenderHero(currentUser);
+  _profRenderStats(currentUser);
+  refreshAllAvatars();
+  if (typeof updateTopbar === 'function') updateTopbar();
+  // Re-render edit tab to reflect saved state (removes unsaved note, updates remove button visibility)
+  switchProfileTab('edit');
+}
+
+/* ── Save: Password ── */
+
+function savePassword() {
+  const errEl = document.getElementById('prof-pass-err');
+  if (errEl) errEl.style.display = 'none';
+
+  const curPass  = document.getElementById('prof-cur-pass')?.value  || '';
+  const newPass  = document.getElementById('prof-new-pass')?.value  || '';
+  const confPass = document.getElementById('prof-conf-pass')?.value || '';
+
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+
+  if (!curPass) { showErr('Current password is required.'); return; }
+  if (!newPass) { showErr('New password cannot be empty.'); return; }
+  if (newPass.length < 4) { showErr('New password must be at least 4 characters.'); return; }
+  if (newPass !== confPass) { showErr('Passwords do not match.'); return; }
+
+  DB = loadDB();
+
+  // BIGGER GAP FOUND WHILE FIXING THE ROLE SPLIT (not fixed here, flagging
+  // clearly rather than silently patching over it): this whole function
+  // predates the real Supabase Auth login migration. Login now goes through
+  // client.auth.signInWithPassword() (see auth.js doLogin()) — it never
+  // reads DB.admin.pass or DB.students[i].pass. That means changing this
+  // local `.pass` field, for ANY role including admin and student, does NOT
+  // change the password someone actually logs in with. This panel currently
+  // just edits a local cache field nobody checks anymore. A real fix needs
+  // to call client.auth.updateUser({ password: newPass }) (after
+  // re-authenticating with curPass, since Supabase requires an active
+  // session to change a password) instead of touching DB.* at all — that's
+  // a real auth-flow change, out of scope for this pass, so left as-is
+  // below except for the teacher-specific silent-failure fix.
+  if (currentRole === 'admin') {
+    if (DB.admin.pass !== curPass) { showErr('Current password is incorrect.'); return; }
+    DB.admin.pass = newPass;
+    currentUser = DB.admin;
+  } else if (currentRole === 'teacher') {
+    // Role split fix: this branch used to be missing, so a teacher fell into
+    // the student branch, DB.students.findIndex() returned -1, and
+    // `if (stIdx < 0) return;` silently discarded the change with no error
+    // shown. DB.admin isn't safe to write into here either (shared record,
+    // possibly a different staff member) — update currentUser directly.
+    if (currentUser.pass && currentUser.pass !== curPass) { showErr('Current password is incorrect.'); return; }
+    currentUser.pass = newPass;
+  } else {
+    const stIdx = DB.students.findIndex(s => s.id === currentUser.id);
+    if (stIdx < 0) return;
+    if (DB.students[stIdx].pass !== curPass) { showErr('Current password is incorrect.'); return; }
+    DB.students[stIdx].pass = newPass;
+    currentUser = DB.students[stIdx];
+  }
+
+  saveDB();
+  // Clear the fields
+  ['prof-cur-pass','prof-new-pass','prof-conf-pass'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  toast('🔒 Password changed successfully!', '#4edea3');
+}
+
+/* ── Save: Email ── */
+
+function saveEmail() {
+  const errEl = document.getElementById('prof-email-err');
+  if (errEl) errEl.style.display = 'none';
+  const email = (document.getElementById('prof-email')?.value || '').trim();
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (errEl) { errEl.textContent = 'Please enter a valid email address.'; errEl.style.display = 'block'; }
+    return;
+  }
+
+  // Check duplicate email (among students)
+  if (email) {
+    const duplicate = DB.students.find(s => s.id !== currentUser.id && s.email === email);
+    if (duplicate) {
+      if (errEl) { errEl.textContent = 'That email is already in use by another account.'; errEl.style.display = 'block'; }
+      return;
+    }
+  }
+
+  DB = loadDB();
+  const stIdx = DB.students.findIndex(s => s.id === currentUser.id);
+  if (stIdx < 0) return;
+  DB.students[stIdx].email = email;
+  currentUser = DB.students[stIdx];
+  saveDB();
+  toast('✉️ Email saved!', '#4edea3');
+}
+
+/* ── Profile picture upload ── */
+
+// Staged picture change — null means "no pending change", '' means "pending removal", dataUrl means "pending new pic"
+let _profPendingPic = null;
+
+function handleProfilePicUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { toast('⚠️ Please select an image file.', '#ffb4ab'); event.target.value = ''; return; }
+  if (file.size > 2 * 1024 * 1024) { toast('⚠️ Image must be under 2 MB.', '#ffb4ab'); event.target.value = ''; return; }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    _profPendingPic = e.target.result; // stage — do NOT save to DB yet
+
+    // Update the preview inside the edit tab only
+    const preview = document.querySelector('#prof-pic-section .profile-pic-preview');
+    if (preview) {
+      preview.innerHTML = `<img src="${_profPendingPic}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:50%;" onerror="this.remove()">`;
+    }
+
+    // Show the Remove button if it wasn't there
+    const actions = document.querySelector('#prof-pic-section .profile-pic-actions');
+    if (actions && !actions.querySelector('.prof-remove-btn')) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'btn btn-ghost btn-sm prof-remove-btn';
+      removeBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">delete</span> Remove Photo';
+      removeBtn.onclick = removeProfilePic;
+      actions.appendChild(removeBtn);
+    }
+
+    // Show unsaved indicator
+    _profShowPicUnsaved(true);
+    event.target.value = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeProfilePic() {
+  _profPendingPic = ''; // stage removal — '' means clear it on save
+
+  // Update preview to show initials
+  const user = profGetCurrent();
+  const preview = document.querySelector('#prof-pic-section .profile-pic-preview');
+  if (preview) {
+    preview.innerHTML = `<span style="font-family:var(--fh);font-weight:900;font-size:18px;color:${user.color||'var(--primary)'}">${user.init||'?'}</span>`;
+  }
+
+  // Hide remove button
+  const removeBtn = document.querySelector('#prof-pic-section .prof-remove-btn');
+  if (removeBtn) removeBtn.remove();
+
+  // Show unsaved indicator
+  _profShowPicUnsaved(true);
+}
+
+function _profShowPicUnsaved(show) {
+  // Adds/removes a small "unsaved" note near the picture section
+  let note = document.getElementById('prof-pic-unsaved-note');
+  if (show) {
+    if (!note) {
+      note = document.createElement('div');
+      note.id = 'prof-pic-unsaved-note';
+      note.style.cssText = 'font-size:11px;color:#ffb95f;margin-top:6px;display:flex;align-items:center;gap:4px;';
+      note.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px">info</span> Photo change not saved yet — click Save Changes below.';
+      const picSection = document.getElementById('prof-pic-section');
+      if (picSection) picSection.after(note);
+    }
+  } else {
+    if (note) note.remove();
+    _profPendingPic = null;
+  }
+}
+
+/* ── Small utilities ── */
+// _esc() is defined in utils.js (loaded as <script src> before this inline block).
+
+function _makeInit(firstName, lastName, displayName) {
+  if (firstName && lastName) return (firstName[0] + lastName[0]).toUpperCase();
+  if (firstName) return firstName.slice(0, 2).toUpperCase();
+  if (displayName) return displayName.slice(0, 2).toUpperCase();
+  return '??';
+}
+
+/* ── Wire topbar avatar click to open profile ── */
+
+document.getElementById('topbar-av').addEventListener('click', openProfile);
+
+/* END PROFILE SYSTEM */
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPOSE GLOBALS
+// ─────────────────────────────────────────────────────────────────────────────
+window.achUpdateSidebarBadge = achUpdateSidebarBadge;
+window.achGrantRewardsForClaim = achGrantRewardsForClaim;
+// NOTE (Phase 3 Day 1): the 8 window.mailX = mailX aliases formerly listed
+// here are now provided by modules/mail/index.js, loaded earlier in the
+// script chain (see <script src> block near the top of this file).
+
+console.log('[EduQuest] Reward Presentation System, Achievement Claim System, and Mail System loaded.');
+</script>
+
+<script src="./modules/perceived-speed.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,291 @@
+/* ══════════════════════════════════════════════════════════════
+   ATTENDANCE MODULE — CSS
+   Extracted from modules/attendance/att_editor.js Phase 4
+══════════════════════════════════════════════════════════════ */
+
+/* ── Attendance editor rows ── */
+.att-edit-row{
+  display:flex;align-items:center;gap:10px;padding:12px 14px;
+  background:rgba(35,31,56,.75);border:1px solid var(--border);
+  border-radius:12px;margin-bottom:6px;transition:all .2s;
+}
+.att-edit-row:hover{border-color:rgba(208,188,255,.2)}
+
+/* ── Status select ── */
+.att-status-select{
+  background:rgba(35,31,56,.9);border:1px solid var(--border2);
+  border-radius:8px;color:var(--on-surface);font-size:12px;
+  font-family:var(--fb);font-weight:700;padding:5px 10px;cursor:pointer;
+}
+.att-status-select.present{color:#4edea3;border-color:rgba(78,222,163,.3)}
+.att-status-select.absent {color:#ffb4ab;border-color:rgba(255,180,171,.3)}
+
+/* ── Delete button ── */
+.att-del-btn{
+  background:none;border:none;cursor:pointer;
+  color:rgba(255,180,171,.4);font-size:16px;padding:0;line-height:1;transition:color .15s;
+}
+.att-del-btn:hover{color:#ffb4ab}
+
+/* ── Add record helper row ── */
+.att-add-row{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap}
+
+/* ══════════════════════════════════════════════════════════════
+   PHASE 4 — FULL-SCREEN ATTENDANCE KIOSK (Device 1)
+   Headless, distraction-free scan station. Activated by toggling
+   body.rfid-kiosk-mode (see att_scanner_rfid.js render/unmount) — this
+   hides the app shell (topbar + sidebar) ONLY while the kiosk page is
+   mounted, and is fully reverted on unmount so every other page in the
+   app is completely unaffected.
+══════════════════════════════════════════════════════════════ */
+
+/* Strip the shell chrome — scoped to the body class so nothing else in
+   the app ever sees this rule. */
+body.rfid-kiosk-mode #topbar,
+body.rfid-kiosk-mode #sidebar{display:none!important}
+body.rfid-kiosk-mode #main-content{margin-left:0!important;padding-top:0!important}
+body.rfid-kiosk-mode #a-scanner.page{
+  padding:0!important;max-width:100%!important;margin:0!important;
+}
+
+.kiosk-page{
+  position:fixed;inset:0;z-index:5;
+  display:flex;flex-direction:column;height:100vh;overflow:hidden;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(139,92,246,.08), transparent 55%),
+    radial-gradient(circle at 85% 90%, rgba(78,222,163,.06), transparent 55%),
+    var(--bg,#0f0e1a);
+}
+
+/* Minimal top strip — just enough to operate the device, never a full
+   admin header. Fades to near-invisible until hovered so it doesn't
+   compete with the spotlight. */
+.kiosk-topstrip{
+  position:absolute;top:14px;right:18px;z-index:20;
+  display:flex;align-items:center;gap:8px;
+  opacity:.45;transition:opacity .2s;
+}
+.kiosk-topstrip:hover{opacity:1}
+.kiosk-class-select{
+  min-width:140px;font-size:11px;padding:6px 10px;border-radius:10px;
+  background:rgba(35,31,56,.75);border:1px solid var(--border);color:var(--text-muted);
+}
+.kiosk-icon-btn{
+  width:30px;height:30px;border-radius:9px;border:1px solid var(--border);
+  background:rgba(35,31,56,.75);color:var(--text-muted);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+  transition:all .15s;
+}
+.kiosk-icon-btn:hover{color:var(--on-surface);border-color:var(--border2)}
+
+/* Task 4 — live clock/date, top-left. Mirrors the topstrip's fade-until-hover
+   treatment so it stays unobtrusive but gives the kiosk a sense of time. */
+.kiosk-clock-corner{
+  position:absolute;top:14px;left:20px;z-index:20;
+  opacity:.55;transition:opacity .2s;text-align:left;
+}
+.kiosk-clock-corner:hover{opacity:1}
+.kiosk-clock-time{font-family:var(--fh);font-size:20px;font-weight:900;color:var(--on-surface);line-height:1.1}
+.kiosk-clock-date{font-size:11px;color:var(--text-muted);font-weight:700;letter-spacing:.04em;margin-top:2px}
+
+.kiosk-columns{flex:1;display:flex;overflow:hidden;padding:56px 20px 20px}
+
+/* ── Left column (80%): Student Spotlight ── */
+.kiosk-spotlight{
+  flex:0 0 80%;max-width:80%;display:flex;align-items:center;justify-content:center;
+  padding:24px;
+}
+.kiosk-spotlight-idle{
+  text-align:center;color:var(--text-muted);
+}
+.kiosk-spotlight-idle-icon{font-size:88px;margin-bottom:18px;opacity:.5;animation:kiosk-pulse 2.4s ease-in-out infinite}
+@keyframes kiosk-pulse{0%,100%{opacity:.35;transform:scale(1)}50%{opacity:.6;transform:scale(1.04)}}
+.kiosk-spotlight-idle-text{font-family:var(--fh);font-size:24px;font-weight:800}
+.kiosk-spotlight-idle-sub{font-size:13px;margin-top:8px;letter-spacing:.04em}
+
+.kiosk-spotlight-error{text-align:center}
+.kiosk-spotlight-error-icon{font-size:80px;margin-bottom:14px}
+.kiosk-spotlight-error-text{font-family:var(--fh);font-size:22px;font-weight:800;color:#ffb4ab;max-width:640px}
+
+/* ── Dashboard-style scan result — fills the full spotlight column instead
+   of a small centered card, so the large screen real-estate is actually
+   used. Top: welcome banner. Below: a two-panel grid — identity on the
+   left, attendance ring on the right. ── */
+.kiosk-dashboard{
+  width:100%;height:100%;max-width:1180px;display:flex;flex-direction:column;gap:22px;
+  animation:kiosk-card-in .35s cubic-bezier(.2,.9,.3,1.2);
+}
+@keyframes kiosk-card-in{
+  0%{opacity:0;transform:scale(.96) translateY(10px)}
+  100%{opacity:1;transform:scale(1) translateY(0)}
+}
+
+/* Prominent welcome / system message strip. */
+.kiosk-welcome-banner{
+  display:flex;align-items:center;gap:18px;
+  background:linear-gradient(135deg, rgba(78,222,163,.14), rgba(139,92,246,.10));
+  border:1px solid rgba(78,222,163,.28);border-radius:20px;
+  padding:20px 28px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+}
+.kiosk-welcome-icon{font-size:38px;line-height:1;flex-shrink:0}
+.kiosk-welcome-copy{min-width:0}
+.kiosk-welcome-kicker{
+  font-family:var(--fh);font-size:12px;font-weight:900;letter-spacing:.1em;
+  text-transform:uppercase;color:#4edea3;margin-bottom:4px;
+}
+.kiosk-welcome-text{font-family:var(--fh);font-size:22px;font-weight:800;line-height:1.25}
+
+/* Two-panel grid: identity (spans both rows) | attendance ring (top-right) |
+   coins/rank stats (bottom-right) — each panel stretches to fill its share
+   of the available width/height instead of floating a fixed-size card in
+   empty space. */
+.kiosk-dashboard-grid{
+  flex:1;display:grid;grid-template-columns:1.35fr 1fr;grid-template-rows:1fr 1fr;gap:20px;min-height:0;
+}
+.kiosk-dashboard-grid-single{grid-template-columns:1fr;grid-template-rows:1fr}
+.kiosk-panel{
+  background:rgba(35,31,56,.55);border:1px solid var(--border);border-radius:24px;
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  padding:36px;display:flex;min-height:0;
+}
+
+.kiosk-identity-panel{grid-row:1/3;align-items:center;gap:32px}
+.kiosk-dashboard-grid-single .kiosk-identity-panel{grid-row:auto}
+.kiosk-attendance-panel{grid-row:1/2}
+.kiosk-stats-panel{grid-row:2/3}
+
+/* Task 2 — square (softly rounded) container so the full uploaded photo
+   shows without being cropped into a circle. */
+.kiosk-profile-avatar{
+  width:220px;height:220px;border-radius:16px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;object-fit:cover;
+  font-family:var(--fh);font-weight:900;font-size:76px;
+  border:4px solid rgba(255,255,255,.08);
+}
+.kiosk-identity-info{min-width:0;text-align:left;display:flex;flex-direction:column;gap:14px;width:100%}
+.kiosk-profile-name{font-family:var(--fh);font-size:40px;font-weight:900;line-height:1.15}
+.kiosk-profile-section{font-size:14px;color:var(--text-muted);font-weight:700;letter-spacing:.05em}
+.kiosk-status-badge{
+  display:inline-block;padding:10px 26px;border-radius:999px;
+  font-family:var(--fh);font-size:17px;font-weight:900;letter-spacing:.03em;
+}
+/* Investigation Report §4 — attendance streak, shares computeAttendanceStreak()
+   (utils.js) with the student's own Progress page. */
+.kiosk-streak-pill{
+  display:inline-block;margin-left:10px;padding:6px 16px;border-radius:999px;
+  background:rgba(249,115,22,.12);color:#f97316;border:1px solid rgba(249,115,22,.3);
+  font-family:var(--fh);font-size:13px;font-weight:800;
+}
+
+/* Gamification — level/XP bar in the app's signature purple, matching the
+   sidebar's own XP bar (see topbar.js updateTopbar()/#sb-xp-fill) so the
+   kiosk reads as the same game system, not a separate palette. */
+.kiosk-level-block{padding-top:14px;border-top:1px solid var(--border)}
+.kiosk-level-label{
+  display:flex;justify-content:space-between;font-size:11px;font-weight:800;
+  letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;
+}
+.kiosk-level-track{height:10px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.kiosk-level-fill{
+  height:100%;border-radius:999px;transition:width .5s ease;
+  background:linear-gradient(90deg, var(--primary-dark), var(--primary));
+}
+/* Equipped title (Task: shows only when the student has one equipped —
+   nothing is rendered otherwise, no empty placeholder). Reuses the exact
+   badge markup tsBuildBadgeHTML() produces for the sidebar/dashboard. */
+.kiosk-equipped-title{margin-top:12px}
+
+/* Task 3 — the attendance percentage as a prominent circular progress
+   ring instead of a flat bottom bar, drawn with a conic-gradient so it
+   needs no SVG and recolors purely via inline CSS custom properties. */
+.kiosk-attendance-panel{
+  flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;
+}
+.kiosk-ring{
+  --ring-deg:0deg;--ring-color:#4edea3;
+  width:180px;height:180px;border-radius:50%;position:relative;flex-shrink:0;
+  background:conic-gradient(var(--ring-color) var(--ring-deg), rgba(255,255,255,.07) 0);
+  display:flex;align-items:center;justify-content:center;
+  transition:background 1s cubic-bezier(.2,.8,.3,1);
+}
+.kiosk-ring::before{
+  content:'';position:absolute;inset:12px;border-radius:50%;
+  background:rgba(15,14,26,.92);
+}
+.kiosk-ring-inner{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center}
+.kiosk-ring-pct{font-family:var(--fh);font-size:38px;font-weight:900;color:var(--on-surface);line-height:1}
+.kiosk-ring-pct span{font-size:19px;font-weight:800;opacity:.7;margin-left:2px}
+.kiosk-ring-label{
+  font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--text-muted);margin-top:8px;line-height:1.4;
+}
+
+/* Stats panel — coins + class rank, in the same purple accent as the level
+   bar so gamification data reads as one visual family across the kiosk. */
+.kiosk-stats-panel{
+  align-items:center;justify-content:center;gap:16px;
+}
+.kiosk-stat-chip{
+  flex:1;text-align:center;background:rgba(208,188,255,.06);
+  border:1px solid rgba(208,188,255,.16);border-radius:16px;padding:16px 10px;
+}
+.kiosk-stat-label{
+  font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-muted);margin-bottom:8px;
+}
+.kiosk-stat-value{font-family:var(--fh);font-size:24px;font-weight:900;color:var(--primary)}
+.kiosk-stat-value span{font-size:13px;font-weight:700;color:var(--text-muted);margin-left:2px}
+
+/* Investigation Report §4 — too-many-absences warning. */
+.kiosk-absence-warning{
+  max-width:100%;padding:10px 16px;border-radius:12px;
+  background:rgba(255,180,171,.1);border:1px solid rgba(255,180,171,.3);
+  color:#ffb4ab;font-size:12.5px;font-weight:700;
+}
+
+@media (max-width: 1200px){
+  .kiosk-dashboard-grid{grid-template-columns:1fr;grid-template-rows:auto auto auto}
+  .kiosk-identity-panel{grid-row:auto;flex-direction:column;text-align:center}
+  .kiosk-identity-info{text-align:center}
+  .kiosk-attendance-panel,.kiosk-stats-panel{grid-row:auto}
+}
+
+/* Investigation Report §4 — "session closed" gets its own calmer state,
+   distinct from a genuine scan error (🚫). */
+.kiosk-spotlight-closed{text-align:center}
+.kiosk-spotlight-closed-icon{font-size:80px;margin-bottom:14px;opacity:.7}
+.kiosk-spotlight-closed-text{font-family:var(--fh);font-size:24px;font-weight:800;color:var(--on-surface)}
+.kiosk-spotlight-closed-sub{font-size:13px;color:var(--text-muted);margin-top:8px;max-width:520px;margin-left:auto;margin-right:auto}
+
+/* ── Right column (20%): Recent Activity Log ── */
+.kiosk-activity{
+  flex:0 0 20%;max-width:20%;display:flex;flex-direction:column;overflow:hidden;
+  border-left:1px solid var(--border);padding-left:20px;
+}
+.kiosk-activity-header{
+  font-family:var(--fh);font-size:13px;font-weight:900;letter-spacing:.04em;
+  margin-bottom:4px;
+}
+.kiosk-activity-summary{font-size:10.5px;color:var(--text-muted);margin-bottom:14px;line-height:1.5}
+.kiosk-activity-list{flex:1;overflow-y:auto}
+.kiosk-activity-item{
+  display:flex;align-items:center;gap:10px;padding:9px 0;
+  border-bottom:1px solid rgba(255,255,255,.04);
+}
+.kiosk-activity-avatar{
+  width:32px;height:32px;border-radius:8px;flex-shrink:0;object-fit:cover;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--fh);font-weight:900;font-size:11px;
+}
+.kiosk-activity-main{flex:1;min-width:0}
+.kiosk-activity-name{font-size:12px;font-weight:700;color:var(--on-surface);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kiosk-activity-meta{font-size:10px;margin-top:1px;font-weight:700}
+.kiosk-activity-time{font-size:9.5px;color:var(--text-muted);flex-shrink:0}
+.kiosk-activity-empty{color:var(--text-muted);font-size:12px;text-align:center;padding:24px 0}
+
+@media (max-width: 900px){
+  .kiosk-columns{flex-direction:column;padding-top:60px}
+  .kiosk-spotlight,.kiosk-activity{flex:1 1 auto;max-width:100%}
+  .kiosk-activity{border-left:none;border-top:1px solid var(--border);padding-left:0;padding-top:14px;max-height:220px}
+}

@@ -1,0 +1,150 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+//  EduQuest — modules/achievements/index.js
+//  CSS injection + DB migration + load-order guard for the achievements module.
+//
+//  Required load order:
+//    1. engine.js       — constants, achBuildStats, achCheckAndAward, etc.
+//    2. student-page.js — renderBadges, achClaimReward
+//    3. admin-page.js   — renderAdminAchievements, achAdmin* functions
+//    4. index.js        — this file
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── CSS injection ─────────────────────────────────────────────────────────────
+;(function injectAchievementsCSS() {
+  if (document.getElementById('achievements-module-css')) return;
+  const style = document.createElement('style');
+  style.id = 'achievements-module-css';
+  style.textContent = `
+/* ── Sidebar badge ── */
+.ach-nav-badge{margin-left:auto;background:rgba(208,188,255,0.2);border:1px solid rgba(208,188,255,0.3);border-radius:10px;padding:1px 7px;font-size:10px;font-weight:800;color:var(--primary);font-family:var(--fh)}
+
+/* ── Stats bar ── */
+.ach-stats-bar{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-bottom:24px}
+.ach-stat-card{background:rgba(35,31,56,.85);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center;backdrop-filter:blur(10px)}
+.ach-stat-val{font-family:var(--fh);font-size:26px;font-weight:900;line-height:1;margin-bottom:4px}
+.ach-stat-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700}
+
+/* ── Filter bar ── */
+.ach-filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center}
+.ach-filter-btn{padding:6px 14px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid var(--border2);background:rgba(255,255,255,.04);color:var(--text-muted);cursor:pointer;transition:all .15s;font-family:var(--fb);white-space:nowrap}
+.ach-filter-btn:hover{border-color:rgba(208,188,255,.3);color:var(--on-surface)}
+.ach-filter-btn.active{background:rgba(139,92,246,.18);border-color:rgba(208,188,255,.4);color:var(--primary)}
+.ach-search-input{background:rgba(35,31,56,.9);border:1px solid var(--border2);border-radius:12px;padding:8px 14px;color:var(--text);font-family:var(--fb);font-size:13px;outline:none;transition:border-color .18s}
+.ach-search-input:focus{border-color:rgba(208,188,255,.4)}
+
+/* ── Badge grid & cards ── */
+.badges-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:32px}
+.ach-badge-card{
+  position:relative;border-radius:16px;padding:18px 14px 14px;
+  background:rgba(35,31,56,.85);border:1px solid var(--border);
+  backdrop-filter:blur(12px);transition:all .3s;
+  display:flex;flex-direction:column;align-items:center;text-align:center;
+  overflow:hidden;
+}
+.ach-badge-card:hover:not(.ach-locked){transform:translateY(-3px);box-shadow:0 10px 36px rgba(0,0,0,.5)}
+.ach-badge-card.ach-locked{opacity:.55;filter:grayscale(.5)}
+.ach-badge-card.ach-unclaimed{animation:achUnclaimed 3s ease-in-out infinite}
+@keyframes achUnclaimed{0%,100%{box-shadow:var(--ach-glow,0 0 0 rgba(0,0,0,0))}50%{box-shadow:var(--ach-glow,0 0 20px rgba(208,188,255,.3))}}
+.ach-rarity-strip{position:absolute;top:0;left:0;right:0;height:3px;border-radius:16px 16px 0 0}
+.ach-unclaimed-glow{position:absolute;top:0;left:0;right:0;height:60%;pointer-events:none}
+.ach-badge-icon-wrap{font-size:44px;line-height:1;margin:12px 0 8px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.4))}
+.ach-badge-title{font-family:var(--fh);font-size:13px;font-weight:900;color:var(--on-surface);margin-bottom:4px;line-height:1.2}
+.ach-rarity-tag{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:2px 8px;border-radius:6px;display:inline-block;margin-bottom:6px}
+.ach-badge-desc{font-size:11px;color:var(--text-muted);line-height:1.4;margin-bottom:8px;flex:1}
+.ach-unlocked-stamp{font-size:9px;font-weight:800;letter-spacing:.06em;color:var(--secondary);text-transform:uppercase;margin-bottom:6px;background:rgba(78,222,163,.1);border:1px solid rgba(78,222,163,.2);border-radius:6px;padding:3px 10px}
+.ach-unclaimed-label{font-size:9px;font-weight:800;letter-spacing:.06em;color:#EC4899;text-transform:uppercase;margin-bottom:6px;background:rgba(236,72,153,.1);border:1px solid rgba(236,72,153,.3);border-radius:6px;padding:3px 10px;animation:achBadgePulse 2s ease-in-out infinite}
+.ach-reward-chips{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;margin-bottom:8px}
+.ach-reward-chip{font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;border:1px solid;white-space:nowrap}
+.ach-claim-btn{width:100%;padding:8px;margin-top:2px;border:none;border-radius:10px;color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:var(--fb);transition:all .2s}
+.ach-claim-btn:hover{transform:scale(1.04);box-shadow:0 4px 16px rgba(139,92,246,.4)}
+
+/* ── Rarity classes ── */
+.ach-rarity-common{color:#9ca3af;border-color:rgba(156,163,175,0.25);background:rgba(156,163,175,0.08)}
+.ach-rarity-uncommon{color:#4ade80;border-color:rgba(74,222,128,0.25);background:rgba(74,222,128,0.08)}
+.ach-rarity-rare{color:#60a5fa;border-color:rgba(96,165,250,0.25);background:rgba(96,165,250,0.08)}
+.ach-rarity-epic{color:#c084fc;border-color:rgba(192,132,252,0.25);background:rgba(192,132,252,0.08)}
+.ach-rarity-legendary{color:#fbbf24;border-color:rgba(251,191,36,0.3);background:rgba(251,191,36,0.1)}
+.ach-rarity-mythic{color:#f472b6;border-color:rgba(244,114,182,0.3);background:rgba(244,114,182,0.1)}
+
+/* ── Unlock popup ── */
+.ach-unlock-popup{
+  position:fixed;bottom:24px;right:24px;z-index:9999;
+  display:flex;align-items:center;gap:14px;
+  background:rgba(26,24,44,0.97);
+  border:1px solid rgba(208,188,255,.35);
+  border-radius:16px;padding:16px 20px;
+  box-shadow:0 8px 40px rgba(139,92,246,.3);
+  max-width:340px;animation:achPopIn .4s ease;
+  backdrop-filter:blur(16px);
+}
+.ach-popup-icon{font-size:36px;line-height:1;flex-shrink:0}
+.ach-popup-title{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px}
+.ach-popup-name{font-family:var(--fh);font-size:14px;font-weight:900;color:var(--on-surface)}
+.ach-popup-rewards{font-size:11px;margin-top:3px}
+@keyframes achPopIn{from{opacity:0;transform:translateX(40px) scale(.9)}to{opacity:1;transform:translateX(0) scale(1)}}
+@keyframes achPopOut{to{opacity:0;transform:translateX(40px) scale(.9)}}
+@keyframes achBadgePulse{0%,100%{opacity:1}50%{opacity:.6}}
+
+/* ── Admin table ── */
+.ach-admin-table{width:100%;border-collapse:collapse}
+.ach-admin-table th{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);padding:12px 14px;border-bottom:1px solid var(--border)}
+.ach-admin-table td{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.03);vertical-align:middle}
+.ach-admin-table tr:hover td{background:rgba(255,255,255,.02)}
+.ach-toggle-btn{background:none;border:1px solid;border-radius:8px;padding:4px 10px;font-size:10px;font-weight:800;cursor:pointer;font-family:var(--fb);transition:all .15s}
+.ach-toggle-btn:hover{opacity:.8}
+`;
+  document.head.appendChild(style);
+})();
+
+// ── DB migration guard ────────────────────────────────────────────────────────
+// [SUPABASE MIGRATION] Deferred until AppStore.ready resolves — see the
+// matching note in modules/shop/shop_pos_terminal.js for why this can no
+// longer run synchronously at parse time.
+AppStore.ready.then(function achMigrateDB() {
+  DB = loadDB();
+  let dirty = false;
+  if (!DB.achievements)          { DB.achievements          = []; dirty = true; }
+  if (!DB.achievementUnlocks)    { DB.achievementUnlocks    = {}; dirty = true; }
+  if (!DB.achievementCategories) {
+    DB.achievementCategories = ['Quests', 'Attendance', 'Combat', 'Social', 'Milestones', 'Hidden', 'Special'];
+    dirty = true;
+  }
+  if (dirty) saveDB();
+});
+
+// ── Backwards-compat safety stub ──────────────────────────────────────────────
+// Guard in case something in the page tried to call achClaimReward before
+// student-page.js loaded. engine.js and student-page.js set it properly;
+// this only fires if the load order is broken.
+if (typeof window.achClaimReward !== 'function') {
+  window.achClaimReward = function (achId) {
+    console.warn('[EduQuest] achClaimReward called before student-page.js loaded for', achId);
+  };
+}
+
+// ── Load-order verification ───────────────────────────────────────────────────
+;(function achVerifyExports() {
+  const EXPECTED = [
+    // engine.js
+    'ACH_RARITY', 'ACH_RARITIES', 'ACH_TRIGGER_TYPES', 'achRarityClass',
+    'achBuildStats', 'achCheckAndAward', 'achGrantRewardsForClaim',
+    'achUpdateSidebarBadge', 'achShowUnlockPopup',
+    // student-page.js
+    'renderBadges', 'achClaimReward',
+    // admin-page.js
+    'renderAdminAchievements',
+    'achAdminOpenForm', 'achAdminUpdateTriggerHint', 'achAdminSave',
+    'achAdminToggle', 'achAdminDelete', 'achAdminDuplicate', 'achAdminPreview',
+    'achAdminGrantAchievement', 'achAdminUpdateGrantPreview', 'achAdminDoGrant',
+    'achAdminManageCategories', 'achAdminAddCat', 'achAdminDeleteCat',
+  ];
+
+  const missing = EXPECTED.filter(name => typeof window[name] !== 'function' && typeof window[name] !== 'object');
+  if (missing.length) {
+    console.error('[EduQuest] achievements/index.js — MISSING exports:', missing);
+  } else {
+    console.log('[EduQuest] achievements/index.js — All exports verified ✅');
+  }
+
+  window.__ACHIEVEMENTS_MODULE_VERSION__ = '1.0.0';
+})();

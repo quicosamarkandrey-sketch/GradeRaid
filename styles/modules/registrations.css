@@ -1,0 +1,187 @@
+/* ══════════════════════════════════════════════════════════════
+   STUDENT REGISTRATION SYSTEM — CSS
+   Extracted from index.html Phase 4
+══════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════
+   STUDENT REGISTRATION SYSTEM — CSS
+   ══════════════════════════════════════════════ */
+
+/* Registration screen (slides over login, same background) */
+#reg-screen{
+  display:none;min-height:100vh;align-items:flex-start;justify-content:center;
+  padding:24px 20px 48px;
+  background:var(--bg);
+  background-image:radial-gradient(circle at 30% 30%,rgba(139,92,246,.14) 0%,transparent 50%),
+    radial-gradient(circle at 70% 70%,rgba(78,222,163,.06) 0%,transparent 45%);
+  overflow-y:auto;
+}
+#reg-screen.open{display:flex;}
+
+/* Recovery + teacher-invite screens — same shell pattern as #reg-screen.
+   These used to rely entirely on recovery.js / teacher-invite.js injecting
+   this same CSS at runtime, but only the FIRST time their show function
+   actually ran (i.e. only on a password-reset or invite-link visit). On any
+   normal login session neither of those ever fires, so the divs sat in the
+   DOM with zero CSS and rendered as stray in-flow blocks — visible as
+   content "floating" near the top or bottom of the page. Defining the
+   default-hidden state here means both screens are safely display:none from
+   the very first paint, no matter which flow (if any) runs later. The JS
+   files still self-inject their own copy of this same rule defensively
+   (harmless duplication) — this is the permanent fallback. */
+#recovery-screen,
+#teacher-invite-screen{
+  display:none;position:fixed;inset:0;z-index:999;
+  background:var(--surface,#1a1a2e);
+  overflow-y:auto;padding:24px 16px;
+  justify-content:center;align-items:flex-start;
+}
+#recovery-screen.open,
+#teacher-invite-screen.open{display:flex;}
+
+.reg-card{
+  background:rgba(35,31,56,0.9);border:1px solid rgba(208,188,255,.18);
+  border-radius:24px;padding:36px 40px;width:100%;max-width:520px;
+  box-shadow:0 0 40px rgba(139,92,246,.2),0 24px 64px rgba(0,0,0,.5);
+  backdrop-filter:blur(24px);margin:auto;
+}
+.reg-card-header{text-align:center;margin-bottom:28px;}
+.reg-card-title{font-family:var(--fm);font-size:18px;font-weight:900;letter-spacing:.08em;
+  background:linear-gradient(135deg,#d0bcff,#8b5cf6,#4edea3);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:6px;}
+.reg-card-sub{color:var(--text-muted);font-size:13px;font-family:var(--fb);}
+.reg-form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.reg-field-wrap{position:relative;margin-bottom:0;}
+.reg-field-wrap input{width:100%;padding-right:32px;}
+.reg-field-status{
+  position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  font-size:14px;line-height:1;pointer-events:none;
+}
+.reg-validation-msg{
+  font-size:11px;margin-top:5px;padding:0 2px;
+  min-height:16px;line-height:1.3;font-weight:600;
+}
+.reg-validation-msg.ok{color:#4edea3;}
+.reg-validation-msg.err{color:#ffb4ab;}
+.reg-strength-bar{
+  height:4px;border-radius:4px;margin-top:6px;
+  background:rgba(255,255,255,.06);overflow:hidden;
+}
+.reg-strength-fill{
+  height:100%;border-radius:4px;transition:width .3s,background .3s;
+}
+.reg-strength-label{font-size:10px;font-weight:700;letter-spacing:.06em;margin-top:4px;}
+.reg-divider{
+  border:none;border-top:1px solid var(--border);margin:20px 0;
+}
+.reg-back-link{
+  text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted);
+}
+.reg-back-link a{
+  color:var(--primary);text-decoration:none;font-weight:700;cursor:pointer;
+}
+.reg-back-link a:hover{color:#fff;}
+/* Success state card */
+.reg-success-card{
+  text-align:center;padding:20px 0;
+}
+.reg-success-icon{font-size:64px;margin-bottom:16px;animation:popIn .5s cubic-bezier(.175,.885,.32,1.275);}
+.reg-success-title{font-family:var(--fh);font-size:22px;font-weight:900;color:#4edea3;margin-bottom:10px;}
+.reg-success-sub{font-size:14px;color:var(--text-muted);line-height:1.6;margin-bottom:24px;max-width:340px;margin-left:auto;margin-right:auto;}
+.reg-pending-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:10px 20px;border-radius:12px;
+  background:rgba(255,185,95,.1);border:1px solid rgba(255,185,95,.3);
+  color:var(--tertiary);font-size:13px;font-weight:700;margin-bottom:20px;
+}
+
+/* ── ADMIN REGISTRATIONS PANEL ── */
+.reg-request-card{
+  background:rgba(35,31,56,0.8);border:1px solid var(--border);border-radius:14px;
+  margin-bottom:10px;overflow:hidden;transition:all .2s;
+}
+.reg-request-card:hover{border-color:rgba(208,188,255,.2);}
+.reg-request-header{
+  padding:14px 18px;display:flex;align-items:center;gap:14px;
+}
+.reg-request-avatar{
+  width:46px;height:46px;border-radius:12px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--fh);font-weight:900;font-size:15px;
+  border:2px solid;
+}
+.reg-request-info{flex:1;min-width:0;}
+.reg-request-name{font-family:var(--fh);font-size:14px;font-weight:800;color:var(--on-surface);margin-bottom:3px;}
+.reg-request-meta{font-size:12px;color:var(--text-muted);display:flex;gap:10px;flex-wrap:wrap;}
+.reg-request-actions{display:flex;gap:6px;flex-shrink:0;}
+.reg-status-pill{
+  display:inline-flex;align-items:center;gap:4px;padding:3px 10px;
+  border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.04em;
+}
+.reg-status-pending{background:rgba(255,185,95,.15);color:#ffb95f;border:1px solid rgba(255,185,95,.3);}
+.reg-status-approved{background:rgba(78,222,163,.14);color:#4edea3;border:1px solid rgba(78,222,163,.28);}
+.reg-status-rejected{background:rgba(255,180,171,.14);color:#ffb4ab;border:1px solid rgba(255,180,171,.25);}
+.reg-detail-row{
+  display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;
+  padding:0 18px 14px;font-size:12px;
+}
+.reg-detail-row span{color:var(--text-muted);}
+.reg-detail-row strong{color:var(--on-surface);}
+/* filter bar */
+.reg-filter-bar{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center;}
+.reg-filter-btn{
+  padding:6px 16px;border-radius:20px;font-size:12px;font-weight:700;
+  border:1px solid var(--border);background:none;color:var(--text-muted);cursor:pointer;transition:all .2s;
+}
+.reg-filter-btn.active{background:rgba(208,188,255,.12);border-color:rgba(208,188,255,.4);color:var(--primary);}
+.reg-filter-btn:hover:not(.active){background:rgba(255,255,255,.05);color:var(--on-surface);}
+.reg-search-input{
+  flex:1;min-width:160px;padding:7px 14px;border-radius:20px;
+  border:1px solid var(--border);background:rgba(255,255,255,.04);
+  color:var(--on-surface);font-size:12px;outline:none;font-family:var(--fb);
+}
+.reg-search-input:focus{border-color:rgba(208,188,255,.4);}
+
+/* Topbar avatar image support */
+.topbar-avatar{overflow:hidden;position:relative;}
+.topbar-avatar img.av-img{
+  width:100%;height:100%;object-fit:cover;
+  position:absolute;inset:0;border-radius:50%;
+}
+.topbar-avatar span.av-init{
+  position:relative;z-index:1;pointer-events:none;
+}
+
+/* Sidebar avatar image support */
+.sidebar-avatar{overflow:hidden;position:relative;}
+.sidebar-avatar img.av-img{
+  width:100%;height:100%;object-fit:cover;
+  position:absolute;inset:0;border-radius:10px;
+}
+.sidebar-avatar span.av-init{
+  position:relative;z-index:1;pointer-events:none;
+}
+
+/* Dashboard avatar image support */
+.dash-av-img{
+  width:100%;height:100%;object-fit:cover;
+  position:absolute;inset:0;border-radius:50%;
+  z-index:2;
+}
+
+/* Leaderboard avatar image */
+.lb-av-img{
+  width:100%;height:100%;object-fit:cover;
+  position:absolute;inset:0;border-radius:50%;
+}
+
+@media(max-width:600px){
+  .profile-hero-inner{flex-direction:column;align-items:center;text-align:center;}
+  .profile-hero-info{text-align:center;}
+  .profile-username-row{justify-content:center;}
+  .profile-stats-strip{flex-wrap:wrap;}
+  .profile-stat{min-width:50%;border-right:none;border-bottom:1px solid var(--border);}
+  .profile-boss-grid{grid-template-columns:1fr 1fr;}
+  .profile-form-row{grid-template-columns:1fr;}
+  .profile-tab-content{padding:20px 16px;}

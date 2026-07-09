@@ -1,0 +1,149 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   EduQuest — styles/modules/enrollment.css
+   Smart Card Enrollment Hub (Phase 4). Uses the same --bg/--border/--text
+   tokens as the rest of the app (see styles/base.css) — no new palette.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.enroll-hub-toolbar{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:14px 16px;margin-bottom:18px;
+  background:rgba(35,31,56,0.75);border:1px solid var(--border);border-radius:14px;
+}
+.enroll-hub-search{
+  flex:1;min-width:220px;padding:10px 14px;border-radius:10px;
+  background:rgba(19,18,30,0.8);border:1px solid var(--border2);color:var(--text);font-size:13px;
+}
+.enroll-hub-section-select{
+  padding:10px 12px;border-radius:10px;background:rgba(19,18,30,0.8);
+  border:1px solid var(--border2);color:var(--text);font-size:13px;
+}
+.enroll-hub-mode-switch{display:flex;gap:0;border:1px solid var(--border2);border-radius:10px;overflow:hidden}
+.enroll-hub-mode-btn{
+  padding:9px 16px;font-size:12px;font-weight:700;letter-spacing:.02em;
+  background:none;border:none;color:var(--text-muted);cursor:pointer;transition:all .15s;
+}
+.enroll-hub-mode-btn.active{background:rgba(126,231,255,0.14);color:var(--text)}
+
+.enroll-hub-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;
+}
+.enroll-student-card{
+  background:rgba(35,31,56,0.8);border:1px solid var(--border);border-radius:14px;
+  padding:14px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;
+  transition:border-color .15s;
+}
+.enroll-student-card.awaiting{border-color:#7fd8ff;box-shadow:0 0 0 1px #7fd8ff55, 0 0 20px #7fd8ff22}
+.enroll-avatar{
+  width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:18px;color:#13121e;background-size:cover;background-position:center;
+  border:2px solid var(--border2);
+}
+.enroll-student-name{font-size:13px;font-weight:700}
+.enroll-badge{
+  font-size:10px;font-weight:700;letter-spacing:.03em;padding:4px 10px;border-radius:20px;
+}
+.enroll-badge.bound{background:rgba(78,222,163,0.16);color:#4edea3;border:1px solid #4edea355}
+.enroll-badge.unassigned{background:none;color:var(--text-muted);border:1px dashed var(--border2)}
+.enroll-link-btn{
+  margin-top:2px;padding:6px 14px;font-size:11px;font-weight:700;border-radius:20px;
+  background:rgba(126,231,255,0.12);border:1px solid #7fd8ff55;color:#7fd8ff;cursor:pointer;
+}
+.enroll-link-btn:hover{background:rgba(126,231,255,0.2)}
+.enroll-awaiting-flash{
+  font-size:10px;font-weight:700;letter-spacing:.03em;color:#7fd8ff;
+  animation:enrollPulse 1.1s ease-in-out infinite;
+}
+@keyframes enrollPulse{0%,100%{opacity:.45}50%{opacity:1}}
+
+/* ── Kiosk (Student Self-Service) mode ────────────────────────────────── */
+.enroll-kiosk-wrap{
+  min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
+  text-align:center;padding:20px;
+}
+.enroll-kiosk-search{
+  width:100%;max-width:480px;padding:16px 20px;font-size:16px;border-radius:14px;
+  background:rgba(19,18,30,0.85);border:1px solid var(--border2);color:var(--text);text-align:center;
+}
+.enroll-kiosk-results{width:100%;max-width:480px;display:flex;flex-direction:column;gap:8px}
+.enroll-kiosk-result-row{
+  display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;
+  background:rgba(35,31,56,0.8);border:1px solid var(--border);cursor:pointer;text-align:left;
+}
+.enroll-kiosk-result-row:hover{border-color:#7fd8ff88}
+
+.enroll-kiosk-tap-avatar{width:120px;height:120px;font-size:40px;border-width:3px}
+.enroll-kiosk-tap-name{font-family:var(--fh);font-size:26px;font-weight:800}
+.enroll-kiosk-tap-instruction{font-size:15px;color:#ffd166;font-weight:700;max-width:420px}
+.enroll-kiosk-countdown{font-size:12px;color:var(--text-muted)}
+.enroll-kiosk-cancel{
+  padding:8px 18px;border-radius:20px;background:none;border:1px solid var(--border2);
+  color:var(--text-muted);font-size:12px;cursor:pointer;
+}
+
+.enroll-kiosk-success{display:flex;flex-direction:column;align-items:center;gap:14px}
+.enroll-kiosk-success-check{
+  width:90px;height:90px;border-radius:50%;background:rgba(78,222,163,0.16);
+  border:2px solid #4edea3;display:flex;align-items:center;justify-content:center;font-size:44px;
+  animation:enrollCheckPop .35s ease-out;
+}
+@keyframes enrollCheckPop{0%{transform:scale(.4);opacity:0}100%{transform:scale(1);opacity:1}}
+
+/* ── Kiosk password-confirm step (Pending Fixes Report §4) ───────────────
+   Sits between picking a name and arming the tap scanner — see
+   enrollment-hub.js's _enrollRenderKioskPassword(). Deliberately reuses
+   the same avatar/name treatment as the tap step (.enroll-kiosk-tap-*)
+   so the transition between the two feels like one continuous flow. */
+.enroll-kiosk-password-input{
+  width:100%;max-width:320px;padding:14px 18px;font-size:16px;border-radius:14px;
+  background:rgba(19,18,30,0.85);border:1px solid var(--border2);color:var(--text);
+  text-align:center;letter-spacing:.15em;
+}
+.enroll-kiosk-password-error{color:#ffb4ab;font-size:12px;font-weight:700}
+.enroll-kiosk-password-actions{display:flex;gap:10px}
+.enroll-kiosk-confirm-btn{
+  padding:12px 26px;border-radius:20px;font-weight:800;font-size:13px;cursor:pointer;
+  background:linear-gradient(135deg,#7fd8ff,#7fe7c0);border:none;color:#13121e;
+}
+.enroll-kiosk-confirm-btn:disabled{opacity:.55;cursor:not-allowed}
+
+/* ── Kiosk Lock Mode (Pending Fixes Report §4) ────────────────────────────
+   Toggled via window._enrollLockKiosk()/_enrollUnlockKiosk(). Mirrors
+   live_monitor.js's body.lm-kiosk-mode / att_scanner_rfid.js's
+   body.rfid-kiosk-mode shell-hiding pattern (hide topbar+sidebar, fill the
+   viewport), scoped to its own body class so none of the three kiosk
+   screens interfere with each other. Unlike those two — which are simply
+   "no chrome for this whole page" — this one is togglable and additionally
+   blocks in-app navigation away from #a-enrollment while active (the JS
+   side of that lives in enrollment-hub.js's _enrollPatchNavGuard()). */
+body.enroll-kiosk-lock-mode #topbar,
+body.enroll-kiosk-lock-mode #sidebar{display:none!important}
+body.enroll-kiosk-lock-mode #main-content{margin-left:0!important;padding-top:0!important}
+body.enroll-kiosk-lock-mode #a-enrollment.page{
+  position:fixed!important;inset:0!important;z-index:50;
+  padding:24px!important;max-width:100%!important;margin:0!important;
+  overflow-y:auto;
+}
+
+.enroll-lock-btn{
+  padding:9px 16px;font-size:12px;font-weight:700;border-radius:10px;
+  background:rgba(255,159,95,0.14);border:1px solid #ff9f5f55;color:#ff9f5f;cursor:pointer;
+}
+.enroll-lock-btn:hover{background:rgba(255,159,95,0.22)}
+
+.enroll-kiosk-locked-banner{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+  color:#ff9f5f;padding:8px;margin-bottom:8px;
+}
+
+/* Deliberately small and low-contrast — an admin knows to look for it in
+   the corner, a student isn't drawn to it the way a big "Exit" button
+   would be. */
+.enroll-unlock-fab{
+  position:fixed;bottom:20px;right:20px;z-index:60;
+  width:44px;height:44px;border-radius:50%;
+  background:rgba(19,18,30,0.85);border:1px solid var(--border2);color:var(--text-muted);
+  display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;
+  opacity:.5;transition:opacity .15s;
+}
+.enroll-unlock-fab:hover{opacity:1}
