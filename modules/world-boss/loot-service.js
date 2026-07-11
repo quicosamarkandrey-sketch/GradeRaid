@@ -125,15 +125,32 @@ window.LootService = (function () {
       if (!Array.isArray(b.lootClaims)) b.lootClaims = [];
       b.lootClaims.push(claim);
 
-      // Persist loot to the student's own record
-      var si = draft.students.findIndex(function (s) { return s.id === student.id; });
-      if (si >= 0) {
-        if (!Array.isArray(draft.students[si].bossLoot)) draft.students[si].bossLoot = [];
-        draft.students[si].bossLoot.unshift({
-          bossName:  b.name,
-          itemName:  reward.itemName,
-          rarity:    reward.rarity,
-          claimedAt: claim.claimedAt,
+      // Phase 48: claimed loot now upserts into draft.inventory[studentId] —
+      // the exact same shape/upsert-by-itemId logic shop_store.js's
+      // cartCheckout() already uses for shop purchases — instead of the old
+      // student.bossLoot array, which nothing else in the codebase ever
+      // read (confirmed dead end; see phase48_shop_orders_inventory_sync.sql
+      // header note). This is what makes claimed boss loot actually show up
+      // on the student-facing "My Inventory" page (shop_inventory.js reads
+      // exclusively from DB.inventory[studentId]) and what lets it ride the
+      // same inventory table/RLS/sync path shop purchases already use —
+      // no separate boss-loot column or sync path needed.
+      if (!draft.inventory) draft.inventory = {};
+      if (!Array.isArray(draft.inventory[student.id])) draft.inventory[student.id] = [];
+      var invList = draft.inventory[student.id];
+      // Stable per-reward-definition id (not per-claim) so claiming the same
+      // reward more than once (claimLimit > 1) stacks quantity instead of
+      // creating duplicate rows, same as a repeat shop purchase of one item.
+      var lootItemId = 'loot_' + reward.id;
+      var existingItem = invList.find(function (i) { return i.itemId === lootItemId; });
+      if (existingItem) {
+        existingItem.quantity = (existingItem.quantity || 1) + 1;
+        existingItem.lastPurchased = todayStr() + ' ' + nowStr();
+      } else {
+        invList.unshift({
+          itemId: lootItemId, itemName: reward.itemName, emoji: '🎁', category: 'unknown',
+          quantity: 1, datePurchased: todayStr() + ' at ' + nowStr(),
+          source: 'Boss Loot', status: 'active',
         });
       }
     }, { type: 'loot:claimed', payload: { bossIdx: bossIdx, rewardId: rewardId, studentId: student.id } });
@@ -146,9 +163,9 @@ window.LootService = (function () {
    * definitively rejected after the local optimistic commit — e.g. the
    * claim actually lost a race against another student's near-simultaneous
    * claim and the reward was really gone by the time the RPC's row lock
-   * resolved it. Removes both the boss's lootClaims entry and the matching
-   * bossLoot entry on the student record, mirroring exactly what
-   * claimReward() added.
+   * resolved it. Removes both the boss's lootClaims entry and decrements
+   * (or removes, if it hits zero) the matching DB.inventory[studentId] item,
+   * mirroring exactly what claimReward() added.
    * @param {number} bossIdx
    * @param {string} claimId
    * @param {string} studentId
@@ -161,12 +178,14 @@ window.LootService = (function () {
       if (!Array.isArray(b.lootClaims)) b.lootClaims = [];
       b.lootClaims = b.lootClaims.filter(function (c) { return c.id !== claimId; });
 
-      var si = draft.students.findIndex(function (s) { return s.id === studentId; });
-      if (si >= 0 && claim && Array.isArray(draft.students[si].bossLoot)) {
-        var li = draft.students[si].bossLoot.findIndex(function (l) {
-          return l.itemName === claim.itemName && l.claimedAt === claim.claimedAt;
-        });
-        if (li >= 0) draft.students[si].bossLoot.splice(li, 1);
+      if (claim && draft.inventory && Array.isArray(draft.inventory[studentId])) {
+        var invList     = draft.inventory[studentId];
+        var lootItemId  = 'loot_' + claim.rewardId;
+        var idx         = invList.findIndex(function (i) { return i.itemId === lootItemId; });
+        if (idx >= 0) {
+          invList[idx].quantity = (invList[idx].quantity || 1) - 1;
+          if (invList[idx].quantity <= 0) invList.splice(idx, 1);
+        }
       }
     }, { type: 'loot:claim-rolled-back', payload: { bossIdx: bossIdx, claimId: claimId, studentId: studentId } });
   }
@@ -237,6 +256,18 @@ window.LootService = (function () {
       var b = draft.bossEvents[bossIdx];
       if (!b || b.lootFinalizedAt) return;
       b.lootFinalizedAt = Date.now();
+      // BUGFIX (boss never properly ends): finalizing the loot rush used to
+      // only set lootFinalizedAt, leaving `status` stuck at 'loot' forever.
+      // There is no UI button to end a 'loot'-status boss directly (End
+      // Event only shows for 'active') — the ONLY way out was activating a
+      // *different* boss in the same section, which force-ends this one as
+      // a side effect but never syncs that to Supabase. Finalizing the loot
+      // rush IS the natural end of the encounter, so it should actually end
+      // it — same status/endedAt this boss would get from a manual
+      // bossEnd(), just reached automatically instead of requiring a
+      // teacher to notice and intervene.
+      b.status  = 'ended';
+      b.endedAt = Date.now();
     }, { type: 'loot:finalized', payload: { bossIdx: bossIdx, source: source } });
 
     return { ok: true, alreadyFinalized: false, finalized: true };
@@ -309,7 +340,14 @@ window.LootService = (function () {
     var events    = AppStore.getSlice(function (s) { return s.bossEvents; }) || [];
     var finalized = events
       .map(function (b, i) { return { b: b, i: i }; })
-      .filter(function (x) { return x.b.status === 'loot' && x.b.lootFinalizedAt; });
+      // BUGFIX: this used to also require status === 'loot', which was true
+      // back when finalizeLoot() never advanced status past 'loot'. Now
+      // that finalizing correctly moves a boss to 'ended' (see
+      // finalizeLoot() above), lootFinalizedAt alone is the right signal —
+      // it's only ever set by a completed loot rush, on any boss whose
+      // status has since moved on to 'ended' (or been reset by a fresh
+      // Activate, which already clears lootFinalizedAt).
+      .filter(function (x) { return !!x.b.lootFinalizedAt; });
     if (!finalized.length) return null;
     finalized.sort(function (a, b) {
       return (b.b.lootFinalizedAt || 0) - (a.b.lootFinalizedAt || 0);

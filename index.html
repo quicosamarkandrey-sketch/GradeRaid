@@ -24,12 +24,40 @@
 <link rel="stylesheet" href="./styles/modules/mail.css">
 <!-- AFTER world-boss.css and campaign.css -->
 <link rel="stylesheet" href="./styles/modules/perceived-speed.css">
+<link rel="stylesheet" href="./styles/modules/motion-foundation.css">
+<link rel="stylesheet" href="./styles/modules/command-center.css">
 </head>
 <body>
 <div id="app">
 
+<!-- ═══════════════ BOOT LOADING ═══════════════
+     BUGFIX (login screen flash on refresh): this is now the TRUE default
+     state on page load — #login-screen starts hidden (display:none inline
+     below) instead of being the default-visible element. Without this,
+     getSession() (a fast, but not instant, localStorage read — see
+     restoreSession() in auth.js) meant the login form rendered first and
+     then got swapped for the main app a moment later on every refresh of an
+     already-logged-in session, which read as "getting logged out and back
+     in." Now nothing auth-gated is shown until we positively know whether
+     there's a valid session: restoreSession() either calls bootApp() (which
+     hides this) or, if there's no session, calls showLoginScreen() (which
+     also hides this and reveals the login form instead).
+
+     Logo mark below uses the same gradient-text treatment as #login-screen's
+     .login-logo-text (base.css) — inlined here rather than referencing that
+     class, since this screen is visible before styles/base.css is
+     guaranteed to have painted, and before any other module has loaded. -->
+<div id="boot-loading" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:#13121e;background-image:radial-gradient(circle at 30% 30%,rgba(139,92,246,.14) 0%,transparent 50%),radial-gradient(circle at 70% 70%,rgba(78,222,163,.06) 0%,transparent 45%);">
+  <div style="text-align:center">
+    <div style="font-family:'Poppins',system-ui,sans-serif;font-size:30px;font-weight:900;letter-spacing:.08em;background:linear-gradient(135deg,#d0bcff,#8b5cf6,#4edea3);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">EDUQUEST</div>
+    <div style="color:#9a95ab;font-size:13px;margin-top:8px;font-family:system-ui,sans-serif;">⚔️ Gamified Classroom Experience</div>
+  </div>
+  <div style="width:36px;height:36px;border-radius:50%;border:3px solid rgba(255,255,255,0.15);border-top-color:#d0bcff;animation:boot-spin 0.8s linear infinite;"></div>
+</div>
+<style>@keyframes boot-spin{to{transform:rotate(360deg)}}</style>
+
 <!-- ═══════════════ LOGIN ═══════════════ -->
-<div id="login-screen">
+<div id="login-screen" style="display:none">
   <div class="login-card">
     <div class="login-logo">
       <div class="login-logo-text">EDUQUEST</div>
@@ -68,7 +96,7 @@
     </div>
     <div id="login-err" style="color:#ffb4ab;font-size:13px;margin-bottom:10px;display:none">❌ Incorrect email or password.</div>
     <div id="login-pending-err" style="color:#ffb95f;font-size:13px;margin-bottom:10px;display:none;background:rgba(255,185,95,.08);border:1px solid rgba(255,185,95,.25);padding:10px 14px;border-radius:10px">⏳ Your account is awaiting approval from your teacher.</div>
-    <button class="btn btn-primary btn-block" style="padding:13px;font-size:15px;position:relative;overflow:hidden" onclick="doLogin()">
+    <button id="login-submit-btn" class="btn btn-primary btn-block" style="padding:13px;font-size:15px;position:relative;overflow:hidden" onclick="doLogin()">
       Enter Quest →
     </button>
     <div style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">
@@ -118,7 +146,7 @@
         <div class="wb-widget-icon">💀</div>
         <div class="wb-widget-info">
           <div class="wb-widget-name" id="wb-widget-name">BOSS RAID</div>
-          <div class="wb-widget-hp-bar"><div id="wb-widget-hp-fill" style="width:100%"></div></div>
+          <div class="wb-widget-hp-bar stat-bar" id="wb-widget-hp-track"><div id="wb-widget-hp-fill" class="stat-bar-fill" style="width:100%"></div></div>
           <div class="wb-widget-sub">
             <span class="wb-hp-txt" id="wb-widget-hp-txt">LIVE</span>
             <span id="wb-widget-pct">100%</span>
@@ -154,7 +182,7 @@
     </div>
     <nav class="sidebar-nav" id="sidebar-nav"></nav>
     <div class="sidebar-bottom">
-      <button class="sidebar-logout" onclick="doLogout()">
+      <button id="sidebar-logout-btn" class="sidebar-logout" onclick="doLogout()">
         <span class="material-symbols-outlined">logout</span>
         Sign Out
       </button>
@@ -176,7 +204,6 @@
     <div id="s-orders" class="page"></div>
     <div id="s-mail" class="page"></div>
     <div id="s-attendance" class="page"></div>
-    <div id="s-classroom" class="page"></div>
     <div id="a-classroom" class="page"></div>
     <div id="a-classroom-monitor" class="page"></div>
     <!-- ADMIN PAGES -->
@@ -604,6 +631,11 @@
 <script src="./utils.js"></script>
 <script src="./nav.js"></script>
 <script src="./topbar.js"></script>
+<!-- Shared button-loading spinner utility — loaded before auth.js since
+     doLogin()/doLogout() use it. See modules/shared/button-loading.js for
+     the reusable eqButtonLoading()/eqWithButtonLoading() API (also usable
+     for reward-claim buttons etc. wherever the same pattern is wanted). -->
+<script src="./modules/shared/button-loading.js"></script>
 <script src="./auth.js"></script>
 <script src="./recovery.js"></script>
 
@@ -659,6 +691,18 @@ AppStore.ready.then(function () {
       console.warn('[DSMService] initRemote() rejected; Navigation Manager will fall back to local cache:', e);
     });
   }
+
+  // BUGFIX (refresh logs the user out): restore an already-valid Supabase
+  // session on page load instead of always showing the login screen. See
+  // restoreSession() in auth.js for the full explanation. Fire-and-forget,
+  // same as the DSMService.initRemote() call above — if there's no saved
+  // session it resolves immediately and the login screen (already the
+  // default display state in the HTML) just stays put.
+  if (typeof restoreSession === 'function') {
+    restoreSession().catch(function (e) {
+      console.warn('[auth] restoreSession() rejected; staying on login screen:', e);
+    });
+  }
 });
 </script>
 
@@ -667,6 +711,19 @@ AppStore.ready.then(function () {
      window.eqRewardPresent(...) — used by both Mail and Achievements below.
      ───────────────────────────────────────────────────────────────────────── -->
 <script src="./modules/shared/reward-presenter.js"></script>
+
+<!-- ─────────────────────────────────────────────────────────────────────────
+     SHARED — Motion & Visual Foundation (modules/shared/)
+     window.renderStatBar / runSequence / burstParticles / startAmbientBackdrop /
+     initQuickJump — reusable, dependency-free building blocks for the
+     Visual Enhancement Guide's page-by-page rollout (Wow Moments, hero-band
+     backdrops, unified HP/XP bars). No page wiring yet — foundation only.
+     ───────────────────────────────────────────────────────────────────────── -->
+<script src="./modules/shared/stat-bars.js"></script>
+<script src="./modules/shared/sequence.js"></script>
+<script src="./modules/shared/particles.js"></script>
+<script src="./modules/shared/ambient-backdrop.js"></script>
+<script src="./modules/shared/quick-jump.js"></script>
 
 <!-- ─────────────────────────────────────────────────────────────────────────
      PHASE 3 MODULE WIRING — Day 1: Mail (modules/mail/)
@@ -791,6 +848,9 @@ AppStore.ready.then(function () {
 
 <!-- Admin -->
 <script src="./modules/admin/student-manager.js"></script>
+<!-- Command Center redesign (Visual Enhancement Guide / Redesign Proposal §6.4) —
+     must load AFTER student-manager.js: it redefines window.renderAdminDashboard. -->
+<script src="./modules/admin/command-center.js"></script>
 <script src="./modules/admin/analytics.js"></script>
 <script src="./modules/admin/quiz-builder.js"></script>
 <script src="./modules/admin/registrations-service.js"></script>
@@ -840,8 +900,9 @@ function renderStudentDashboard(){
   const qrIdx=DB.students.indexOf(st);
 
   document.getElementById('s-dashboard').innerHTML=`
-  <!-- HERO CARD -->
-  <div class="dash-hero">
+  <!-- HERO CARD (primary focal element — XP/level progress + academic snapshot combined, per Design Discovery) -->
+  <div class="dash-hero" id="dash-hero">
+    <canvas class="dash-hero-canvas" id="dash-hero-canvas"></canvas>
     <div class="dash-hero-inner">
       <div class="dash-xp-ring" style="position:relative;flex-shrink:0">
         <svg width="110" height="110" style="transform:rotate(-90deg)">
@@ -853,7 +914,11 @@ function renderStudentDashboard(){
           </linearGradient></defs>
         </svg>
         <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
-          <div style="width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:17px;background:${st.color+'33'};color:${st.color};border:2px solid ${st.color+'55'}">${st.init}</div>
+          <div style="width:54px;height:54px;border-radius:50%;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:17px;background:${st.color+'33'};color:${st.color};border:2px solid ${st.color+'55'}">${
+            st.profilePic
+              ? `<img src="${st.profilePic}" alt="${st.init}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.remove()">`
+              : st.init
+          }</div>
         </div>
         <div class="level-badge">LVL ${st.level}</div>
       </div>
@@ -861,8 +926,8 @@ function renderStudentDashboard(){
         <div class="dash-hero-name">${st.name}</div>
         <div class="dash-hero-sub" style="margin-bottom:14px">${st.tier} &nbsp;·&nbsp; <span style="color:var(--primary)">Rank #${myRank}</span> &nbsp;·&nbsp; Level ${st.level} → ${st.level+1}</div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-          <div style="flex:1;background:rgba(255,255,255,.06);border-radius:20px;height:10px;overflow:hidden;border:1px solid rgba(255,255,255,.04)">
-            <div style="height:100%;border-radius:20px;background:linear-gradient(90deg,#8b5cf6,#d0bcff);width:${xpPct}%;box-shadow:0 0 8px rgba(139,92,246,.5)"></div>
+          <div class="stat-bar" id="dash-xp-bar" style="flex:1">
+            <div class="stat-bar-fill"></div>
           </div>
           <span style="font-size:12px;color:var(--primary);font-weight:700;white-space:nowrap">${xpPct}%</span>
         </div>
@@ -876,14 +941,13 @@ function renderStudentDashboard(){
         <button class="btn btn-orange btn-block" onclick="navTo('s-store')">🛍️ Visit Armory</button>
       </div>
     </div>
-  </div>
-
-  <!-- STAT GRID -->
-  <div class="stat-grid" style="margin-bottom:28px">
-    <div class="stat-card"><div class="val" style="color:#d0bcff">${st.xp.toLocaleString()}</div><div class="lbl">Total XP</div></div>
-    <div class="stat-card"><div class="val" style="color:#ffb95f">${st.coins.toLocaleString()}</div><div class="lbl">Coins</div></div>
-    <div class="stat-card"><div class="val" style="color:#4edea3">${st.attendance}%</div><div class="lbl">Attendance</div></div>
-    <div class="stat-card"><div class="val" style="color:#fb923c">${st.quizAvg}%</div><div class="lbl">Quiz Avg</div></div>
+    <!-- Combined academic snapshot — same focal card as the XP ring above, not a separate stat-grid -->
+    <div class="dash-hero-stats">
+      <div class="dash-hero-stat-chip"><div class="val" style="color:#d0bcff">${st.xp.toLocaleString()}</div><div class="lbl">Total XP</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" style="color:#4edea3">${st.attendance}%</div><div class="lbl">Attendance</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" style="color:#fb923c">${st.quizAvg}%</div><div class="lbl">Quiz Avg</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" style="color:#ffb95f">#${myRank}</div><div class="lbl">Class Rank</div></div>
+    </div>
   </div>
 
   <!-- ATTENTION PANEL: unclaimed achievements + unread mail -->
@@ -1013,6 +1077,70 @@ function renderStudentDashboard(){
     </div>
   </div>`;
   updateTopbar();
+
+  // ── Motion foundation wiring (modules/shared/*) ──────────────────────────
+  // Session-only level-up detection: no DB/localStorage write, resets on
+  // reload. Only celebrates a level increase seen *within this session* —
+  // never on first load — so returning to the dashboard after logging back
+  // in doesn't re-trigger a stale celebration.
+  window._eqLastSeenLevel = window._eqLastSeenLevel || {};
+  const _prevLevel = window._eqLastSeenLevel[st.id];
+  const justLeveledUp = (typeof _prevLevel === 'number') && st.level > _prevLevel;
+  window._eqLastSeenLevel[st.id] = st.level;
+
+  const xpBarEl = document.getElementById('dash-xp-bar');
+  if (xpBarEl && typeof renderStatBar === 'function') {
+    renderStatBar(xpBarEl, { percent: xpPct, tier: 'normal', justChanged: justLeveledUp });
+  }
+
+  // Ambient hero backdrop — stop any previous loop first (this function can
+  // re-render many times per session) so we never stack multiple rAF loops.
+  if (typeof window._eqDashHeroBackdropStop === 'function') {
+    window._eqDashHeroBackdropStop();
+    window._eqDashHeroBackdropStop = null;
+  }
+  const heroCanvas = document.getElementById('dash-hero-canvas');
+  if (heroCanvas && typeof startAmbientBackdrop === 'function') {
+    window._eqDashHeroBackdropStop = startAmbientBackdrop(heroCanvas, { count: 55, color: '#d0bcff', alpha: 0.4, dotSize: 2.2 });
+  }
+
+  // Level Up Wow Moment (Event tier — rare, earned, skippable per redesign
+  // proposal §12.1). Dims the screen briefly, pops the level badge, shows a
+  // centered flash, and fires a particle burst from the level badge.
+  // Extracted so it can be triggered on a real level-up AND manually
+  // previewed from the console (window.eqPreviewLevelUp()) without needing
+  // to actually grind XP — useful for judging/tuning the effect.
+  window.eqPlayLevelUpMoment = function (displayLevel) {
+    if (typeof runSequence !== 'function') return;
+    const heroEl = document.getElementById('dash-hero');
+    runSequence([
+      { delay: 0,    run: () => document.body.classList.add('screen-dim') },
+      { delay: 150,  run: () => { if (heroEl) heroEl.classList.add('leveling-up'); } },
+      { delay: 250,  run: () => {
+          const flash = document.createElement('div');
+          flash.className = 'dash-level-up-flash';
+          flash.textContent = 'LEVEL UP! → ' + displayLevel;
+          document.body.appendChild(flash);
+          requestAnimationFrame(() => flash.classList.add('show'));
+          setTimeout(() => flash.remove(), 1600);
+        } },
+      { delay: 100,  run: () => {
+          const badge = heroEl ? heroEl.querySelector('.level-badge') : null;
+          if (badge && typeof burstParticles === 'function') burstParticles(badge, 60);
+        } },
+      { delay: 1200, run: () => {
+          document.body.classList.remove('screen-dim');
+          if (heroEl) heroEl.classList.remove('leveling-up');
+        } },
+    ]);
+  };
+
+  // DEV PREVIEW: run window.eqPreviewLevelUp() in the console from the
+  // Dashboard page any time to see the full moment without leveling up.
+  // Safe to leave in — it's a no-op unless someone calls it manually.
+  window.eqPreviewLevelUp = function () { window.eqPlayLevelUpMoment(st.level + 1); };
+
+  if (justLeveledUp) window.eqPlayLevelUpMoment(st.level);
 }
 
 // ── STUDENT QUIZZES (Quest Board) ──
@@ -1750,7 +1878,7 @@ function _profEditHTML(user) {
   <div id="prof-edit-err" style="color:#ffb4ab;font-size:13px;display:none;margin-bottom:8px"></div>
   <div class="profile-save-row">
     <button class="btn btn-ghost" onclick="closeProfile()">Cancel</button>
-    <button class="btn btn-primary" onclick="saveProfileEdit()">
+    <button class="btn btn-primary" id="prof-save-btn" onclick="saveProfileEdit()">
       <span class="material-symbols-outlined" style="font-size:15px">save</span> Save Changes
     </button>
   </div>`;
@@ -1815,7 +1943,7 @@ function _profAccountHTML(user) {
 
 /* ── Save: Profile Edit ── */
 
-function saveProfileEdit() {
+async function saveProfileEdit() {
   const errEl = document.getElementById('prof-edit-err');
   if (errEl) errEl.style.display = 'none';
 
@@ -1828,12 +1956,35 @@ function saveProfileEdit() {
     return;
   }
 
+  // Lock the save button + show a saving state while the RPC round-trips,
+  // so a slow/offline connection doesn't look like a silent no-op.
+  const saveBtn = document.getElementById('prof-save-btn');
+  const saveBtnOriginalHTML = saveBtn ? saveBtn.innerHTML : null;
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px;animation:skShimmerSlide 1s linear infinite">autorenew</span> Saving…';
+  }
+
   DB = loadDB();
   profInitAll();
 
+  // Fix (Phase 49): cosmetic edits — including the profile picture — used
+  // to be written only to the local DB via saveDB(), which for a
+  // student/teacher session never actually reaches Supabase (see
+  // syncOwnProfileCosmeticToServer()'s comment in utils.js for the full
+  // root cause). Every branch below now ALSO calls that RPC and only
+  // confirms success to the person once the server round-trip actually
+  // succeeds — a failure rolls the button back and surfaces an error
+  // instead of silently reverting on the next refresh.
+  let syncResult = { success: true }; // admin username-only edits have no RPC gap (see branch below)
+
   if (currentRole === 'admin') {
     const newId = (document.getElementById('prof-newid')?.value || '').trim().toLowerCase();
-    if (!newId) { if (errEl) { errEl.textContent = 'Username is required.'; errEl.style.display = 'block'; } return; }
+    if (!newId) {
+      if (errEl) { errEl.textContent = 'Username is required.'; errEl.style.display = 'block'; }
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = saveBtnOriginalHTML; }
+      return;
+    }
     DB.admin.firstName = firstName;
     DB.admin.lastName = lastName;
     DB.admin.displayName = displayName;
@@ -1843,6 +1994,14 @@ function saveProfileEdit() {
     // Commit any staged picture change
     if (_profPendingPic !== null) DB.admin.profilePic = _profPendingPic;
     currentUser = DB.admin;
+
+    syncResult = await syncOwnProfileCosmeticToServer({
+      displayName: displayName,
+      firstName:   firstName,
+      lastName:    lastName,
+      init:        _makeInit(firstName, lastName, displayName),
+      profilePic:  _profPendingPic, // null = unchanged, '' = cleared, string = new pic
+    });
   } else if (currentRole === 'teacher') {
     // Role split fix: this branch used to be missing entirely, so a teacher
     // fell into the student branch below, DB.students.findIndex() always
@@ -1854,26 +2013,29 @@ function saveProfileEdit() {
     // a DIFFERENT staff member's profile, so overwriting it here would
     // corrupt that other account. Updating currentUser directly is the
     // correct in-session fix.
-    //
-    // NOTE (real gap, out of scope for this fix): this whole panel writes
-    // to local fields only — display name changes here aren't pushed to the
-    // profiles table in Supabase, and there's no username-change RPC for
-    // teachers the way DB.admin.id reassignment fakes for the legacy admin
-    // record above. A teacher's display name edit will look saved for the
-    // rest of this session but won't survive a fresh Supabase pull or a
-    // login from another device until a real update_own_profile()-style RPC
-    // is built. Flagging rather than building that RPC here since it's a
-    // bigger, security-relevant change (needs its own SECURITY DEFINER
-    // function + RLS review) outside the "fix the role display" scope of
-    // this pass.
     currentUser.firstName = firstName;
     currentUser.lastName = lastName;
     currentUser.displayName = displayName;
     currentUser.name = firstName && lastName ? firstName + ' ' + lastName : displayName;
     if (_profPendingPic !== null) currentUser.profilePic = _profPendingPic;
+
+    // FIX (Phase 49 — closes the gap this branch used to flag as a known
+    // TODO): teacher cosmetic edits now persist via the same self-service
+    // RPC as students, scoped server-side to auth.uid(), so they survive a
+    // refresh or a login from another device.
+    syncResult = await syncOwnProfileCosmeticToServer({
+      displayName: displayName,
+      firstName:   firstName,
+      lastName:    lastName,
+      init:        _makeInit(firstName, lastName, displayName),
+      profilePic:  _profPendingPic,
+    });
   } else {
     const stIdx = DB.students.findIndex(s => s.id === currentUser.id);
-    if (stIdx < 0) return;
+    if (stIdx < 0) {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = saveBtnOriginalHTML; }
+      return;
+    }
     DB.students[stIdx].firstName = firstName;
     DB.students[stIdx].lastName = lastName;
     DB.students[stIdx].displayName = displayName;
@@ -1882,12 +2044,36 @@ function saveProfileEdit() {
     // Commit any staged picture change
     if (_profPendingPic !== null) DB.students[stIdx].profilePic = _profPendingPic;
     currentUser = DB.students[stIdx];
+
+    // FIX (Phase 49): this is the actual fix for "profile picture doesn't
+    // stay permanently" — previously saveDB() below was the only call
+    // here, and its bulk profiles upsert skips student sessions entirely
+    // (see db-service.js), so this local mutation had nowhere to go and
+    // reverted on the next loadDB() pull.
+    syncResult = await syncOwnProfileCosmeticToServer({
+      displayName: displayName,
+      firstName:   firstName,
+      lastName:    lastName,
+      init:        DB.students[stIdx].init,
+      profilePic:  _profPendingPic,
+    });
   }
 
   saveDB();
-  _profPendingPic = null; // clear staging
 
-  toast('✅ Profile updated!', '#4edea3');
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = saveBtnOriginalHTML; }
+
+  if (!syncResult.success) {
+    // Local cache still has the edit (instant visual feedback), but be
+    // honest that it did NOT reach the server, since that's exactly the
+    // silent-failure this fix exists to close.
+    toast('⚠️ Saved locally, but failed to sync to the server. Try again or check your connection.', '#ffb95f');
+    console.warn('[Profile] syncOwnProfileCosmeticToServer failed:', syncResult.error);
+  } else {
+    toast('✅ Profile updated!', '#4edea3');
+  }
+
+  _profPendingPic = null; // clear staging
   // Refresh hero + all avatars
   profInitAll();
   _profRenderHero(currentUser);

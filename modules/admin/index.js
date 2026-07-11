@@ -4,7 +4,10 @@
 //  Phase 3 Day 18-19
 //
 //  Load order (in index.html):
-//    student-manager.js   → renderAdminDashboard, openAwardPoints, doAwardPoints
+//    student-manager.js   → openAwardPoints, doAwardPoints
+//    command-center.js    → renderAdminDashboard (Command Center redesign,
+//                           Redesign Proposal §6.4 — must load AFTER
+//                           student-manager.js, which no longer defines this)
 //    analytics.js         → renderAnalytics (base)
 //    quiz-builder.js      → renderAdminQuizzes, openQuizBuilder, saveQuiz, etc.
 //    registrations.js     → renderAdminRegistrations, doRegister, regAdminApprove, etc.

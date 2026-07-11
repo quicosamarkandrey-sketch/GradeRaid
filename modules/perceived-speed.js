@@ -325,7 +325,14 @@
    *   4b. Failure → rollback card state, notify user.
    */
   window.achClaimReward = function (achId) {
-    if (!window.currentUser || window.currentRole !== 'student') return;
+    // FIX: this used to check window.currentUser/window.currentRole, but
+    // currentUser/currentRole are declared with `let` at the top of
+    // index.html's inline script — that does NOT create window properties,
+    // only a shared lexical binding across classic <script> tags. So
+    // window.currentUser was always undefined and this guard silently
+    // blocked every claim, even while genuinely logged in as a student.
+    // Use the bare identifiers, same as the rest of the app.
+    if (!currentUser || currentRole !== 'student') return;
 
     // Locate the claim button for this achievement card
     var claimBtn = document.querySelector('.ach-badge-card [onclick*="achClaimReward(\'' + achId + '\')"]');
@@ -339,7 +346,7 @@
     if (!DB_local) return;
     var ach = (DB_local.achievements || []).find(function (a) { return a.id === achId; });
     if (!ach) return;
-    var unlocks = (DB_local.achievementUnlocks || {})[window.currentUser.id] || [];
+    var unlocks = (DB_local.achievementUnlocks || {})[currentUser.id] || [];
     var rec     = unlocks.find(function (u) { return u.achId === achId; });
     if (!rec || rec.claimed) {
       if (typeof toast === 'function') toast('Already claimed.', '#ffb4ab');
@@ -369,7 +376,7 @@
     var granted;
     try {
       granted = (typeof achGrantRewardsForClaim === 'function')
-        ? achGrantRewardsForClaim(window.currentUser.id, achId)
+        ? achGrantRewardsForClaim(currentUser.id, achId)
         : false;
     } catch (err) {
       console.error('[achClaimReward] engine threw:', err);
@@ -398,7 +405,7 @@
 
     // Grant linked title (typeof guard)
     if (linkedTitle && typeof tsUnlockTitleForStudent === 'function') {
-      tsUnlockTitleForStudent(window.currentUser.id, linkedTitle.id, false);
+      tsUnlockTitleForStudent(currentUser.id, linkedTitle.id, false);
     }
 
     // Present via universal reward presenter (or toast fallback)
@@ -439,7 +446,11 @@
    *   3b. Failure → rollback button, notify user without locking the UI.
    */
   window.mailDoClaimRewards = function (mailId) {
-    if (!window.currentUser || window.currentRole !== 'student') {
+    // FIX: same window.currentUser/window.currentRole bug as achClaimReward
+    // above — those were never populated (currentUser/currentRole are
+    // lexical `let` bindings, not window properties), so this guard fired
+    // every time regardless of actual login state. Use the bare identifiers.
+    if (!currentUser || currentRole !== 'student') {
       if (typeof toast === 'function') toast('❌ You must be logged in as a student', '#ffb4ab');
       return;
     }
@@ -468,7 +479,7 @@
     var rewards;
     try {
       rewards = (typeof mailClaimRewards === 'function')
-        ? mailClaimRewards(mailId, window.currentUser.id)
+        ? mailClaimRewards(mailId, currentUser.id)
         : false;
     } catch (err) {
       console.error('[mailDoClaimRewards] engine threw:', err);

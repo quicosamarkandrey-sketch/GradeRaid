@@ -1,0 +1,211 @@
+/* ══════════════════════════════════════════════════════════════════════
+   styles/modules/command-center.css
+   Admin/Teacher Dashboard ("Command Center") — redesign per
+   EduQuest-Redesign-Proposal.md §6.4.
+
+   Structure this file supports (see modules/admin/command-center.js):
+     1. Hero band        — class health snapshot
+     2. Attention queue   — primary focal element, "today's to-do list"
+     3. Live classroom pulse — compact real-time strip
+     4. Trend & analytics preview — lightweight, not full Analytics page
+     5. Shortcuts row     — fast paths into daily tools
+
+   Reuses base.css tokens (--primary, --secondary, --tertiary, --fh/--fb/--fm,
+   .page-hero, .glass-card, .stat-grid) rather than inventing a parallel
+   system — per proposal §3.1 "two registers, one system".
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Staggered entrance (proposal §6.5: cards animate in, not all at once) ── */
+.cc-in{opacity:0;animation:ccFadeUp .5s ease forwards}
+.cc-in:nth-child(1){animation-delay:.02s}
+.cc-in:nth-child(2){animation-delay:.08s}
+.cc-in:nth-child(3){animation-delay:.14s}
+.cc-in:nth-child(4){animation-delay:.20s}
+.cc-in:nth-child(5){animation-delay:.26s}
+@keyframes ccFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Live dot (Ambient tier — echoes the World Boss topbar widget's
+      "always-on aliveness" pattern, per proposal §2.2 point 7) ── */
+.cc-live-dot{
+  width:7px;height:7px;border-radius:50%;flex-shrink:0;
+  background:var(--secondary);box-shadow:0 0 8px rgba(78,222,163,.7);
+  animation:ccLiveDot 1.6s ease-in-out infinite;
+}
+.cc-live-dot.warn{background:var(--tertiary);box-shadow:0 0 8px rgba(255,185,95,.7)}
+.cc-live-dot.danger{background:#ff6b81;box-shadow:0 0 8px rgba(255,107,129,.7)}
+@keyframes ccLiveDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.65)}}
+
+/* ── Hero band (class health) ──────────────────────────────────────────
+   Calmer / more SaaS-analytics register than the student hero, per §6.4.1 */
+.cc-hero-health{display:flex;gap:28px;margin-top:22px;flex-wrap:wrap}
+.cc-health-metric{min-width:120px}
+.cc-health-metric .cc-hm-val{font-family:var(--fm);font-size:26px;font-weight:900;line-height:1}
+.cc-health-metric .cc-hm-lbl{font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-top:5px}
+.cc-health-bar{background:rgba(255,255,255,.06);border-radius:20px;height:4px;width:100%;max-width:140px;overflow:hidden;margin-top:8px}
+.cc-health-bar > div{height:100%;border-radius:20px;transition:width .6s}
+
+/* ── Attention queue — the primary focal element ─────────────────────── */
+.cc-attention-card{
+  background:var(--surface,rgba(35,31,56,.75));border:1px solid var(--border);border-radius:16px;
+  overflow:hidden;backdrop-filter:blur(12px);
+}
+.cc-attention-empty{padding:34px 20px;text-align:center;color:var(--text-muted)}
+.cc-attention-empty .cc-ae-icon{font-size:34px;margin-bottom:8px}
+.cc-attention-list{display:flex;flex-direction:column}
+.cc-attention-item{
+  display:flex;align-items:center;gap:14px;padding:14px 18px;
+  border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;transition:background .18s;
+}
+.cc-attention-item:last-child{border-bottom:none}
+.cc-attention-item:hover{background:rgba(255,255,255,.04)}
+.cc-attention-bar{width:3px;align-self:stretch;border-radius:3px;flex-shrink:0}
+.cc-attention-bar.danger{background:#ff6b81}
+.cc-attention-bar.warn{background:var(--tertiary)}
+.cc-attention-bar.info{background:var(--primary)}
+.cc-attention-icon{
+  width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:17px;flex-shrink:0;background:rgba(255,255,255,.05);
+}
+.cc-attention-body{flex:1;min-width:0}
+.cc-attention-title{font-family:var(--fh);font-size:13.5px;font-weight:800;color:var(--on-surface)}
+.cc-attention-sub{font-size:11.5px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-attention-count{
+  font-family:var(--fm);font-size:13px;font-weight:900;padding:3px 11px;border-radius:20px;flex-shrink:0;
+}
+.cc-attention-count.danger{background:rgba(255,107,129,.15);color:#ff6b81}
+.cc-attention-count.warn{background:rgba(255,185,95,.15);color:var(--tertiary)}
+.cc-attention-count.info{background:rgba(208,188,255,.15);color:var(--primary)}
+
+/* ── Live classroom pulse strip — fixed 5-per-row grid, no page stretch ── */
+.cc-pulse-strip{
+  display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;
+}
+/* Cards beyond the first 5 live inside this wrapper. display:contents lets
+   them slot into the same grid as their siblings instead of nesting a new
+   row; toggling .cc-hidden hides the whole batch at once. */
+.cc-pulse-extra-wrap{display:contents}
+.cc-pulse-extra-wrap.cc-hidden{display:none}
+.cc-pulse-card{
+  min-width:0;background:rgba(35,31,56,.75);
+  border:1px solid var(--border);border-radius:14px;padding:14px 16px;backdrop-filter:blur(10px);
+}
+.cc-pulse-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.cc-pulse-head-label{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-pulse-title{font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface);margin-bottom:6px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-pulse-hpbar{background:rgba(255,255,255,.08);border-radius:20px;height:6px;overflow:hidden;margin:6px 0}
+.cc-pulse-hpbar > div{height:100%;border-radius:20px;background:linear-gradient(90deg,#ec4899,#f472b6);
+  box-shadow:0 0 8px rgba(236,72,153,.5);transition:width .6s}
+.cc-pulse-meta{display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-muted);font-family:var(--fm);gap:6px}
+.cc-pulse-meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-pulse-event{display:flex;flex-direction:column;gap:2px}
+.cc-pulse-event-what{font-size:12px;color:var(--on-surface);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.cc-pulse-event-delta{font-family:var(--fh);font-weight:900;font-size:13px}
+
+/* "See more" toggle for pulse cards beyond the first row */
+.cc-pulse-more-btn{
+  display:flex;align-items:center;gap:6px;margin:12px auto 26px;padding:8px 18px;
+  border-radius:20px;border:1px solid var(--border);background:rgba(35,31,56,.7);
+  color:var(--text-muted);font-family:var(--fm);font-size:12px;font-weight:700;
+  cursor:pointer;transition:all .2s;
+}
+.cc-pulse-more-btn:hover{border-color:rgba(208,188,255,.3);color:var(--on-surface);background:rgba(35,31,56,.9)}
+.cc-pulse-more-btn .material-symbols-outlined{font-size:18px;transition:transform .2s}
+
+/* ── Trend & analytics preview ────────────────────────────────────────── */
+.cc-trend-row{display:flex;justify-content:space-between;margin-bottom:5px;font-size:11px}
+.cc-trend-row .cc-trend-label{color:var(--text-muted)}
+.cc-trend-row .cc-trend-val{font-weight:700}
+.cc-trend-track{background:rgba(255,255,255,.05);border-radius:20px;height:6px;overflow:hidden;margin-bottom:12px}
+.cc-trend-track > div{height:100%;border-radius:20px;transition:width .6s}
+.cc-mini-lb-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.cc-mini-lb-row:last-child{border-bottom:none}
+.cc-mini-lb-rank{font-family:var(--fm);font-size:11px;color:var(--text-muted);width:16px;flex-shrink:0}
+.cc-mini-lb-av{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:var(--fh);font-weight:900;font-size:9.5px;border:1.5px solid;flex-shrink:0}
+.cc-mini-lb-name{font-size:12.5px;font-weight:700;color:var(--on-surface);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-mini-lb-xp{font-family:var(--fh);font-size:12px;font-weight:800;color:var(--primary)}
+
+/* ── Shortcuts row ─────────────────────────────────────────────────────── */
+.cc-shortcut-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(126px,1fr));gap:12px}
+.cc-shortcut-card{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  padding:18px 10px;text-align:center;background:rgba(35,31,56,.7);border:1px solid var(--border);
+  border-radius:14px;cursor:pointer;transition:all .2s;
+}
+.cc-shortcut-card:hover{transform:translateY(-2px);border-color:rgba(208,188,255,.3);
+  box-shadow:0 8px 20px rgba(0,0,0,.3);background:rgba(35,31,56,.9)}
+.cc-shortcut-icon{font-size:22px}
+.cc-shortcut-label{font-size:11.5px;font-weight:700;color:var(--on-surface)}
+
+/* ── Hero band extras: 3rd accent blob + illustration + icon chips ────── */
+.cc-hero{padding:40px 44px 36px;min-height:220px}
+.page-hero-bg3{position:absolute;top:30%;right:18%;width:160px;height:160px;
+  background:radial-gradient(circle,rgba(255,185,95,0.10) 0%,transparent 70%);
+  border-radius:50%;pointer-events:none}
+
+.cc-hero-illust{position:absolute;top:6px;right:8px;width:300px;height:220px;
+  opacity:.9;pointer-events:none;z-index:0}
+.cc-hi-orb{fill:var(--primary)}
+.cc-hi-o2{fill:var(--secondary)}
+.cc-hi-o3{fill:var(--tertiary)}
+.cc-hi-o4{fill:var(--secondary)}
+.cc-hi-o5{fill:var(--tertiary)}
+.cc-hi-link{stroke:rgba(208,188,255,.25);stroke-width:1;fill:none}
+.cc-hi-o1{animation:ccOrbFloat 4.5s ease-in-out infinite}
+.cc-hi-o2{animation:ccOrbFloat 5.5s ease-in-out infinite .4s}
+.cc-hi-o3{animation:ccOrbFloat 3.8s ease-in-out infinite .8s}
+.cc-hi-o4{animation:ccOrbFloat 5s ease-in-out infinite .2s}
+.cc-hi-o5{animation:ccOrbFloat 4.2s ease-in-out infinite .6s}
+@keyframes ccOrbFloat{0%,100%{transform:translateY(0);opacity:.9}50%{transform:translateY(-7px);opacity:.5}}
+.cc-hi-cap{fill:none;stroke:var(--primary);stroke-width:3;stroke-linejoin:round;stroke-linecap:round;
+  animation:ccCapFloat 4s ease-in-out infinite}
+.cc-hi-cap path:nth-child(3){stroke:var(--secondary)}
+.cc-hi-tassel-tip{fill:var(--tertiary);stroke:none}
+@keyframes ccCapFloat{0%,100%{transform:translate(110px,60px)}50%{transform:translate(110px,52px)}}
+.cc-hi-sparkle{stroke:var(--tertiary);stroke-width:2;stroke-linecap:round;transform-origin:center;
+  animation:ccSparkleTwinkle 2.4s ease-in-out infinite}
+.cc-hi-s1{transform:translate(255,66)}
+.cc-hi-s2{animation-delay:.6s}
+.cc-hi-s3{animation-delay:1.2s;stroke:var(--secondary)}
+@keyframes ccSparkleTwinkle{0%,100%{opacity:.25;transform:scale(.7)}50%{opacity:1;transform:scale(1.15)}}
+
+.cc-health-metric{display:flex;flex-direction:column;align-items:flex-start}
+.cc-hm-icon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.cc-hm-icon .material-symbols-outlined{font-size:18px}
+
+/* ── Attention icon: severity-tinted chip instead of flat grey ─────────── */
+.cc-attention-icon.danger{background:rgba(255,107,129,.14)}
+.cc-attention-icon.warn{background:rgba(255,185,95,.14)}
+.cc-attention-icon.info{background:rgba(208,188,255,.14)}
+.cc-pulse-badge{animation:ccLiveDot 2s ease-in-out infinite}
+
+/* ── Pulse card color variants — replaces the one-grey-card-for-everything
+      look with mood per event type ── */
+.cc-pulse-boss{background:linear-gradient(160deg,rgba(236,72,153,.14),rgba(35,31,56,.85));
+  border-color:rgba(236,72,153,.3);box-shadow:0 0 24px rgba(236,72,153,.08)}
+.cc-pulse-dim{opacity:.75}
+.cc-pulse-good{background:linear-gradient(160deg,rgba(78,222,163,.08),rgba(35,31,56,.75));border-color:rgba(78,222,163,.22)}
+.cc-pulse-bad{background:linear-gradient(160deg,rgba(255,107,129,.08),rgba(35,31,56,.75));border-color:rgba(255,107,129,.22)}
+
+/* ── Empty states get a small illustration, not just an emoji ──────────── */
+.cc-empty-illust{width:100px;height:84px;margin:0 auto 6px}
+.cc-trend-empty{text-align:center;padding:22px 10px;color:var(--text-muted);display:flex;flex-direction:column;align-items:center;gap:10px}
+.cc-trend-empty .btn{margin-top:2px}
+
+/* ── Responsive (proposal §4.7 / §6.7) ───────────────────────────────── */
+@media(max-width:1439px){
+  .cc-layout{grid-template-columns:1fr !important}
+  .cc-pulse-strip{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media(max-width:1100px){
+  .cc-pulse-strip{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:767px){
+  .cc-hero-health{gap:16px}
+  .cc-shortcut-grid{grid-template-columns:repeat(3,1fr)}
+  .cc-pulse-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:480px){
+  .cc-pulse-strip{grid-template-columns:1fr}
+}

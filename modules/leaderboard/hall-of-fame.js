@@ -195,66 +195,197 @@ window.renderLeaderboard = renderLeaderboard;
 }
 .hol-card:hover{transform:translateY(-4px);}
 
-/* 1st place */
+/* 1st place — a card that looks like it's genuinely on fire: flickering
+   ember-orange glow (not a slow gold "breathe"), rising embers inside it. */
 .hol-card.rank1{
   width:280px;
-  box-shadow:0 0 0 1px rgba(255,185,95,.2),0 20px 60px rgba(0,0,0,.55),var(--hol-glow1-shadow,0 0 40px rgba(255,185,95,.12));
-  --hol-card-accent:linear-gradient(90deg,#f59e0b,#ffb95f,#f59e0b);
+  background:linear-gradient(165deg,rgba(124,45,18,.42) 0%,rgba(69,26,14,.6) 45%,rgba(23,12,10,.82) 100%);
+  box-shadow:0 0 0 1px rgba(249,115,22,.35),0 20px 60px rgba(0,0,0,.55),0 0 30px rgba(249,115,22,.3);
+  --hol-card-accent:linear-gradient(90deg,#7c2d12,#f97316,#fbbf24,#f97316,#7c2d12);
   z-index:3;
+  animation:holFireFlicker 1.6s ease-in-out infinite;
+}
+.hol-card.rank1::before{
+  background-size:200% 100%;
+  animation:holAccentShimmer 2.4s linear infinite;
+}
+/* Irregular multi-stop flicker — reads as fire, not a metronome pulse */
+@keyframes holFireFlicker{
+  0%  {box-shadow:0 0 0 1px rgba(249,115,22,.35),0 20px 60px rgba(0,0,0,.55),0 0 28px rgba(249,115,22,.32),0 0 55px rgba(234,88,12,.14);}
+  22% {box-shadow:0 0 0 1px rgba(251,146,60,.5), 0 20px 60px rgba(0,0,0,.55),0 0 44px rgba(249,115,22,.5), 0 0 78px rgba(234,88,12,.22);}
+  41% {box-shadow:0 0 0 1px rgba(234,88,12,.3), 0 20px 60px rgba(0,0,0,.55),0 0 32px rgba(249,115,22,.38),0 0 58px rgba(234,88,12,.16);}
+  63% {box-shadow:0 0 0 1px rgba(251,191,36,.5),0 20px 60px rgba(0,0,0,.55),0 0 50px rgba(251,146,60,.55),0 0 86px rgba(234,88,12,.24);}
+  85% {box-shadow:0 0 0 1px rgba(249,115,22,.4),0 20px 60px rgba(0,0,0,.55),0 0 36px rgba(249,115,22,.4), 0 0 62px rgba(234,88,12,.18);}
+  100%{box-shadow:0 0 0 1px rgba(249,115,22,.35),0 20px 60px rgba(0,0,0,.55),0 0 28px rgba(249,115,22,.32),0 0 55px rgba(234,88,12,.14);}
+}
+@keyframes holAccentShimmer{
+  0%{background-position:0% 0}
+  100%{background-position:200% 0}
 }
 .hol-card.rank1:hover{
-  box-shadow:0 0 0 1px rgba(255,185,95,.35),0 28px 70px rgba(0,0,0,.6),0 0 50px rgba(255,185,95,.18);
+  box-shadow:0 0 0 1px rgba(251,146,60,.55),0 28px 70px rgba(0,0,0,.6),0 0 60px rgba(249,115,22,.4);
 }
-/* 2nd place */
+/* Embers rising inside the card — clipped by the card's own rounded
+   corners (overflow:hidden), so they stay contained and never bleed
+   into the layout around it */
+.hol-embers{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0;border-radius:20px;}
+.hol-ember{
+  position:absolute;bottom:-6px;width:4px;height:4px;border-radius:50%;
+  background:radial-gradient(circle,#fff7ed 0%,#fde68a 35%,#f97316 70%,transparent 100%);
+  opacity:0;
+  animation:holEmberRise 3.2s ease-in infinite;
+}
+@keyframes holEmberRise{
+  0%{transform:translate(0,0) scale(1);opacity:0;}
+  10%{opacity:.9;}
+  70%{opacity:.5;}
+  100%{transform:translate(6px,-300px) scale(.25);opacity:0;}
+}
+/* Recolor the rising particles for 2nd (icy) and 3rd (bronze) so each
+   podium spot gets its own themed "aura" instead of reusing fire-orange */
+.hol-embers-icy .hol-ember{
+  background:radial-gradient(circle,#ffffff 0%,#e0f2fe 35%,#7dd3fc 70%,transparent 100%);
+}
+.hol-embers-bronze .hol-ember{
+  background:radial-gradient(circle,#fde9c8 0%,#e3a35c 35%,#92400e 70%,transparent 100%);
+}
+/* 2nd place — cool icy/silver theme (frosted steel, not fire) */
 .hol-card.rank2{
   width:230px;
-  box-shadow:0 0 0 1px rgba(203,213,225,.12),0 14px 40px rgba(0,0,0,.4);
-  --hol-card-accent:linear-gradient(90deg,#94a3b8,#cbd5e1,#94a3b8);
+  background:linear-gradient(165deg,rgba(100,116,139,.28) 0%,rgba(51,65,85,.5) 45%,rgba(15,23,42,.78) 100%);
+  --hol-card-accent:linear-gradient(90deg,#94a3b8,#e2e8f0,#94a3b8);
+  transition:transform .25s cubic-bezier(.4,0,.2,1),box-shadow .3s,border-color .25s;
+  animation:holIcyShimmer 2.6s ease-in-out infinite;
 }
-/* 3rd place */
+.hol-card.rank2::before{
+  background-size:200% 100%;
+  animation:holAccentShimmer 3s linear infinite;
+}
+@keyframes holIcyShimmer{
+  0%,100%{box-shadow:0 0 0 1px rgba(203,213,225,.22),0 14px 40px rgba(0,0,0,.4),0 0 20px rgba(148,163,184,.16);}
+  50%{box-shadow:0 0 0 1px rgba(226,232,240,.4),0 14px 40px rgba(0,0,0,.4),0 0 34px rgba(203,213,225,.32);}
+}
+.hol-card.rank2:hover{
+  box-shadow:0 0 0 1px rgba(226,232,240,.4),0 18px 50px rgba(0,0,0,.45),0 0 32px rgba(203,213,225,.3);
+}
+.hol-card.rank2 .hol-portrait{
+  border-color:#cbd5e1 !important;
+  box-shadow:0 0 0 3px rgba(203,213,225,.18),0 0 14px rgba(203,213,225,.35);
+}
+
+/* 3rd place — warm bronze/copper theme */
 .hol-card.rank3{
   width:210px;
-  box-shadow:0 0 0 1px rgba(205,127,50,.12),0 12px 35px rgba(0,0,0,.4);
+  background:linear-gradient(165deg,rgba(146,64,14,.24) 0%,rgba(87,49,20,.48) 45%,rgba(28,17,10,.78) 100%);
   --hol-card-accent:linear-gradient(90deg,#92400e,#cd7f32,#92400e);
+  transition:transform .25s cubic-bezier(.4,0,.2,1),box-shadow .3s,border-color .25s;
+  animation:holBronzeGlow 2.8s ease-in-out infinite;
+}
+.hol-card.rank3::before{
+  background-size:200% 100%;
+  animation:holAccentShimmer 3.4s linear infinite;
+}
+@keyframes holBronzeGlow{
+  0%,100%{box-shadow:0 0 0 1px rgba(205,127,50,.22),0 12px 35px rgba(0,0,0,.4),0 0 18px rgba(205,127,50,.14);}
+  50%{box-shadow:0 0 0 1px rgba(224,150,80,.4),0 12px 35px rgba(0,0,0,.4),0 0 30px rgba(205,127,50,.3);}
+}
+.hol-card.rank3:hover{
+  box-shadow:0 0 0 1px rgba(205,127,50,.35),0 16px 45px rgba(0,0,0,.45),0 0 28px rgba(205,127,50,.28);
+}
+.hol-card.rank3 .hol-portrait{
+  border-color:#cd7f32 !important;
+  box-shadow:0 0 0 3px rgba(205,127,50,.18),0 0 14px rgba(205,127,50,.35);
 }
 
 /* ════════════════════════════════════════════════════════
-   HOL: Crown (only 1st)
+   HOL: Crown (only 1st) — lives INSIDE .hol-portrait-wrap
+   (not .hol-card) and sits low, right on the head, slightly
+   overlapping the photo. The card has overflow:hidden, so
+   anything positioned above the card's own top edge gets
+   clipped invisible — this is why the old crown "disappeared".
    ════════════════════════════════════════════════════════ */
 .hol-crown-wrap{
-  position:absolute;top:-18px;left:50%;transform:translateX(-50%);
-  width:36px;height:36px;z-index:5;pointer-events:none;
+  position:absolute;top:-16px;left:50%;transform:translateX(-50%);
+  width:50px;height:36px;z-index:6;pointer-events:none;
+  animation:holCrownFloat 2.6s ease-in-out infinite;
 }
-.hol-crown-wrap svg{filter:drop-shadow(0 2px 6px rgba(255,185,95,.6))}
+.hol-crown-wrap svg{filter:drop-shadow(0 3px 8px rgba(0,0,0,.55)) drop-shadow(0 0 10px var(--hol-crown-glow,rgba(249,115,22,.7)));
+  overflow:visible;}
+/* Silver (2nd) and bronze (3rd) crowns sit a touch smaller than gold */
+.hol-crown-wrap.hol-crown-wrap-sm{
+  top:-12px;width:40px;height:28px;
+  animation:holCrownFloat 2.9s ease-in-out infinite;
+}
+@keyframes holCrownFloat{
+  0%,100%{transform:translateX(-50%) translateY(0);}
+  50%{transform:translateX(-50%) translateY(-3px);}
+}
 
 /* ════════════════════════════════════════════════════════
-   HOL: Card portrait
+   HOL: Card portrait — kept simple on purpose. The dominant
+   effect lives on the card (embers + flicker), not stacked
+   ornamentation around the photo.
    ════════════════════════════════════════════════════════ */
 .hol-portrait-wrap{
   position:relative;
   margin-top:18px;margin-bottom:12px;
 }
+.hol-card.rank1 .hol-portrait-wrap{margin-top:20px;}
 .hol-portrait{
   border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-family:var(--fh);font-weight:900;position:relative;overflow:hidden;
   transition:box-shadow .25s;
   border:3px solid transparent;
+  z-index:1;
 }
 /* Sizes by rank */
 .hol-card.rank1 .hol-portrait{width:120px;height:120px;font-size:40px;}
 .hol-card.rank2 .hol-portrait{width:100px;height:100px;font-size:32px;}
 .hol-card.rank3 .hol-portrait{width:90px;height:90px;font-size:28px;}
+/* Warm ember ring instead of the student's usual colour, so the
+   champion's photo visually belongs to the fire theme */
+.hol-card.rank1 .hol-portrait{
+  border-color:#f97316 !important;
+  box-shadow:0 0 0 3px rgba(249,115,22,.25),0 0 20px rgba(249,115,22,.5);
+}
 
-/* Rank badge overlaid on bottom-right of portrait */
+/* Rank badge overlaid on bottom-center of portrait */
 .hol-rank-badge{
-  position:absolute;bottom:-4px;right:-4px;
+  position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
   width:22px;height:22px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
   font-size:13px;line-height:1;
   border:2px solid rgba(13,12,22,.9);
   background:rgba(13,12,22,.8);
+  z-index:2;
 }
-.hol-card.rank1 .hol-rank-badge{width:26px;height:26px;font-size:15px;}
+.hol-rank-badge.hol-rank-badge-fire{
+  width:30px;height:30px;font-size:15px;
+  background:radial-gradient(circle,#fde68a,#f97316 60%,#c2410c 100%);
+  border:2px solid rgba(13,12,22,.9);
+  bottom:-8px;
+  animation:holBadgeFireFlicker 1.4s ease-in-out infinite;
+}
+@keyframes holBadgeFireFlicker{
+  0%,100%{box-shadow:0 0 8px rgba(249,115,22,.55);}
+  50%{box-shadow:0 0 18px rgba(251,146,60,.95);}
+}
+.hol-card.rank2 .hol-rank-badge{
+  background:radial-gradient(circle,#f1f5f9,#94a3b8 65%,#64748b 100%);
+  animation:holBadgeIcyShimmer 2.2s ease-in-out infinite;
+}
+@keyframes holBadgeIcyShimmer{
+  0%,100%{box-shadow:0 0 6px rgba(203,213,225,.45);}
+  50%{box-shadow:0 0 14px rgba(226,232,240,.85);}
+}
+.hol-card.rank3 .hol-rank-badge{
+  background:radial-gradient(circle,#fbcf9d,#cd7f32 65%,#92400e 100%);
+  animation:holBadgeBronzeGlow 2.4s ease-in-out infinite;
+}
+@keyframes holBadgeBronzeGlow{
+  0%,100%{box-shadow:0 0 6px rgba(205,127,50,.45);}
+  50%{box-shadow:0 0 14px rgba(224,150,80,.85);}
+}
 
 /* Portrait image */
 .hol-portrait img{
@@ -271,31 +402,18 @@ window.renderLeaderboard = renderLeaderboard;
   color:var(--on-surface);line-height:1.2;
   padding:0 10px;
 }
-.hol-card.rank1 .hol-card-name{font-size:18px;margin-bottom:3px;}
-.hol-card.rank2 .hol-card-name{font-size:16px;margin-bottom:3px;}
-.hol-card.rank3 .hol-card-name{font-size:15px;margin-bottom:3px;}
-
-.hol-card-title{
-  font-family:var(--fm);font-size:8px;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--hol-title-color,rgba(240,238,255,.45));
-  text-align:center;padding:0 8px;min-height:14px;
-  margin-bottom:8px;
-  line-height:0;
-  display:flex;align-items:center;justify-content:center;
-}
-.hol-card-title .ts-badge-wrap{
-  transform:scale(0.70);
-  transform-origin:center center;
-}
+.hol-card.rank1 .hol-card-name{font-size:30px;margin-bottom:3px;}
+.hol-card.rank2 .hol-card-name{font-size:24px;margin-bottom:3px;}
+.hol-card.rank3 .hol-card-name{font-size:24px;margin-bottom:3px;}
 
 .hol-card-score{
   font-family:var(--fh);font-weight:900;text-align:center;
   color:var(--hol-accent-color,#ffb95f);
   letter-spacing:-.02em;
 }
-.hol-card.rank1 .hol-card-score{font-size:17px;}
-.hol-card.rank2 .hol-card-score{font-size:14px;}
-.hol-card.rank3 .hol-card-score{font-size:13px;}
+.hol-card.rank1 .hol-card-score{font-size:30px;}
+.hol-card.rank2 .hol-card-score{font-size:24px;}
+.hol-card.rank3 .hol-card-score{font-size:24px;}
 
 .hol-card-score-lbl{
   font-size:9px;color:rgba(240,238,255,.3);font-weight:700;
@@ -303,21 +421,30 @@ window.renderLeaderboard = renderLeaderboard;
 }
 
 /* ════════════════════════════════════════════════════════
-   HOL: Podium platform base (the stepped block under cards)
+   HOL: Card title / equipped-title badge — now lives where the
+   plinth used to be (bottom of the card) and rendered at full
+   size instead of shrunk down.
+   NOTE: this container previously set line-height:0, which is
+   an inherited property — it was cascading into the equipped
+   title badge's .ts-badge-text span. That span sits inside
+   .ts-badge-wrap, which clips with overflow:hidden, so a
+   zero-height inherited line box was clipping the label text
+   completely invisible (only the badge's SVG frame showed).
+   Reset to line-height:normal fixes it.
    ════════════════════════════════════════════════════════ */
-.hol-plinth-wrap{
-  display:flex;flex-direction:column;align-items:center;
-  width:100%;
-}
-.hol-plinth{
-  width:100%;border-radius:0 0 14px 14px;
+.hol-card-title{
+  font-family:var(--fm);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--hol-title-color,rgba(240,238,255,.55));
+  text-align:center;padding:0 8px;min-height:36px;
+  margin-top:12px;
+  line-height:normal;
   display:flex;align-items:center;justify-content:center;
-  font-family:var(--fm);font-size:10px;font-weight:900;letter-spacing:.1em;
-  color:rgba(240,238,255,.25);
 }
-.hol-card.rank1 .hol-plinth{height:52px;background:linear-gradient(180deg,rgba(255,185,95,.12),rgba(255,185,95,.05));}
-.hol-card.rank2 .hol-plinth{height:38px;background:linear-gradient(180deg,rgba(203,213,225,.07),rgba(203,213,225,.02));}
-.hol-card.rank3 .hol-plinth{height:28px;background:linear-gradient(180deg,rgba(205,127,50,.07),rgba(205,127,50,.02));}
+.hol-card-title .ts-badge-wrap{
+  transform:scale(1);
+  transform-origin:center center;
+  line-height:normal;
+}
 
 /* ════════════════════════════════════════════════════════
    HOL: "My rank" ribbon at bottom of podium section
@@ -408,13 +535,14 @@ window.renderLeaderboard = renderLeaderboard;
   font-family:var(--fm);font-size:9px;letter-spacing:.07em;text-transform:uppercase;
   color:rgba(240,238,255,.38);margin-top:2px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  line-height:0;
+  line-height:normal;
 }
 /* Scale the badge wrap down when it's inside a leaderboard row */
 .hol-row-title .ts-badge-wrap{
   transform:scale(0.52);
   transform-origin:left center;
   vertical-align:middle;
+  line-height:normal;
 }
 .hol-row-sub{
   font-size:11px;color:var(--text-muted);margin-top:1px;
@@ -430,7 +558,21 @@ window.renderLeaderboard = renderLeaderboard;
 /* ════════════════════════════════════════════════════════
    HOL: Top 3 in full list get a subtle medal tint
    ════════════════════════════════════════════════════════ */
-.hol-row.top3-gold{border-color:rgba(255,185,95,.18);background:rgba(255,185,95,.03);}
+.hol-row.top3-gold{
+  border-color:rgba(255,185,95,.4);
+  background:linear-gradient(100deg,rgba(255,185,95,.1) 0%,rgba(255,185,95,.02) 30%,rgba(255,185,95,.1) 60%,rgba(255,185,95,.02) 100%);
+  box-shadow:0 0 0 1px rgba(255,185,95,.25),0 0 16px rgba(255,185,95,.18);
+  padding:14px 14px;
+}
+.hol-row.top3-gold .hol-row-rank{
+  font-size:20px;width:36px;
+  filter:drop-shadow(0 0 6px rgba(255,185,95,.7));
+}
+.hol-row.top3-gold .hol-row-av{
+  border-color:#f59e0b88 !important;
+  box-shadow:0 0 0 2px rgba(255,185,95,.35),0 0 14px rgba(255,185,95,.4);
+}
+.hol-row.top3-gold .hol-row-score-main{font-size:15px;text-shadow:0 0 12px rgba(255,185,95,.5);}
 .hol-row.top3-silver{border-color:rgba(203,213,225,.12);}
 .hol-row.top3-bronze{border-color:rgba(205,127,50,.12);}
 
@@ -480,10 +622,27 @@ window.renderLeaderboard = renderLeaderboard;
   .hol-card.rank3 .hol-portrait{width:52px;height:52px;font-size:16px;}
   .hol-scene-title{font-size:17px;}
   .hol-podium-row{padding:0 8px;}
+  .hol-crown-wrap{width:36px;height:26px;top:-20px;}
+  .hol-portrait-ring{inset:-6px;}
+  .hol-rank-wreath{width:64px;height:38px;bottom:-16px;}
+  .hol-card.rank1 .hol-portrait-wrap::before{width:150px;height:150px;}
+  .hol-card.rank1 .hol-card-name,.hol-card.rank1 .hol-card-score{font-size:20px;}
+  .hol-card.rank2 .hol-card-name,.hol-card.rank2 .hol-card-score,
+  .hol-card.rank3 .hol-card-name,.hol-card.rank3 .hol-card-score{font-size:16px;}
+  .hol-card-title{min-height:26px;margin-top:8px;}
+  .hol-card-title .ts-badge-wrap{transform:scale(0.7);}
 }
 @media(prefers-reduced-motion:reduce){
   .hol-stage,.hol-row{animation:none!important;}
   .hol-card{transition:none!important;}
+  .hol-card.rank1,.hol-card.rank1::before,.hol-card.rank1 .hol-portrait-wrap::before,
+  .hol-card.rank1 .hol-portrait-wrap::after,.hol-crown-wrap,
+  .hol-rank-wreath,.hol-row.top3-gold,.hol-row.top3-gold .hol-row-rank,
+  .hol-card.rank2,.hol-card.rank2::before,.hol-card.rank3,.hol-card.rank3::before,
+  .hol-rank-badge,.hol-ember{
+    animation:none!important;
+  }
+  .hol-embers{display:none;}
 }
     `;
     document.head.appendChild(s);
@@ -593,8 +752,8 @@ window.renderLeaderboard = renderLeaderboard;
   // ─────────────────────────────────────────────────────────────────────────────
   function _holRenderCard(entry, rankNum, catKey, meta) {
     if (!entry) {
-      return `<div class="hol-card rank${rankNum}" style="opacity:.3;padding-bottom:0;">
-        <div class="hol-plinth-wrap"><div class="hol-plinth">#${rankNum}</div></div>
+      return `<div class="hol-card rank${rankNum}" style="opacity:.3;padding-bottom:24px;">
+        <div style="color:rgba(240,238,255,.25);font-family:var(--fm);font-size:11px;font-weight:800;letter-spacing:.08em;padding-top:20px;text-align:center;">#${rankNum}</div>
       </div>`;
     }
     const s      = entry.student;
@@ -618,16 +777,48 @@ window.renderLeaderboard = renderLeaderboard;
            <span class="hol-portrait-init">${s.init}</span>
          </div>`;
 
-    const crownHtml = rankNum === 1 ? `
-      <div class="hol-crown-wrap">
-        <svg viewBox="0 0 36 26" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="26">
-          <path d="M2 22 L8 6 L18 14 L28 6 L34 22 Z" fill="#f59e0b" stroke="#ffb95f" stroke-width="1.2" stroke-linejoin="round"/>
-          <circle cx="2"  cy="22" r="2.4" fill="#f59e0b"/>
-          <circle cx="34" cy="22" r="2.4" fill="#f59e0b"/>
-          <circle cx="18" cy="6"  r="2.4" fill="#fbbf24"/>
-          <circle cx="8"  cy="6"  r="1.8" fill="#fbbf24"/>
-          <circle cx="28" cy="6"  r="1.8" fill="#fbbf24"/>
-          <rect x="1" y="22" width="34" height="3.5" rx="1.5" fill="#d97706"/>
+    // Rank1 gets the full 6-particle ember plume (it's the centerpiece);
+    // rank2/rank3 get a lighter 4-particle plume recolored to match their
+    // theme, so all three podium spots feel alive without tripling the
+    // total particle count animating on screen at once.
+    const emberLefts     = [10, 24, 40, 58, 74, 88];
+    const secondaryLefts = [16, 38, 62, 84];
+    const particleThemeClass = rankNum === 1 ? 'hol-embers-fire'
+      : rankNum === 2 ? 'hol-embers-icy'
+      : rankNum === 3 ? 'hol-embers-bronze' : '';
+    const particleLefts = rankNum === 1 ? emberLefts : secondaryLefts;
+    const embersHtml = (rankNum >= 1 && rankNum <= 3)
+      ? `<div class="hol-embers ${particleThemeClass}">${particleLefts.map((left, i) =>
+          `<span class="hol-ember" style="left:${left}%;animation-delay:${(i * 0.5).toFixed(1)}s;animation-duration:${(2.6 + (i % 3) * 0.4).toFixed(1)}s"></span>`
+        ).join('')}</div>`
+      : '';
+
+    const rankBadgeHtml = rankNum === 1
+      ? `<div class="hol-rank-badge hol-rank-badge-fire">1</div>`
+      : `<div class="hol-rank-badge">${medals[rankNum - 1]}</div>`;
+
+    // Crown lives inside .hol-portrait-wrap (not .hol-card) and sits low —
+    // .hol-card has overflow:hidden, so anything above the card's own top
+    // edge gets clipped invisible. Placing it here, low, guarantees it's
+    // actually on screen, resting right on the portrait. Gold for 1st,
+    // silver for 2nd, bronze for 3rd — same shape, recolored + slightly
+    // smaller for 2nd/3rd so 1st still reads as the champion.
+    const crownPalette = {
+      1: { base: '#f59e0b', jewel: '#fde68a', side: '#fbbf24', band: '#d97706', glow: 'rgba(249,115,22,.7)' },
+      2: { base: '#cbd5e1', jewel: '#f8fafc', side: '#e2e8f0', band: '#64748b', glow: 'rgba(203,213,225,.65)' },
+      3: { base: '#cd7f32', jewel: '#fbcf9d', side: '#e3a35c', band: '#92400e', glow: 'rgba(205,127,50,.65)' },
+    };
+    const cp = crownPalette[rankNum];
+    const crownHtml = (cp) ? `
+      <div class="hol-crown-wrap${rankNum !== 1 ? ' hol-crown-wrap-sm' : ''}" style="--hol-crown-glow:${cp.glow}">
+        <svg viewBox="0 0 46 34" fill="none" xmlns="http://www.w3.org/2000/svg" width="${rankNum === 1 ? 46 : 38}" height="${rankNum === 1 ? 34 : 28}" overflow="visible">
+          <path d="M3 29 L10 8 L23 18 L36 8 L43 29 Z" fill="${cp.base}" stroke="${cp.side}" stroke-width="1.4" stroke-linejoin="round"/>
+          <circle cx="3"  cy="29" r="2.8" fill="${cp.base}"/>
+          <circle cx="43" cy="29" r="2.8" fill="${cp.base}"/>
+          <circle cx="23" cy="8"  r="3" fill="${cp.jewel}"/>
+          <circle cx="10" cy="8"  r="2.2" fill="${cp.side}"/>
+          <circle cx="36" cy="8"  r="2.2" fill="${cp.side}"/>
+          <rect x="1.5" y="28.5" width="42" height="4.2" rx="1.8" fill="${cp.band}"/>
         </svg>
       </div>` : '';
 
@@ -635,24 +826,24 @@ window.renderLeaderboard = renderLeaderboard;
     const firstName   = displayName.split(' ')[0];
 
     // tsBuildBadgeHTML typeof guard — safe until Day 8 (titles module)
+    // Rendered at full size (not opts.small) now that it lives in the
+    // bigger footprint left behind by the removed plinth.
     const titleObj = _holGetTitleObj(s);
     const titleDisplayHTML = (titleObj && typeof tsBuildBadgeHTML === 'function')
-      ? `<div class="hol-card-title" style="margin-bottom:8px;display:flex;justify-content:center;align-items:center">${tsBuildBadgeHTML(titleObj, { small: true, noParticles: true })}</div>`
+      ? `<div class="hol-card-title">${tsBuildBadgeHTML(titleObj, { noParticles: true })}</div>`
       : (title ? `<div class="hol-card-title" style="--hol-title-color:${color}88">${title}</div>` : '');
 
     return `<div class="hol-card rank${rankNum}" title="${displayName}" style="">
-      ${crownHtml}
+      ${embersHtml}
       <div class="hol-portrait-wrap">
         ${portraitHtml}
-        <div class="hol-rank-badge">${medals[rankNum - 1]}</div>
+        ${crownHtml}
+        ${rankBadgeHtml}
       </div>
       <div class="hol-card-name">${firstName}</div>
-      ${titleDisplayHTML}
       <div class="hol-card-score" style="color:${meta.color}">${entry.scoreLabel}</div>
       <div class="hol-card-score-lbl">${catKey === 'boss' ? 'damage' : catKey === 'recitation' ? 'points' : 'score'}</div>
-      <div class="hol-plinth-wrap" style="margin-top:12px">
-        <div class="hol-plinth">#${rankNum}</div>
-      </div>
+      ${titleDisplayHTML}
     </div>`;
   }
 
@@ -743,7 +934,7 @@ window.renderLeaderboard = renderLeaderboard;
         break;
     }
 
-    const rankLabel = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+    const rankLabel = rank === 1 ? '👑' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
 
     // tsBuildBadgeHTML typeof guard
     const titleObj = _holGetTitleObj(s);
@@ -912,7 +1103,7 @@ window.renderLeaderboard = renderLeaderboard;
       </div>
     </div>
     <div id="hol-list-${activeTab}">
-      ${entries.map((e, i) => _holRenderRow(e, activeTab, meta, Math.min(i * 22, 200))).join('')}
+      ${entries.filter(e => e.rank > 3).map((e, i) => _holRenderRow(e, activeTab, meta, Math.min(i * 22, 200))).join('')}
     </div>`
     }`;
   };

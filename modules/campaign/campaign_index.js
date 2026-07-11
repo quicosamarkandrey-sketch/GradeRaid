@@ -56,49 +56,20 @@
 .stage-connector::before{content:'';position:absolute;width:3px;height:100%;background:linear-gradient(to bottom,var(--from-color,rgba(255,255,255,.08)),var(--to-color,rgba(255,255,255,.08)));border-radius:2px}
 .stage-connector.locked-dots::before{background:repeating-linear-gradient(to bottom,rgba(255,255,255,.1) 0px,rgba(255,255,255,.1) 4px,transparent 4px,transparent 8px)}
 
-/* ── Campaign overlay (quest engine) ── */
-#campaign-overlay{position:fixed;inset:0;z-index:850;background:#0a0914;display:flex;flex-direction:column;opacity:0;pointer-events:none;transition:opacity .3s}
-#campaign-overlay.open{opacity:1;pointer-events:all}
-.camp-hud{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:rgba(0,0,0,.6);border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0;gap:8px;flex-wrap:wrap}
-.camp-hud-left{display:flex;flex-direction:column;min-width:0}
-.camp-hud-stage{font-family:var(--fm);font-size:9px;color:var(--secondary);letter-spacing:.12em}
-.camp-hud-title{font-family:var(--fh);font-size:14px;font-weight:900;color:var(--on-surface)}
-.camp-lives-row{display:flex;gap:3px;font-size:18px}
-.camp-heart.lost{filter:grayscale(1);opacity:.3}
-.camp-enemy-bar-wrap{display:none;flex:1;max-width:200px}
-.camp-enemy-name-row{font-family:var(--fm);font-size:9px;color:var(--text-muted);letter-spacing:.08em;margin-bottom:3px}
-.camp-enemy-hp-track{background:rgba(255,255,255,.08);border-radius:4px;height:6px;overflow:hidden}
-.camp-enemy-hp-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#ef4444,#f97316);transition:width .4s}
-#camp-scene{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
-#camp-bg{position:absolute;inset:0;transition:background .6s}
-#camp-story-panel{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;justify-content:flex-end;padding:24px}
-.camp-speaker-tag{font-family:var(--fm);font-size:10px;font-weight:900;letter-spacing:.12em;color:var(--primary);margin-bottom:8px}
-.camp-narr-box{background:rgba(10,9,20,.9);border:1px solid rgba(208,188,255,.2);border-radius:14px;padding:18px 20px;backdrop-filter:blur(12px)}
-.camp-narr-text{font-size:14px;color:var(--on-surface);line-height:1.7;min-height:60px}
-.camp-continue-hint{font-family:var(--fm);font-size:10px;color:rgba(208,188,255,.4);letter-spacing:.1em;margin-top:10px;text-align:right;animation:achBadgePulse 1.5s ease-in-out infinite}
-#camp-encounter{display:none;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;position:relative;z-index:1}
-.camp-enemy-sprite-wrap{font-size:72px;line-height:1;text-align:center;animation:tsFloat 3s ease-in-out infinite}
-.camp-enemy-title-tag{font-family:var(--fm);font-size:10px;color:var(--error);letter-spacing:.12em;font-weight:700}
-.camp-question-box{background:rgba(10,9,20,.92);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:18px 20px;width:100%;max-width:560px;backdrop-filter:blur(12px)}
-.camp-q-text{font-size:15px;font-weight:700;color:var(--on-surface);line-height:1.5;margin-bottom:4px}
-.camp-q-progress{font-family:var(--fm);font-size:9px;color:var(--text-muted);letter-spacing:.08em;margin-bottom:14px}
-#camp-options{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.camp-opt{background:rgba(35,31,56,.9);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 12px;color:var(--on-surface);font-size:13px;font-weight:600;cursor:pointer;text-align:left;transition:all .15s;font-family:var(--fb);display:flex;align-items:flex-start;gap:8px}
-.camp-opt:hover:not(.correct):not(.wrong){background:rgba(139,92,246,.15);border-color:rgba(208,188,255,.3)}
-.camp-opt.correct{background:rgba(78,222,163,.15);border-color:rgba(78,222,163,.5);color:#4edea3}
-.camp-opt.wrong{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.4);color:#f87171}
-.camp-opt-letter{width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:10px;font-weight:900;flex-shrink:0}
-#camp-result{display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:32px 20px;text-align:center;position:relative;z-index:1}
-.camp-res-emoji{font-size:64px;line-height:1}
-.camp-res-title{font-family:var(--fh);font-size:28px;font-weight:900}
-.camp-res-sub{font-size:14px;color:var(--text-muted);max-width:400px}
-.camp-rewards-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
-.camp-reward-badge{background:rgba(35,31,56,.8);border:1px solid;border-radius:12px;padding:12px 18px;text-align:center;min-width:90px}
-.camp-reward-val{font-family:var(--fh);font-size:22px;font-weight:900;margin-bottom:4px}
-.camp-reward-lbl{font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
-.camp-res-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
-@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
-#camp-scene.shake{animation:shake .4s ease}
+/* ── Legacy duplicate campaign-overlay block removed here ──
+   This used to redefine #campaign-overlay/#camp-scene/#camp-story-panel/
+   #camp-encounter/#camp-result/#camp-options by ID, injected into <head>
+   at runtime. Since IDs always beat the real class-based rules in
+   campaign.css (.camp-story-panel, .camp-encounter, .camp-result,
+   .camp-options, etc.) regardless of load order, this leftover copy was
+   the actual live cause of the "narration on top" bug — campaign.css's
+   own copy of this same block was already removed (see the matching note
+   there), but this JS-injected twin was never cleaned up, so the bug
+   never actually went away. Its class-only rules (.camp-hud, .camp-narr-
+   box, .camp-q-text, .camp-res-emoji, etc.) never matched anything — the
+   real elements use .camp-story-panel/.camp-narration/.camp-question-text/
+   .camp-result-emoji etc., defined in campaign.css — so nothing is lost
+   by removing it. */
 
 /* ── Admin stage map editor ── */
 .smap-admin-card{background:rgba(35,31,56,.85);border:1px solid var(--border);border-radius:16px;overflow:hidden;backdrop-filter:blur(12px)}

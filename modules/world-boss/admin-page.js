@@ -399,11 +399,51 @@ window.showFieldErr = function (fieldId, errId) {
 
 // ── Boss form save ────────────────────────────────────────────────────────────
 
+// ── Spawn section (BUGFIX: bosses used to silently inherit whichever
+// section the teacher's deck happened to have "active" — window.ActiveSection
+// — with no way to see or choose it up front. That could land a boss in a
+// section this teacher doesn't even advise, which boss_events' own RLS write
+// policy (is_staff_for_section) then correctly rejects at save time as a
+// "new row violates row-level security policy" error. This lists only
+// sections the current account is actually allowed to write to, so the
+// dropdown and the RLS check always agree. ──────────────────────────────────
+function _wbSpawnableSections() {
+  const state = (typeof AppStore !== 'undefined') ? AppStore.getState() : {};
+  const uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : null;
+  const isAdmin = (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin');
+  const sections = (state.classSections || []).filter(s => !s.archived);
+
+  if (!sections.length) {
+    // Section Maker hasn't been used yet — same derive-from-students
+    // fallback every other class dropdown in the app uses.
+    const ids = window.getActiveClassIds ? window.getActiveClassIds(state) : ['default-class'];
+    return ids.map(id => ({ id, label: id }));
+  }
+
+  const mine = isAdmin ? sections : sections.filter(s => s.adviserId === uid);
+  return mine.map(s => ({ id: s.id, label: 'Grade ' + s.gradeLevel + ' – ' + s.sectionName }));
+}
+
 window.saveBossForm = function () {
   const d = window._bossDraft;
   if (!d) return;
+  // BUGFIX (double-submit race): this button has no disable/loading guard
+  // (unlike login/logout, which use eqButtonLoading), so a fast double-click
+  // could run this function twice before closeModalForce() removes the
+  // modal — pushing the SAME boss into DB.bossEvents twice in quick
+  // succession. Whichever copy's autosave cycle fires first can race the
+  // debounced persist layer and reach Supabase before every field (notably
+  // currentHp, set further down) is guaranteed settled, occasionally
+  // tripping the current_hp NOT NULL constraint before a later cycle with
+  // the complete object corrects it. A simple reentrancy guard, cleared
+  // once this run finishes, makes a second click within the same tick a
+  // no-op instead of a race.
+  if (window._bossFormSaving) return;
+  window._bossFormSaving = true;
+  try {
   d.name        = (document.getElementById('bf-name')?.value || '').trim();
   d.description = (document.getElementById('bf-desc')?.value || '').trim();
+  d.classId     = document.getElementById('bf-section')?.value || d.classId || 'default-class';
   const libId   = (document.getElementById('bf-library-id')?.value || '').trim();
   d._bossLibraryId = libId || null;
   if (libId) {
@@ -445,6 +485,7 @@ window.saveBossForm = function () {
   d.victoryMessage      = (document.getElementById('bf-vic-msg')?.value    || '').trim();
 
   let valid = true;
+  if (!d.classId)                              { toast('⚠️ You need an active section to spawn a boss into — create one in Section Maker first.', '#ffb4ab'); valid = false; }
   if (!d.name)                                 { showFieldErr('bf-name',  'bf-name-err');  valid = false; }
   if (!d.image && !d._bossLibraryId)           { toast('⚠️ Please link a Boss Studio profile or add an emoji/image', '#ffb4ab'); valid = false; }
   if (!d.maxHp || d.maxHp < 1)                { showFieldErr('bf-maxhp', 'bf-hp-err');   valid = false; }
@@ -457,7 +498,10 @@ window.saveBossForm = function () {
   if (d.victoryReward < 0)                     { showFieldErr('bf-victory','bf-victory-err'); valid = false; }
   if (!valid) { toast('⚠️ Please fix the highlighted fields', '#ffb4ab'); return; }
 
-  if (d._index === null || d.currentHp === undefined) d.currentHp = d.maxHp;
+  // BUGFIX: was `d.currentHp === undefined` only — didn't cover null/0/NaN,
+  // any of which would still reach the upsert as an invalid current_hp.
+  // maxHp is guaranteed >= 1 here (validated above), so this is always safe.
+  if (d._index === null || !d.currentHp || d.currentHp < 1) d.currentHp = d.maxHp;
 
   const isEdit  = d._index !== null;
   const saveObj = { ...d };
@@ -465,15 +509,19 @@ window.saveBossForm = function () {
   if (!DB.bossEvents) DB.bossEvents = [];
   if (isEdit) { DB.bossEvents[d._index] = saveObj; toast('✅ Boss "' + saveObj.name + '" updated!'); }
   else        {
-    // Phase 14: every boss belongs to whichever section the teacher deck
-    // currently has active (see modules/core/active-section.js).
-    saveObj.classId   = window.ActiveSection ? window.ActiveSection.get() : (DB.admin?.classId || 'default-class');
+    // Uses whatever the "Spawn Section" dropdown had selected (see
+    // _wbSpawnableSections() / the #bf-section field above) — falls back to
+    // ActiveSection only in the unlikely case the field wasn't rendered.
+    saveObj.classId   = d.classId || (window.ActiveSection ? window.ActiveSection.get() : (DB.admin?.classId || 'default-class'));
     saveObj.status    = 'draft';
     saveObj.createdAt = Date.now();
     DB.bossEvents.push(saveObj);
     toast('💀 Boss "' + saveObj.name + '" created!');
   }
   saveDB(); closeModalForce(); renderAdminBossEvents();
+  } finally {
+    window._bossFormSaving = false;
+  }
 };
 
 // ── Boss form open ────────────────────────────────────────────────────────────
@@ -532,6 +580,10 @@ window.openBossForm = function (bossIndex) {
     </div>`;
   }
 
+  const spawnSections = _wbSpawnableSections();
+  const lockSection    = isEdit && boss.status && boss.status !== 'draft';
+  const currentSectionId = boss.classId || (window.ActiveSection ? window.ActiveSection.get() : 'default-class');
+
   showModal(`
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
     <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,rgba(236,72,153,0.25),rgba(139,92,246,0.2));border:1px solid rgba(236,72,153,0.4);display:flex;align-items:center;justify-content:center;font-size:20px">${isEdit ? '✏️' : '＋'}</div>
@@ -540,7 +592,15 @@ window.openBossForm = function (bossIndex) {
   <div class="boss-form-section">
     <div class="boss-form-section-title">💀 Basic Info</div>
     <div class="form-group" style="margin-bottom:12px"><label class="form-label">Boss Name <span style="color:#EC4899">*</span></label><input type="text" id="bf-name" value="${boss.name || ''}" placeholder="e.g. The Void Tyrant" style="width:100%" oninput="window._bossDraft.name=this.value;clearFieldErr(this,'bf-name-err')"><div class="field-err" id="bf-name-err">Boss name is required</div></div>
-    <div class="form-group" style="margin-bottom:0"><label class="form-label">Boss Description</label><textarea id="bf-desc" rows="3" placeholder="Describe the boss lore and threat…" style="width:100%;resize:vertical" oninput="window._bossDraft.description=this.value">${boss.description || ''}</textarea></div>
+    <div class="form-group" style="margin-bottom:12px"><label class="form-label">Boss Description</label><textarea id="bf-desc" rows="3" placeholder="Describe the boss lore and threat…" style="width:100%;resize:vertical" oninput="window._bossDraft.description=this.value">${boss.description || ''}</textarea></div>
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Spawn Section <span style="color:#EC4899">*</span></label>
+      <select id="bf-section" style="width:100%" ${lockSection ? 'disabled' : ''} onchange="window._bossDraft.classId=this.value">
+        ${spawnSections.map(s => `<option value="${_esc(s.id)}" ${currentSectionId === s.id ? 'selected' : ''}>${_esc(s.label)}</option>`).join('')}
+      </select>
+      ${!spawnSections.length ? `<div style="font-size:11px;color:#ffb4ab;margin-top:6px">You don't advise any active sections yet — create one in Section Maker first.</div>` : ''}
+      ${lockSection ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">🔒 Section is locked once a boss has left Draft — this boss shouldn't jump sections mid-event.</div>` : `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">This boss will only be visible to students in the section you pick — no cross-section spawns.</div>`}
+    </div>
   </div>
   <div class="boss-form-section" id="bf-visual-section"><div class="boss-form-section-title">🎨 Boss Visual Identity</div>${visualSection}</div>
   <div class="boss-form-section">

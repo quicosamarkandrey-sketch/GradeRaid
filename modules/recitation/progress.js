@@ -229,7 +229,7 @@
   background:radial-gradient(circle,rgba(78,222,163,.10) 0%,transparent 70%);border-radius:50%;pointer-events:none}
 .share-card-inner{position:relative;z-index:1}
 .share-watermark{font-family:var(--fm);font-size:9px;letter-spacing:.16em;color:rgba(208,188,255,.35);text-transform:uppercase;margin-bottom:16px}
-.share-student-row{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.share-student-row{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;margin-bottom:18px}
 .share-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
 .share-stat{text-align:center;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px}
 .share-stat .sv{font-family:var(--fh);font-size:20px;font-weight:900}
@@ -674,10 +674,14 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
     <div class="share-card-inner">
       <div class="share-watermark">EduQuest · Academic Achievement Profile</div>
       <div class="share-student-row">
-        <div style="width:54px;height:54px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:18px;font-weight:900;background:${st.color + '33'};color:${st.color};border:2px solid ${st.color + '55'}">${st.init}</div>
+        <div style="width:96px;height:96px;border-radius:50%;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:32px;font-weight:900;background:${st.color + '33'};color:${st.color};border:3px solid ${st.color + '55'};box-shadow:0 0 30px ${st.color + '33'}">${
+          st.profilePic
+            ? `<img src="${st.profilePic}" alt="${st.init}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.remove()">`
+            : st.init
+        }</div>
         <div>
-          <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:var(--on-surface)">${st.name}</div>
-          <div style="font-size:12px;color:var(--text-muted)">${st.tier} · Level ${st.level} · Rank #${myRank}</div>
+          <div style="font-family:var(--fh);font-size:22px;font-weight:900;color:var(--on-surface)">${st.name}</div>
+          <div style="font-size:13px;color:var(--text-muted)">${st.tier} · Level ${st.level} · Rank #${myRank}</div>
         </div>
       </div>
       <div class="share-stats-grid">

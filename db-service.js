@@ -102,6 +102,19 @@ const DBService = (function () {
   // offline fallback (see "No Downtime" in migration-strategy.md).
   let _cache = null;
 
+  // BUGFIX (cross-account RLS spam on rapid logout/login): _cache being
+  // replaced (by remove() or refreshAfterAuthChange()) did not invalidate an
+  // already-queued _uploadTimer. If a save fired under account A right
+  // before switching to account B in the same tab (no full page reload),
+  // that queued push could still fire AFTER B's session/cache was in place,
+  // or — worse — race a still-in-flight refreshAfterAuthChange() pull and
+  // push whatever _cache held at that exact instant, which may still be A's
+  // data. Every authoritative cache replacement now bumps this counter;
+  // _flushUpload() aborts if the epoch it was queued under is stale, so a
+  // previous session's queued write can never reach Supabase under a
+  // different session.
+  let _sessionEpoch = 0;
+
   // ── localStorage provider (kept verbatim as the offline fallback) ────────
   const _localStorageProvider = {
     read  : function ()    { return localStorage.getItem(_STORAGE_KEY); },
@@ -136,11 +149,14 @@ const DBService = (function () {
   function _queueUpload() {
     _meta.pendingUploads++;
     if (_uploadTimer) clearTimeout(_uploadTimer);
-    _uploadTimer = setTimeout(_flushUpload, 400);
+    const queuedEpoch = _sessionEpoch;
+    _uploadTimer = setTimeout(function () { _flushUpload(queuedEpoch); }, 400);
   }
 
-  async function _flushUpload() {
+  async function _flushUpload(queuedEpoch) {
     _uploadTimer = null;
+    // Stale session guard — see _sessionEpoch comment above.
+    if (queuedEpoch !== _sessionEpoch) { _meta.pendingUploads = 0; return; }
     const client = _getClient();
     if (!client || !_cache) { _meta.pendingUploads = 0; return; }
     try {
@@ -172,7 +188,8 @@ const DBService = (function () {
     const [profiles, bossEvents, bossParticipants, lootClaims, achievements, userAchievements,
            registrations, pointLog, redemptions, recitationLog,
            rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
-           achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds] =
+           achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
+           orders, inventoryRows] =
       await Promise.all([
         client.from('profiles').select('*'),
         client.from('boss_events').select('*'),
@@ -196,12 +213,15 @@ const DBService = (function () {
         client.from('quizzes').select('*'), // Phase 20 — quiz content (was local-only; see phase20_quiz_content_sync.sql)
         client.from('title_sections').select('*'), // Phase 21 — read side of title section-scoping
         client.from('campaign_worlds').select('*').order('sort_order', { ascending: true }), // Phase 22 — campaign content (was local-only; see phase22_campaign_content_sync.sql)
+        client.from('orders').select('*').order('created_at', { ascending: false }), // Phase 48
+        client.from('inventory').select('*'), // Phase 48
       ]);
 
     for (const r of [profiles, bossEvents, bossParticipants, lootClaims, achievements, userAchievements,
                       registrations, pointLog, redemptions, recitationLog,
                       rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
-                      achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds]) {
+                      achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
+                      orders, inventoryRows]) {
       if (r.error) throw r.error;
     }
 
@@ -247,6 +267,19 @@ const DBService = (function () {
           lootRewards: b.loot_rewards || [], lootDuration: b.loot_duration_sec,
           lootStartedAt: b.loot_started_at ? Date.parse(b.loot_started_at) : null,
           lootFinalizedAt: b.loot_finalized_at ? Date.parse(b.loot_finalized_at) : null,
+          // Phase 46: advanced admin-config fields — previously never left
+          // the browser tab that set them (see phase46_boss_advanced_settings_sync.sql
+          // for the full story). Plain passthrough, same shape the modules
+          // already read/write locally.
+          bossQuestions: b.boss_questions || [],
+          minionSettings: b.minion_settings || {},
+          combatSettings: b.combat_settings || {},
+          skills: b.skills || {},
+          skillFireMode: b.skill_fire_mode || undefined,
+          skillIntervalMin: b.skill_interval_min || undefined,
+          skillIntervalMax: b.skill_interval_max || undefined,
+          rageSettings: b.rage_settings || {},
+          phases: b.phases || [],
           lootClaims: (lootClaims.data || [])
             .filter(c => c.boss_id === b.id)
             .map(c => ({
@@ -435,6 +468,20 @@ const DBService = (function () {
       titleSectionAssignments[row.title_id].push(row.class_id);
     });
 
+    // Phase 48: inventory is per-student, one row per (student_id, item_id) —
+    // reshape into DB.inventory[studentId] = [...] exactly as cartCheckout()
+    // and (after the loot-service.js patch shipped alongside this)
+    // LootService.claimReward() already expect it.
+    const inventoryByStudent = {};
+    (inventoryRows.data || []).forEach(row => {
+      if (!inventoryByStudent[row.student_id]) inventoryByStudent[row.student_id] = [];
+      inventoryByStudent[row.student_id].push({
+        itemId: row.item_id, itemName: row.item_name, emoji: row.emoji, category: row.category,
+        quantity: row.quantity, datePurchased: row.date_purchased, lastPurchased: row.last_purchased,
+        source: row.source, status: row.status, usedAt: row.used_at,
+      });
+    });
+
     return {
       schemaVersion: _SCHEMA_VER,
       students,
@@ -494,6 +541,28 @@ const DBService = (function () {
         itemName: r.item_name, emoji: r.emoji, item: r.item_label, pts: r.pts,
         date: r.date_label, time: r.time_label, claimCode: r.claim_code,
       })),
+      // Phase 48 — mirrors DB.orders[] exactly. See cartCheckout() (creates),
+      // shop_pos_terminal.js (staff claim/cancel), shop_orders.js (student
+      // self-cancel) — all pre-existing client logic, previously local-only.
+      orders: (orders.data || []).map(o => ({
+        orderId: o.order_id, claimCode: o.claim_code,
+        studentId: o.student_id, studentName: o.student_name,
+        studentInit: o.student_init, studentColor: o.student_color,
+        itemId: o.item_id, itemName: o.item_name, emoji: o.emoji,
+        cost: o.cost, category: o.category,
+        status: o.status,
+        createdAt: o.created_at, createdDateStr: o.created_date_str,
+        // claimedAt/cancelledAt are epoch-ms numbers in the local shape
+        // (posExecuteClaim/posExecuteCancel/ordExecuteCancel all use
+        // Date.now()), so convert the stored timestamptz back to that shape
+        // on the way in, same convention as bossEvents.defeatedAt/endedAt above.
+        claimedAt: o.claimed_at ? Date.parse(o.claimed_at) : null, claimedBy: o.claimed_by,
+        cancelledAt: o.cancelled_at ? Date.parse(o.cancelled_at) : null,
+        cancelReason: o.cancel_reason, cancelledBy: o.cancelled_by,
+      })),
+      // Phase 48 — mirrors DB.inventory{} exactly. See the inventoryByStudent
+      // reshape above.
+      inventory: inventoryByStudent,
       recitationLog: (recitationLog.data || []).map(r => ({
         id: r.id, studentId: r.student_id, pts: r.pts, note: r.note, when: r.when_label,
         // Phase 3 additions — additive only, every pre-Phase-3 row simply has
@@ -571,6 +640,37 @@ const DBService = (function () {
   }
 
   async function _pushCacheToSupabase(client, cache) {
+    // Shared staff-session flag — reused below to skip catalog-table pushes
+    // entirely for student sessions (BUGFIX: a student login was triggering
+    // a full unchanged re-push of shop_products/boss_events on every saveDB()
+    // — e.g. simply logging in as a student writes SOMETHING to the cache,
+    // which queues this whole function, which then tried to upsert every
+    // table including ones a student never touched. Those two tables had no
+    // role check at all (unlike the profiles upsert below, which already
+    // guards on this same flag), so they hit RLS on every single student
+    // session and printed a scary-looking "remote sync failed" for
+    // shop_products/boss_events even though nothing about the shop or a boss
+    // had changed. Skipping them outright for non-staff sessions is both
+    // correct (students can't write either table) and quiets the noise.
+    const isCatalogStaffSession = (typeof currentUser !== 'undefined' && currentUser &&
+      (currentUser.role === 'admin' || currentUser.role === 'teacher'));
+
+    // BUGFIX (table isolation): every block below used to just `throw error`
+    // straight out of _pushCacheToSupabase, which meant the FIRST table to
+    // fail in a given save cycle silently prevented every table listed AFTER
+    // it from even being attempted — e.g. an achievements RLS error would
+    // stop titles/quizzes/campaign_worlds from syncing that cycle too, with
+    // no warning that they'd been skipped. Wrapping each table's push in
+    // this helper means one bad table only ever blocks itself; everything
+    // else still gets its chance to sync in the same cycle.
+    async function _pushTable(label, fn) {
+      try {
+        await fn();
+      } catch (e) {
+        console.warn('[DBService] remote sync failed for ' + label + ', staying on local cache:', e);
+      }
+    }
+
     // Students: upsert profile game-stat columns, but ONLY when an admin/
     // teacher session is active. This avoids two distinct failure modes that
     // appear after the Supabase Auth migration:
@@ -737,20 +837,55 @@ const DBService = (function () {
     // Boss events: upsert by internal _id (created server-side; a brand new
     // boss drafted offline has no _id yet, so it inserts and the server
     // assigns one on the next pull).
-    if (Array.isArray(cache.bossEvents)) {
+    if (isCatalogStaffSession && Array.isArray(cache.bossEvents)) {
+      await _pushTable('boss_events', async () => {
       for (const b of cache.bossEvents) {
+        try {
         const isNewRow = !b._id;
         const row = {
           id: b._id, class_id: b.classId || 'default-class', // Phase 14
           name: b.name, description: b.description, image: b.image,
-          max_hp: b.maxHp,
           start_date: b.startDate || null, end_date: b.endDate || null,
           xp_reward: b.xpReward, coin_reward: b.coinReward,
           participation_reward: b.participationReward, victory_reward: b.victoryReward,
           defeat_narr_title: b.defeatNarrTitle, defeat_narr_text: b.defeatNarrText,
           victory_title: b.victoryTitle, victory_message: b.victoryMessage,
           loot_rewards: b.lootRewards || [], loot_duration_sec: b.lootDuration || 120,
+          // Phase 46: same "always push, plain passthrough" treatment as
+          // loot_rewards above — these are pure admin-config JSON blobs with
+          // no RPC of their own, so the bulk upsert is their only write
+          // path. See phase46_boss_advanced_settings_sync.sql.
+          boss_questions: b.bossQuestions || [],
+          minion_settings: b.minionSettings || {},
+          combat_settings: b.combatSettings || {},
+          skills: b.skills || {},
+          skill_fire_mode: b.skillFireMode || null,
+          skill_interval_min: b.skillIntervalMin || null,
+          skill_interval_max: b.skillIntervalMax || null,
+          rage_settings: b.rageSettings || {},
+          phases: b.phases || [],
         };
+        // max_hp/current_hp: both columns are NOT NULL with no server-side
+        // default. saveBossForm() should always set maxHp (and derive
+        // currentHp from it) before a boss reaches this array, but this has
+        // repeatedly turned out not to hold for old/corrupt local drafts —
+        // rows left over from before validation existed, or from manual
+        // testing. Rather than let one such row's undefined maxHp throw a
+        // NOT-NULL error and (before the per-row try/catch added here) take
+        // every OTHER boss in the same push cycle down with it:
+        //   - new row: fall back all the way to a hard default (10000,
+        //     matching openBossForm()'s own default) so the insert always
+        //     succeeds with something sane instead of erroring forever.
+        //   - existing row: omit max_hp entirely when locally missing, so
+        //     this upsert can't null out a previously-synced real value —
+        //     same "don't touch what you don't have" reasoning as `stock`
+        //     being excluded from shop_products below.
+        if (isNewRow) {
+          row.max_hp = b.maxHp || 10000;
+          row.current_hp = (b.currentHp !== undefined && b.currentHp !== null) ? b.currentHp : row.max_hp;
+        } else if (b.maxHp !== undefined && b.maxHp !== null) {
+          row.max_hp = b.maxHp;
+        }
         // Phase 26: current_hp/status/defeated_at/ended_at/loot_started_at/
         // loot_finalized_at are now fully owned by RPCs once a boss row
         // exists server-side — apply_boss_damage() (damage),
@@ -765,7 +900,6 @@ const DBService = (function () {
         // row that doesn't exist yet, so it's safe to seed the full
         // lifecycle state on that first insert only.
         if (isNewRow) {
-          row.current_hp = b.currentHp;
           row.status = b.status;
           row.defeated_at = b.defeatedAt ? new Date(b.defeatedAt).toISOString() : null;
           row.ended_at = b.endedAt ? new Date(b.endedAt).toISOString() : null;
@@ -773,18 +907,47 @@ const DBService = (function () {
           row.loot_finalized_at = b.lootFinalizedAt ? new Date(b.lootFinalizedAt).toISOString() : null;
         }
         if (!row.id) delete row.id; // let Postgres gen_random_uuid() assign one
-        const { error } = await client.from('boss_events').upsert(row, { onConflict: 'id' });
+        let { error } = await client.from('boss_events').upsert(row, { onConflict: 'id' });
+        // BUGFIX (stale local _id after an out-of-band delete): if a boss row
+        // was deleted directly in Supabase (SQL editor, another admin, etc.)
+        // while this browser's local cache still remembers its old _id, the
+        // client wrongly treats this as an update-only row (isNewRow was
+        // false) and omits current_hp/max_hp/status — but the server sees no
+        // existing row with that id, so the upsert is really an INSERT and
+        // trips the NOT-NULL constraint on current_hp (23502). That's a
+        // reliable signal the local _id no longer refers to anything real;
+        // retry once, this time seeding the full new-row lifecycle fields
+        // (same values isNewRow would have used), so a locally-orphaned draft
+        // can't get permanently stuck retrying the same failure forever.
+        if (error && error.code === '23502') {
+          row.max_hp = row.max_hp || b.maxHp || 10000;
+          row.current_hp = (b.currentHp !== undefined && b.currentHp !== null && b.currentHp > 0) ? b.currentHp : row.max_hp;
+          row.status = row.status || b.status || 'draft';
+          row.defeated_at = row.defeated_at || (b.defeatedAt ? new Date(b.defeatedAt).toISOString() : null);
+          row.ended_at = row.ended_at || (b.endedAt ? new Date(b.endedAt).toISOString() : null);
+          row.loot_started_at = row.loot_started_at || (b.lootStartedAt ? new Date(b.lootStartedAt).toISOString() : null);
+          row.loot_finalized_at = row.loot_finalized_at || (b.lootFinalizedAt ? new Date(b.lootFinalizedAt).toISOString() : null);
+          ({ error } = await client.from('boss_events').upsert(row, { onConflict: 'id' }));
+        }
         if (error) throw error;
         // NOTE: lootClaims are NOT pushed from here — they are written via
         // claim_loot_reward() RPC at claim time, never via bulk upsert, so
         // a stale local array can't overwrite server-confirmed claims.
+        } catch (e) {
+          // Per-row isolation: one broken boss (bad data, RLS mismatch on
+          // just that row) shouldn't stop every OTHER boss in this same
+          // array from syncing this cycle.
+          console.warn('[DBService] boss_events: skipping "' + (b.name || b._id || 'unnamed') + '" this cycle —', e);
+        }
       }
+      });
     }
 
     // Boss participants: upsert the roster. Same defense-in-depth note as
     // profiles above — RLS still restricts student-initiated writes to
     // their own row while the boss is active.
     if (cache.bossParticipants && cache._bossIdById) {
+      await _pushTable('boss_participants', async () => {
       const idToUuid = {};
       Object.keys(cache._bossIdById).forEach(uuid => { idToUuid[cache._bossIdById[uuid]] = uuid; });
       const rows = [];
@@ -807,6 +970,7 @@ const DBService = (function () {
         const { error } = await client.from('boss_participants').upsert(rows, { onConflict: 'boss_id,student_id' });
         if (error) throw error;
       }
+      });
     }
 
     // Shop products: per-teacher catalog (Phase 14). `stock` is deliberately
@@ -818,7 +982,8 @@ const DBService = (function () {
     // a direct restock_shop_product() call at creation time instead (see
     // shop_admin_store.js doAddProduct()) — this upsert alone would leave a
     // brand new row's stock at the column default.
-    if (Array.isArray(cache.store) && cache.store.length) {
+    if (isCatalogStaffSession && Array.isArray(cache.store) && cache.store.length) {
+      await _pushTable('shop_products', async () => {
       const rows = cache.store
         .filter(p => p.ownerTeacherId) // skip anything not yet stamped with an owner
         .map(p => ({
@@ -830,6 +995,7 @@ const DBService = (function () {
         const { error } = await client.from('shop_products').upsert(rows, { onConflict: 'id' });
         if (error) throw error;
       }
+      });
     }
 
     // Achievements (the catalog — Phase 17): same pattern as boss_events/
@@ -845,7 +1011,17 @@ const DBService = (function () {
     // as shop_products) — rows without an ownerTeacherId stamped yet are
     // skipped, same "skip anything not yet stamped with an owner" rule the
     // store block above already uses.
-    if (Array.isArray(cache.achievements) && cache.achievements.length) {
+    //
+    // BUGFIX: this had no staff-session gate at all — unlike shop_products/
+    // boss_events (see isCatalogStaffSession above), which had the same gap
+    // fixed earlier. Every student session loads the achievements catalog
+    // (to show what's available to earn), so ANY save while logged in as a
+    // student queued a full re-push of achievements too — always rejected by
+    // RLS since a student never owns any of those rows, printing the same
+    // scary "remote sync failed" warning for a table nothing had actually
+    // changed on.
+    if (isCatalogStaffSession && Array.isArray(cache.achievements) && cache.achievements.length) {
+      await _pushTable('achievements', async () => {
       const rows = cache.achievements
         .filter(a => a.id && a.ownerTeacherId) // Phase 32: skip anything not yet stamped with an owner
         .map(a => ({
@@ -859,6 +1035,7 @@ const DBService = (function () {
         const { error } = await client.from('achievements').upsert(rows, { onConflict: 'id' });
         if (error) throw error;
       }
+      });
     }
 
     // Titles (the catalog — Phase 18): same pattern as achievements just
@@ -867,7 +1044,11 @@ const DBService = (function () {
     // unlock_title_for_student() / revoke_title_from_student() /
     // set_equipped_title(), same "RPC only, never bulk upsert" reasoning.
     // Phase 32: owner_teacher_id now required — same skip-if-unstamped rule.
-    if (Array.isArray(cache.titles) && cache.titles.length) {
+    // Same isCatalogStaffSession gate as achievements above — same bug,
+    // same fix (a student session loading their available titles was
+    // triggering a doomed re-push of this whole catalog).
+    if (isCatalogStaffSession && Array.isArray(cache.titles) && cache.titles.length) {
+      await _pushTable('titles', async () => {
       const rows = cache.titles
         .filter(t => t.id && t.ownerTeacherId) // Phase 32: skip anything not yet stamped with an owner
         .map(t => ({
@@ -885,6 +1066,7 @@ const DBService = (function () {
         const { error } = await client.from('titles').upsert(rows, { onConflict: 'id' });
         if (error) throw error;
       }
+      });
     }
 
     // Quizzes (the content catalog — Phase 20): same pattern as
@@ -896,7 +1078,9 @@ const DBService = (function () {
     // unchanged — it still goes exclusively through set_quiz_sections(),
     // never this bulk upsert.
     // Phase 32: owner_teacher_id now required — same skip-if-unstamped rule.
-    if (Array.isArray(cache.quizzes) && cache.quizzes.length) {
+    // Same isCatalogStaffSession gate as achievements/titles above.
+    if (isCatalogStaffSession && Array.isArray(cache.quizzes) && cache.quizzes.length) {
+      await _pushTable('quizzes', async () => {
       const rows = cache.quizzes
         .filter(q => q.id && q.ownerTeacherId) // Phase 32: skip anything not yet stamped with an owner
         .map(q => ({
@@ -909,6 +1093,7 @@ const DBService = (function () {
         const { error } = await client.from('quizzes').upsert(rows, { onConflict: 'id' });
         if (error) throw error;
       }
+      });
     }
 
     // Campaign worlds (the content catalog — Phase 22): same pattern as
@@ -920,7 +1105,9 @@ const DBService = (function () {
     // stageProgress (per-student progress) is NOT part of this block —
     // out of scope, unchanged.
     // Phase 32: owner_teacher_id now required — same skip-if-unstamped rule.
-    if (Array.isArray(cache.stageMap) && cache.stageMap.length) {
+    // Same isCatalogStaffSession gate as achievements/titles/quizzes above.
+    if (isCatalogStaffSession && Array.isArray(cache.stageMap) && cache.stageMap.length) {
+      await _pushTable('campaign_worlds', async () => {
       const rows = cache.stageMap
         .filter(w => w.id && w.ownerTeacherId) // Phase 32: skip anything not yet stamped with an owner
         .map((w, idx) => ({
@@ -932,6 +1119,7 @@ const DBService = (function () {
         const { error } = await client.from('campaign_worlds').upsert(rows, { onConflict: 'id' });
         if (error) throw error;
       }
+      });
     }
 
     // Registrations: NO LONGER pushed here. Wave 2 security fix
@@ -947,6 +1135,7 @@ const DBService = (function () {
     // whole array on every save doesn't insert duplicate rows for entries
     // that were already synced.
     if (Array.isArray(cache.pointLog) && cache.pointLog.length) {
+      await _pushTable('point_log', async () => {
       const rows = cache.pointLog
         .filter(p => p.id) // skip any stray pre-migration entries with no id
         .map(p => ({ id: p.id, student_id: p.studentId, what: p.what, pts: p.pts, when_label: p.when }));
@@ -954,11 +1143,13 @@ const DBService = (function () {
         const { error } = await client.from('point_log').upsert(rows, { onConflict: 'id' });
         if (error) throw error;
       }
+      });
     }
 
     // Redemptions: orderId is already a unique client-generated key from
     // checkout time, so it's reused directly as the upsert conflict target.
     if (Array.isArray(cache.redemptions) && cache.redemptions.length) {
+      await _pushTable('redemptions', async () => {
       const rows = cache.redemptions
         .filter(r => r.orderId)
         .map(r => ({
@@ -970,6 +1161,68 @@ const DBService = (function () {
         const { error } = await client.from('redemptions').upsert(rows, { onConflict: 'order_id' });
         if (error) throw error;
       }
+      });
+    }
+
+    // Phase 48 — orders: mirrors redemptions' pattern exactly, same
+    // client-generated unique key (orderId) reused as the upsert conflict
+    // target. Covers all three writers of DB.orders: cartCheckout() (new
+    // pending orders), shop_pos_terminal.js's posExecuteClaim()/
+    // posExecuteCancel() (staff status transitions), and shop_orders.js's
+    // ordExecuteCancel() (student self-cancel) — every one of them already
+    // ends in saveDB(), which is all this bulk-upsert path needs to pick up
+    // the change on the next debounced push.
+    if (Array.isArray(cache.orders) && cache.orders.length) {
+      await _pushTable('orders', async () => {
+      const rows = cache.orders
+        .filter(o => o.orderId)
+        .map(o => ({
+          order_id: o.orderId, student_id: o.studentId,
+          student_name: o.studentName, student_init: o.studentInit, student_color: o.studentColor,
+          item_id: o.itemId, item_name: o.itemName, emoji: o.emoji,
+          cost: o.cost, category: o.category, claim_code: o.claimCode,
+          status: o.status || 'pending',
+          created_at: o.createdAt, created_date_str: o.createdDateStr,
+          // claimedAt/cancelledAt are epoch-ms numbers locally (Date.now()) —
+          // convert to timestamptz on the way out, mirror of the pull-side
+          // Date.parse() above.
+          claimed_at: o.claimedAt ? new Date(o.claimedAt).toISOString() : null,
+          claimed_by: o.claimedBy,
+          cancelled_at: o.cancelledAt ? new Date(o.cancelledAt).toISOString() : null,
+          cancel_reason: o.cancelReason, cancelled_by: o.cancelledBy,
+        }));
+      if (rows.length) {
+        const { error } = await client.from('orders').upsert(rows, { onConflict: 'order_id' });
+        if (error) throw error;
+      }
+      });
+    }
+
+    // Phase 48 — inventory: keyed by (student_id, item_id) rather than a
+    // single id, since DB.inventory is {studentId: [...]} with cartCheckout()
+    // (and, after the loot-service.js patch shipped alongside this,
+    // LootService.claimReward()) already upserting-by-itemId within each
+    // student's own array. Flatten that shape out into rows here; the
+    // composite PK on the table does the actual per-item upsert.
+    if (cache.inventory && typeof cache.inventory === 'object') {
+      await _pushTable('inventory', async () => {
+      const rows = [];
+      Object.keys(cache.inventory).forEach(sid => {
+        (cache.inventory[sid] || []).forEach(item => {
+          if (!item.itemId) return;
+          rows.push({
+            student_id: sid, item_id: item.itemId, item_name: item.itemName, emoji: item.emoji,
+            category: item.category, quantity: item.quantity || 1,
+            date_purchased: item.datePurchased, last_purchased: item.lastPurchased,
+            source: item.source || 'Store', status: item.status || 'active', used_at: item.usedAt,
+          });
+        });
+      });
+      if (rows.length) {
+        const { error } = await client.from('inventory').upsert(rows, { onConflict: 'student_id,item_id' });
+        if (error) throw error;
+      }
+      });
     }
 
     // Phase 30 removed recitation_log's INSERT policy on purpose — writes go
@@ -1048,6 +1301,8 @@ const DBService = (function () {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'quizzes' }, () => _schedulePullRefresh()) // Phase 20
       .on('postgres_changes', { event: '*', schema: 'public', table: 'title_sections' }, () => _schedulePullRefresh()) // Phase 21
       .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_worlds' }, () => _schedulePullRefresh()) // Phase 22
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => _schedulePullRefresh()) // Phase 48
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => _schedulePullRefresh()) // Phase 48
       .subscribe();
   }
 
@@ -1163,6 +1418,11 @@ const DBService = (function () {
     refreshAfterAuthChange: async function () {
       const client = _getClient();
       if (!client) return;
+      // Invalidate any push still queued from BEFORE this refresh (e.g. a
+      // save that fired right before switching accounts) immediately, so it
+      // can't fire mid-pull and race this function's own cache replacement.
+      _sessionEpoch++;
+      if (_uploadTimer) { clearTimeout(_uploadTimer); _uploadTimer = null; }
       try {
         _cache = await _pullCacheFromSupabase(client);
         _localStorageProvider.write(JSON.stringify(_cache));
@@ -1173,6 +1433,14 @@ const DBService = (function () {
           window.AppStore.syncFromLegacy(_cache, 'state:auth-change-sync');
         }
       } catch (e) {
+        // BUGFIX: this used to leave _cache exactly as it was on failure —
+        // which, right after switching accounts, means the PREVIOUS
+        // account's data. Any later save would then queue a push of that
+        // stale, wrong-owner cache under the new session, hitting RLS
+        // forever. Clearing it forces a clean re-pull attempt on the next
+        // read rather than silently mixing sessions.
+        _cache = null;
+        try { _localStorageProvider.remove(); } catch (e2) {}
         _meta.lastError = String(e && e.message || e);
         _meta.online = false;
         console.warn('[DBService] refreshAfterAuthChange pull failed, dashboard may show stale data:', e);
@@ -1230,6 +1498,8 @@ const DBService = (function () {
      */
     remove: function () {
       _cache = null;
+      _sessionEpoch++; // invalidate any queued push from the ending session
+      if (_uploadTimer) { clearTimeout(_uploadTimer); _uploadTimer = null; }
       try { _localStorageProvider.remove(); } catch (e) {}
     },
 

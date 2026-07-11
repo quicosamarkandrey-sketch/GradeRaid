@@ -211,7 +211,19 @@ window.wbcUpdateTopbarWidget = function () {
   const { boss } = found;
   const pct      = Math.max(0, Math.min(100, Math.round((boss.currentHp || boss.maxHp) / boss.maxHp * 100)));
   document.getElementById('wb-widget-name').textContent        = boss.name.toUpperCase().substring(0, 18);
-  document.getElementById('wb-widget-hp-fill').style.width     = pct + '%';
+  const widgetTrack = document.getElementById('wb-widget-hp-track');
+  if (widgetTrack && typeof renderStatBar === 'function') {
+    // Same call site pattern as the full-page HP bar (§2.1 / §3.3): one
+    // renderer, two places it's called from. The widget's pink/purple
+    // gradient stays fully CSS-owned (#wb-widget-hp-fill is an ID selector,
+    // so it already wins over the generic .stat-bar-fill background).
+    const tookDamage = typeof window._wbcLastWidgetHpPct === 'number' && pct < window._wbcLastWidgetHpPct;
+    renderStatBar(widgetTrack, { percent: pct, tier: pct <= 20 ? 'critical' : 'normal', justChanged: tookDamage });
+  } else {
+    const fallbackFill = document.getElementById('wb-widget-hp-fill');
+    if (fallbackFill) fallbackFill.style.width = pct + '%';
+  }
+  window._wbcLastWidgetHpPct = pct;
   document.getElementById('wb-widget-pct').textContent         = pct + '%';
   document.getElementById('wb-widget-hp-txt').textContent      = (boss.currentHp || boss.maxHp).toLocaleString() + ' HP';
   w.style.display = 'flex';
@@ -315,92 +327,3 @@ window.wbcSaveCombatSettings = function (bossIdx) {
   renderAdminBossEvents();
 };
 
-// ── Question editor ───────────────────────────────────────────────────────────
-
-let _wbQDraft = [];
-
-window.wbcOpenQuestionEditor = function (bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx]; if (!boss) return;
-  _wbQDraft  = JSON.parse(JSON.stringify(wbcGetBossQuestions(boss)));
-  _wbcRenderQEditor(bossIdx);
-};
-
-function _wbcQEditorRows() {
-  return _wbQDraft.map((q, qi) => `
-  <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px;margin-bottom:10px">
-    <div style="display:flex;justify-content:space-between;margin-bottom:8px">
-      <div style="font-family:var(--fm);font-size:10px;color:var(--primary);font-weight:700">Q${qi+1}</div>
-      <button class="btn btn-danger btn-xs" onclick="wbcRemoveQuestion(${qi})">✕</button>
-    </div>
-    <input type="text" value="${_esc(q.q||'')}" placeholder="Question text..." style="width:100%;margin-bottom:10px" oninput="_wbQDraft[${qi}].q=this.value">
-    ${(q.opts||['','','','']).map((opt, oi) => `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <div onclick="_wbQDraft[${qi}].answer=${oi};_wbcRenderQList()" style="width:20px;height:20px;border-radius:50%;border:2px solid ${q.answer===oi?'#4edea3':'rgba(255,255,255,.2)'};background:${q.answer===oi?'rgba(78,222,163,.2)':''};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0">${q.answer===oi?'✓':''}</div>
-      <input type="text" value="${_esc(opt||'')}" placeholder="Option ${String.fromCharCode(65+oi)}" style="flex:1" oninput="_wbQDraft[${qi}].opts[${oi}]=this.value">
-    </div>`).join('')}
-  </div>`).join('');
-}
-
-function _wbcRenderQList() {
-  const listEl = document.getElementById('wbqe-list');
-  if (listEl) listEl.innerHTML = _wbcQEditorRows();
-}
-
-function _wbcRenderQEditor(bossIdx) {
-  showModal(`<div>
-    <div class="modal-h2" style="margin-bottom:14px">📝 Boss Questions</div>
-    <div id="wbqe-list" style="max-height:380px;overflow-y:auto">${_wbcQEditorRows()}</div>
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn btn-ghost btn-sm" onclick="wbcAddQuestion(${bossIdx})">＋ Add Question</button>
-      <button class="btn btn-ghost btn-sm" onclick="wbcImportFromQuiz(${bossIdx})">Import from Quiz</button>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:14px">
-      <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button>
-      <button class="btn btn-primary" style="flex:1" onclick="wbcSaveQuestions(${bossIdx})">Save Questions</button>
-    </div>
-  </div>`, 'lg');
-}
-
-window.wbcAddQuestion = function (bossIdx) {
-  _wbQDraft.push({ q: '', opts: ['', '', '', ''], answer: 0 });
-  _wbcRenderQList();
-};
-
-window.wbcRemoveQuestion = function (qi) {
-  _wbQDraft.splice(qi, 1);
-  _wbcRenderQList();
-};
-
-window.wbcImportFromQuiz = function (bossIdx) {
-  DB = loadDB();
-  const opts = (DB.quizzes || []).map(q => `<option value="${q.id}">${_esc(q.title||q.name||'Untitled')}</option>`).join('');
-  if (!opts) { toast('No quizzes available', '#ffb4ab'); return; }
-  showModal(`<div>
-    <div class="modal-h2" style="margin-bottom:12px">Import from Quiz</div>
-    <div class="form-group"><label class="form-label">Select Quiz</label><select id="wb-import-quiz" style="width:100%">${opts}</select></div>
-    <div style="display:flex;gap:10px;margin-top:12px">
-      <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce();wbcOpenQuestionEditor(${bossIdx})">Back</button>
-      <button class="btn btn-primary" style="flex:1" onclick="closeModalForce();_wbcDoImport(${bossIdx})">Import</button>
-    </div>
-  </div>`, 'sm');
-};
-
-window._wbcDoImport = function (bossIdx) {
-  DB = loadDB();
-  const qid  = document.getElementById('wb-import-quiz')?.value;
-  const quiz = (DB.quizzes || []).find(q => q.id === qid);
-  if (!quiz?.questions) { toast('❌ Quiz not found', '#ffb4ab'); return; }
-  _wbQDraft = [..._wbQDraft, ...JSON.parse(JSON.stringify(quiz.questions))];
-  wbcOpenQuestionEditor(bossIdx);
-};
-
-window.wbcSaveQuestions = function (bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx]; if (!boss) return;
-  boss.bossQuestions = _wbQDraft;
-  saveDB();
-  closeModalForce();
-  toast(`✅ ${_wbQDraft.length} questions saved!`);
-  renderAdminBossEvents();
-};

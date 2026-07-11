@@ -232,6 +232,69 @@ function syncStudentStatsToServer(studentId, xpDelta, coinsDelta) {
 }
 window.syncStudentStatsToServer = syncStudentStatsToServer;
 
+// ── Self-service cosmetic profile sync (Phase 49 — profile picture / name
+//    persistence fix) ───────────────────────────────────────────────────────
+//
+// THE BUG: db-service.js's bulk `profiles` upsert (the only thing that ever
+// wrote display_name/first_name/last_name/init/profile_pic_url to Supabase)
+// is deliberately gated to isStaffSession only — a student session skips it
+// entirely, by design, so a student login can never trigger the is_staff()
+// write path. That's correct for the bulk roster-editing upsert, but it
+// left NO write path at all for a student (or teacher) editing their OWN
+// cosmetic fields: the change would apply to the local DB/currentUser copy
+// and look saved for the rest of the session, then vanish the moment
+// loadDB() pulled the server's (unchanged) copy back down — e.g. on the
+// next page refresh. The `profiles_self_update_cosmetic_only` RLS policy
+// referenced in a phase14_section_isolation.sql comment as "untouched" was
+// never actually created anywhere in supabase/, so even a direct
+// client-side .update('profiles') call would have been rejected by RLS.
+//
+// THE FIX: update_own_profile_cosmetic() (supabase/phase49_student_self_
+// profile_rpc.sql) is a SECURITY DEFINER RPC scoped to `id = auth.uid()`
+// server-side — the caller can only ever touch their own row, no matter
+// what id-like value is passed anywhere else in the app, and the function
+// signature only exposes five cosmetic columns (no xp/coins/role/class_id/
+// id parameter exists, so this RPC cannot reach those regardless of caller
+// input). Works for students AND teachers/admins alike, since it's scoped
+// by real Supabase identity, not by which local array/branch called it.
+//
+// Unlike the fire-and-forget stat syncs above, this is called from an
+// explicit "Save Changes" button (saveProfileEdit() in index.html) where
+// the person is actively waiting for confirmation the save worked — so
+// this is awaited and returns a result the caller can toast on, rather than
+// firing optimistically in the background.
+//
+// payload: { displayName, firstName, lastName, init, profilePic }
+//   Each field follows the SAME null-means-unchanged convention already
+//   used by _profPendingPic elsewhere in the profile panel: pass `null` to
+//   leave a column untouched server-side (the RPC does
+//   `coalesce(p_x, x)`), pass an empty string to explicitly clear it (e.g.
+//   "Remove Photo"), or pass the new value to set it.
+async function syncOwnProfileCosmeticToServer(payload) {
+  payload = payload || {};
+  if (typeof DBService === 'undefined' || typeof DBService.rpc !== 'function') {
+    return { success: false, error: new Error('Not connected to Supabase (offline).') };
+  }
+  try {
+    const result = await DBService.rpc('update_own_profile_cosmetic', {
+      p_display_name:    payload.displayName !== undefined ? payload.displayName : null,
+      p_first_name:      payload.firstName   !== undefined ? payload.firstName   : null,
+      p_last_name:       payload.lastName    !== undefined ? payload.lastName    : null,
+      p_init:            payload.init        !== undefined ? payload.init        : null,
+      p_profile_pic_url: payload.profilePic  !== undefined ? payload.profilePic  : null,
+    });
+    if (result && result.error) {
+      console.warn('[EduQuest] syncOwnProfileCosmeticToServer: RPC failed', result.error);
+      return { success: false, error: result.error };
+    }
+    return { success: true, row: result && result.data };
+  } catch (e) {
+    console.warn('[EduQuest] syncOwnProfileCosmeticToServer: RPC threw', e);
+    return { success: false, error: e };
+  }
+}
+window.syncOwnProfileCosmeticToServer = syncOwnProfileCosmeticToServer;
+
 // ── Server-authoritative derived-stat sync (Pending Fixes Report §3) ───────
 //
 // THE BUG: attendance_pct/quiz_avg were the "still open" half of the §6.1

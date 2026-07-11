@@ -184,8 +184,8 @@ function _renderStudentWorldBossCore() {
         <div class="wb-hp-label">💀 BOSS HP — SHARED ACROSS ALL PLAYERS</div>
         <div class="wb-hp-numbers" id="wb-hp-num">${(boss.currentHp || boss.maxHp).toLocaleString()} <span>/ ${boss.maxHp.toLocaleString()}</span></div>
       </div>
-      <div class="wb-hp-bar-track">
-        <div class="wb-hp-bar-fill" id="wb-hp-fill" style="width:${pct}%;background:linear-gradient(90deg,${hpColor},${pct > 30 ? '#8b5cf6' : '#ef4444'})"></div>
+      <div class="wb-hp-bar-track stat-bar" id="wb-hp-track">
+        <div class="wb-hp-bar-fill stat-bar-fill" id="wb-hp-fill" style="background:linear-gradient(90deg,${hpColor},${pct > 30 ? '#8b5cf6' : '#ef4444'})"></div>
       </div>
       <div class="wb-hp-pct" id="wb-hp-pct">${pct}% HP remaining</div>
     </div>
@@ -236,6 +236,16 @@ function _renderStudentWorldBossCore() {
   </div>
   <div id="wbc-float-container"></div>
   <div class="wbc-combo" id="wbc-combo"></div>`;
+
+  // Shared stat-bar renderer (Visual Enhancement Guide §2.1 / §3.3) — drives
+  // width + data-tier for the full-page HP bar. The bespoke pink/purple
+  // gradient above is set via inline style, which always wins over the
+  // generic .stat-bar-fill background, so this only adds the shared
+  // width/tier/pulse mechanics without changing the boss bar's look.
+  const wbHpTrackEl = document.getElementById('wb-hp-track');
+  if (wbHpTrackEl && typeof renderStatBar === 'function') {
+    renderStatBar(wbHpTrackEl, { percent: pct, tier: pct <= 20 ? 'critical' : 'normal' });
+  }
 
   _wbcSpawnParticles();
   _wbcStartLiveRefresh();
@@ -346,10 +356,19 @@ function _wbcUpdateHPDisplay(bossIdx) {
   const pct      = Math.max(0, Math.min(100, Math.round((boss.currentHp || boss.maxHp) / boss.maxHp * 100)));
   const hpColor  = pct > 60 ? '#EC4899' : pct > 30 ? '#ffb95f' : '#ef4444';
   const hpNum    = document.getElementById('wb-hp-num');
+  const hpTrack  = document.getElementById('wb-hp-track');
   const hpFill   = document.getElementById('wb-hp-fill');
   const hpPct    = document.getElementById('wb-hp-pct');
   if (hpNum)  hpNum.innerHTML  = `${(boss.currentHp || boss.maxHp).toLocaleString()} <span>/ ${boss.maxHp.toLocaleString()}</span>`;
-  if (hpFill) { hpFill.style.width = pct + '%'; hpFill.style.background = `linear-gradient(90deg,${hpColor},${pct > 30 ? '#8b5cf6' : '#ef4444'})`; }
+  if (hpFill) hpFill.style.background = `linear-gradient(90deg,${hpColor},${pct > 30 ? '#8b5cf6' : '#ef4444'})`;
+  // Shared renderer handles width + tier + a brief brightness pulse whenever
+  // the boss actually takes damage since the last update (justChanged) —
+  // same "state object in, render out" pattern as the Dashboard XP bar.
+  if (hpTrack && typeof renderStatBar === 'function') {
+    const tookDamage = typeof window._wbcLastHpPct === 'number' && pct < window._wbcLastHpPct;
+    renderStatBar(hpTrack, { percent: pct, tier: pct <= 20 ? 'critical' : 'normal', justChanged: tookDamage });
+  }
+  window._wbcLastHpPct = pct;
   if (hpPct)  hpPct.textContent = pct + '% HP remaining';
   _wbcUpdateStatsDisplay(bossIdx);
   wbcUpdateTopbarWidget();

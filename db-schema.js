@@ -63,6 +63,8 @@ const DEFAULT_DB = {
     {studentId:'jose',item:'🍫 Chocolate Bar',pts:100,date:'May 30'},
     {studentId:'jose',item:'⭐ +5 Quiz Bonus',pts:300,date:'May 28'},
   ],
+  orders:[], // Phase 48 — synced via `orders` table; see shop_store.js cartCheckout()
+  inventory:{}, // Phase 48 — synced via `inventory` table; see shop_store.js / shop_inventory.js
   achievements:[
     {id:'a_quiz_master',name:'Quiz Master',description:'Score 100% on a quiz',icon:'🧠',category:'Quiz Performance',rarity:'Rare',xpReward:100,coinReward:100,triggerType:'quiz_score',triggerValue:100,active:true},
     {id:'a_attendance_star',name:'Perfect Attendance',description:'Maintain 100% attendance',icon:'📅',category:'Attendance',rarity:'Uncommon',xpReward:80,coinReward:50,triggerType:'attendance_pct',triggerValue:100,active:true},

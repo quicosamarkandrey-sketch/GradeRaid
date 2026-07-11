@@ -114,10 +114,10 @@ begin
   -- attempt (e.g. the response to a successful insert never reached the
   -- client). Return the same success result instead of re-checking stock —
   -- re-checking would be wrong here, this claim was already counted.
-  select claimed_at, item_name, rarity
+  select lc.claimed_at, lc.item_name, lc.rarity
     into v_existing_ts, v_item_name, v_rarity
-    from public.loot_claims
-   where id = v_claim_id;
+    from public.loot_claims lc
+   where lc.id = v_claim_id;
 
   if found then
     return query select true, null::text, false, v_claim_id, v_item_name, v_rarity, v_existing_ts;
@@ -176,11 +176,11 @@ begin
     return;
   end if;
 
-  insert into public.loot_claims
+  insert into public.loot_claims as lc
     (id, boss_id, class_id, reward_id, item_name, rarity, student_id, student_name, student_init, student_color, claimed_at)
   values
     (v_claim_id, p_boss_id, p_class_id, p_reward_id, v_item_name, v_rarity, p_student_id, p_student_name, p_student_init, p_student_color, now())
-  returning claimed_at into v_existing_ts;
+  returning lc.claimed_at into v_existing_ts;
 
   return query select true, null::text, false, v_claim_id, v_item_name, v_rarity, v_existing_ts;
 end;

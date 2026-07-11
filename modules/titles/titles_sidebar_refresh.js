@@ -101,7 +101,17 @@ window.tsShowTitleUnlockPopup = function (title) {
  * Injects/removes #ts-sidebar-title div inside .sidebar-player.
  */
 window.tsRefreshSidebarTitle = function () {
-  if (currentRole !== 'student' || !currentUser) return;
+  // BUGFIX (stale badge across account switches): this used to bail out here
+  // for any non-student role WITHOUT removing #ts-sidebar-title, so a badge
+  // injected during a previous student session in the same tab stayed
+  // visually stuck in the sidebar after switching to a teacher/admin account
+  // (no full page reload in between). Always clear the stale element first;
+  // only skip re-rendering it for non-student roles.
+  if (currentRole !== 'student' || !currentUser) {
+    const stale = document.getElementById('ts-sidebar-title');
+    if (stale) stale.remove();
+    return;
+  }
   DB = loadDB();
   const eq   = tsGetEquippedTitle(currentUser.id);
   let el     = document.getElementById('ts-sidebar-title');
@@ -122,7 +132,14 @@ window.tsRefreshSidebarTitle = function () {
  * Inserts #ts-dash-title below .dash-hero-name if student has an equipped title.
  */
 window.tsRefreshProfileTitle = function () {
-  if (!currentUser || currentRole !== 'student') return;
+  // BUGFIX: same stale-element issue as tsRefreshSidebarTitle above — clear
+  // any leftover #ts-dash-title from a previous student session before
+  // bailing out for a non-student role.
+  if (!currentUser || currentRole !== 'student') {
+    const stale = document.getElementById('ts-dash-title');
+    if (stale) stale.remove();
+    return;
+  }
   DB = loadDB();
   const existing = document.getElementById('ts-dash-title');
   if (existing) existing.remove();

@@ -35,7 +35,6 @@ const NAV_STUDENT=[
   {id:'s-badges',label:'Achievements',icon:'workspace_premium'},
   {id:'s-mail',label:'Mail',icon:'mail'},
   {id:'s-attendance',label:'My Progress',icon:'calendar_month'},
-  {id:'s-classroom', label:'My Seat',    icon:'chair'},
 ];
 const NAV_ADMIN=[
   {id:'a-dashboard',label:'Command Center',icon:'home'},
@@ -127,7 +126,7 @@ function navTo(id){
   if(id!=='a-store'&&_adminStoreInterval){ clearInterval(_adminStoreInterval); _adminStoreInterval=null; }
   // Stop RFID capture (focus-stealing interval + AppStore subscription) when leaving the scanner
   if(id!=='a-scanner'&&typeof unmountRfidScanner==='function'){ unmountRfidScanner(); }
-  if(id!=='a-classroom'&&id!=='s-classroom'&&typeof unmountClassroomBuilder==='function'){ unmountClassroomBuilder(); }
+  if(id!=='a-classroom'&&typeof unmountClassroomBuilder==='function'){ unmountClassroomBuilder(); }
   if(id!=='a-classroom-monitor'&&typeof unmountClassroomMonitor==='function'){ unmountClassroomMonitor(); }
   if(id!=='a-sections'&&typeof unmountSectionMaker==='function'){ unmountSectionMaker(); }
   if(id!=='a-enrollment'&&typeof unmountEnrollmentHub==='function'){ unmountEnrollmentHub(); }
@@ -184,10 +183,6 @@ function navTo(id){
   else if(id==='a-settings') renderSchoolSettings();
   else if(id==='a-content-oversight') renderContentOversight();
   else if(id==='a-audit-log') renderAuditLog();
-  else if(id==='s-classroom'){
-    if(typeof unmountClassroomBuilder==='function') unmountClassroomBuilder();
-    renderStudentSeating();
-  }
   showPage(id);
   // close sidebar on mobile
   if(window.innerWidth<=1024)document.getElementById('sidebar').classList.remove('open');

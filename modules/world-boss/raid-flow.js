@@ -150,6 +150,8 @@ function wbrShowIntro() {
   if (!boss) return;
   var stage = wbrBossStage(boss);
   WBR.phase = 'intro';
+  document.getElementById('camp-scene')?.querySelectorAll('#wbr-live-feed,#wbr-minion-dock,#wbr-minion-dock-right,#wbr-raid-meta')
+    .forEach(function (el) { el.remove(); });
   document.getElementById('camp-story-panel').style.display = 'block';
   document.getElementById('camp-encounter').style.display   = 'none';
   document.getElementById('camp-result').style.display      = 'none';
@@ -384,8 +386,8 @@ function _wbrOpenBattleRender(bossIdx) {
     var b = DB.bossEvents[WBR.bossIdx];
     if (!b || b.status !== 'active') { wbrCloseBattle(); return; }
     wbrUpdateHUD();
-    wbrRenderSideOverlays();
     if (WBR.phase === 'battle') {
+      wbrRenderSideOverlays();
       var _rec = wbcMyRecord(WBR.bossIdx);
       if (_rec) {
         var _qs   = wbcGetBossQuestions(b);

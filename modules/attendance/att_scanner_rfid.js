@@ -66,6 +66,7 @@ let _rfidScanMode = 'attendance';   // 'attendance' | 'assign'
 let _rfidAssignTargetStudentId = null;
 let _rfidSelectedClassId = 'default-class';
 let _rfidClockInterval = null;
+let _rfidScheduleTimerInterval = null;
 
 /**
  * renderRfidScanner() → void  [window.renderRfidScanner]
@@ -115,6 +116,8 @@ window.renderRfidScanner = function () {
 
         <div class="kiosk-activity">
           <div class="kiosk-activity-header">Recent Activity</div>
+          <div class="kiosk-schedule-timer" id="kiosk-schedule-timer"></div>
+          <div class="kiosk-roster-stats" id="kiosk-roster-stats"></div>
           <div class="kiosk-activity-summary" id="kiosk-activity-summary"></div>
           <div class="kiosk-activity-list" id="kiosk-activity-list"></div>
         </div>
@@ -125,6 +128,7 @@ window.renderRfidScanner = function () {
   _rfidRenderActivity();
   _rfidStartCapture();
   _rfidStartClock();
+  _rfidStartScheduleTimer();
 
   AppStore.subscribe('rfid-scanner', function (state, event) {
     if (!_rfidScannerMounted) return;
@@ -178,6 +182,7 @@ window.unmountRfidScanner = function () {
   if (_rfidFocusInterval) { clearInterval(_rfidFocusInterval); _rfidFocusInterval = null; }
   if (_rfidInactivityTimer) { clearTimeout(_rfidInactivityTimer); _rfidInactivityTimer = null; }
   if (_rfidClockInterval) { clearInterval(_rfidClockInterval); _rfidClockInterval = null; }
+  if (_rfidScheduleTimerInterval) { clearInterval(_rfidScheduleTimerInterval); _rfidScheduleTimerInterval = null; }
   clearTimeout(window._rfidSpotlightResetTimer);
   document.body.classList.remove('rfid-kiosk-mode');
   AppStore.unsubscribe('rfid-scanner');
@@ -201,6 +206,75 @@ function _rfidStartClock() {
   if (_rfidClockInterval) clearInterval(_rfidClockInterval);
   _rfidTickClock();
   _rfidClockInterval = setInterval(_rfidTickClock, 1000 * 15);
+}
+
+// ── Schedule countdown (one chip, not three) ────────────────────────────────
+// A teacher only ever cares about whichever milestone is coming up next, so
+// instead of showing "opens/late/closes" as three separate timers this picks
+// the single next one and switches automatically as the day progresses:
+//   before openTime   → "Opens in"
+//   openTime→lateCutoff → "Late in"     (counting down to when scans start
+//                                        being marked Late)
+//   lateCutoff→closeTime → "Closes in"  (counting down to auto-close, which
+//                                        marks remaining students Absent)
+//   after closeTime   → "Session closed"
+function _rfidScheduleFor(classId) {
+  const sched = AppStore.getSlice(s => (s.attendanceSchedules || []).find(x => x.classId === classId));
+  return sched || { openTime: '07:00', startTime: '07:30', lateCutoff: '07:45', closeTime: '08:30' };
+}
+
+function _rfidTimeStrToDate(hhmm, base) {
+  const parts = (hhmm || '00:00').split(':').map(Number);
+  const d = new Date(base);
+  d.setHours(parts[0] || 0, parts[1] || 0, 0, 0);
+  return d;
+}
+
+function _rfidNextScheduleMilestone(classId) {
+  const sched = _rfidScheduleFor(classId);
+  const now = new Date();
+  const open = _rfidTimeStrToDate(sched.openTime, now);
+  const late = _rfidTimeStrToDate(sched.lateCutoff, now);
+  const close = _rfidTimeStrToDate(sched.closeTime, now);
+
+  if (now < open) return { label: 'Opens in', target: open, tone: 'open' };
+  if (now < late) return { label: 'Late in', target: late, tone: 'late' };
+  if (now < close) return { label: 'Closes in', target: close, tone: 'close' };
+  return { label: 'Session closed', target: null, tone: 'closed' };
+}
+
+function _rfidFormatCountdown(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function _rfidTickScheduleTimer() {
+  const el = document.getElementById('kiosk-schedule-timer');
+  if (!el) return;
+  const info = _rfidNextScheduleMilestone(_rfidSelectedClassId);
+  if (!info.target) {
+    el.innerHTML = `<div class="kiosk-timer-chip kiosk-timer-closed"><span class="kiosk-timer-label">🔒 Session closed</span></div>`;
+    return;
+  }
+  const remaining = _rfidFormatCountdown(info.target - new Date());
+  const icons = { open: '🚪', late: '⏰', close: '🔒' };
+  el.innerHTML = `
+    <div class="kiosk-timer-chip kiosk-timer-${info.tone}">
+      <span class="kiosk-timer-icon">${icons[info.tone] || '⏱'}</span>
+      <span class="kiosk-timer-label">${_esc(info.label)}</span>
+      <span class="kiosk-timer-value">${_esc(remaining)}</span>
+    </div>`;
+}
+
+function _rfidStartScheduleTimer() {
+  if (_rfidScheduleTimerInterval) clearInterval(_rfidScheduleTimerInterval);
+  _rfidTickScheduleTimer();
+  _rfidScheduleTimerInterval = setInterval(_rfidTickScheduleTimer, 1000);
 }
 
 function _rfidStartCapture() {
@@ -412,6 +486,7 @@ function _rfidProfileCardHtml(student, status, alreadyRecorded, fallbackName) {
           }
           <div class="kiosk-identity-info">
             <div class="kiosk-profile-name">${_esc(name || 'Student')}</div>
+            <div class="kiosk-name-accent"></div>
             ${student ? `<div class="kiosk-profile-section">Section: ${_esc(student.classId)}</div>` : ''}
             <div>
               <div class="kiosk-status-badge" style="background:${badgeColor}22;color:${badgeColor};border:2px solid ${badgeColor}55">
@@ -423,13 +498,13 @@ function _rfidProfileCardHtml(student, status, alreadyRecorded, fallbackName) {
             <div class="kiosk-level-block">
               <div class="kiosk-level-label"><span>Level ${lvlInfo.lvl}</span><span>${lvlInfo.xp.toLocaleString()} / ${lvlInfo.xpNext.toLocaleString()} XP</span></div>
               <div class="kiosk-level-track"><div class="kiosk-level-fill" style="width:${lvlInfo.pct}%"></div></div>
-              ${equippedTitle ? `<div class="kiosk-equipped-title">${tsBuildBadgeHTML(equippedTitle, { small: true, noParticles: true })}</div>` : ''}
+              ${equippedTitle ? `<div class="kiosk-equipped-title"><div class="kiosk-equipped-label">Equipped Title</div>${tsBuildBadgeHTML(equippedTitle, { noParticles: true })}</div>` : ''}
             </div>` : ''}
           </div>
         </div>
 
         ${pct !== null ? `
-        <div class="kiosk-panel kiosk-attendance-panel">
+        <div class="kiosk-panel kiosk-attendance-panel" style="--ring-color:${pctColor}">
           <div class="kiosk-ring" style="--ring-deg:${ringDeg}deg;--ring-color:${pctColor}">
             <div class="kiosk-ring-inner">
               <div class="kiosk-ring-pct">${pct}<span>%</span></div>
@@ -442,12 +517,12 @@ function _rfidProfileCardHtml(student, status, alreadyRecorded, fallbackName) {
         ${pct !== null && hasStatsPanel ? `
         <div class="kiosk-panel kiosk-stats-panel">
           ${student && student.coins != null ? `
-          <div class="kiosk-stat-chip">
+          <div class="kiosk-stat-chip kiosk-stat-chip-coins">
             <div class="kiosk-stat-label">Coins</div>
             <div class="kiosk-stat-value">🪙 ${Number(student.coins || 0).toLocaleString()}</div>
           </div>` : ''}
           ${rankInfo ? `
-          <div class="kiosk-stat-chip">
+          <div class="kiosk-stat-chip kiosk-stat-chip-rank">
             <div class="kiosk-stat-label">Class Rank</div>
             <div class="kiosk-stat-value">#${rankInfo.rank} <span>of ${rankInfo.of}</span></div>
           </div>` : ''}
@@ -530,6 +605,7 @@ function _rfidTodayISO() {
 }
 
 function _rfidRenderActivity() {
+  const statsEl = document.getElementById('kiosk-roster-stats');
   const summaryEl = document.getElementById('kiosk-activity-summary');
   const listEl = document.getElementById('kiosk-activity-list');
   if (!summaryEl || !listEl) return;
@@ -543,6 +619,38 @@ function _rfidRenderActivity() {
   const by = { 'Early': 0, 'On Time': 0, 'Late': 0, 'Absent': 0, 'Excused': 0 };
   todaysLogs.forEach(l => { if (by[l.status] !== undefined) by[l.status]++; });
   const colors = { 'Early': '#7fd8ff', 'On Time': '#4edea3', 'Late': '#ffd166', 'Absent': '#ffb4ab', 'Excused': '#c4b5fd' };
+
+  // Roster snapshot — the four numbers a teacher glances at first when the
+  // kiosk is idle: how many are enrolled, how many are in (on time or
+  // early), how many came in late, and how many the kiosk hasn't seen yet
+  // today. "Not Checked In" mirrors the "already logged in" phrasing the
+  // spotlight card already uses, instead of the more clinical "not yet
+  // scanned".
+  if (statsEl) {
+    const enrolledCount = students.filter(s => (s.classId || 'default-class') === _rfidSelectedClassId).length;
+    const presentCount = by['Early'] + by['On Time'];
+    const lateCount = by['Late'];
+    const loggedCount = todaysLogs.length;
+    const notCheckedInCount = Math.max(0, enrolledCount - loggedCount);
+
+    statsEl.innerHTML = `
+      <div class="kiosk-roster-stat">
+        <div class="kiosk-roster-stat-value">${enrolledCount}</div>
+        <div class="kiosk-roster-stat-label">Total</div>
+      </div>
+      <div class="kiosk-roster-stat kiosk-roster-stat-present">
+        <div class="kiosk-roster-stat-value">${presentCount}</div>
+        <div class="kiosk-roster-stat-label">Present</div>
+      </div>
+      <div class="kiosk-roster-stat kiosk-roster-stat-late">
+        <div class="kiosk-roster-stat-value">${lateCount}</div>
+        <div class="kiosk-roster-stat-label">Late</div>
+      </div>
+      <div class="kiosk-roster-stat kiosk-roster-stat-pending">
+        <div class="kiosk-roster-stat-value">${notCheckedInCount}</div>
+        <div class="kiosk-roster-stat-label">Not Checked In</div>
+      </div>`;
+  }
 
   // Compact one-line summary — the full stat grid the old layout had would
   // crowd the spec'd 80/20 split, so this keeps the same information

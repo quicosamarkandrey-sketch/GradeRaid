@@ -53,6 +53,7 @@ async function doLogin(){
   const p=document.getElementById('login-pass').value.trim();
   const err=document.getElementById('login-err');
   const pendingErr=document.getElementById('login-pending-err');
+  const btn=document.getElementById('login-submit-btn');
   err.style.display='none';
   pendingErr.style.display='none';
 
@@ -61,6 +62,18 @@ async function doLogin(){
     err.style.display='block';
     return;
   }
+
+  // BUGFIX (confusing "dead" login button): signInWithPassword() + the
+  // profile fetch below are a real network round-trip with nothing else on
+  // screen changing in the meantime, which read as the button doing
+  // nothing and invited people to click it repeatedly. eqButtonLoading()
+  // (modules/shared/button-loading.js) swaps the button to a disabled
+  // spinner+label immediately and restores it via the `finally` below on
+  // EVERY exit path — success, invalid credentials, pending registration,
+  // deactivated account, or an unexpected error — so a fast double-click
+  // can't fire two concurrent sign-in attempts either.
+  if (typeof eqButtonLoading === 'function') eqButtonLoading(btn, true, { label: 'Signing in…' });
+  try {
 
   const client = (typeof DBService !== 'undefined') ? DBService.getAuthClient() : null;
   if (!client) {
@@ -240,6 +253,104 @@ async function doLogin(){
   }
 
   bootApp();
+
+  } finally {
+    if (typeof eqButtonLoading === 'function') eqButtonLoading(btn, false);
+  }
+}
+// restoreSession() — BUGFIX (refresh logs the user out): Supabase Auth
+// already persists its access/refresh token in localStorage
+// (persistSession:true in DBService's client config, see db-service.js),
+// and DBService.initRemote() already checks client.auth.getSession() to
+// decide whether to pull fresh data on page load. But NOTHING previously
+// used that saved session to actually restore the LOGGED-IN UI: currentUser
+// and currentRole are plain in-memory variables (see app-state.js), so a
+// hard refresh reset them to null every time and the login screen showed
+// again — even though the Supabase session itself was still valid and
+// initRemote() had already pulled this user's data.
+//
+// This mirrors doLogin()'s post-auth steps (fetch own profile row, map it
+// to the currentUser shape bridge, resolve currentRole, then bootApp())
+// but starting from an existing session instead of a fresh
+// signInWithPassword() call. Called once from index.html inside the
+// AppStore.ready.then(...) bootstrap, after DB/AppStore hydration — by the
+// time getSession()'s network round trip resolves, every later <script>
+// tag (campaign, world-boss, etc.) has already executed, so functions like
+// getStageProgress()/wbcUpdateTopbarWidget() that bootApp() depends on are
+// safely defined.
+// showLoginScreen() — pairs with #boot-loading in index.html (BUGFIX: login
+// screen flash on refresh). Hides the boot spinner and reveals the login
+// form. login-screen's CSS rule (#login-screen{display:flex;...} in
+// base.css) is normally what shows it — it now starts with an inline
+// display:none in the HTML that outranks that, so this restores 'flex'
+// explicitly rather than just clearing the inline style, to avoid depending
+// on CSS cascade order.
+function showLoginScreen(){
+  const boot = document.getElementById('boot-loading');
+  if (boot) boot.style.display = 'none';
+  const login = document.getElementById('login-screen');
+  if (login) login.style.display = 'flex';
+}
+async function restoreSession(){
+  const client = (typeof DBService !== 'undefined') ? DBService.getAuthClient() : null;
+  if (!client) { showLoginScreen(); return; }
+
+  try {
+    const { data: sessionData } = await client.auth.getSession();
+    if (!sessionData || !sessionData.session) { showLoginScreen(); return; } // no saved session — normal logged-out state
+
+    const authUser = sessionData.session.user;
+    const { data: profile, error: profileError } = await client
+      .from('profiles')
+      .select('*')
+      .eq('id', authUser.id)
+      .single();
+
+    // Same edge cases doLogin() guards against: a still-pending registration
+    // (real Auth account, no profiles row yet) or a deactivated staff
+    // account. On refresh there's no login form to show an error in, so we
+    // just sign out quietly and leave the person on the login screen —
+    // they'll get the normal doLogin() error messaging if they try again.
+    if (profileError || !profile || profile.is_active === false) {
+      console.warn('[auth] restoreSession: session present but profile missing/inactive; signing out.', profileError);
+      await client.auth.signOut();
+      showLoginScreen();
+      return;
+    }
+
+    currentUser = {
+      id: profile.id,
+      name: profile.display_name,
+      displayName: profile.display_name,
+      firstName: profile.first_name,
+      lastName: profile.last_name,
+      init: profile.init,
+      color: profile.color,
+      xp: profile.xp,
+      coins: profile.coins,
+      level: profile.level,
+      tier: profile.tier,
+      attendance: profile.attendance_pct,
+      quizAvg: profile.quiz_avg,
+      profilePic: profile.profile_pic_url,
+      classId: profile.class_id,
+      role: profile.role,
+      email: authUser.email,
+      joinDate: profile.join_date,
+      completedQuizzes: (typeof DB !== 'undefined' && DB.students
+        ? (DB.students.find(s => s.id === profile.id) || {}).completedQuizzes
+        : null) || [],
+    };
+    currentRole = (profile.role === 'admin' || profile.role === 'teacher') ? profile.role : 'student';
+
+    // DB was already hydrated correctly-scoped by initRemote() (it only
+    // pulls when a saved session exists), so no extra refreshAfterAuthChange()
+    // pull is needed here — just render. bootApp() hides #boot-loading itself.
+    bootApp();
+  } catch (e) {
+    console.warn('[auth] restoreSession failed; leaving user on login screen:', e);
+    showLoginScreen();
+  }
 }
 // doLogout() is now ASYNC for the same reason doLogin() is: ending a real
 // Supabase Auth session is a network call (client.auth.signOut()). Without
@@ -249,8 +360,28 @@ async function doLogin(){
 async function doLogout(){
   // Cleanup 5: closeProfile absorbed from index.html monkey patch (doLogout → closeProfile → _origLogout)
   if(typeof closeProfile==='function')closeProfile();
+  const logoutBtn=document.getElementById('sidebar-logout-btn');
+  // Same "button looks dead" problem as doLogin() — client.auth.signOut()
+  // is a network call. finally-reset at the end (not left for bootApp() to
+  // clean up, since logging out doesn't go through bootApp()) so the
+  // sidebar button is back to normal the next time this account — or the
+  // next one signed into this browser — logs in and out again.
+  if (typeof eqButtonLoading === 'function') eqButtonLoading(logoutBtn, true, { label: 'Signing out…' });
+  try {
   const client = (typeof DBService !== 'undefined') ? DBService.getAuthClient() : null;
   if (client) { try { await client.auth.signOut(); } catch (e) { console.warn('[auth] signOut failed:', e); } }
+  // BUGFIX: without this, switching accounts on the same browser (e.g.
+  // testing as Teacher A then Teacher B, or after an ownership transfer
+  // moves a teacher's content elsewhere) left the PREVIOUS account's cached
+  // shop_products/boss_events/etc. sitting in localStorage. The next login's
+  // first bulk push would then try to upsert rows still stamped with the
+  // old owner_teacher_id/class_id, which correctly fails RLS server-side —
+  // seen as "[DBService] remote sync failed" for shop_products/boss_events.
+  // Clearing here forces the next login to hydrate fresh from Supabase
+  // instead of trusting a stale local mirror.
+  if (typeof DBService !== 'undefined' && typeof DBService.remove === 'function') {
+    try { DBService.remove(); } catch (e) { console.warn('[auth] local cache clear failed:', e); }
+  }
   currentUser=null;currentRole=null;
   // Reset combat state
   WBC.joined=false;WBC.bossIdx=-1;WBC.qIdx=0;WBC.answered=[];WBC.comboCount=0;
@@ -266,10 +397,20 @@ async function doLogout(){
   if(quizTimer)clearInterval(quizTimer);
   document.getElementById('stage-map-btn').style.display='none';
   activeWorld=0;
+  } finally {
+    if (typeof eqButtonLoading === 'function') eqButtonLoading(logoutBtn, false);
+  }
 }
 function bootApp(){
   // Cleanup 5: profInitAll absorbed from index.html monkey patch (bootApp → profInitAll → _origBoot → refreshAllAvatars)
   if(typeof profInitAll==='function')profInitAll();
+  // BUGFIX (login screen flash on refresh): #boot-loading is the true
+  // default state now (see index.html), covering both a fresh doLogin()
+  // and a restoreSession() on page refresh — harmless no-op if it's
+  // already hidden (e.g. manual login, where it was hidden by
+  // showLoginScreen() back when restoreSession() found no session).
+  const boot = document.getElementById('boot-loading');
+  if(boot) boot.style.display='none';
   document.getElementById('login-screen').style.display='none';
   document.getElementById('main-app').style.display='block';
   updateTopbar();setupSidebar();

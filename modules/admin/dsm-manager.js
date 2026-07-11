@@ -32,7 +32,6 @@ const DSM_STUDENT_DEFAULTS = [
   {id:'s-badges',      label:'Achievements',  icon:'workspace_premium',     order:8,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'Complete registration to unlock',     unlockReq:'Complete registration', group:'Community'},
   {id:'s-mail',        label:'Mail',          icon:'mail',                  order:9,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:'Community'},
   {id:'s-attendance',  label:'My Progress',   icon:'calendar_month',        order:10, visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:''},
-  {id:'s-classroom',   label:'My Seat',       icon:'chair',                 order:11, visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:''},
 ];
 
 const DSM_ADMIN_DEFAULTS = [

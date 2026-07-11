@@ -4,6 +4,13 @@
 --
 -- Run once in the Supabase SQL editor, after Phase 24.
 --
+-- UPDATED (this session) — finalize_loot_rush() now also transitions the
+-- boss to status='ended'/ended_at=now() instead of only setting
+-- loot_finalized_at. See the bugfix comment inside that function below for
+-- the full "boss never properly ends" explanation. RE-RUN THIS FILE in the
+-- Supabase SQL editor even if Phase 25 was already applied — create or
+-- replace is idempotent and safe to run again.
+--
 -- THE GAP THIS CLOSES
 --   prepareLootRush()/finalizeLoot() in loot-service.js only ever mutated
 --   local AppStore state (status='loot', defeatedAt, lootStartedAt,
@@ -71,14 +78,14 @@ begin
     raise exception 'not authorized for this section';
   end if;
 
-  update public.boss_events
+  update public.boss_events b
      set status            = 'loot',
          current_hp         = 0,
          defeated_at        = now(),
          loot_started_at    = now(),
          loot_finalized_at  = null
-   where id = p_boss_id and class_id = p_class_id and status <> 'loot'
-  returning loot_started_at into v_loot_started_at;
+   where b.id = p_boss_id and b.class_id = p_class_id and b.status <> 'loot'
+  returning b.loot_started_at into v_loot_started_at;
 
   if found then
     v_updated := true;
@@ -126,11 +133,22 @@ begin
     raise exception 'not authorized for this section';
   end if;
 
-  update public.boss_events
-     set loot_finalized_at = now()
-   where id = p_boss_id and class_id = p_class_id
-     and status = 'loot' and loot_finalized_at is null
-  returning loot_finalized_at into v_loot_finalized_at;
+  -- BUGFIX (boss never properly ends): this used to only set
+  -- loot_finalized_at, leaving `status` stuck at 'loot' forever — there was
+  -- no RPC or UI path that ever moved a finalized boss to 'ended' short of
+  -- a teacher activating a *different* boss in the same section (which
+  -- force-ends this one client-side only, never server-synced). Finalizing
+  -- the loot rush IS the natural end of the encounter, so this now sets
+  -- status/ended_at the same way end_boss_event() (Phase 24) does for a
+  -- manual end — just reached automatically. Mirrors the matching fix in
+  -- loot-service.js's finalizeLoot().
+  update public.boss_events b
+     set loot_finalized_at = now(),
+         status            = 'ended',
+         ended_at          = now()
+   where b.id = p_boss_id and b.class_id = p_class_id
+     and b.status = 'loot' and b.loot_finalized_at is null
+  returning b.loot_finalized_at into v_loot_finalized_at;
 
   if found then
     v_updated := true;

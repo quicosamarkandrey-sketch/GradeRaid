@@ -130,10 +130,10 @@ body.rfid-kiosk-mode #a-scanner.page{
 .kiosk-welcome-icon{font-size:38px;line-height:1;flex-shrink:0}
 .kiosk-welcome-copy{min-width:0}
 .kiosk-welcome-kicker{
-  font-family:var(--fh);font-size:12px;font-weight:900;letter-spacing:.1em;
+  font-family:var(--fh);font-size:13px;font-weight:900;letter-spacing:.1em;
   text-transform:uppercase;color:#4edea3;margin-bottom:4px;
 }
-.kiosk-welcome-text{font-family:var(--fh);font-size:22px;font-weight:800;line-height:1.25}
+.kiosk-welcome-text{font-family:var(--fh);font-size:24px;font-weight:800;line-height:1.25}
 
 /* Two-panel grid: identity (spans both rows) | attendance ring (top-right) |
    coins/rank stats (bottom-right) — each panel stretches to fill its share
@@ -149,7 +149,7 @@ body.rfid-kiosk-mode #a-scanner.page{
   padding:36px;display:flex;min-height:0;
 }
 
-.kiosk-identity-panel{grid-row:1/3;align-items:center;gap:32px}
+.kiosk-identity-panel{grid-row:1/3;flex-direction:column;align-items:center;justify-content:center;gap:22px;text-align:center}
 .kiosk-dashboard-grid-single .kiosk-identity-panel{grid-row:auto}
 .kiosk-attendance-panel{grid-row:1/2}
 .kiosk-stats-panel{grid-row:2/3}
@@ -157,24 +157,30 @@ body.rfid-kiosk-mode #a-scanner.page{
 /* Task 2 — square (softly rounded) container so the full uploaded photo
    shows without being cropped into a circle. */
 .kiosk-profile-avatar{
-  width:220px;height:220px;border-radius:16px;flex-shrink:0;
+  width:272px;height:272px;border-radius:28px;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;object-fit:cover;
-  font-family:var(--fh);font-weight:900;font-size:76px;
-  border:4px solid rgba(255,255,255,.08);
+  font-family:var(--fh);font-weight:900;font-size:92px;
+  border:5px solid rgba(255,255,255,.12);
+  box-shadow:0 20px 50px -16px rgba(139,92,246,.55), 0 0 0 1px rgba(255,255,255,.05);
 }
-.kiosk-identity-info{min-width:0;text-align:left;display:flex;flex-direction:column;gap:14px;width:100%}
-.kiosk-profile-name{font-family:var(--fh);font-size:40px;font-weight:900;line-height:1.15}
-.kiosk-profile-section{font-size:14px;color:var(--text-muted);font-weight:700;letter-spacing:.05em}
+.kiosk-identity-info{min-width:0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px;width:100%}
+.kiosk-profile-name{
+  font-family:var(--fh);font-size:68px;font-weight:900;line-height:1.05;letter-spacing:-.01em;
+  background:linear-gradient(135deg,#ffffff 20%,#d0bcff 75%,#8b5cf6 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 4px 24px rgba(139,92,246,.45));
+}
+.kiosk-profile-section{font-size:15px;color:var(--text-muted);font-weight:700;letter-spacing:.05em}
 .kiosk-status-badge{
-  display:inline-block;padding:10px 26px;border-radius:999px;
-  font-family:var(--fh);font-size:17px;font-weight:900;letter-spacing:.03em;
+  display:inline-block;padding:11px 28px;border-radius:999px;
+  font-family:var(--fh);font-size:18px;font-weight:900;letter-spacing:.03em;
 }
 /* Investigation Report §4 — attendance streak, shares computeAttendanceStreak()
    (utils.js) with the student's own Progress page. */
 .kiosk-streak-pill{
-  display:inline-block;margin-left:10px;padding:6px 16px;border-radius:999px;
-  background:rgba(249,115,22,.12);color:#f97316;border:1px solid rgba(249,115,22,.3);
-  font-family:var(--fh);font-size:13px;font-weight:800;
+  display:inline-block;margin-left:10px;padding:7px 18px;border-radius:999px;
+  background:rgba(249,115,22,.14);color:#f97316;border:1px solid rgba(249,115,22,.35);
+  font-family:var(--fh);font-size:14px;font-weight:800;
 }
 
 /* Gamification — level/XP bar in the app's signature purple, matching the
@@ -193,20 +199,33 @@ body.rfid-kiosk-mode #a-scanner.page{
 /* Equipped title (Task: shows only when the student has one equipped —
    nothing is rendered otherwise, no empty placeholder). Reuses the exact
    badge markup tsBuildBadgeHTML() produces for the sidebar/dashboard. */
-.kiosk-equipped-title{margin-top:12px}
+.kiosk-equipped-title{margin-top:14px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.kiosk-equipped-label{
+  font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-muted);
+}
+.kiosk-equipped-title .ts-badge-wrap{
+  transform:scale(1.35);transform-origin:center;
+  min-width:120px;height:40px;font-size:14px;padding:6px 18px 6px 14px;
+}
 
 /* Task 3 — the attendance percentage as a prominent circular progress
    ring instead of a flat bottom bar, drawn with a conic-gradient so it
    needs no SVG and recolors purely via inline CSS custom properties. */
 .kiosk-attendance-panel{
   flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;
+  background:
+    radial-gradient(circle at 50% 12%, color-mix(in srgb, var(--ring-color, #4edea3) 26%, transparent), transparent 62%),
+    rgba(35,31,56,.55);
+  border-color: color-mix(in srgb, var(--ring-color, #4edea3) 42%, var(--border));
 }
 .kiosk-ring{
   --ring-deg:0deg;--ring-color:#4edea3;
-  width:180px;height:180px;border-radius:50%;position:relative;flex-shrink:0;
+  width:190px;height:190px;border-radius:50%;position:relative;flex-shrink:0;
   background:conic-gradient(var(--ring-color) var(--ring-deg), rgba(255,255,255,.07) 0);
   display:flex;align-items:center;justify-content:center;
   transition:background 1s cubic-bezier(.2,.8,.3,1);
+  box-shadow:0 0 44px -10px color-mix(in srgb, var(--ring-color) 60%, transparent);
 }
 .kiosk-ring::before{
   content:'';position:absolute;inset:12px;border-radius:50%;
@@ -224,11 +243,16 @@ body.rfid-kiosk-mode #a-scanner.page{
    bar so gamification data reads as one visual family across the kiosk. */
 .kiosk-stats-panel{
   align-items:center;justify-content:center;gap:16px;
+  background:linear-gradient(135deg, rgba(251,191,36,.07), rgba(167,139,250,.09)), rgba(35,31,56,.55);
 }
 .kiosk-stat-chip{
   flex:1;text-align:center;background:rgba(208,188,255,.06);
   border:1px solid rgba(208,188,255,.16);border-radius:16px;padding:16px 10px;
 }
+.kiosk-stat-chip-coins{background:rgba(251,191,36,.10);border-color:rgba(251,191,36,.32)}
+.kiosk-stat-chip-coins .kiosk-stat-value{color:#fbbf24}
+.kiosk-stat-chip-rank{background:rgba(167,139,250,.12);border-color:rgba(167,139,250,.35)}
+.kiosk-stat-chip-rank .kiosk-stat-value{color:#a78bfa}
 .kiosk-stat-label{
   font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
   color:var(--text-muted);margin-bottom:8px;
@@ -245,8 +269,7 @@ body.rfid-kiosk-mode #a-scanner.page{
 
 @media (max-width: 1200px){
   .kiosk-dashboard-grid{grid-template-columns:1fr;grid-template-rows:auto auto auto}
-  .kiosk-identity-panel{grid-row:auto;flex-direction:column;text-align:center}
-  .kiosk-identity-info{text-align:center}
+  .kiosk-identity-panel{grid-row:auto}
   .kiosk-attendance-panel,.kiosk-stats-panel{grid-row:auto}
 }
 
@@ -266,6 +289,40 @@ body.rfid-kiosk-mode #a-scanner.page{
   font-family:var(--fh);font-size:13px;font-weight:900;letter-spacing:.04em;
   margin-bottom:4px;
 }
+/* Schedule countdown — one chip whose label/color swaps automatically as
+   the day moves through opens → late → closes, instead of three separate
+   timers competing for space. */
+.kiosk-timer-chip{
+  display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:14px;
+  margin-bottom:16px;background:rgba(255,255,255,.04);border:1px solid var(--border);
+}
+.kiosk-timer-icon{font-size:16px;line-height:1;flex-shrink:0}
+.kiosk-timer-label{font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--text-muted);flex:1}
+.kiosk-timer-value{font-family:var(--fh);font-size:16px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--on-surface)}
+.kiosk-timer-open{background:rgba(127,216,255,.08);border-color:rgba(127,216,255,.26)}
+.kiosk-timer-open .kiosk-timer-value{color:#7fd8ff}
+.kiosk-timer-late{background:rgba(255,209,102,.08);border-color:rgba(255,209,102,.28)}
+.kiosk-timer-late .kiosk-timer-value{color:#ffd166}
+.kiosk-timer-close{background:rgba(255,180,171,.08);border-color:rgba(255,180,171,.28)}
+.kiosk-timer-close .kiosk-timer-value{color:#ffb4ab}
+.kiosk-timer-closed{background:rgba(255,255,255,.03);border-color:var(--border)}
+.kiosk-timer-closed .kiosk-timer-label{color:var(--text-muted);font-weight:800}
+
+/* Roster snapshot — the four at-a-glance numbers above the activity feed. */
+.kiosk-roster-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+.kiosk-roster-stat{
+  background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px;
+  padding:10px 8px;text-align:center;
+}
+.kiosk-roster-stat-value{font-family:var(--fh);font-size:21px;font-weight:900;line-height:1;color:var(--on-surface)}
+.kiosk-roster-stat-label{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-top:5px}
+.kiosk-roster-stat-present{background:rgba(78,222,163,.08);border-color:rgba(78,222,163,.24)}
+.kiosk-roster-stat-present .kiosk-roster-stat-value{color:#4edea3}
+.kiosk-roster-stat-late{background:rgba(255,209,102,.08);border-color:rgba(255,209,102,.26)}
+.kiosk-roster-stat-late .kiosk-roster-stat-value{color:#ffd166}
+.kiosk-roster-stat-pending{background:rgba(255,180,171,.07);border-color:rgba(255,180,171,.22)}
+.kiosk-roster-stat-pending .kiosk-roster-stat-value{color:#ffb4ab}
+
 .kiosk-activity-summary{font-size:10.5px;color:var(--text-muted);margin-bottom:14px;line-height:1.5}
 .kiosk-activity-list{flex:1;overflow-y:auto}
 .kiosk-activity-item{

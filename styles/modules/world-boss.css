@@ -52,7 +52,7 @@
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   text-shadow:0 0 10px rgba(236,72,153,0.5);
 }
-.wb-widget-hp-bar{
+.wb-widget-hp-bar.stat-bar{
   height:4px;border-radius:4px;
   background:rgba(255,255,255,0.08);
   margin:3px 0;overflow:hidden;position:relative;
@@ -215,11 +215,11 @@
   font-family:var(--fh);font-size:22px;font-weight:900;color:var(--on-surface);
 }
 .wb-hp-numbers span{color:rgba(240,238,255,0.4);font-size:14px;font-weight:600}
-.wb-hp-bar-track{
+.wb-hp-bar-track.stat-bar{
   background:rgba(255,255,255,0.05);border-radius:20px;height:22px;
   overflow:hidden;border:1px solid rgba(255,255,255,0.06);position:relative;
 }
-.wb-hp-bar-fill{
+.wb-hp-bar-fill.stat-bar-fill{
   height:100%;border-radius:20px;
   background:linear-gradient(90deg,#EC4899,#be185d,#9333ea);
   box-shadow:0 0 16px rgba(236,72,153,0.4);
