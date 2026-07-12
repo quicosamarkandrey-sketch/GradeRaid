@@ -78,6 +78,16 @@ const DBService = (function () {
   const _STORAGE_KEY = 'eduquest_db_v3';      // localStorage fallback key (unchanged from v1)
   const _SCHEMA_VER  = 4;                      // bumped: v3 blob → v4 relational mirror
 
+  // [PERF FIX — non-blocking boot] Which auth user id the current
+  // _STORAGE_KEY mirror was last synced for. Separate key, additive —
+  // does not change the shape of anything already stored under
+  // _STORAGE_KEY, so nothing else that reads that key needs to change.
+  // Used by initRemote() to decide whether a shared-device mirror (a
+  // different account's data left in localStorage on a kiosk/shared PC)
+  // is safe to render optimistically, or must be discarded in favor of
+  // waiting for a real, correctly-scoped pull.
+  const _LAST_SYNCED_UID_KEY = 'eduquest_last_synced_uid';
+
   // ── Migration-readiness / runtime metadata ────────────────────────────────
   const _meta = {
     provider          : 'unresolved',
@@ -159,6 +169,24 @@ const DBService = (function () {
     if (queuedEpoch !== _sessionEpoch) { _meta.pendingUploads = 0; return; }
     const client = _getClient();
     if (!client || !_cache) { _meta.pendingUploads = 0; return; }
+    // BUGFIX (42501 point_log/redemptions/etc. on refresh): every RLS policy
+    // on these tables is "self OR staff", evaluated against auth.uid(). If
+    // this flush fires before a real Supabase Auth session exists — e.g.
+    // runMigrations()'s saveDB() runs inside AppStore.ready.then(), which is
+    // NOT awaited after restoreSession() (see index.html boot block) — the
+    // client has no JWT yet, auth.uid() is null, and every row in every
+    // table's upsert gets rejected as one failed batch per table. Bail out
+    // here the same way the "no client" case above does; the next mutation
+    // (or restoreSession() completing and re-triggering a save) will queue
+    // another flush once a session actually exists. getSession() is a local
+    // cache read inside supabase-js (no network), so this is cheap to check
+    // on every flush.
+    try {
+      const { data: sessionData } = await client.auth.getSession();
+      if (!sessionData || !sessionData.session) { _meta.pendingUploads = 0; return; }
+    } catch (e) {
+      _meta.pendingUploads = 0; return;
+    }
     try {
       await _pushCacheToSupabase(client, _cache);
       _meta.pendingUploads = 0;
@@ -1377,8 +1405,80 @@ const DBService = (function () {
           return;
         }
 
+        // [PERF FIX — non-blocking boot] This is the returning-user case:
+        // a saved session exists, meaning this browser already completed a
+        // full, correctly-scoped pull at some earlier point (this exact
+        // login, or a previous one). Previously, EVERY page load — not
+        // just the first ever — awaited a fresh, unfiltered pull of all
+        // ~24 tables before AppStore.init() would resolve and the app
+        // would render anything. On a slow connection, a returning user
+        // stared at the boot spinner for however long that full sync took,
+        // every single time, even though a perfectly good (just possibly a
+        // few seconds/minutes stale) snapshot of their own data was
+        // already sitting in localStorage from last time.
+        //
+        // Fix: if a local mirror exists AND it was last synced for THIS
+        // same auth user id, use it immediately (synchronous, ~0ms) so
+        // AppStore.init() can resolve and the app can render right away —
+        // then run the real pull in the background and push the fresh
+        // result in via AppStore.syncFromLegacy('state:remote-sync'), the
+        // exact same mechanism _schedulePullRefresh() already uses for
+        // live realtime updates elsewhere in this file. No new UI-update
+        // code path is introduced; this reuses one already proven to work.
+        //
+        // The uid check matters specifically because this is a kiosk /
+        // shared-device app (see the RFID kiosk screen) — without it, a
+        // different account's leftover localStorage mirror from an
+        // earlier session on the same PC could flash on screen before the
+        // real pull lands. If the stamped uid doesn't match (or nothing is
+        // stamped yet — first login ever on this browser), fall straight
+        // through to the original blocking behavior below, which is always
+        // correct, just not fast.
+        const _uid = sessionData.session.user && sessionData.session.user.id;
+        let _localMirror = null;
+        try {
+          const rawMirror = _localStorageProvider.read();
+          const stampedUid = window.localStorage.getItem(_LAST_SYNCED_UID_KEY);
+          if (rawMirror && stampedUid && _uid && stampedUid === _uid) {
+            _localMirror = JSON.parse(rawMirror);
+          }
+        } catch (e3) { _localMirror = null; }
+
+        if (_localMirror) {
+          _cache = _localMirror;
+          _meta.online = true; // best-effort — a real pull is about to confirm/correct this
+          _setupRealtimeSignals(client);
+
+          // Background pull — NOT awaited, so initRemote() (and therefore
+          // AppStore.init()) resolves immediately above with the cached
+          // snapshot already showing.
+          _pullCacheFromSupabase(client).then(function (fresh) {
+            _cache = fresh;
+            _localStorageProvider.write(JSON.stringify(_cache));
+            if (_uid) window.localStorage.setItem(_LAST_SYNCED_UID_KEY, _uid);
+            _meta.lastRemoteSyncAt = new Date().toISOString();
+            _meta.online = true;
+            if (window.AppStore && typeof window.AppStore.syncFromLegacy === 'function') {
+              window.AppStore.syncFromLegacy(_cache, 'state:remote-sync');
+            }
+          }).catch(function (e4) {
+            // Cached snapshot stays on screen; nothing torn down. Same
+            // "stay on local cache" posture as every other sync failure
+            // path in this file.
+            console.warn('[DBService] background initial-boot pull failed, staying on cached snapshot:', e4);
+            _meta.lastError = String(e4 && e4.message || e4);
+          });
+
+          return;
+        }
+
+        // No usable same-account local mirror (first login ever on this
+        // browser, or a different account's mirror is what's cached) —
+        // original, correct, blocking behavior: nothing renders until this
+        // completes.
         _cache = await _pullCacheFromSupabase(client);
         _localStorageProvider.write(JSON.stringify(_cache)); // seed offline mirror
+        if (_uid) window.localStorage.setItem(_LAST_SYNCED_UID_KEY, _uid);
         _meta.lastRemoteSyncAt = new Date().toISOString();
         _meta.online = true;
         _setupRealtimeSignals(client);
@@ -1426,6 +1526,15 @@ const DBService = (function () {
       try {
         _cache = await _pullCacheFromSupabase(client);
         _localStorageProvider.write(JSON.stringify(_cache));
+        // [PERF FIX — non-blocking boot] Stamp which account this mirror is
+        // now correctly scoped for, so the NEXT page load (a returning
+        // session, handled by initRemote() above) is eligible for the
+        // instant-render fast path instead of the original blocking pull.
+        try {
+          const { data: sd } = await client.auth.getSession();
+          const uid = sd && sd.session && sd.session.user && sd.session.user.id;
+          if (uid) window.localStorage.setItem(_LAST_SYNCED_UID_KEY, uid);
+        } catch (eStamp) { /* non-critical — worst case, next load just isn't fast-pathed */ }
         _meta.lastRemoteSyncAt = new Date().toISOString();
         _meta.online = true;
         _meta.lastError = null;
