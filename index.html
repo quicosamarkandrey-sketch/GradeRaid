@@ -973,7 +973,7 @@ function renderStudentDashboard(){
       </div>`).join('')+`</div>`;
   })()}
 
-  <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
+  <div class="dash-lower-grid">
     <div>
       <!-- ACTIVE QUESTS -->
       ${pending.length ? `
@@ -982,7 +982,7 @@ function renderStudentDashboard(){
         <h2>Active Quests</h2>
         <span class="badge-pill bp-green">${pending.length} available</span>
       </div>
-      <div class="quest-grid" style="grid-template-columns:1fr 1fr;margin-bottom:24px">
+      <div class="quest-grid" style="margin-bottom:24px">
         ${pending.slice(0,2).map((q,qi)=>`
         <div class="quest-card" onclick="startQuiz('${q.id}')">
           <div class="quest-img-wrap">

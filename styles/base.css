@@ -625,6 +625,9 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 }
 .glass-card h3{font-family:var(--fh);font-size:15px;font-weight:800;margin-bottom:14px;color:var(--on-surface)}
 
+/* ── DASHBOARD LOWER SECTION: quests/log (2fr) + rankings/QR/goals sidebar (1fr) ── */
+.dash-lower-grid{display:grid;grid-template-columns:2fr 1fr;gap:20px}
+
 /* ── DASHBOARD HERO CARD ── */
 .dash-hero{
   background:linear-gradient(135deg,var(--midnight),var(--deep-indigo));
@@ -877,6 +880,8 @@ textarea{resize:vertical}
   .page-hero h1{font-size:22px}
   .dash-hero-inner{flex-direction:column;text-align:center}
   .dash-hero-right{width:100%}
+  .dash-hero-stats{grid-template-columns:repeat(2,1fr)}
+  .dash-lower-grid{grid-template-columns:1fr}
   .quest-grid{grid-template-columns:1fr}
   .stat-grid{grid-template-columns:1fr 1fr}
   .lb-podium{grid-template-columns:1fr 1fr 1fr;gap:8px}
