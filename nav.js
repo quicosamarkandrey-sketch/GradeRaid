@@ -26,6 +26,7 @@
 // ── SIDEBAR NAV ──
 const NAV_STUDENT=[
   {id:'s-dashboard',label:'Dashboard',icon:'home'},
+  {id:'s-my-section',label:'My Section',icon:'groups'},
   {id:'s-quizzes',label:'Quest Board',icon:'swords'},
   {id:'s-world-boss',label:'World Boss',icon:'local_fire_department'},
   {id:'s-store',label:'The Armory',icon:'storefront'},
@@ -143,6 +144,7 @@ function navTo(id){
     btn.style.borderRight='3px solid #8b5cf6';btn.style.borderRadius='12px 0 0 12px';
   }
   if(id==='s-dashboard')renderStudentDashboard();
+  else if(id==='s-my-section')renderMySection();
   else if(id==='s-quizzes')renderStudentQuizzes();
   else if(id==='s-world-boss')renderStudentWorldBoss();
   else if(id==='s-store')renderStudentStore();

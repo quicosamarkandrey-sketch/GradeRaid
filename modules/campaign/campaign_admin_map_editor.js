@@ -4,6 +4,12 @@
 //  LOAD AFTER: engine.js, stage-map.js
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Phase 53 — selected class_ids for the "assign to section(s)" picker on a
+// world; kept separate from _worldDraft since it isn't a DB.stageMap field,
+// it's persisted via set_campaign_world_sections() into
+// campaign_stage_sections. Mirrors draftQuizSections in quiz-builder.js.
+let draftWorldSections = [];
+
 // ── Main renderer ─────────────────────────────────────────────────────────────
 
 window.renderAdminStageMap = function () {
@@ -31,7 +37,15 @@ window.renderAdminStageMap = function () {
     <button class="btn btn-primary" onclick="adminAddWorld()">＋ Create First World</button>
   </div>` : ''}
   <div style="display:flex;flex-direction:column;gap:16px">
-    ${worlds.map((w, wi) => `
+    ${worlds.map((w, wi) => {
+      // Phase 53 — "assign to section(s)" status, same opt-in-scoping
+      // semantics as quiz-builder.js's sectionsLabel: empty = every section
+      // this teacher advises can see it.
+      const assignedIds = (DB.campaignSectionAssignments && DB.campaignSectionAssignments[w.id]) || [];
+      const sectionsLabel = assignedIds.length
+        ? assignedIds.map(cid => (typeof getClassLabel === 'function' ? getClassLabel(cid) : cid)).join(', ')
+        : 'All my sections';
+      return `
     <div class="smap-admin-card">
       <div class="smap-admin-world-header" onclick="adminToggleWorld('aw-${wi}')">
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
@@ -41,6 +55,7 @@ window.renderAdminStageMap = function () {
             <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${_esc(w.desc)}</div>
           </div>
           <span style="font-family:var(--fm);font-size:9px;color:${w.color};background:${w.color}18;border:1px solid ${w.color}44;padding:2px 10px;border-radius:4px;letter-spacing:.06em">${w.stages.length} STAGES</span>
+          <span class="badge-pill ${assignedIds.length ? 'bp-primary' : 'bp-gray'}" title="${_esc(sectionsLabel)}">🏫 ${_esc(sectionsLabel)}</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();adminEditWorld(${wi})">✏️</button>
@@ -70,7 +85,8 @@ window.renderAdminStageMap = function () {
           <button class="btn btn-ghost btn-sm" onclick="adminAddStage(${wi})">＋ Add Stage to "${_esc(w.label)}"</button>
         </div>
       </div>
-    </div>`).join('')}
+    </div>`;
+    }).join('')}
   </div>`;
 };
 
@@ -95,17 +111,37 @@ window.adminAddWorld = function () {
   // automatically via the JSON clone of DB.stageMap[wi], which already has
   // it from the Supabase pull mapping in db-service.js.
   window._worldDraft = { id: 'w_' + uid(), ownerTeacherId: currentUser.id, label: 'New World', icon: '🌍', color: '#8b5cf6', desc: 'A new world awaits.', stages: [] };
+  draftWorldSections = []; // Phase 53 — brand-new world has no stages yet, so nothing to assign until it's saved once
   showModal(_worldModalHTML(true), 'md');
 };
 
 window.adminEditWorld = function (wi) {
   window._worldDraft = JSON.parse(JSON.stringify(DB.stageMap[wi]));
+  draftWorldSections = ((DB.campaignSectionAssignments && DB.campaignSectionAssignments[window._worldDraft.id]) || []).slice(); // Phase 53
   showModal(_worldModalHTML(false, wi), 'md');
 };
 
 function _worldModalHTML(isNew, wi) {
   const d      = window._worldDraft;
   const colors = ['#8b5cf6', '#4edea3', '#93c5fd', '#ffb95f', '#f87171', '#a78bfa', '#34d399', '#fb923c'];
+  // Phase 53 — "assign to section(s)" picker. Only meaningful once a world
+  // has stages saved server-side (set_campaign_world_sections() resolves
+  // stage ids from the world row), so it's shown on Edit only — same
+  // "assign after it exists" flow quiz-builder.js's picker doesn't need to
+  // worry about since a quiz has no such dependency. A world with nothing
+  // selected stays visible to every section this teacher advises.
+  const sectionPickerHTML = isNew ? '' : (() => {
+    const activeClassIds = (typeof getActiveClassIds === 'function') ? getActiveClassIds() : [];
+    const sectionOpts = activeClassIds.map(cid =>
+      `<option value="${cid}" ${draftWorldSections.includes(cid) ? 'selected' : ''}>${_esc(typeof getClassLabel === 'function' ? getClassLabel(cid) : cid)}</option>`
+    ).join('');
+    return `<div class="form-group"><label class="form-label">Assign to Section(s)</label>
+      <select id="wf-sections" multiple style="width:100%;min-height:88px" onchange="draftWorldSections=Array.from(this.selectedOptions).map(o=>o.value)">
+        ${sectionOpts || '<option disabled>No sections found</option>'}
+      </select>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Ctrl/Cmd-click to select multiple. Leave everything unselected to show this world to all of your sections — handy when one section shouldn't see a storyline built for another (e.g. different topics per class).</div>
+    </div>`;
+  })();
   return `<div class="modal-h2">${isNew ? '🌍 New World' : '✏️ Edit World'}</div>
     <div class="form-group"><label class="form-label">World Name</label>
       <input type="text" id="wf-label" value="${_esc(d.label || '')}" placeholder="e.g. Science Citadel" style="width:100%" oninput="window._worldDraft.label=this.value"></div>
@@ -120,6 +156,7 @@ function _worldModalHTML(isNew, wi) {
     </div>
     <div class="form-group"><label class="form-label">Description</label>
       <input type="text" id="wf-desc" value="${_esc(d.desc || '')}" placeholder="Short description..." style="width:100%" oninput="window._worldDraft.desc=this.value"></div>
+    ${sectionPickerHTML}
     <div style="display:flex;gap:10px;margin-top:4px">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button>
       <button class="btn btn-primary" style="flex:1" onclick="${isNew ? 'adminSaveNewWorld()' : 'adminSaveEditWorld(' + wi + ')'}">
@@ -139,7 +176,7 @@ window.adminSaveNewWorld = function () {
   toast('✅ World "' + d.label + '" created!');
 };
 
-window.adminSaveEditWorld = function (wi) {
+window.adminSaveEditWorld = async function (wi) {
   const d = window._worldDraft; if (!d) return;
   d.label = document.getElementById('wf-label').value.trim() || d.label;
   d.icon  = document.getElementById('wf-icon').value.trim()  || d.icon;
@@ -148,6 +185,24 @@ window.adminSaveEditWorld = function (wi) {
   DB = loadDB();
   DB.stageMap[wi] = { ...DB.stageMap[wi], ...d };
   saveDB(); closeModalForce(); renderAdminStageMap(); toast('✅ World updated!');
+
+  // Phase 53 — persist the section assignment. Fire-and-forget like every
+  // other section picker in this app (quiz-builder.js/ach_admin_page.js):
+  // optimistic local update already happened via renderAdminStageMap()'s
+  // read of DB.campaignSectionAssignments below, the RPC just makes it
+  // stick server-side and cross-device.
+  if (typeof DBService !== 'undefined' && DBService.rpc) {
+    const sectionIds = draftWorldSections.slice();
+    const { error } = await DBService.rpc('set_campaign_world_sections', { p_world_id: d.id, p_class_ids: sectionIds });
+    if (error) {
+      console.warn('[CampaignMapEditor] set_campaign_world_sections failed:', error);
+      toast('⚠️ World saved, but section assignment failed to sync', '#ffb95f');
+    } else {
+      if (!DB.campaignSectionAssignments) DB.campaignSectionAssignments = {};
+      DB.campaignSectionAssignments[d.id] = sectionIds; // optimistic — next realtime pull confirms it
+      renderAdminStageMap();
+    }
+  }
 };
 
 window.adminDeleteWorld = async function (wi) {

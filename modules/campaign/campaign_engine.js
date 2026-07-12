@@ -16,6 +16,27 @@ let camp = {
   typeTimer: null, fullText: '', charIdx: 0,
 };
 
+// Phase 53 — campaign per-section visibility. Mirrors the "opt-in scoping"
+// pattern renderBadges() (ach_student_page.js) and renderStudentQuizzes()/
+// dashInMySection (index.html) already use: a world with no rows in
+// campaignSectionAssignments is unassigned → visible to every section this
+// teacher advises (same "global by default" semantics used everywhere else
+// content is section-gated). A world assigned to one or more sections is
+// only shown to a student in one of those sections. A world the student has
+// already cleared at least one stage of stays reachable regardless — the
+// same "don't yank progress away" carve-out achievements/quizzes use for
+// already-earned/already-completed content.
+window.getVisibleCampaignWorlds = function () {
+  if (currentRole !== 'student' || !currentUser) return DB.stageMap || [];
+  const assignments = DB.campaignSectionAssignments || {};
+  const myClassId   = currentUser.classId || 'default-class';
+  return (DB.stageMap || []).filter(w => {
+    const assigned = assignments[w.id];
+    if (!assigned || assigned.length === 0 || assigned.includes(myClassId)) return true;
+    return (w.stages || []).some(s => isStageCleared(s.id));
+  });
+};
+
 // ── Progress helpers ──────────────────────────────────────────────────────────
 
 window.isStageCleared = function (stageId) {
@@ -35,7 +56,7 @@ window.markStageCleared = function (stageId) {
 
 window.getMapProgress = function () {
   const allStages = [];
-  (DB.stageMap || []).forEach(w => w.stages.forEach(s => allStages.push(s)));
+  getVisibleCampaignWorlds().forEach(w => w.stages.forEach(s => allStages.push(s)));
   const cleared  = allStages.filter(s => isStageCleared(s.id)).length;
   let activeId   = null;
   for (const s of allStages) { if (!isStageCleared(s.id)) { activeId = s.id; break; } }
@@ -45,7 +66,7 @@ window.getMapProgress = function () {
 window.getStageProgress = function (st) {
   if (!st) return { completedStageIds: new Set(), activeStageId: null, totalClear: 0 };
   const allStages        = [];
-  (DB.stageMap || []).forEach(w => w.stages.forEach(s => allStages.push(s)));
+  getVisibleCampaignWorlds().forEach(w => w.stages.forEach(s => allStages.push(s)));
   const completedStageIds = new Set();
   let activeStageId       = null;
   let totalClear          = 0;
@@ -60,7 +81,7 @@ window.getStageProgress = function (st) {
 
 window.launchCampaignStage = function (worldId, stageId) {
   closeStageMap();
-  const world = (DB.stageMap || []).find(w => w.id === worldId);
+  const world = getVisibleCampaignWorlds().find(w => w.id === worldId);
   if (!world) return;
   const stage = world.stages.find(s => s.id === stageId);
   if (!stage) return toast('Stage not found!');
@@ -271,7 +292,7 @@ function _campVictory() {
     if (typeof achCheckAndAward === 'function') setTimeout(() => achCheckAndAward(currentUser.id), 400);
   }
 
-  const worlds = DB.stageMap || [];
+  const worlds = getVisibleCampaignWorlds();
   const wIdx   = worlds.findIndex(w => w.id === camp.worldId);
   const sIdx   = (worlds[wIdx]?.stages || []).findIndex(s => s.id === camp.stageId);
   const hasNext = worlds[wIdx]?.stages[sIdx + 1] || worlds[wIdx + 1]?.stages[0];
@@ -302,7 +323,7 @@ window.retryCampaign = function () {
 };
 
 window.nextStageCampaign = function () {
-  const worlds = DB.stageMap || [];
+  const worlds = getVisibleCampaignWorlds();
   const wIdx   = worlds.findIndex(w => w.id === camp.worldId);
   const sIdx   = (worlds[wIdx]?.stages || []).findIndex(s => s.id === camp.stageId);
   let nw = worlds[wIdx], ns = worlds[wIdx]?.stages[sIdx + 1];

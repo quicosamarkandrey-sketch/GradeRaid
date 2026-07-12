@@ -23,15 +23,16 @@
 
 const DSM_STUDENT_DEFAULTS = [
   {id:'s-dashboard',   label:'Dashboard',     icon:'home',                  order:1,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:''},
-  {id:'s-quizzes',     label:'Quest Board',   icon:'swords',                order:2,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'Complete first attendance to unlock', unlockReq:'First attendance', group:'Learning'},
-  {id:'s-world-boss',  label:'World Boss',    icon:'local_fire_department', order:3,  visible:true, locked:false, disabled:false, status:'event_only', lockMsg:'Only available during active Boss Events', unlockReq:'Boss event must be active', group:'Events'},
-  {id:'s-store',       label:'The Armory',    icon:'storefront',            order:4,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'Reach Level 3 to unlock',             unlockReq:'Reach Level 3',    group:'Economy'},
-  {id:'s-inventory',   label:'My Inventory',  icon:'backpack',              order:5,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:'Economy'},
-  {id:'s-orders',      label:'My Orders',     icon:'receipt_long',          order:6,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:'Economy'},
-  {id:'s-leaderboard', label:'Hall of Fame',  icon:'military_tech',         order:7,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:'Community'},
-  {id:'s-badges',      label:'Achievements',  icon:'workspace_premium',     order:8,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'Complete registration to unlock',     unlockReq:'Complete registration', group:'Community'},
-  {id:'s-mail',        label:'Mail',          icon:'mail',                  order:9,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:'Community'},
-  {id:'s-attendance',  label:'My Progress',   icon:'calendar_month',        order:10, visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:''},
+  {id:'s-my-section',  label:'My Section',    icon:'groups',                order:2,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:''},
+  {id:'s-quizzes',     label:'Quest Board',   icon:'swords',                order:3,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'Complete first attendance to unlock', unlockReq:'First attendance', group:'Learning'},
+  {id:'s-world-boss',  label:'World Boss',    icon:'local_fire_department', order:4,  visible:true, locked:false, disabled:false, status:'event_only', lockMsg:'Only available during active Boss Events', unlockReq:'Boss event must be active', group:'Events'},
+  {id:'s-store',       label:'The Armory',    icon:'storefront',            order:5,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'Reach Level 3 to unlock',             unlockReq:'Reach Level 3',    group:'Economy'},
+  {id:'s-inventory',   label:'My Inventory',  icon:'backpack',              order:6,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:'Economy'},
+  {id:'s-orders',      label:'My Orders',     icon:'receipt_long',          order:7,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:'Economy'},
+  {id:'s-leaderboard', label:'Hall of Fame',  icon:'military_tech',         order:8,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:'Community'},
+  {id:'s-badges',      label:'Achievements',  icon:'workspace_premium',     order:9,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'Complete registration to unlock',     unlockReq:'Complete registration', group:'Community'},
+  {id:'s-mail',        label:'Mail',          icon:'mail',                  order:10, visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:'Community'},
+  {id:'s-attendance',  label:'My Progress',   icon:'calendar_month',        order:11, visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:''},
 ];
 
 const DSM_ADMIN_DEFAULTS = [

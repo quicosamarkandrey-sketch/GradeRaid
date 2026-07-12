@@ -217,7 +217,7 @@ const DBService = (function () {
            registrations, pointLog, redemptions, recitationLog,
            rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
            achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
-           orders, inventoryRows] =
+           orders, inventoryRows, campaignStageSections] =
       await Promise.all([
         client.from('profiles').select('*'),
         client.from('boss_events').select('*'),
@@ -243,13 +243,14 @@ const DBService = (function () {
         client.from('campaign_worlds').select('*').order('sort_order', { ascending: true }), // Phase 22 — campaign content (was local-only; see phase22_campaign_content_sync.sql)
         client.from('orders').select('*').order('created_at', { ascending: false }), // Phase 48
         client.from('inventory').select('*'), // Phase 48
+        client.from('campaign_stage_sections').select('*'), // Phase 53 — read side of campaign per-section visibility (table existed since Phase 14, never wired up until now)
       ]);
 
     for (const r of [profiles, bossEvents, bossParticipants, lootClaims, achievements, userAchievements,
                       registrations, pointLog, redemptions, recitationLog,
                       rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
                       achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
-                      orders, inventoryRows]) {
+                      orders, inventoryRows, campaignStageSections]) {
       if (r.error) throw r.error;
     }
 
@@ -369,6 +370,14 @@ const DBService = (function () {
       animation: t.animation, particles: t.particles, bgEffect: t.bg_effect,
       customBorderCSS: t.custom_border_css, customAnimationCSS: t.custom_animation_css,
       customBgCSS: t.custom_bg_css, createdAt: t.created_at,
+      // Phase 52: Designer v3 fields — see phase52_titles_designer_v3_columns.sql.
+      // Fall back to tsDefaultTitle()'s own defaults so a pre-Phase-52 row
+      // (column exists now, but this particular title was saved before the
+      // backfill/re-save) renders identically to a brand-new draft instead
+      // of some other stale fallback.
+      frameShape: t.frame_shape || 'classic', frameStyle: t.frame_style || 'none',
+      accentColor: t.accent_color, effect: t.effect || 'none',
+      frameTemplate: t.frame_template || 'solid',
     }));
 
     const titleUnlocksObj = {};
@@ -401,6 +410,29 @@ const DBService = (function () {
       label: w.label, icon: w.icon, color: w.color, desc: w.description,
       stages: w.stages || [],
     }));
+
+    // Phase 53: campaign_stage_sections exists since Phase 14 (see
+    // phase14_section_isolation.sql) but was never read from here — every
+    // campaign world rendered visible to every section of its owning
+    // teacher, with no way to scope a world (or one topic's worth of
+    // stages) to just one section. set_campaign_world_sections() (Phase 53)
+    // writes one row per (stage, class) pair for every stage in a world, so
+    // reading it back is a two-step fold: build a stageId -> worldId
+    // lookup from the catalog we just mapped above, then group the raw
+    // rows by worldId into the same {catalogId: [classId, ...]} shape
+    // quizSectionAssignments/achievementSectionAssignments already use —
+    // renderWorldTabs()/renderStageMap() (campaign_stage_map.js) and
+    // getMapProgress()/getStageProgress() (campaign_engine.js) key off this
+    // by worldId, not by individual stage.
+    const worldIdByStageId = {};
+    campaignWorldsArr.forEach(w => (w.stages || []).forEach(s => { worldIdByStageId[s.id] = w.id; }));
+    const campaignSectionAssignments = {};
+    (campaignStageSections.data || []).forEach(row => {
+      const worldId = worldIdByStageId[row.stage_id];
+      if (!worldId) return; // stale row for a since-deleted stage — ignore
+      if (!campaignSectionAssignments[worldId]) campaignSectionAssignments[worldId] = [];
+      if (!campaignSectionAssignments[worldId].includes(row.class_id)) campaignSectionAssignments[worldId].push(row.class_id);
+    });
 
     // Phase 15: mail_messages is one row per single recipient (see
     // phase14_section_isolation.sql's comment on why); the local app's mail
@@ -663,6 +695,7 @@ const DBService = (function () {
       // stageProgress (per-student progress) stays local-cache-only —
       // out of scope, same as quiz completedQuizzes/history.
       stageMap: campaignWorldsArr, stageProgress: _cache?.stageProgress || {},
+      campaignSectionAssignments, // Phase 53
       _bossIdById: bossIdById, // internal map, see _pushCacheToSupabase
     };
   }
@@ -1075,6 +1108,12 @@ const DBService = (function () {
     // Same isCatalogStaffSession gate as achievements above — same bug,
     // same fix (a student session loading their available titles was
     // triggering a doomed re-push of this whole catalog).
+    // Phase 52: frame_shape/frame_style/accent_color/effect/frame_template
+    // added — Designer v3 (titles_designer.js) has written these onto every
+    // draft since it shipped, but they were never in this row list, so a
+    // chosen frame silently vanished the moment this push ran and the next
+    // full load pulled titles back from Supabase without them (see
+    // phase52_titles_designer_v3_columns.sql for the full story).
     if (isCatalogStaffSession && Array.isArray(cache.titles) && cache.titles.length) {
       await _pushTable('titles', async () => {
       const rows = cache.titles
@@ -1089,6 +1128,8 @@ const DBService = (function () {
           animation: t.animation, particles: t.particles, bg_effect: t.bgEffect,
           custom_border_css: t.customBorderCSS, custom_animation_css: t.customAnimationCSS,
           custom_bg_css: t.customBgCSS,
+          frame_shape: t.frameShape, frame_style: t.frameStyle, accent_color: t.accentColor,
+          effect: t.effect, frame_template: t.frameTemplate,
         }));
       if (rows.length) {
         const { error } = await client.from('titles').upsert(rows, { onConflict: 'id' });
@@ -1329,6 +1370,7 @@ const DBService = (function () {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'quizzes' }, () => _schedulePullRefresh()) // Phase 20
       .on('postgres_changes', { event: '*', schema: 'public', table: 'title_sections' }, () => _schedulePullRefresh()) // Phase 21
       .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_worlds' }, () => _schedulePullRefresh()) // Phase 22
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_stage_sections' }, () => _schedulePullRefresh()) // Phase 53
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => _schedulePullRefresh()) // Phase 48
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => _schedulePullRefresh()) // Phase 48
       .subscribe();

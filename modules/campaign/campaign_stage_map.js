@@ -67,7 +67,9 @@ window.renderWorldTabs = function () {
   DB = loadDB();
   const tabs   = document.getElementById('world-tabs-sm');
   if (!tabs) return;
-  const worlds = DB.stageMap || [];
+  // Phase 53: section-scoped for students — see getVisibleCampaignWorlds()
+  // in campaign_engine.js.
+  const worlds = (typeof getVisibleCampaignWorlds === 'function') ? getVisibleCampaignWorlds() : (DB.stageMap || []);
   tabs.innerHTML = worlds.map((w, i) =>
     `<button class="world-tab ${i === activeWorld ? 'active' : ''}"
       onclick="switchWorld(${i})"
@@ -87,7 +89,9 @@ window.switchWorld = function (idx) {
 
 window.renderStageMap = function (worldIdx) {
   DB = loadDB();
-  const worlds = DB.stageMap || [];
+  // Phase 53: section-scoped for students — see getVisibleCampaignWorlds()
+  // in campaign_engine.js.
+  const worlds = (typeof getVisibleCampaignWorlds === 'function') ? getVisibleCampaignWorlds() : (DB.stageMap || []);
   const body   = document.getElementById('smap-body');
   if (!body) return;
   if (!worlds.length) {

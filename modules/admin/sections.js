@@ -29,6 +29,20 @@
 //      grade/name. Backed by SectionService.reassignAdviser(), which logs
 //      its own audit_log entry (see phase42). Admin-only, same reasoning
 //      as the picker above.
+//
+//  PHASE 49 — auto-own on create + roster viewer (see
+//  supabase/phase49_section_maker_fix.sql):
+//    - Section creation was also fixed at the SQL layer (Phase 39 had left
+//      a stray duplicate overload of create_class_section() that made
+//      every create call ambiguous — see that migration's header). As
+//      part of the same fix, create_class_section() now forces
+//      adviser_id = the calling teacher on the server, so a teacher never
+//      again ends up owning nothing after creating a section. The adviser
+//      field below just reflects that for teachers instead of offering a
+//      picker they can't use.
+//    - "👥 View Roster" is a new quick action: a big, dedicated view of
+//      every student in a section, with profile picture, level, and
+//      attendance at a glance — see _secOpenRosterModal().
 // ══════════════════════════════════════════════════════
 
 const GRADE_LEVELS = ['7', '8', '9', '10', '11', '12'];
@@ -123,7 +137,7 @@ window._secRenderList = function () {
   const gradesCovered = new Set(active.map(s => s.gradeLevel)).size;
 
   const subEl = document.getElementById('sec-header-sub');
-  if (subEl) subEl.textContent = `${active.length} active section${active.length === 1 ? '' : 's'} · ${archived.length} archived`;
+  if (subEl) subEl.textContent = `${currentRole === 'admin' ? 'Every section, school-wide · ' : 'Your sections · '}${active.length} active section${active.length === 1 ? '' : 's'} · ${archived.length} archived`;
 
   const statsEl = document.getElementById('sec-stats');
   if (statsEl) {
@@ -199,6 +213,7 @@ function _secCardHTML(s, state) {
     </div>
     <div class="sec-card-id" title="This is the classId value stored on students, schedules, seating layouts, and attendance logs.">id: ${_esc(s.id)}</div>
     <div class="sec-card-actions">
+      <button class="btn btn-ghost btn-xs" onclick="_secOpenRosterModal('${s.id}')">👥 Roster</button>
       <button class="btn btn-ghost btn-xs" onclick="_secOpenEditModal('${s.id}')">✏️ Edit</button>
       ${(!s.archived && currentRole === 'admin')
         ? `<button class="btn btn-ghost btn-xs" onclick="_secOpenReassignModal('${s.id}')">🔁 Reassign</button>` : ''}
@@ -236,8 +251,17 @@ function _secAdviserFieldHTML(section) {
   // header). Teacher editing their own section: read-only, since handing a
   // section to a SPECIFIC other teacher is treated as an admin action here.
   if (currentRole !== 'admin') {
+    // Creating: there's nothing to pick — create_class_section() (Phase 49)
+    // always assigns a teacher-created section to the creator server-side,
+    // so just say so instead of offering a field with nothing to do.
+    if (!section) {
+      return `<div class="form-group">
+        <label class="form-label">Adviser</label>
+        <div style="font-size:13px;padding:8px 0;color:var(--text-muted)">👤 This section will be created under your name.</div>
+      </div>`;
+    }
     const state = AppStore.getState();
-    const label = section ? _secAdviserName(section.adviserId, state) : null;
+    const label = _secAdviserName(section.adviserId, state);
     return `<div class="form-group">
       <label class="form-label">Adviser</label>
       <div style="font-size:13px;padding:8px 0;color:var(--text-muted)">${label ? _esc(label) : '— Unassigned —'} <span style="font-size:11px">(ask an admin to reassign)</span></div>
@@ -284,38 +308,60 @@ function _secModalHTML(section) {
 
   ${_secAdviserFieldHTML(section)}
 
-  ${isEdit ? '' : `
-  <!-- BUGFIX (report §3): schedule used to be a separate step on the RFID
-       kiosk's settings screen, so a brand-new section had no schedule at
-       all until someone remembered to go set one — any scan attempt in the
-       meantime was rejected with "No active attendance schedule for this
-       class". Folding it in here means a section is fully usable for
-       attendance the instant it's created. Left optional (checkbox off by
-       default) so an admin can still defer it and set it later from the
-       kiosk exactly as before. -->
-  <div class="form-group" style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
-      <input type="checkbox" id="sec-form-sched-toggle" onchange="_secToggleScheduleFields(this.checked)">
-      Set attendance schedule now
-    </label>
-    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
-      Optional — you can also set this later from the kiosk's settings screen.
-    </div>
-  </div>
-
-  <div id="sec-form-sched-fields" style="display:none;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-    <div><label class="form-label">Opens</label><input type="time" id="sec-form-sched-open" value="07:00" style="width:100%"></div>
-    <div><label class="form-label">Start (On Time from)</label><input type="time" id="sec-form-sched-start" value="07:30" style="width:100%"></div>
-    <div><label class="form-label">Late cutoff</label><input type="time" id="sec-form-sched-late" value="07:45" style="width:100%"></div>
-    <div><label class="form-label">Closes</label><input type="time" id="sec-form-sched-close" value="08:30" style="width:100%"></div>
-  </div>
-  `}
+  ${_secScheduleFieldsHTML(section)}
 
   <div id="sec-form-err" style="color:#ffb4ab;font-size:13px;margin-bottom:10px;display:none"></div>
 
   <div style="display:flex;gap:8px">
     <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button>
     <button class="btn btn-primary" style="flex:1" onclick="_secSubmitForm(${isEdit ? `'${section.id}'` : 'null'})">${isEdit ? 'Save Changes' : 'Create Section'}</button>
+  </div>`;
+}
+
+/**
+ * _secGetSchedule(sectionId, state) → schedule row | null
+ * Reads the section's current attendance_schedules row straight off
+ * AppStore (draft.attendanceSchedules, kept current the same way
+ * draft.classSections is — see sections-service.js / attendance-service.js).
+ */
+function _secGetSchedule(sectionId, state) {
+  if (!sectionId) return null;
+  state = state || AppStore.getState();
+  return (state.attendanceSchedules || []).find(s => s.classId === sectionId) || null;
+}
+
+/**
+ * _secScheduleFieldsHTML(section) — shared by create AND edit (Phase 50).
+ * Create: optional, off by default, same as before (Phase 5 §3).
+ * Edit: if the section already has a schedule, the checkbox starts CHECKED
+ * and the fields are prefilled with its current times, so "modify the
+ * schedule" is just "change a number and hit Save" — no more round trip to
+ * the kiosk's settings screen to edit an existing section's hours.
+ */
+function _secScheduleFieldsHTML(section) {
+  const existing = section ? _secGetSchedule(section.id) : null;
+  const hasExisting = !!existing;
+  // 'HH:MM:SS' from the DB → the <input type=time> wants 'HH:MM'.
+  const t = v => (v ? String(v).slice(0, 5) : '');
+
+  return `
+  <div class="form-group" style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+      <input type="checkbox" id="sec-form-sched-toggle" ${hasExisting ? 'checked' : ''} onchange="_secToggleScheduleFields(this.checked)">
+      ${hasExisting ? 'Attendance schedule' : 'Set attendance schedule now'}
+    </label>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
+      ${hasExisting
+        ? 'Edit the times below freely, then Save Changes — updates apply immediately.'
+        : 'Optional — you can also set this later, including from here after the section exists.'}
+    </div>
+  </div>
+
+  <div id="sec-form-sched-fields" style="display:${hasExisting ? 'grid' : 'none'};grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+    <div><label class="form-label">Opens</label><input type="time" id="sec-form-sched-open" value="${t(existing?.openTime) || '07:00'}" style="width:100%"></div>
+    <div><label class="form-label">Start (On Time from)</label><input type="time" id="sec-form-sched-start" value="${t(existing?.startTime) || '07:30'}" style="width:100%"></div>
+    <div><label class="form-label">Late cutoff</label><input type="time" id="sec-form-sched-late" value="${t(existing?.lateCutoff) || '07:45'}" style="width:100%"></div>
+    <div><label class="form-label">Closes</label><input type="time" id="sec-form-sched-close" value="${t(existing?.closeTime) || '08:30'}" style="width:100%"></div>
   </div>`;
 }
 
@@ -339,18 +385,18 @@ window._secSubmitForm = async function (sectionId) {
   if (!name) { _secShowFormErr('Section name is required.'); return; }
   if (errEl) errEl.style.display = 'none';
 
-  // BUGFIX (report §3): only present (and only read) on the create form —
-  // editing an existing section still manages its schedule from the kiosk,
-  // same as today.
+  // Phase 50: schedule fields are now shown (and read) on BOTH create and
+  // edit — see _secScheduleFieldsHTML(). Unchecked = "don't touch the
+  // schedule right now" either way; it does not delete an existing one.
   const schedToggle = document.getElementById('sec-form-sched-toggle');
   let schedule = null;
-  if (!sectionId && schedToggle && schedToggle.checked) {
+  if (schedToggle && schedToggle.checked) {
     const openTime = document.getElementById('sec-form-sched-open')?.value;
     const startTime = document.getElementById('sec-form-sched-start')?.value;
     const lateCutoff = document.getElementById('sec-form-sched-late')?.value;
     const closeTime = document.getElementById('sec-form-sched-close')?.value;
     if (!openTime || !startTime || !lateCutoff || !closeTime) {
-      _secShowFormErr('Please fill in all four schedule times, or uncheck "Set attendance schedule now".');
+      _secShowFormErr('Please fill in all four schedule times, or uncheck the attendance schedule.');
       return;
     }
     if (!(openTime <= startTime && startTime <= lateCutoff && lateCutoff <= closeTime)) {
@@ -368,8 +414,24 @@ window._secSubmitForm = async function (sectionId) {
 
   if (!result.ok) { _secShowFormErr(result.error || 'Something went wrong.'); return; }
 
+  // Create already folds the schedule into create_class_section()'s own
+  // transaction (Phase 5). Edit doesn't — update_class_section() never
+  // touches attendance_schedules — so save it as a second, explicit step
+  // via the same RPC the kiosk's settings screen uses. If the section save
+  // succeeded but this fails, the user still keeps their name/grade/adviser
+  // changes; only the schedule needs a retry.
+  let schedError = null;
+  if (sectionId && schedule) {
+    const schedResult = await AttendanceService.upsertSchedule(sectionId, schedule);
+    if (!schedResult.ok) schedError = schedResult.error || 'Could not save the schedule.';
+  }
+
   closeModalForce();
-  toast(sectionId ? `✅ Section updated.` : `✅ "${name}" created${schedule ? ' with an attendance schedule' : ''}.`);
+  if (schedError) {
+    toast(`⚠️ Section updated, but the schedule failed to save: ${schedError}`, '#ffb95f');
+  } else {
+    toast(sectionId ? `✅ Section updated${schedule ? ' — schedule saved.' : '.'}` : `✅ "${name}" created${schedule ? ' with an attendance schedule' : ''}.`);
+  }
   _secRenderList();
 };
 
@@ -453,6 +515,96 @@ window._secOpenReassignModal = async function (sectionId) {
       <button class="btn btn-primary" style="flex:1" onclick="_secSubmitReassign('${sectionId}')">Reassign</button>
     </div>`, 'sm');
 };
+
+// ── ROSTER VIEWER (Phase 49) ────────────────────────────────────────────
+// A big, dedicated view of everyone in a section — the section cards above
+// only ever showed a headcount. Opens in the 'xl' modal size (see
+// styles/base.css) so a full class fits comfortably in a photo grid instead
+// of a cramped list.
+
+let _secRosterSearch = '';
+
+window._secOpenRosterModal = function (sectionId) {
+  const state = AppStore.getState();
+  const section = (state.classSections || []).find(s => s.id === sectionId);
+  if (!section) { toast('❌ Section not found.', '#ffb4ab'); return; }
+
+  _secRosterSearch = '';
+  showModal(_secRosterModalHTML(section, state), 'xl');
+};
+
+function _secRosterModalHTML(section, state) {
+  const adviserName = _secAdviserName(section.adviserId, state);
+  const roster = (state.students || []).filter(s => (s.classId || 'default-class') === section.id);
+
+  return `
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:4px">
+    <div>
+      <div style="font-family:var(--fh);font-size:20px;font-weight:900">👥 Grade ${_esc(section.gradeLevel)} – ${_esc(section.sectionName)}</div>
+      <div style="color:var(--text-muted);font-size:13px;margin-top:2px">
+        ${roster.length} student${roster.length === 1 ? '' : 's'} · Adviser: ${adviserName ? _esc(adviserName) : 'Unassigned'}
+      </div>
+    </div>
+    <button class="btn btn-ghost btn-xs" onclick="closeModalForce()">✕ Close</button>
+  </div>
+
+  <input class="reg-search-input" type="text" placeholder="Search students…" value="${_esc(_secRosterSearch)}"
+         style="width:100%;margin:14px 0" oninput="_secRosterSearch=this.value;_secRerenderRoster('${section.id}')">
+
+  <div id="sec-roster-grid">${_secRosterGridHTML(roster)}</div>`;
+}
+
+window._secRerenderRoster = function (sectionId) {
+  const state = AppStore.getState();
+  const roster = (state.students || []).filter(s => (s.classId || 'default-class') === sectionId);
+  const gridEl = document.getElementById('sec-roster-grid');
+  if (gridEl) gridEl.innerHTML = _secRosterGridHTML(roster);
+};
+
+function _secRosterGridHTML(roster) {
+  const q = (_secRosterSearch || '').trim().toLowerCase();
+  const list = q ? roster.filter(s => (s.name || '').toLowerCase().includes(q)) : roster;
+
+  if (!list.length) {
+    return `<div style="text-align:center;padding:56px 20px;color:var(--text-muted)">
+      <div style="font-size:40px;margin-bottom:10px">🧑‍🎓</div>
+      ${roster.length ? 'No students match that search.' : 'No students are enrolled in this section yet.'}
+    </div>`;
+  }
+
+  return `<div class="sec-roster-grid">
+    ${list
+      .slice()
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .map(_secRosterCardHTML)
+      .join('')}
+  </div>`;
+}
+
+function _secRosterCardHTML(s) {
+  const color = s.color || '#8b5cf6';
+  const init = s.init || (s.name || '?').charAt(0).toUpperCase();
+  const portraitHtml = s.profilePic
+    ? `<div class="sec-roster-portrait" style="background:${color}22;border-color:${color}55">
+         <img src="${_esc(s.profilePic)}" alt="${_esc(s.name || '')}" onerror="this.parentElement.style.color='${color}';this.parentElement.innerHTML='<span class=&quot;sec-roster-portrait-init&quot;>${_esc(init)}</span>'">
+       </div>`
+    : `<div class="sec-roster-portrait" style="background:${color}22;color:${color};border-color:${color}55">
+         <span class="sec-roster-portrait-init">${_esc(init)}</span>
+       </div>`;
+
+  const level = (s.level !== undefined && s.level !== null) ? s.level : null;
+  const attendance = (s.attendance !== undefined && s.attendance !== null) ? s.attendance : null;
+
+  return `<div class="sec-roster-card">
+    ${portraitHtml}
+    <div class="sec-roster-name">${_esc(s.name || s.displayName || s.id)}</div>
+    <div class="sec-roster-stats">
+      ${level !== null ? `<span class="badge-pill bp-primary" title="Level">Lv. ${_esc(String(level))}</span>` : ''}
+      ${s.tier ? `<span class="badge-pill" style="background:${color}22;color:${color};border:1px solid ${color}44">${_esc(s.tier)}</span>` : ''}
+      ${attendance !== null ? `<span class="badge-pill bp-muted" title="Attendance rate">📋 ${_esc(String(attendance))}%</span>` : ''}
+    </div>
+  </div>`;
+}
 
 window._secSubmitReassign = async function (sectionId) {
   const select = document.getElementById('sec-reassign-select');

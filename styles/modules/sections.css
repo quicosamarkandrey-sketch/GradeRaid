@@ -57,3 +57,36 @@
    added here since Section Maker is the first screen that needs an
    "archived" pill. */
 .bp-muted{background:rgba(240,238,255,.08);color:var(--text-muted);border:1px solid var(--border)}
+
+/* ══════════════════════════════════════════════════════════════
+   ROSTER VIEWER — Phase 49 ("👥 Roster" action, opens in the 'xl'
+   modal so a full class fits comfortably as a photo grid.)
+══════════════════════════════════════════════════════════════ */
+.sec-roster-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:14px;max-height:60vh;overflow-y:auto;padding:4px 2px 8px;
+}
+
+.sec-roster-card{
+  background:rgba(35,31,56,.75);border:1px solid var(--border);
+  border-radius:14px;padding:16px 12px;text-align:center;transition:all .2s;
+}
+.sec-roster-card:hover{border-color:rgba(208,188,255,.3);transform:translateY(-2px)}
+
+.sec-roster-portrait{
+  width:64px;height:64px;border-radius:50%;margin:0 auto 10px;
+  border:2px solid;display:flex;align-items:center;justify-content:center;
+  overflow:hidden;position:relative;
+}
+.sec-roster-portrait img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.sec-roster-portrait-init{font-family:var(--fh);font-size:22px;font-weight:800}
+
+.sec-roster-name{
+  font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface);
+  margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
+.sec-roster-stats{
+  display:flex;flex-wrap:wrap;gap:5px;justify-content:center;
+}
+.sec-roster-stats .badge-pill{font-size:10px;padding:3px 8px}

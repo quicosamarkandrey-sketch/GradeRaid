@@ -748,6 +748,7 @@ body.screen-dim::before{content:'';position:fixed;inset:0;z-index:9997;
 .modal-box.sm{max-width:400px}
 .modal-box.md{max-width:560px}
 .modal-box.lg{max-width:720px}
+.modal-box.xl{max-width:1080px}
 .modal-h2{font-family:var(--fh);font-size:20px;font-weight:800;margin-bottom:16px;color:var(--on-surface)}
 
 /* ── FORMS ── */
@@ -936,4 +937,5 @@ select option{background:var(--midnight)}
 .modal-box.sm{max-width:420px}
 .modal-box.md{max-width:600px}
 .modal-box.lg{max-width:820px}
+.modal-box.xl{max-width:1080px}
 
