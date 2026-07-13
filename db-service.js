@@ -217,7 +217,7 @@ const DBService = (function () {
            registrations, pointLog, redemptions, recitationLog,
            rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
            achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
-           orders, inventoryRows, campaignStageSections] =
+           orders, inventoryRows, campaignStageSections, quizHistoryRows] =
       await Promise.all([
         client.from('profiles').select('*'),
         client.from('boss_events').select('*'),
@@ -244,13 +244,14 @@ const DBService = (function () {
         client.from('orders').select('*').order('created_at', { ascending: false }), // Phase 48
         client.from('inventory').select('*'), // Phase 48
         client.from('campaign_stage_sections').select('*'), // Phase 53 — read side of campaign per-section visibility (table existed since Phase 14, never wired up until now)
+        client.from('quiz_history').select('*').order('completed_at', { ascending: false }), // Phase 57 — was local-only; see phase57_quiz_history_sync.sql
       ]);
 
     for (const r of [profiles, bossEvents, bossParticipants, lootClaims, achievements, userAchievements,
                       registrations, pointLog, redemptions, recitationLog,
                       rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
                       achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
-                      orders, inventoryRows, campaignStageSections]) {
+                      orders, inventoryRows, campaignStageSections, quizHistoryRows]) {
       if (r.error) throw r.error;
     }
 
@@ -395,6 +396,20 @@ const DBService = (function () {
       id: q.id, ownerTeacherId: q.owner_teacher_id, // Phase 32: catalog owner scoping
       title: q.title, desc: q.description,
       xpReward: q.xp_reward, coinReward: q.coin_reward, timeLimit: q.time_limit,
+      // Phase 54: rarity/cadence — coalesce here too (not just in the SQL
+      // backfill) so a row pulled from a REST cache or replica that
+      // predates the migration's backfill still lands on the same
+      // defaults eqQuizRarity()/eqQuizCadence() already use.
+      rarity: q.rarity || 'Common', cadence: q.cadence || 'standing',
+      // Phase 56: quest chains — chainId stays null (unchained) unless a
+      // row actually has one; chainOrder coalesces to 1, same fallback
+      // eqQuizChain() already uses in utils.js for a row from before this
+      // migration's backfill.
+      chainId: q.chain_id || null, chainOrder: q.chain_order || 1, chainLabel: q.chain_label || '',
+      // Phase 58: scheduling — startDate/endDate stay null (no schedule =
+      // always available) unless a row actually has one, same fallback
+      // eqQuizScheduleStatus() already treats a pre-Phase-5 row as.
+      startDate: q.start_date || null, endDate: q.end_date || null,
       questions: q.questions || [], active: q.active !== false,
       createdAt: q.created_at,
     }));
@@ -542,6 +557,25 @@ const DBService = (function () {
       });
     });
 
+    // Phase 57: quiz_history is per-student, one row per attempt — reshape
+    // into DB.quizHistory[studentId] = [...] exactly as computeQuestStreak()/
+    // getStudentQuestRecords() (utils.js) and finishQuiz() (index.html)
+    // already expect, same reasoning as inventoryByStudent above.
+    const quizHistoryByStudent = {};
+    (quizHistoryRows.data || []).forEach(row => {
+      if (!quizHistoryByStudent[row.student_id]) quizHistoryByStudent[row.student_id] = [];
+      quizHistoryByStudent[row.student_id].push({
+        id: row.id, quizId: row.quiz_id, score: row.score, attempt: row.attempt,
+        completedAt: row.completed_at, date: row.date_label,
+        // Phase 59 — per-question fractions (quest_board_report.md §19).
+        // Rows logged before this phase have no column value (NULL), which
+        // reads back as undefined here — eqComputeQuizAnalytics() (utils.js)
+        // already treats a missing `results` as "this attempt doesn't
+        // contribute to per-question stats" rather than throwing.
+        results: Array.isArray(row.question_results) ? row.question_results : undefined,
+      });
+    });
+
     return {
       schemaVersion: _SCHEMA_VER,
       students,
@@ -623,6 +657,9 @@ const DBService = (function () {
       // Phase 48 — mirrors DB.inventory{} exactly. See the inventoryByStudent
       // reshape above.
       inventory: inventoryByStudent,
+      // Phase 57 — mirrors DB.quizHistory{} exactly. See the
+      // quizHistoryByStudent reshape above.
+      quizHistory: quizHistoryByStudent,
       recitationLog: (recitationLog.data || []).map(r => ({
         id: r.id, studentId: r.student_id, pts: r.pts, note: r.note, when: r.when_label,
         // Phase 3 additions — additive only, every pre-Phase-3 row simply has
@@ -693,7 +730,8 @@ const DBService = (function () {
       // content never left the device that authored it. Now synced via
       // campaignWorldsArr above; see phase22_campaign_content_sync.sql.
       // stageProgress (per-student progress) stays local-cache-only —
-      // out of scope, same as quiz completedQuizzes/history.
+      // out of scope for now. quiz history is NO LONGER in this bucket —
+      // see quizHistory: quizHistoryByStudent above (Phase 57).
       stageMap: campaignWorldsArr, stageProgress: _cache?.stageProgress || {},
       campaignSectionAssignments, // Phase 53
       _bossIdById: bossIdById, // internal map, see _pushCacheToSupabase
@@ -1156,6 +1194,18 @@ const DBService = (function () {
           id: q.id, owner_teacher_id: q.ownerTeacherId,
           title: q.title, description: q.desc,
           xp_reward: q.xpReward, coin_reward: q.coinReward, time_limit: q.timeLimit,
+          // Phase 54: mirror of the pull-side coalesce above, so a quiz
+          // saved before rarity/cadence pickers existed doesn't push NULL
+          // and overwrite a value the Phase 54 SQL backfill already set.
+          rarity: q.rarity || 'Common', cadence: q.cadence || 'standing',
+          // Phase 56: mirror of the pull-side coalesce above for quest
+          // chains — an unchained quiz pushes chain_id as null (correct;
+          // there's nothing to preserve), chain_order still coalesces to 1.
+          chain_id: q.chainId || null, chain_order: q.chainOrder || 1, chain_label: q.chainLabel || null,
+          // Phase 58: mirror of the pull-side coalesce above for scheduling —
+          // an unscheduled quiz pushes both as null (correct; always
+          // available, nothing to preserve).
+          start_date: q.startDate || null, end_date: q.endDate || null,
           questions: q.questions || [], active: q.active !== false,
         }));
       if (rows.length) {
@@ -1294,6 +1344,40 @@ const DBService = (function () {
       });
     }
 
+    // Phase 57: quiz_history, append-only per-student attempt log. Upsert by
+    // the client-generated id (see finishQuiz() in index.html, which now
+    // stamps `id: 'qh_' + uid()` on every new entry) so re-pushing the whole
+    // per-student array on every save doesn't insert duplicate rows for
+    // attempts that were already synced — same upsert-by-id convention as
+    // point_log above. Entries from before this phase have no id and are
+    // skipped here (they stay visible locally; they just never sync — same
+    // "pre-migration entries simply don't sync retroactively" posture as
+    // point_log's own BUGFIX comment above).
+    if (cache.quizHistory && typeof cache.quizHistory === 'object') {
+      await _pushTable('quiz_history', async () => {
+      const rows = [];
+      Object.keys(cache.quizHistory).forEach(sid => {
+        (cache.quizHistory[sid] || []).forEach(h => {
+          if (!h.id || !h.quizId) return;
+          rows.push({
+            id: h.id, student_id: sid, quiz_id: h.quizId,
+            score: h.score || 0, attempt: h.attempt || 1,
+            completed_at: h.completedAt, date_label: h.date,
+            // Phase 59: mirror of the pull-side mapping above — an entry
+            // logged before per-question tracking existed simply has no
+            // `results` array, and pushes null rather than an empty array
+            // (an empty array would misleadingly imply "0 questions").
+            question_results: Array.isArray(h.results) ? h.results : null,
+          });
+        });
+      });
+      if (rows.length) {
+        const { error } = await client.from('quiz_history').upsert(rows, { onConflict: 'id' });
+        if (error) throw error;
+      }
+      });
+    }
+
     // Phase 30 removed recitation_log's INSERT policy on purpose — writes go
     // exclusively through log_recitation_point()/undo_recitation_log()
     // (SECURITY DEFINER RPCs, see recitation-service.js), which already
@@ -1373,6 +1457,7 @@ const DBService = (function () {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_stage_sections' }, () => _schedulePullRefresh()) // Phase 53
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => _schedulePullRefresh()) // Phase 48
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => _schedulePullRefresh()) // Phase 48
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_history' }, () => _schedulePullRefresh()) // Phase 57
       .subscribe();
   }
 

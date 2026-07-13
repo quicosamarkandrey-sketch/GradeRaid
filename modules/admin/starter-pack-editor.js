@@ -281,25 +281,43 @@ function _spRenderQuizzes(body) {
   </div>
   <div class="glass-card" style="padding:0;overflow:hidden">
     <table class="admin-table">
-      <thead><tr><th>Title</th><th>Questions</th><th style="text-align:right">Reward</th><th style="width:120px"></th></tr></thead>
+      <thead><tr><th>Title</th><th>Questions</th><th>Chain / Schedule</th><th style="text-align:right">Reward</th><th style="width:120px"></th></tr></thead>
       <tbody>
         ${rows.map((q, i) => `
           <tr>
             <td><strong>${_spEsc(q.title)}</strong><div style="font-size:11px;color:var(--text-muted)">${_spEsc(q.description || '')}</div></td>
             <td>${(q.questions || []).length}</td>
+            <td>${_spQuizChainScheduleBadges(q)}</td>
             <td style="text-align:right;font-size:12px">${q.xpReward} XP / ${q.coinReward} 🪙</td>
             <td>
               <button class="btn btn-ghost btn-sm" onclick="_spOpenQuizForm(${i})">Edit</button>
               <button class="btn btn-ghost btn-sm" onclick="_spDeleteQuiz(${i})">🗑️</button>
             </td>
-          </tr>`).join('') || `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">No starter quiz yet.</td></tr>`}
+          </tr>`).join('') || `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">No starter quiz yet.</td></tr>`}
       </tbody>
     </table>
   </div>`;
 }
 
+// Chain/schedule are edited exclusively in Quest Builder (no form fields for
+// them on this screen — see saveQuiz's Phase 60 pass-through note in
+// starter-pack-service.js), so this is read-only visibility: lets an admin
+// see, before they Edit or 🗑️ a row, that it's part of a chain or has an
+// active window, using the same badge styling/helpers quiz-builder.js uses.
+function _spQuizChainScheduleBadges(q) {
+  const parts = [];
+  if (q.chainId) {
+    parts.push(`<span class="badge-pill" style="background:rgba(244,114,182,0.15);color:#f472b6">🔗 ${_spEsc(q.chainLabel || q.chainId)} · Part ${q.chainOrder || 1}</span>`);
+  }
+  const status = (typeof eqQuizScheduleStatus === 'function') ? eqQuizScheduleStatus(q) : null;
+  if (status === 'upcoming') parts.push(`<span class="badge-pill bp-gray">📅 Starts ${_spEsc(q.startDate)}</span>`);
+  else if (status === 'expired') parts.push(`<span class="badge-pill" style="background:rgba(255,180,171,.15);color:#ffb4ab">⌛ Expired ${_spEsc(q.endDate)}</span>`);
+  else if (status === 'active' && q.endDate) parts.push(`<span class="badge-pill" style="background:rgba(255,185,95,.15);color:#ffb95f">⏳ Ends ${_spEsc(q.endDate)}</span>`);
+  return parts.join(' ') || `<span style="color:var(--text-muted);font-size:11px">—</span>`;
+}
+
 window._spOpenQuizForm = function (idx) {
-  const d = idx >= 0 ? _spPack.quizzes[idx] : { id: 'starter-quiz-' + uid(), title: '', description: '', xpReward: 20, coinReward: 10, timeLimit: 5, questions: [], active: true };
+  const d = idx >= 0 ? _spPack.quizzes[idx] : { id: 'starter-quiz-' + uid(), title: '', description: '', xpReward: 20, coinReward: 10, timeLimit: 5, rarity: 'Common', cadence: 'standing', questions: [], active: true };
   window._spQuizDraft = JSON.parse(JSON.stringify(d));
   _spRenderQuizModal();
 };
@@ -314,6 +332,12 @@ function _spRenderQuizModal() {
       <div><label class="form-label">XP Reward</label><input id="sp-q-xp" class="form-control" type="number" min="0" value="${d.xpReward || 0}"></div>
       <div><label class="form-label">Coin Reward</label><input id="sp-q-coin" class="form-control" type="number" min="0" value="${d.coinReward || 0}"></div>
       <div><label class="form-label">Time Limit (min)</label><input id="sp-q-time" class="form-control" type="number" min="0" value="${d.timeLimit || 0}"></div>
+      <div><label class="form-label">Rarity</label><select id="sp-q-rarity" class="form-control">${ACH_RARITIES.map(r => `<option value="${r}"${(d.rarity||'Common') === r ? ' selected' : ''}>${r}</option>`).join('')}</select></div>
+      <div><label class="form-label">Cadence</label><select id="sp-q-cadence" class="form-control">
+        <option value="standing"${(d.cadence||'standing') === 'standing' ? ' selected' : ''}>Standing</option>
+        <option value="daily"${d.cadence === 'daily' ? ' selected' : ''}>Daily pool</option>
+        <option value="weekly"${d.cadence === 'weekly' ? ' selected' : ''}>Weekly pool</option>
+      </select></div>
     </div>
     <div class="form-label" style="margin-bottom:6px">Questions</div>
     <div id="sp-q-questions">${_spQuizQuestionsHTML(d.questions)}</div>
@@ -350,6 +374,8 @@ window._spSaveQuiz = async function () {
   d.xpReward = parseInt(document.getElementById('sp-q-xp').value) || 0;
   d.coinReward = parseInt(document.getElementById('sp-q-coin').value) || 0;
   d.timeLimit = parseInt(document.getElementById('sp-q-time').value) || null;
+  d.rarity = document.getElementById('sp-q-rarity').value;
+  d.cadence = document.getElementById('sp-q-cadence').value;
   if (!d.title) { toast('⚠️ Title is required', '#ff6b6b'); return; }
   const res = await StarterPackService.saveQuiz(d);
   if (!res.ok) { toast('⚠️ ' + res.error, '#ff6b6b'); return; }
@@ -361,7 +387,8 @@ window._spSaveQuiz = async function () {
 window._spDeleteQuiz = async function (idx) {
   const row = _spPack.quizzes[idx];
   if (!row) return;
-  if (!confirm(`Remove "${row.title}" from the starter pack?`)) return;
+  const chainNote = row.chainId ? ` This is Part ${row.chainOrder || 1} of the "${row.chainLabel || row.chainId}" chain — the other steps aren't deleted, but this step's slot will disappear from that chain.` : '';
+  if (!confirm(`Remove "${row.title}" from the starter pack?${chainNote}`)) return;
   const res = await StarterPackService.deleteQuiz(row.id);
   if (!res.ok) { toast('⚠️ ' + res.error, '#ff6b6b'); return; }
   toast('🗑️ Removed');

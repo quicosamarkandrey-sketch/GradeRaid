@@ -83,6 +83,10 @@ window.ContentOversightService = (function () {
       p_xp_reward: q.xpReward || 0, p_coin_reward: q.coinReward || 0,
       p_time_limit: q.timeLimit || null, p_questions: q.questions || [],
       p_active: q.active !== false,
+      p_rarity: q.rarity || 'Common', p_cadence: q.cadence || 'standing',
+      // Phase 60 pass-through — see matching note in starter-pack-service.js.
+      p_chain_id: q.chainId ?? null, p_chain_order: q.chainOrder ?? 1, p_chain_label: q.chainLabel ?? null,
+      p_start_date: q.startDate ?? null, p_end_date: q.endDate ?? null,
     });
     if (error) return { ok: false, error: error.message || 'Could not save this quiz.' };
     await _logWrite(teacherId, 'quizzes', data.id, isNew ? 'create' : 'update');

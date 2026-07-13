@@ -42,6 +42,13 @@ window.ACH_TRIGGER_TYPES = [
   { value: 'store_purchases',  label: 'Store Purchases',         hint: 'Number of items bought' },
   { value: 'recitations',      label: 'Recitation Count',        hint: 'Recitation sessions' },
   { value: 'top_rank',         label: 'Top N Leaderboard',       hint: 'Rank position (e.g. 3 = top 3)' },
+  // Phase 4 — quest chains/streak (quest_board_report.md §3.8/§13): stats
+  // already computed in achBuildStats() below, just needed a trigger type
+  // so admins can actually build a badge off them (same gap class Phase 56
+  // closed for db-service.js — a value existing in the stats snapshot with
+  // no way to reference it from the admin UI).
+  { value: 'quest_chains_completed', label: 'Quest Chains Completed', hint: 'Number of full chains cleared (e.g. 3)' },
+  { value: 'quest_streak',     label: 'Quest Board Day Streak',  hint: 'Consecutive active days (e.g. 7)' },
   { value: 'manual',           label: 'Manual (Admin Grant)',    hint: 'Admin manually awards this badge' },
 ];
 
@@ -95,6 +102,19 @@ window.achBuildStats = function (student) {
     if (m && parseInt(m[1]) >= 100) { currentPerfect++; if (currentPerfect > maxPerfectStreak) maxPerfectStreak = currentPerfect; }
     else currentPerfect = 0;
   });
+  // Phase 4 — quest chains completed (quest_board_report.md §3.8/§13):
+  // a chain counts as done when every one of its quizzes is in
+  // completedQuizzes. Reuses eqGetQuestChains()/eqQuizChain() (utils.js) —
+  // same grouping the student board itself renders from, so "chain done"
+  // here always matches what the student actually sees clear on the board.
+  const completedIds = student.completedQuizzes || [];
+  const chainsCompleted = (typeof eqGetQuestChains === 'function')
+    ? eqGetQuestChains().filter(c => c.quizzes.length && c.quizzes.every(q => completedIds.includes(q.id))).length
+    : 0;
+  // Phase 4 — current quest-board day streak (quest_board_report.md §1/§13),
+  // reusing the same computeQuestStreak() the board itself displays, so an
+  // achievement tied to it always agrees with what the student sees.
+  const questStreak = (typeof computeQuestStreak === 'function') ? computeQuestStreak(sid).current : 0;
   return {
     level:              student.level       || 0,
     xp:                 student.xp          || 0,
@@ -115,6 +135,8 @@ window.achBuildStats = function (student) {
     live_rank:          liveRank,
     perfect_streak:     maxPerfectStreak,
     student_count:      DB.students.length,
+    quest_chains_completed: chainsCompleted,
+    quest_streak:       questStreak,
   };
 };
 
@@ -142,6 +164,8 @@ function achEvaluateTrigger(ach, stats) {
     case 'store_purchases':   return stats.store_purchases     >= v;
     case 'recitations':       return stats.recitation_count    >= v;
     case 'top_rank':          return stats.live_rank > 0 && stats.live_rank <= v;
+    case 'quest_chains_completed': return stats.quest_chains_completed >= v;
+    case 'quest_streak':      return stats.quest_streak        >= v;
     case 'manual':            return false;
     default:                  return false;
   }

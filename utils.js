@@ -483,3 +483,392 @@ function csvDownload(filename,rows){
   toast(`📥 "${filename}" downloaded`);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  QUEST BOARD — Real Streak Tracking  (Phase 2)
+//  Replaces the old fake "🔥 Streak" stat (Math.floor(completedQuizzes.length/2),
+//  never resets, can't be broken — see quest_board_report.md §1). A quest
+//  streak is now actual consecutive-day quest-completion tracking, built on
+//  the exact same day-diff algorithm as computeAttendanceStreak() above so
+//  the whole app has one consistent definition of "streak".
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * getStudentQuestRecords(sid) → [{status:'present', date:'YYYY-MM-DD'}, ...]
+ *
+ * Reads DB.quizHistory[sid] (one entry per completed quest) and normalizes
+ * it into the same {status,date} shape computeAttendanceStreak() expects.
+ * New entries (finishQuiz(), index.html) stamp a `date` field via isoDate()
+ * at completion time — the correct Asia/Manila calendar day. Older history
+ * entries only have `completedAt` (a raw ISO UTC timestamp from
+ * `new Date().toISOString()`), so those fall back to slicing its UTC date;
+ * good enough for legacy rows and never throws on a missing/malformed value.
+ */
+function getStudentQuestRecords(sid) {
+  const history = (DB.quizHistory || {})[sid] || [];
+  return history
+    .map(h => ({ status: 'present', date: h.date || (h.completedAt ? String(h.completedAt).slice(0, 10) : null) }))
+    .filter(r => r.date);
+}
+window.getStudentQuestRecords = getStudentQuestRecords;
+
+/**
+ * computeQuestStreak(sid) → { current, longest }
+ * Real, breakable, day-based quest streak — one completed quest on a given
+ * calendar day counts that day; a day with no completion breaks `current`
+ * back to 0 the next time it's computed. Delegates to
+ * computeAttendanceStreak() so both streak types stay in lockstep if the
+ * underlying day-diff math is ever tuned.
+ */
+function computeQuestStreak(sid) {
+  return computeAttendanceStreak(getStudentQuestRecords(sid));
+}
+window.computeQuestStreak = computeQuestStreak;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  QUEST BOARD — Question Type Helpers  (Phase 1: reviewer question types)
+//  Every question in a quiz now carries a `type`: 'mc' (multiple choice,
+//  the original/default format), 'tf' (true/false — same opts+answer-index
+//  shape as mc, just 2 fixed options), or 'id' (identification / short
+//  answer — free-text, fuzzy-matched). Quizzes saved before this phase have
+//  no `type` field at all; eqQType() treats that as 'mc' so nothing old
+//  breaks (including quizzes already imported into World Boss).
+// ═══════════════════════════════════════════════════════════════════════════
+function eqQType(q){ return (q && q.type) || 'mc'; }
+window.eqQType = eqQType;
+
+// Normalizes free-text answers for Identification-type grading: lowercases,
+// trims, strips common punctuation, and collapses internal whitespace, so
+// "Mitochondria." / " mitochondria " / "MITOCHONDRIA" all count as a match.
+function eqNormalizeAnswer(s){
+  return String(s ?? '')
+    .toLowerCase()
+    .trim()
+    .replace(/[.,!?;:'"()\[\]]/g,'')
+    .replace(/\s+/g,' ');
+}
+window.eqNormalizeAnswer = eqNormalizeAnswer;
+
+// Grades one question against a student's submitted answer. `studentAns` is
+// an option-index (number) for mc/tf, a raw string for id, or an array of
+// strings for enum. Returns a fraction 0..1 (1/0 for mc/tf/id, a matched-
+// count ratio for enum — Phase 3 partial credit, quest_board_report.md
+// §2.3/§3.6). Centralized here so the student quiz runner and (later)
+// World Boss combat both grade the same forgiving way instead of
+// duplicating the normalization logic.
+function eqGradeAnswer(q, studentAns){
+  const type = eqQType(q);
+  if (type === 'id') {
+    if (studentAns === null || studentAns === undefined) return 0;
+    const given = eqNormalizeAnswer(studentAns);
+    if (!given) return 0;
+    const accepted = [q.answer, ...(Array.isArray(q.altAnswers) ? q.altAnswers : [])]
+      .filter(a => a !== undefined && a !== null && a !== '')
+      .map(eqNormalizeAnswer);
+    return accepted.includes(given) ? 1 : 0;
+  }
+  if (type === 'enum') {
+    // Order-independent partial credit: each correct item can only be
+    // matched once, so guessing the same right answer twice doesn't inflate
+    // the score. Empty/blank inputs never match.
+    const correctList = Array.isArray(q.answers) ? q.answers.filter(a => a && String(a).trim()) : [];
+    if (!correctList.length) return 0;
+    const pool = correctList.map(eqNormalizeAnswer);
+    const given = Array.isArray(studentAns) ? studentAns : [];
+    let matched = 0;
+    given.forEach(g => {
+      const ng = eqNormalizeAnswer(g);
+      if (!ng) return;
+      const idx = pool.indexOf(ng);
+      if (idx !== -1) { matched++; pool.splice(idx, 1); }
+    });
+    return matched / correctList.length;
+  }
+  if (type === 'match') {
+    // Phase 5 — Matching type (quest_board_report.md §2.4): q.pairs is
+    // [{left, right}, ...]; studentAns is an array of the student's chosen
+    // `right` string per pair index (same order as q.pairs, NOT the
+    // shuffled display order — submitMatchAnswer() in index.html already
+    // maps the shuffled dropdown selection back to pair index before it
+    // ever reaches quizAnswers). Partial credit per correct pair, same
+    // "each blank scored independently" spirit as enum above.
+    const pairs = Array.isArray(q.pairs) ? q.pairs.filter(p => p && p.left && String(p.left).trim()) : [];
+    if (!pairs.length) return 0;
+    const given = Array.isArray(studentAns) ? studentAns : [];
+    let matched = 0;
+    pairs.forEach((p, i) => {
+      const g = given[i];
+      if (g === undefined || g === null || g === '') return;
+      if (eqNormalizeAnswer(g) === eqNormalizeAnswer(p.right)) matched++;
+    });
+    return matched / pairs.length;
+  }
+  // mc / tf — plain option-index compare (unchanged original behavior)
+  return studentAns === q.answer ? 1 : 0;
+}
+window.eqGradeAnswer = eqGradeAnswer;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  QUEST BOARD — Rarity & Cadence Helpers  (Phase 3: content variety §3.4/§3.2)
+//  A quest can carry a `rarity` (reusing the exact Common→Mythic palette
+//  already built for Achievements — window.ACH_RARITY/ACH_RARITIES in
+//  ach_engine.js — instead of a one-off quest-only system) and a `cadence`
+//  ('daily' | 'weekly' | unset/'standing'). Quizzes saved before this phase
+//  have neither field; both helpers default to the pre-Phase-3 behavior
+//  (Common rarity, always-available standing quest) so nothing old breaks.
+// ═══════════════════════════════════════════════════════════════════════════
+function eqQuizRarity(quiz){ return (quiz && quiz.rarity) || 'Common'; }
+window.eqQuizRarity = eqQuizRarity;
+
+function eqQuizCadence(quiz){ return (quiz && quiz.cadence) || 'standing'; }
+window.eqQuizCadence = eqQuizCadence;
+
+// Deterministic seeded shuffle-and-take: every student computing this for
+// the same seed string gets the exact same picks (no server round-trip
+// needed to agree on "today's 3 dailies"), and it changes automatically
+// the moment the date/week string changes. Simple LCG, not cryptographic —
+// fairness/unpredictability-to-a-casual-glance is all this needs.
+function _eqSeededPick(pool, seedStr, count){
+  if (!pool.length || count <= 0) return [];
+  const arr = pool.slice();
+  let seed = 0;
+  for (let i = 0; i < seedStr.length; i++) seed = (seed * 31 + seedStr.charCodeAt(i)) >>> 0;
+  function rand(){ seed = (seed * 1103515245 + 12345) >>> 0; return seed / 4294967296; }
+  for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+  return arr.slice(0, Math.min(count, arr.length));
+}
+
+// eqGetDailyQuizIds(dateStr?) → [id, id, id] — up to 3 quests from the
+// 'daily' cadence pool, refreshed at Manila midnight (isoDate() rolls over
+// then). Stable for the whole day, same picks for every student.
+function eqGetDailyQuizIds(dateStr){
+  dateStr = dateStr || isoDate();
+  const pool = (DB.quizzes || []).filter(q => eqQuizCadence(q) === 'daily').map(q => q.id).sort();
+  return _eqSeededPick(pool, 'quest-daily-' + dateStr, 3);
+}
+window.eqGetDailyQuizIds = eqGetDailyQuizIds;
+
+// eqGetWeeklyQuizId(dateStr?) → id | null — one quest from the 'weekly'
+// cadence pool, refreshed every Monday (Manila calendar week).
+function eqGetWeeklyQuizId(dateStr){
+  dateStr = dateStr || isoDate();
+  const pool = (DB.quizzes || []).filter(q => eqQuizCadence(q) === 'weekly').map(q => q.id).sort();
+  if (!pool.length) return null;
+  const d = new Date(dateStr + 'T00:00:00');
+  const dayIdx = (d.getDay() + 6) % 7; // 0 = Monday
+  d.setDate(d.getDate() - dayIdx);
+  const weekKey = d.toISOString().slice(0, 10);
+  return _eqSeededPick(pool, 'quest-weekly-' + weekKey, 1)[0] || null;
+}
+window.eqGetWeeklyQuizId = eqGetWeeklyQuizId;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  QUEST BOARD — Phase 5 Helpers (Admin tooling: quest_board_report.md §4)
+//  Scheduling (§18): quiz.startDate / quiz.endDate are optional 'YYYY-MM-DD'
+//  strings (Manila calendar day, same convention as isoDate()). Neither set
+//  = the pre-Phase-5 default, always available. Purely additive — a quiz
+//  saved before this phase has both fields undefined and behaves exactly
+//  as before.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// eqQuizScheduleStatus(quiz, dateStr?) → 'upcoming' | 'active' | 'expired' | null
+// null means "no schedule set" (always available, same as pre-Phase-5).
+function eqQuizScheduleStatus(quiz, dateStr){
+  if (!quiz) return null;
+  const today = dateStr || isoDate();
+  const start = quiz.startDate || null;
+  const end = quiz.endDate || null;
+  if (!start && !end) return null;
+  if (start && today < start) return 'upcoming';
+  if (end && today > end) return 'expired';
+  return 'active';
+}
+window.eqQuizScheduleStatus = eqQuizScheduleStatus;
+
+// eqDaysUntil(dateStr) → integer day count from today (Manila calendar) to
+// dateStr. Negative if dateStr is in the past. Used to render "Ends in N
+// days" / "Starts in N days" badges without re-deriving the same date math
+// in three different render functions.
+function eqDaysUntil(dateStr){
+  if (!dateStr) return null;
+  const today = new Date(isoDate() + 'T00:00:00');
+  const target = new Date(dateStr + 'T00:00:00');
+  return Math.round((target - today) / 86400000);
+}
+window.eqDaysUntil = eqDaysUntil;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  QUEST BOARD — Phase 5: Per-Quiz Analytics (quest_board_report.md §19)
+//  Reads DB.quizHistory (Phase 57 — synced per-attempt log) to compute
+//  completion rate, average score, and per-question miss-rate for a quiz.
+//  `results` (per-question fraction array, same order as quiz.questions) is
+//  a Phase 5 addition to each history entry — entries logged before this
+//  phase simply have no `results`, so per-question stats silently exclude
+//  them rather than throwing; completion rate / average score still include
+//  every attempt regardless, since those only ever needed `score`.
+// ═══════════════════════════════════════════════════════════════════════════
+function eqComputeQuizAnalytics(quizId){
+  const quiz = (DB.quizzes || []).find(q => q.id === quizId);
+  const totalStudents = (DB.students || []).length;
+  const completedCount = (DB.students || []).filter(s => (s.completedQuizzes || []).includes(quizId)).length;
+
+  // Flatten every attempt across every student for this quiz.
+  const attempts = [];
+  Object.keys(DB.quizHistory || {}).forEach(sid => {
+    (DB.quizHistory[sid] || []).forEach(h => { if (h.quizId === quizId) attempts.push(h); });
+  });
+
+  const avgScore = attempts.length
+    ? Math.round(attempts.reduce((sum, a) => sum + (a.score || 0), 0) / attempts.length)
+    : null;
+
+  // Per-question miss-rate — only attempts carrying a `results` array
+  // (Phase 5+) contribute. A question's %correct is the average of its
+  // fraction across those attempts (so enum/match partial credit shows up
+  // as a partial %, not forced into a binary hit/miss).
+  const qCount = quiz ? quiz.questions.length : 0;
+  const perQuestion = [];
+  for (let i = 0; i < qCount; i++) {
+    const samples = attempts
+      .map(a => (Array.isArray(a.results) ? a.results[i] : undefined))
+      .filter(v => typeof v === 'number');
+    const pct = samples.length ? Math.round((samples.reduce((s, v) => s + v, 0) / samples.length) * 100) : null;
+    perQuestion.push({
+      index: i,
+      text: quiz.questions[i].q,
+      type: eqQType(quiz.questions[i]),
+      pctCorrect: pct,
+      sampleCount: samples.length,
+    });
+  }
+
+  return {
+    quizId,
+    totalStudents,
+    completedCount,
+    completionRate: totalStudents ? Math.round((completedCount / totalStudents) * 100) : 0,
+    attemptCount: attempts.length,
+    avgScore,
+    perQuestion,
+  };
+}
+window.eqComputeQuizAnalytics = eqComputeQuizAnalytics;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  QUEST BOARD — Phase 4 Helpers (Depth & Retention)
+//  quest_board_report.md §3.3 (combo), §3.7 (chains), §3.12 (leaderboard),
+//  §7 (retry with escalating stakes). See index.html's quiz runner
+//  (startQuiz/quizNext/finishQuiz) and modules/admin/quiz-builder.js (chain
+//  fields) for where these get consumed.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// eqComboMultiplier(streak) — tiered XP/coin multiplier from the peak
+// consecutive-correct streak reached during a quiz attempt (mc/tf/id count
+// as a "hit" only on a full 1.0 eqGradeAnswer() result; enum's partial
+// credit never counts toward combo — see quizNext() in index.html).
+function eqComboMultiplier(streak){
+  streak = streak || 0;
+  if (streak >= 5) return 2;
+  if (streak >= 3) return 1.5;
+  return 1;
+}
+window.eqComboMultiplier = eqComboMultiplier;
+
+// eqRetryMultiplier(attemptNumber) — Decision (quest_board_report.md §7):
+// "unlimited retries, reduced reward" — first attempt earns full reward,
+// each retry after that earns progressively less so there's still real
+// incentive to get it right the first time, but a struggling student is
+// never locked out.
+function eqRetryMultiplier(attemptNumber){
+  attemptNumber = attemptNumber || 1;
+  if (attemptNumber <= 1) return 1;
+  if (attemptNumber === 2) return 0.7;
+  if (attemptNumber === 3) return 0.5;
+  return 0.35;
+}
+window.eqRetryMultiplier = eqRetryMultiplier;
+
+// eqQuizChain(q) → { chainId, chainOrder, chainLabel } — normalizes the
+// three chain fields with safe defaults, same defensive-fallback style as
+// eqQuizRarity()/eqQuizCadence() above. A quiz with no chainId is simply
+// not part of any chain (the pre-Phase-4 default — nothing old breaks).
+function eqQuizChain(q){
+  return {
+    chainId:    (q && q.chainId) || null,
+    chainOrder: (q && Number.isFinite(q.chainOrder)) ? q.chainOrder : 1,
+    chainLabel: (q && q.chainLabel) || '',
+  };
+}
+window.eqQuizChain = eqQuizChain;
+
+// eqGetQuestChains() → [{ chainId, chainLabel, quizzes:[q,...] }, ...]
+// Groups every chained quiz (chainId set) by chain, sorted by chainOrder.
+// Unchained (standing/daily/weekly, no chainId) quizzes never appear here —
+// renderStudentQuizzes() in index.html filters them out of the chain
+// section and leaves them in the normal grid untouched.
+function eqGetQuestChains(){
+  const groups = {};
+  (DB.quizzes || []).forEach(q => {
+    const c = eqQuizChain(q);
+    if (!c.chainId) return;
+    if (!groups[c.chainId]) groups[c.chainId] = { chainId: c.chainId, chainLabel: c.chainLabel || c.chainId, quizzes: [] };
+    if (c.chainLabel && !groups[c.chainId].chainLabel) groups[c.chainId].chainLabel = c.chainLabel;
+    groups[c.chainId].quizzes.push(q);
+  });
+  return Object.values(groups).map(g => {
+    g.quizzes.sort((a, b) => eqQuizChain(a).chainOrder - eqQuizChain(b).chainOrder);
+    return g;
+  });
+}
+window.eqGetQuestChains = eqGetQuestChains;
+
+// eqChainStatus(chainQuizzes, qid, completedIds) → 'done' | 'unlocked' | 'locked'
+// The next unlocked quest in a chain is the first one (in chainOrder) not
+// yet in completedIds; everything before it is 'done', everything after
+// stays 'locked' until the ones ahead of it clear.
+function eqChainStatus(chainQuizzes, qid, completedIds){
+  const idx = chainQuizzes.findIndex(q => q.id === qid);
+  if (idx === -1) return 'locked';
+  if (completedIds.includes(qid)) return 'done';
+  const firstIncompleteIdx = chainQuizzes.findIndex(q => !completedIds.includes(q.id));
+  return idx === firstIncompleteIdx ? 'unlocked' : 'locked';
+}
+window.eqChainStatus = eqChainStatus;
+
+// eqWeekStartISO(dateStr?) → 'YYYY-MM-DD' of the Monday starting this
+// (Manila-calendar) week. Same week-boundary math eqGetWeeklyQuizId() uses,
+// pulled out standalone since eqGetTopQuestersThisWeek() below needs the
+// boundary itself (as a resetAt cutoff), not a seeded pick from it.
+function eqWeekStartISO(dateStr){
+  dateStr = dateStr || isoDate();
+  const d = new Date(dateStr + 'T00:00:00');
+  const dayIdx = (d.getDay() + 6) % 7; // 0 = Monday
+  d.setDate(d.getDate() - dayIdx);
+  return d.toISOString().slice(0, 10);
+}
+window.eqWeekStartISO = eqWeekStartISO;
+
+// eqGetTopQuestersThisWeek(classId, limit?) → [{ student, quizCount,
+// academicXP, bestScore, rank }, ...]
+// quest_board_report.md §3.12 — "pulled from your existing leaderboard
+// engine ... without needing a whole new leaderboard system": this reuses
+// eqlComputeAcademic() (modules/leaderboard/eql-engine.js) with a rolling
+// Monday-boundary resetAt, completely independent of the admin-controlled
+// DB.leaderboardConfig.academic.resetAt the Hall of Fame page uses — "this
+// week" here always means the current calendar week, not whenever an admin
+// last hit reset. Ranked by academicXP (already time-filtered inside
+// eqlComputeAcademic), same tiebreaker order the engine itself uses.
+function eqGetTopQuestersThisWeek(classId, limit){
+  limit = limit || 5;
+  if (typeof eqlComputeAcademic !== 'function') return [];
+  const resetAt = eqWeekStartISO() + 'T00:00:00.000Z';
+  const pool = classId ? (DB.students || []).filter(s => s.classId === classId) : (DB.students || []);
+  const entries = pool.map(s => {
+    const stats = eqlComputeAcademic(s.id, resetAt);
+    return { student: s, quizCount: stats.quizCount, academicXP: stats.academicXP, bestScore: stats.bestScore };
+  }).filter(e => e.quizCount > 0);
+  entries.sort((a, b) => b.academicXP - a.academicXP || b.quizCount - a.quizCount);
+  entries.forEach((e, i) => { e.rank = i + 1; });
+  return entries.slice(0, limit);
+}
+window.eqGetTopQuestersThisWeek = eqGetTopQuestersThisWeek;
+

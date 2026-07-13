@@ -42,15 +42,22 @@ const DEFAULT_DB = {
     {id:'s10',emoji:'❓',name:'Mystery Box',desc:'Contains one random item of Rare quality or better.',cat:'mystery',cost:500,stock:7},
   ],
   quizzes:[
+    // Phase 1 — question `type` field added ('mc' explicit on legacy questions
+    // for clarity; eqQType() in utils.js already defaults missing type to
+    // 'mc' so older/未-tagged data never breaks). q1 also demonstrates a
+    // mixed-type quest: multiple choice + true/false + identification in
+    // the same reviewer, same as a real teacher would build.
     {id:'q1',title:'Science — Chapter 5',desc:'Photosynthesis & Cell Biology. Master the building blocks of life.',xpReward:150,coinReward:80,timeLimit:10,questions:[
-      {q:'What organelle performs photosynthesis?',opts:['Mitochondria','Chloroplast','Nucleus','Ribosome'],answer:1},
-      {q:'What gas do plants release during photosynthesis?',opts:['Carbon Dioxide','Nitrogen','Oxygen','Hydrogen'],answer:2},
-      {q:'Which part of the plant absorbs sunlight?',opts:['Root','Stem','Leaf','Flower'],answer:2},
+      {type:'mc',q:'What organelle performs photosynthesis?',opts:['Mitochondria','Chloroplast','Nucleus','Ribosome'],answer:1},
+      {type:'mc',q:'What gas do plants release during photosynthesis?',opts:['Carbon Dioxide','Nitrogen','Oxygen','Hydrogen'],answer:2},
+      {type:'mc',q:'Which part of the plant absorbs sunlight?',opts:['Root','Stem','Leaf','Flower'],answer:2},
+      {type:'tf',q:'Plants release oxygen as a byproduct of photosynthesis.',opts:['True','False'],answer:0},
+      {type:'id',q:'What pigment gives plants their green color?',answer:'Chlorophyll',altAnswers:['chlorophyl']},
     ]},
     {id:'q2',title:'Math — Algebra Quiz',desc:'Linear equations & expressions. Solve the Riddles of the X Variable.',xpReward:120,coinReward:60,timeLimit:8,questions:[
-      {q:'Solve: 2x + 4 = 12',opts:['x = 2','x = 4','x = 6','x = 8'],answer:1},
-      {q:'What is the slope of y = 3x + 5?',opts:['5','2','3','1'],answer:2},
-      {q:'Simplify: 4(x + 2) - 3x',opts:['x + 2','x + 8','7x + 2','x + 6'],answer:1},
+      {type:'mc',q:'Solve: 2x + 4 = 12',opts:['x = 2','x = 4','x = 6','x = 8'],answer:1},
+      {type:'mc',q:'What is the slope of y = 3x + 5?',opts:['5','2','3','1'],answer:2},
+      {type:'mc',q:'Simplify: 4(x + 2) - 3x',opts:['x + 2','x + 8','7x + 2','x + 6'],answer:1},
     ]},
   ],
   pointLog:[

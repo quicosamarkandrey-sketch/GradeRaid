@@ -1148,6 +1148,134 @@ function renderStudentDashboard(){
 }
 
 // ── STUDENT QUIZZES (Quest Board) ──
+// Phase 3 — rarity badge styling shared by every quest card. Falls back to
+// Common's colors if ach_engine.js's ACH_RARITY palette hasn't loaded for
+// some reason, same defensive `typeof` guard style already used around
+// getClassLabel/getActiveClassIds elsewhere in this file.
+function _questRarityStyle(q){
+  const palette = (typeof ACH_RARITY !== 'undefined' && ACH_RARITY) || {};
+  const r = eqQuizRarity(q);
+  return { rarity: r, ...( palette[r] || { color:'#9ca3af', glow:'rgba(156,163,175,0.2)' } ) };
+}
+
+// Phase 3 — single quest-card renderer shared by the Daily/Weekly/Standing
+// sections below. `cadenceTag` replaces the old decorative, index-based
+// "Hot Quest"/"New" badge (qi===0 ? ... : ...) with something actually
+// meaningful: the quest's real rarity, plus a cadence tag when it's a
+// rotating daily/weekly pick.
+function renderQuestCard(q, qi, cadenceTag){
+  const rs = _questRarityStyle(q);
+  // Phase 5 — "ending soon" nudge (quest_board_report.md §18): only shown
+  // once a scheduled quiz is within 3 days of its endDate, real urgency
+  // instead of noise on every quest that merely has a far-off end date.
+  const daysLeft = (q.endDate && typeof eqDaysUntil === 'function') ? eqDaysUntil(q.endDate) : null;
+  const endingSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 3;
+  return `
+    <div class="quest-card" onclick="startQuiz('${q.id}')">
+      <div class="quest-img-wrap">
+        <div class="quest-img-placeholder">${['🧬','🔢','🌍','⚗️','💻','🔭','📐','🦠'][qi%8]}</div>
+        <div class="quest-badge" style="background:${rs.glow};color:${rs.color};border:1px solid ${rs.color}">${cadenceTag ? cadenceTag+' · ' : ''}${rs.rarity}</div>
+        ${endingSoon ? `<div class="quest-badge" style="right:auto;left:12px;background:rgba(255,180,171,.18);color:#ffb4ab;border:1px solid #ffb4ab">⏳ Ends in ${daysLeft===0?'<1':daysLeft}d</div>` : ''}
+      </div>
+      <div class="quest-body">
+        <div class="quest-title">${q.title}</div>
+        <div class="quest-desc">${q.desc}</div>
+        <div class="quest-meta">
+          <div class="quest-rewards">
+            <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
+            <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${q.coinReward}</div>
+          </div>
+          <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
+        </div>
+        <button class="quest-btn primary">⚔ Begin Quest</button>
+      </div>
+    </div>`;
+}
+
+// Phase 4 — quest chain step card (quest_board_report.md §3.8). Three
+// visual states: 'done' (cleared, shows score), 'unlocked' (the one
+// startable step — identical click behavior to a normal quest card), and
+// 'locked' (greyed out, no click handler, shows what it's waiting on).
+function renderChainStepCard(q, status, stepIndex){
+  const rs = _questRarityStyle(q);
+  const st = currentUser;
+  const history = (DB.quizHistory||{})[st.id]||[];
+  const entry = status==='done' ? history.filter(h=>h.quizId===q.id).pop() : null;
+  const clickAttr = status==='unlocked' ? `onclick="startQuiz('${q.id}')"` : '';
+  const stateIcon = status==='done' ? '✅' : status==='unlocked' ? '⚔' : '🔒';
+  return `
+    <div class="quest-card chain-step chain-${status}" ${clickAttr}>
+      <div class="quest-img-wrap">
+        <div class="quest-img-placeholder">${stateIcon}</div>
+        <div class="quest-badge" style="background:${rs.glow};color:${rs.color};border:1px solid ${rs.color}">Part ${stepIndex+1} · ${rs.rarity}</div>
+      </div>
+      <div class="quest-body">
+        <div class="quest-title">${q.title}</div>
+        <div class="quest-desc">${status==='locked' ? 'Locked — finish the previous part first.' : q.desc}</div>
+        <div class="quest-meta">
+          <div class="quest-rewards">
+            <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
+            <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${q.coinReward}</div>
+          </div>
+          ${status==='done' ? `<div class="quest-time">${entry?entry.score+'%':'✓'} CLEARED</div>` : `<div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>`}
+        </div>
+        ${status==='unlocked' ? `<button class="quest-btn primary">⚔ Begin Quest</button>`
+          : status==='done' ? `<button class="quest-btn" disabled>✅ Cleared</button>`
+          : `<button class="quest-btn" disabled>🔒 Locked</button>`}
+      </div>
+    </div>`;
+}
+
+// Phase 4 — one row per chain: title + progress dots + the step cards.
+function renderChainSection(chain){
+  const st = currentUser;
+  const completedIds = st.completedQuizzes || [];
+  const doneCount = chain.quizzes.filter(q=>completedIds.includes(q.id)).length;
+  return `
+  <div class="section-header" style="margin-top:12px">
+    <span class="material-symbols-outlined" style="color:var(--tertiary)">link</span>
+    <h2>${_esc(chain.chainLabel)}</h2>
+    <span class="badge-pill bp-primary">${doneCount}/${chain.quizzes.length} parts cleared</span>
+  </div>
+  <div class="quest-grid">
+    ${chain.quizzes.map((q,i)=>renderChainStepCard(q, eqChainStatus(chain.quizzes, q.id, completedIds), i)).join('')}
+  </div>`;
+}
+
+// Phase 4 — "Top Questers This Week" panel (quest_board_report.md §3.12).
+// Reuses the existing leaderboard engine (eqlComputeAcademic) scoped to the
+// student's own section, rolling Monday boundary — see eqGetTopQuestersThisWeek()
+// in utils.js. Purely social proof; no click behavior, no new leaderboard system.
+function renderTopQuestersPanel(){
+  const st = currentUser;
+  const myClassId = st.classId || 'default-class';
+  const top = (typeof eqGetTopQuestersThisWeek === 'function') ? eqGetTopQuestersThisWeek(myClassId, 5) : [];
+  if (!top.length) return '';
+  const medals = ['🥇','🥈','🥉'];
+  return `
+  <div class="section-header">
+    <span class="material-symbols-outlined">social_leaderboard</span>
+    <h2>Top Questers This Week</h2>
+  </div>
+  <div class="lb-list" style="margin-bottom:24px">
+    ${top.map(e=>{
+      const isMe = e.student.id===st.id;
+      const init = (e.student.name||'?').trim().charAt(0).toUpperCase();
+      return `<div class="lb-row ${isMe?'me':''}">
+        <div class="lb-rank">${e.rank<=3?medals[e.rank-1]:`<span>${e.rank}</span>`}</div>
+        <div class="lb-av" style="background:rgba(208,188,255,.15);color:var(--primary);border-color:rgba(208,188,255,.3)">${_esc(init)}</div>
+        <div style="flex:1">
+          <div class="lb-name">${_esc(e.student.name)}${isMe?`<span class="lb-badge-me">You</span>`:''}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${e.quizCount} quest${e.quizCount===1?'':'s'} this week</div>
+        </div>
+        <div style="text-align:right">
+          <div class="lb-xp">${e.academicXP.toLocaleString()} XP</div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
 function renderStudentQuizzes(){
   const st=currentUser;
   // Phase 27 (closes the gap flagged in quiz-builder.js's Phase 15 comment
@@ -1168,6 +1296,47 @@ function renderStudentQuizzes(){
   const done=visibleQuizzes.filter(q=>st.completedQuizzes.includes(q.id));
   const pending=visibleQuizzes.filter(q=>!st.completedQuizzes.includes(q.id));
 
+  // Phase 3 — cadence split (quest_board_report.md §3.2/§3.4). 'standing'
+  // quizzes (the pre-Phase-3 default, and still the vast majority of
+  // existing content) behave exactly as before — always on the board.
+  // 'daily'/'weekly' quizzes sit in a pool and eqGetDailyQuizIds()/
+  // eqGetWeeklyQuizId() deterministically pick today's/this week's subset
+  // from it (same seed for every student, refreshes automatically at the
+  // date/week boundary) — a pooled quiz NOT in today's pick simply doesn't
+  // show, which is the entire point of a rotating pool instead of every
+  // pooled quiz being open at once.
+  const dailyIds  = (typeof eqGetDailyQuizIds === 'function') ? eqGetDailyQuizIds() : [];
+  const weeklyId  = (typeof eqGetWeeklyQuizId === 'function') ? eqGetWeeklyQuizId() : null;
+  // Phase 4 — chained quizzes (§3.8) never sit in the standard cadence
+  // grids; they're rendered as their own step sequence below via
+  // renderChainSection(), so filter them out here regardless of cadence.
+  const isChained = (q) => !!eqQuizChain(q).chainId;
+  // Phase 5 — scheduling (quest_board_report.md §18): a quiz outside its
+  // [startDate, endDate] window simply doesn't show as available — same
+  // "opt-in" posture as section scoping. A student's own completed history
+  // for it is untouched (the `done` list below is built from
+  // completedQuizzes, not this filter), so an expired quest a student
+  // already finished stays visible in "Completed Quests".
+  const isScheduledOut = (q) => {
+    const status = (typeof eqQuizScheduleStatus === 'function') ? eqQuizScheduleStatus(q) : null;
+    return status === 'upcoming' || status === 'expired';
+  };
+  const pendingStanding = pending.filter(q => eqQuizCadence(q) === 'standing' && !isChained(q) && !isScheduledOut(q));
+  const pendingDaily    = pending.filter(q => eqQuizCadence(q) === 'daily'  && dailyIds.includes(q.id) && !isChained(q) && !isScheduledOut(q));
+  const pendingWeekly   = pending.filter(q => eqQuizCadence(q) === 'weekly' && q.id === weeklyId && !isChained(q) && !isScheduledOut(q));
+  const availableToday  = pendingStanding.length + pendingDaily.length + pendingWeekly.length;
+
+  // Phase 4 — chains visible to this student, built from the same
+  // section-scoped quiz set as everything else on the board (a chain step
+  // hidden from this section never shows up as a locked placeholder).
+  const chains = (typeof eqGetQuestChains === 'function')
+    ? eqGetQuestChains().map(c => ({ ...c, quizzes: c.quizzes.filter(q => visibleQuizzes.includes(q) && (st.completedQuizzes.includes(q.id) || !isScheduledOut(q))) })).filter(c => c.quizzes.length)
+    : [];
+
+  // Phase 2 — real, breakable, day-based streak (replaces the old fake
+  // Math.floor(completedQuizzes.length/2) count — see quest_board_report.md §1).
+  const questStreak = computeQuestStreak(st.id);
+
   document.getElementById('s-quizzes').innerHTML=`
   <!-- HERO BANNER -->
   <div class="page-hero" style="background-image:linear-gradient(135deg,rgba(26,20,56,0.98),rgba(35,25,72,0.95));margin-bottom:32px">
@@ -1178,7 +1347,7 @@ function renderStudentQuizzes(){
       <p style="font-size:14px;color:var(--text-muted);max-width:480px;line-height:1.6">Sharpen your skills and earn legendary loot. Each completed quest brings you closer to the Master's Tier.</p>
       <div class="page-hero-stats">
         <div class="hero-stat-pill">
-          <div class="val" style="color:var(--primary)">${pending.length}</div>
+          <div class="val" style="color:var(--primary)">${availableToday}</div>
           <div class="lbl">Available</div>
         </div>
         <div class="hero-stat-pill">
@@ -1186,45 +1355,53 @@ function renderStudentQuizzes(){
           <div class="lbl">Completed</div>
         </div>
         <div class="hero-stat-pill">
-          <div class="val" style="color:var(--tertiary)">🔥 ${st.completedQuizzes.length>2?Math.floor(st.completedQuizzes.length/2)+'x':'0x'}</div>
-          <div class="lbl">Streak</div>
+          <div class="val" style="color:var(--tertiary)">🔥 ${questStreak.current}</div>
+          <div class="lbl">Day Streak</div>
         </div>
       </div>
     </div>
   </div>
 
-  ${pending.length ? `
+  ${renderTopQuestersPanel()}
+
+  ${pendingDaily.length ? `
+  <div class="section-header">
+    <span class="material-symbols-outlined">wb_sunny</span>
+    <h2>Daily Quests</h2>
+    <span class="badge-pill bp-primary">${pendingDaily.length} today</span>
+  </div>
+  <div class="quest-grid">
+    ${pendingDaily.map((q,qi)=>renderQuestCard(q,qi,'☀️ Daily')).join('')}
+  </div>` : ''}
+
+  ${pendingWeekly.length ? `
+  <div class="section-header">
+    <span class="material-symbols-outlined">calendar_month</span>
+    <h2>Weekly Quest</h2>
+    <span class="badge-pill bp-primary">${pendingWeekly.length} this week</span>
+  </div>
+  <div class="quest-grid">
+    ${pendingWeekly.map((q,qi)=>renderQuestCard(q,qi,'🗓️ Weekly')).join('')}
+  </div>` : ''}
+
+  ${pendingStanding.length ? `
   <div class="section-header">
     <span class="material-symbols-outlined">explore</span>
     <h2>Active Quests</h2>
-    <span class="badge-pill bp-primary">${pending.length} available</span>
+    <span class="badge-pill bp-primary">${pendingStanding.length} available</span>
   </div>
   <div class="quest-grid">
-    ${pending.map((q,qi)=>`
-    <div class="quest-card" onclick="startQuiz('${q.id}')">
-      <div class="quest-img-wrap">
-        <div class="quest-img-placeholder">${['🧬','🔢','🌍','⚗️','💻','🔭','📐','🦠'][qi%8]}</div>
-        <div class="quest-badge ${qi===0?'hot':'new'}">${qi===0?'🔥 Hot Quest':'✨ New'}</div>
-      </div>
-      <div class="quest-body">
-        <div class="quest-title">${q.title}</div>
-        <div class="quest-desc">${q.desc}</div>
-        <div class="quest-meta">
-          <div class="quest-rewards">
-            <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
-            <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${q.coinReward}</div>
-          </div>
-          <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
-        </div>
-        <button class="quest-btn primary">⚔ Begin Quest</button>
-      </div>
-    </div>`).join('')}
-  </div>` : `
+    ${pendingStanding.map((q,qi)=>renderQuestCard(q,qi,null)).join('')}
+  </div>` : ''}
+
+  ${chains.map(chain=>renderChainSection(chain)).join('')}
+
+  ${!availableToday && !chains.length ? `
   <div style="text-align:center;padding:64px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;margin-bottom:24px;backdrop-filter:blur(12px)">
     <div style="font-size:56px;margin-bottom:16px">🏆</div>
     <div style="font-family:var(--fh);font-size:20px;font-weight:900;margin-bottom:8px">All Quests Complete!</div>
     <div style="color:var(--text-muted);font-size:14px">Awaiting new missions from your instructor.</div>
-  </div>`}
+  </div>` : ''}
 
   ${done.length ? `
   <div class="section-header" style="margin-top:12px">
@@ -1235,8 +1412,15 @@ function renderStudentQuizzes(){
   <div class="completed-list">
     ${done.map(q=>{
       const history=(DB.quizHistory||{})[st.id]||[];
-      const entry=history.filter(h=>h.quizId===q.id).pop();
+      const attemptsForQuiz=history.filter(h=>h.quizId===q.id);
+      const entry=attemptsForQuiz[attemptsForQuiz.length-1];
       const scoreDisplay=entry?entry.score+'%':'✓';
+      // Phase 4 — retry with escalating stakes (quest_board_report.md §7):
+      // unlimited retries stay available from the completed list, but
+      // each one is tagged with the reduced reward the NEXT attempt would
+      // earn so the tradeoff is visible before a student commits to it.
+      const nextAttemptNum = attemptsForQuiz.length + 1;
+      const nextMult = (typeof eqRetryMultiplier==='function') ? eqRetryMultiplier(nextAttemptNum) : 1;
       return `
     <div class="completed-row">
       <div class="completed-icon"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">check_circle</span></div>
@@ -1248,24 +1432,74 @@ function renderStudentQuizzes(){
         <div class="lbl">SCORE</div>
         <div class="val">${scoreDisplay}</div>
       </div>
+      <button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="event.stopPropagation();startQuiz('${q.id}')" title="Retry for ${Math.round(nextMult*100)}% reward">↻ Retry (${Math.round(nextMult*100)}%)</button>
     </div>`;}).join('')}
   </div>` : ''}`;
 }
 
+
 // ── ACTIVE QUIZ ──
 let activeQuiz=null,quizAnswers=[],quizCurrent=0,quizTimer=null,quizTimeLeft=0;
+// Phase 2 — functional hint system state (was a decorative hardcoded "2" —
+// see quest_board_report.md §1/§3.5). quizHintsRemaining counts down from
+// HINT_COST-gated uses; quizEliminated[qi] holds eliminated wrong-option
+// indices per MC/TF question; quizHintRevealed[qi] caps hints to one per
+// question so a student can't strip every wrong option for free info.
+const HINT_COST = 15;
+const MAX_HINTS_PER_QUEST = 2;
+let quizHintsRemaining=0, quizEliminated=[], quizHintRevealed=[], quizStreakSnapshot=0;
+// Phase 5 — shuffled right-column display order per Matching-type question
+// (index-aligned with activeQuiz.questions), lazily filled in by
+// renderQuizQuestion()/_eqShuffledMatchOptions() and reset in startQuiz().
+let quizMatchShuffle=[];
+// Phase 4 — combo meter state (quest_board_report.md §3.3): quizCombo is
+// the LIVE consecutive-correct count, quizComboMax is the peak reached
+// this attempt (what the final reward multiplier is based on — see
+// finishQuiz()). quizLocked[qi] marks a question as graded/locked once the
+// student has moved past it with Next, so Prev can't be used to go back,
+// see the correctness feedback, and silently fix the answer — see quizNext().
+let quizCombo=0, quizComboMax=0, quizLocked=[];
+// Phase 4 — retry state (quest_board_report.md §7): attempt number for
+// THIS run, derived from existing quizHistory rows for this quiz + 1.
+// quizFinishing guards against a single tab double-firing finishQuiz()
+// (e.g. a double Enter/click) now that completedQuizzes membership can no
+// longer be used as that guard — retries intentionally keep it populated.
+let quizAttemptNumber=1, quizFinishing=false;
 
 function startQuiz(qid){
-  activeQuiz=DB.quizzes.find(q=>q.id===qid);if(!activeQuiz)return;
-  // Critical Fix #5: Block replay — check completedQuizzes AFTER fresh DB load
+  const quiz=DB.quizzes.find(q=>q.id===qid);if(!quiz)return;
+  // Critical Fix #5 (fresh-load) still applies; the old hard "already
+  // completed" block is gone — Phase 4 decision (quest_board_report.md §7)
+  // is unlimited retries at a reduced reward, not a one-and-done lock.
   DB=loadDB();
   const freshStudent=DB.students.find(s=>s.id===currentUser.id);
-  if(freshStudent&&(freshStudent.completedQuizzes||[]).includes(qid)){
-    toast('✅ You already completed this quest!','#4edea3');
-    return;
+  const completedIds=(freshStudent&&freshStudent.completedQuizzes)||[];
+  // Phase 4 — chain lock guard (quest_board_report.md §3.8): even if a
+  // locked step's card somehow gets clicked (stale render, console call),
+  // block starting anything but the next unlocked part of its chain.
+  const chainInfo = (typeof eqQuizChain==='function') ? eqQuizChain(quiz) : {chainId:null};
+  if(chainInfo.chainId && typeof eqGetQuestChains==='function'){
+    const chain = eqGetQuestChains().find(c=>c.chainId===chainInfo.chainId);
+    const status = chain ? eqChainStatus(chain.quizzes, qid, completedIds) : 'locked';
+    if(status==='locked'){ toast('🔒 Finish the earlier part of this chain first.','#ffb4ab'); return; }
   }
+  activeQuiz=quiz;
+  quizAttemptNumber = ((DB.quizHistory && DB.quizHistory[currentUser.id]) || []).filter(h=>h.quizId===qid).length + 1;
+  quizFinishing=false;
   quizAnswers=new Array(activeQuiz.questions.length).fill(null);quizCurrent=0;
   quizTimeLeft=activeQuiz.timeLimit*60;
+  // Phase 2 — reset hint budget + eliminated-options tracking for this attempt
+  quizHintsRemaining=MAX_HINTS_PER_QUEST;
+  quizEliminated=new Array(activeQuiz.questions.length).fill(null).map(()=>[]);
+  quizHintRevealed=new Array(activeQuiz.questions.length).fill(false);
+  quizStreakSnapshot=computeQuestStreak(currentUser.id).current;
+  // Phase 4 — reset combo/lock state for this attempt
+  quizCombo=0; quizComboMax=0; quizLocked=new Array(activeQuiz.questions.length).fill(false);
+  // Phase 5 — per-question shuffled right-column order for Matching-type
+  // questions (quest_board_report.md §2.4), generated lazily the first time
+  // each question renders so it stays stable across Prev/Next within one
+  // attempt, then reset fresh on the next startQuiz() call.
+  quizMatchShuffle=new Array(activeQuiz.questions.length).fill(null);
   showPage('s-quiz-active');renderQuizQuestion();startQuizTimer();
 }
 function startQuizTimer(){
@@ -1285,6 +1519,81 @@ function renderQuizQuestion(){
   const q=activeQuiz.questions[quizCurrent];const total=activeQuiz.questions.length;
   const fillPct=Math.round((quizCurrent+1)/total*100);
   const letters=['A','B','C','D','E'];
+  const qType=eqQType(q); // Phase 1/3 — 'mc' (default), 'tf', 'id', or 'enum'
+  const savedAns=quizAnswers[quizCurrent];
+  // Phase 4 — once a question has been passed via Next, it's locked: Prev
+  // can still be used to review it, but answers can no longer be changed.
+  // This is what makes the live combo meter meaningful (see quizNext()) —
+  // without it, seeing "combo broken" would just be a free hint to go back
+  // and fix the answer before final submission.
+  const isLocked = !!quizLocked[quizCurrent];
+  // Phase 2 — hint eligibility for the CURRENT question: mc (>2 opts) can
+  // eliminate a wrong option; id reveals first letter + length. tf/enum
+  // have no hint (tf would just hand over the answer; enum's own partial
+  // credit already softens the all-or-nothing stakes hints exist to ease).
+  const eliminatedForQ = quizEliminated[quizCurrent] || [];
+  const hintUsedForQ = !!quizHintRevealed[quizCurrent];
+  const canHint = !isLocked && quizHintsRemaining>0 && !hintUsedForQ && (qType==='id' || (qType==='mc' && q.opts && q.opts.length>2));
+  const hintReason = isLocked ? 'Question already locked in'
+    : quizHintsRemaining<=0 ? 'No hints left this quest'
+    : hintUsedForQ ? 'Hint already used on this question'
+    : (qType==='tf' || qType==='enum' || qType==='match') ? 'Not available for this question type'
+    : `Reveal a hint for ${HINT_COST} coins`;
+  const idHintText = (qType==='id' && hintUsedForQ) ? _eqQuestHintText(q) : '';
+  const enumBlanks = qType==='enum' ? (Array.isArray(q.answers) ? q.answers.length : 0) : 0;
+  const enumSaved = qType==='enum' ? (Array.isArray(savedAns) ? savedAns : new Array(enumBlanks).fill('')) : [];
+  // Phase 5 — Matching type (quest_board_report.md §2.4): left column stays
+  // in authored order, right column is shuffled once per attempt (cached in
+  // quizMatchShuffle so Prev/Next doesn't reshuffle mid-attempt) and shown
+  // as a dropdown per left-hand row. quizAnswers[quizCurrent] is an array
+  // aligned to q.pairs order (NOT the shuffled display order) — the select's
+  // chosen text is what gets stored, same convention eqGradeAnswer expects.
+  const matchPairs = qType==='match' ? (Array.isArray(q.pairs) ? q.pairs : []) : [];
+  const matchSaved = qType==='match' ? (Array.isArray(savedAns) ? savedAns : new Array(matchPairs.length).fill('')) : [];
+  if (qType==='match' && !quizMatchShuffle[quizCurrent]) {
+    const rights = matchPairs.map(p=>p.right);
+    for (let i=rights.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [rights[i],rights[j]]=[rights[j],rights[i]]; }
+    quizMatchShuffle[quizCurrent] = rights;
+  }
+  const matchOptions = qType==='match' ? (quizMatchShuffle[quizCurrent] || []) : [];
+  const optionsHTML = qType==='id'
+    ? `<div class="quiz-options" id="quiz-opts">
+        <input type="text" id="quiz-id-input" class="quiz-id-input" placeholder="Type your answer…" autocomplete="off" spellcheck="false"
+          value="${_esc(typeof savedAns==='string'?savedAns:'')}" ${isLocked?'readonly':''} oninput="submitIdAnswer(this.value)"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('btn-next')?.click();}">
+        ${idHintText?`<div class="quiz-hint-reveal">${idHintText}</div>`:''}
+      </div>`
+    : qType==='enum'
+    ? `<div class="quiz-options" id="quiz-opts">
+        <div class="quiz-enum-hint">Fill in all ${enumBlanks} — partial credit for each one you get right.</div>
+        ${Array.from({length:enumBlanks}).map((_,bi)=>`
+        <input type="text" class="quiz-id-input quiz-enum-input" placeholder="Answer ${bi+1} of ${enumBlanks}" autocomplete="off" spellcheck="false"
+          value="${_esc(enumSaved[bi]||'')}" ${isLocked?'readonly':''} oninput="submitEnumAnswer(${bi},this.value)">`).join('')}
+      </div>`
+    : qType==='match'
+    ? `<div class="quiz-options" id="quiz-opts">
+        <div class="quiz-enum-hint">Match each item on the left with its correct pair — partial credit per correct match.</div>
+        ${matchPairs.map((p,pi)=>`
+        <div class="qb-opt-row" style="align-items:center">
+          <span style="flex:1;font-size:13px;color:var(--on-surface)">${_esc(p.left)}</span>
+          <span style="color:var(--text-muted);flex-shrink:0">→</span>
+          <select class="quiz-id-input" style="flex:1" ${isLocked?'disabled':''} onchange="submitMatchAnswer(${pi},this.value)">
+            <option value="">Select…</option>
+            ${matchOptions.map(opt=>`<option value="${_esc(opt)}" ${matchSaved[pi]===opt?'selected':''}>${_esc(opt)}</option>`).join('')}
+          </select>
+        </div>`).join('')}
+      </div>`
+    : `<div class="quiz-options" id="quiz-opts">
+        ${q.opts.map((opt,i)=>{
+          const isElim = eliminatedForQ.includes(i);
+          const isDisabled = isElim || isLocked;
+          return `
+        <button class="quiz-opt${isElim?' eliminated':''}" id="opt-${i}" ${isDisabled?'disabled':''} onclick="${isDisabled?'':'selectOpt('+i+')'}">
+          <div class="quiz-opt-letter">${letters[i]}</div>
+          <span class="quiz-opt-text">${opt}</span>
+          ${isElim?'<span class="quiz-opt-elim-tag">Eliminated</span>':''}
+        </button>`;}).join('')}
+      </div>`;
   document.getElementById('s-quiz-active').innerHTML=`
   <div class="quiz-arena">
     <div class="quiz-hud">
@@ -1300,16 +1609,10 @@ function renderQuizQuestion(){
       </div>
     </div>
     <div class="quiz-question-card">
-      <div class="quiz-q-label">QUESTION_${String(quizCurrent+1).padStart(2,'0')} // SELECT CORRECT RESPONSE</div>
+      <div class="quiz-q-label">QUESTION_${String(quizCurrent+1).padStart(2,'0')} // ${qType==='id'?'TYPE THE CORRECT ANSWER':qType==='enum'?'FILL IN ALL ANSWERS':qType==='match'?'MATCH EACH ITEM':'SELECT CORRECT RESPONSE'}${isLocked?' · 🔒 LOCKED IN':''}</div>
       <div class="quiz-q-text">${q.q}</div>
     </div>
-    <div class="quiz-options" id="quiz-opts">
-      ${q.opts.map((opt,i)=>`
-      <button class="quiz-opt" id="opt-${i}" onclick="selectOpt(${i})">
-        <div class="quiz-opt-letter">${letters[i]}</div>
-        <span class="quiz-opt-text">${opt}</span>
-      </button>`).join('')}
-    </div>
+    ${optionsHTML}
     <div class="quiz-nav">
       ${quizCurrent>0?`<button class="quiz-nav-prev" onclick="quizPrev()">← Prev</button>`:''}
       <button class="quiz-nav-next" id="btn-next" disabled onclick="quizNext()">
@@ -1319,59 +1622,247 @@ function renderQuizQuestion(){
   </div>
   <div class="quiz-side-panel">
     <div class="quiz-side-stat">
-      <span class="material-symbols-outlined" style="color:var(--secondary);font-variation-settings:'FILL' 1">military_tech</span>
-      <div class="val" style="color:var(--secondary)">${Math.floor(quizCurrent/2)||1}x</div>
-      <div class="lbl">Streak</div>
+      <span class="material-symbols-outlined" style="color:var(--secondary);font-variation-settings:'FILL' 1">local_fire_department</span>
+      <div class="val" style="color:var(--secondary)">🔥 ${quizStreakSnapshot}</div>
+      <div class="lbl">Day Streak</div>
     </div>
     <div class="quiz-side-stat">
+      <span class="material-symbols-outlined" style="color:#ffb95f;font-variation-settings:'FILL' 1">bolt</span>
+      <div class="val" style="color:#ffb95f">${quizCombo>0?'x'+quizCombo:'—'}</div>
+      <div class="lbl">Combo (${eqComboMultiplier(quizCombo)}x)</div>
+    </div>
+    <div class="quiz-side-stat${canHint?' quiz-hint-btn':' quiz-hint-btn disabled'}" ${canHint?'onclick="useHint()"':''} title="${hintReason}">
       <span class="material-symbols-outlined" style="color:var(--tertiary);font-variation-settings:'FILL' 1">auto_fix_high</span>
-      <div class="val" style="color:var(--tertiary)">2</div>
-      <div class="lbl">Hints</div>
+      <div class="val" style="color:var(--tertiary)">${quizHintsRemaining}</div>
+      <div class="lbl">Hints (${HINT_COST}🪙)</div>
     </div>
   </div>`;
   const timerEl=document.getElementById('quiz-timer');
   if(timerEl){const m=Math.floor(quizTimeLeft/60),s=quizTimeLeft%60;timerEl.textContent=`${m}:${s.toString().padStart(2,'0')}`;if(quizTimeLeft<=60)timerEl.className='quiz-timer urgent';}
-  if(quizAnswers[quizCurrent]!==null)selectOpt(quizAnswers[quizCurrent],true);
+  if(qType==='id'){
+    const btn=document.getElementById('btn-next');
+    if(btn) btn.disabled = !(typeof savedAns==='string' && savedAns.trim().length);
+    if(!isLocked) document.getElementById('quiz-id-input')?.focus();
+  } else if(qType==='enum'){
+    const btn=document.getElementById('btn-next');
+    if(btn) btn.disabled = !enumSaved.some(v=>v && String(v).trim().length);
+  } else if(qType==='match'){
+    const btn=document.getElementById('btn-next');
+    if(btn) btn.disabled = !matchSaved.some(v=>v && String(v).trim().length);
+  } else if(savedAns!==null && savedAns!==undefined){
+    selectOpt(savedAns,true);
+  }
 }
 function selectOpt(i,restore=false){
-  document.querySelectorAll('.quiz-opt').forEach(o=>{o.className='quiz-opt';});
+  // Phase 4 — a locked (already-passed) question can't have its answer
+  // changed, even via a stray click (options are rendered disabled, but
+  // selectOpt(i,true) also gets called from renderQuizQuestion() itself to
+  // restore the visual '.selected' state, which must still work while locked).
+  if(quizLocked[quizCurrent] && !restore) return;
+  // Phase 2 fix: only clear the 'selected' class, not the whole className —
+  // a full reset here used to also strip the 'eliminated' class (and its
+  // disabled attribute) off any hint-eliminated option every time a student
+  // picked an answer, silently un-eliminating it.
+  document.querySelectorAll('.quiz-opt').forEach(o=>{o.classList.remove('selected');});
   document.getElementById('opt-'+i)?.classList.add('selected');
   quizAnswers[quizCurrent]=i;
   const btn=document.getElementById('btn-next');
   if(btn){btn.disabled=false;}
 }
-function quizNext(){if(quizAnswers[quizCurrent]===null)return;if(quizCurrent===activeQuiz.questions.length-1){clearInterval(quizTimer);finishQuiz();}else{quizCurrent++;renderQuizQuestion();}}
+// Phase 2 — Identification hint text: first letter + letter count of the
+// primary accepted answer. Deliberately doesn't touch altAnswers (the
+// question's canonical answer is q.answer; showing "N letters" against an
+// alt spelling could mislead more than help).
+function _eqQuestHintText(q){
+  const ans=String(q.answer||'').trim();
+  if(!ans) return '';
+  const letterCount=ans.replace(/\s+/g,'').length;
+  return `💡 Starts with "${ans.charAt(0).toUpperCase()}" — ${letterCount} letter${letterCount===1?'':'s'}`;
+}
+// Phase 2 — functional hint system (was decorative — quest_board_report.md
+// §1/§3.5). Costs HINT_COST coins per use, capped at MAX_HINTS_PER_QUEST
+// per quest attempt and one hint per question. MC eliminates a random wrong
+// option; Identification reveals first letter + length; True/False has no
+// hint (only 2 options — eliminating one would just hand over the answer).
+function useHint(){
+  if(!activeQuiz) return;
+  const q=activeQuiz.questions[quizCurrent];
+  const qType=eqQType(q);
+  if(quizHintsRemaining<=0){ toast('⚠️ No hints left this quest!','#ffb4ab'); return; }
+  if(quizHintRevealed[quizCurrent]){ toast('You already used a hint on this question.','#ffb4ab'); return; }
+  if(qType==='tf'){ toast('No hints available for True/False questions.','#ffb4ab'); return; }
+  if(qType==='enum' || qType==='match'){ toast('No hints available for this question type.','#ffb4ab'); return; }
+  if(qType==='mc' && (!q.opts || q.opts.length<=2)){ toast('No hint available for this question.','#ffb4ab'); return; }
+
+  DB=loadDB();
+  const stIdx=DB.students.findIndex(s=>s.id===currentUser.id);
+  if(stIdx<0) return;
+  if((DB.students[stIdx].coins||0) < HINT_COST){
+    toast(`❌ Need ${HINT_COST} coins for a hint — you have ${DB.students[stIdx].coins||0}.`,'#ffb4ab');
+    return;
+  }
+
+  if(qType==='id'){
+    if(!q.answer){ toast('No hint available for this question.','#ffb4ab'); return; }
+    toast(_eqQuestHintText(q),'#d0bcff');
+  } else {
+    // mc — eliminate one random wrong, not-already-eliminated option
+    const already = quizEliminated[quizCurrent] || [];
+    const wrongIdx = q.opts.map((_,i)=>i).filter(i=>i!==q.answer && !already.includes(i));
+    if(!wrongIdx.length){ toast('No more wrong options to eliminate.','#ffb4ab'); return; }
+    const pick = wrongIdx[Math.floor(Math.random()*wrongIdx.length)];
+    if(!quizEliminated[quizCurrent]) quizEliminated[quizCurrent]=[];
+    quizEliminated[quizCurrent].push(pick);
+    toast('💡 Eliminated one wrong option!','#d0bcff');
+  }
+
+  // Spend the coins — same local-mutation + server-sync pattern every other
+  // spend site in this app uses (shop, mail claim, achievement claim, etc).
+  DB.students[stIdx].coins -= HINT_COST;
+  syncStudentStatsToServer(currentUser.id, 0, -HINT_COST);
+  currentUser.coins = DB.students[stIdx].coins;
+  saveDB();
+
+  quizHintsRemaining--;
+  quizHintRevealed[quizCurrent]=true;
+  updateTopbar();
+  renderQuizQuestion();
+}
+// Phase 1 — Identification-type answer capture (text input, not opt buttons)
+function submitIdAnswer(val){
+  if(quizLocked[quizCurrent]) return; // Phase 4 — locked questions are read-only
+  quizAnswers[quizCurrent]=val;
+  const btn=document.getElementById('btn-next');
+  if(btn) btn.disabled = !(val && val.trim().length);
+}
+// Phase 3 — Enumeration answer capture: quizAnswers[quizCurrent] is an
+// array of per-blank strings instead of a single value. At least one
+// filled blank is enough to unlock Next/Submit — a partially-answered
+// enumeration still earns partial credit rather than being blocked outright.
+function submitEnumAnswer(bi,val){
+  if(quizLocked[quizCurrent]) return; // Phase 4 — locked questions are read-only
+  if(!Array.isArray(quizAnswers[quizCurrent])){
+    const blanks=(Array.isArray(activeQuiz.questions[quizCurrent].answers) ? activeQuiz.questions[quizCurrent].answers.length : 0);
+    quizAnswers[quizCurrent]=new Array(blanks).fill('');
+  }
+  quizAnswers[quizCurrent][bi]=val;
+  const btn=document.getElementById('btn-next');
+  if(btn) btn.disabled = !quizAnswers[quizCurrent].some(v=>v && String(v).trim().length);
+}
+// Phase 5 — Matching-type answer capture (quest_board_report.md §2.4):
+// quizAnswers[quizCurrent] is an array aligned to q.pairs order, mirroring
+// submitEnumAnswer()'s per-blank shape. `pi` is the pair index (left-hand
+// row), `val` is the chosen right-hand string from that row's dropdown —
+// already de-shuffled by the time it gets here since the <option> values
+// ARE the plain right-hand strings, not shuffle-array indices.
+function submitMatchAnswer(pi,val){
+  if(quizLocked[quizCurrent]) return; // Phase 4 — locked questions are read-only
+  if(!Array.isArray(quizAnswers[quizCurrent])){
+    const pairCount=(Array.isArray(activeQuiz.questions[quizCurrent].pairs) ? activeQuiz.questions[quizCurrent].pairs.length : 0);
+    quizAnswers[quizCurrent]=new Array(pairCount).fill('');
+  }
+  quizAnswers[quizCurrent][pi]=val;
+  const btn=document.getElementById('btn-next');
+  if(btn) btn.disabled = !quizAnswers[quizCurrent].some(v=>v && String(v).trim().length);
+}
+// Phase 4 — combo meter (quest_board_report.md §3.3): grades the question
+// being LEFT (not the one being entered) the first time it's passed, and
+// locks it so Prev-ing back to review can't be used to quietly fix it.
+// Consecutive full-credit (eqGradeAnswer===1) answers build quizCombo;
+// anything else (a miss, or an enum's partial credit) resets it to 0.
+// quizComboMax (the run's peak) is what finishQuiz() actually rewards —
+// see eqComboMultiplier() in utils.js.
+function quizNext(){
+  const ans=quizAnswers[quizCurrent];
+  const unanswered = ans===null || ans===undefined
+    || (typeof ans==='string' && !ans.trim().length)
+    || (Array.isArray(ans) && !ans.some(v=>v && String(v).trim().length));
+  if(unanswered)return;
+  if(!quizLocked[quizCurrent]){
+    quizLocked[quizCurrent]=true;
+    const frac=eqGradeAnswer(activeQuiz.questions[quizCurrent], ans);
+    if(frac>=1){
+      quizCombo++;
+      if(quizCombo>quizComboMax) quizComboMax=quizCombo;
+      if(quizCombo>=5) toast(`🔥 COMBO x${quizCombo}! Max multiplier reached!`,'#ffb95f');
+      else if(quizCombo>=3) toast(`⚡ Combo x${quizCombo}!`,'#d0bcff');
+    } else if(quizCombo>=2){
+      toast('💥 Combo broken!','#ffb4ab');
+      quizCombo=0;
+    } else {
+      quizCombo=0;
+    }
+  }
+  if(quizCurrent===activeQuiz.questions.length-1){clearInterval(quizTimer);finishQuiz();}else{quizCurrent++;renderQuizQuestion();}
+}
 function quizPrev(){if(quizCurrent>0){quizCurrent--;renderQuizQuestion();}}
 function exitQuiz(){clearInterval(quizTimer);activeQuiz=null;navTo('s-quizzes');}
 function finishQuiz() {
   clearInterval(quizTimer);
 
+  // Phase 4 — same-tab re-entrancy guard (quest_board_report.md §7). The
+  // old guard checked `completedQuizzes.includes(activeQuiz.id)`, which
+  // worked as a duplicate-submit block back when a quiz could only ever be
+  // finished once — now that unlimited retries are allowed, that check
+  // would incorrectly block every retry after the first. quizFinishing
+  // instead guards against a single tab firing finishQuiz() twice for the
+  // SAME attempt (e.g. a double Enter/click racing the timer's own call).
+  if (quizFinishing || !activeQuiz) { return; }
+  quizFinishing = true;
+
   const stIdx = DB.students.findIndex(s => s.id === currentUser.id);
 
-  // ── FIXED: Quiz Replay Guard (Duplicate Completion Check) ──
-  if (DB.students[stIdx].completedQuizzes.includes(activeQuiz.id)) {
-    activeQuiz = null;
-    navTo('s-quizzes');
-    toast('⚠️ Quest already submitted from another tab.', '#ffb4ab');
-    return;
-  }
-
   let correct = 0;
-  activeQuiz.questions.forEach((q, i) => { if (quizAnswers[i] === q.answer) correct++; });
+  // Phase 1/3 — eqGradeAnswer() dispatches by question type and returns a
+  // fraction (mc/tf/id = 1 or 0, enum/match = partial-credit ratio), so a
+  // 2-of-3 Enumeration answer contributes 0.67 toward `correct` instead of
+  // an all-or-nothing 0 or 1.
+  // Phase 5 — `results` mirrors the same per-question fractions into their
+  // own array (quest_board_report.md §19), stored alongside the attempt so
+  // eqComputeQuizAnalytics() can compute a per-question miss-rate without
+  // re-grading anything — the grading already happens right here, once.
+  const results = [];
+  activeQuiz.questions.forEach((q, i) => { const frac = eqGradeAnswer(q, quizAnswers[i]); correct += frac; results.push(frac); });
   const total = activeQuiz.questions.length;
   const score = Math.round((correct / total) * 100);
-  const xpGain = Math.round((activeQuiz.xpReward * score) / 100);
-  const coinGain = Math.round((activeQuiz.coinReward * score) / 100);
+  const baseXpGain   = Math.round((activeQuiz.xpReward * score) / 100);
+  const baseCoinGain = Math.round((activeQuiz.coinReward * score) / 100);
+  const correctDisplay = Math.round(correct * 10) / 10; // e.g. 2.7 — partial credit stays readable
+
+  // Phase 4 — combo + retry multipliers (quest_board_report.md §3.3/§7).
+  // Combo rewards a sustained correct streak within THIS attempt; retry
+  // reduces reward on 2nd+ attempts of the SAME quest so there's still
+  // real incentive to nail it the first time, but nobody's ever locked out.
+  const comboMult = eqComboMultiplier(quizComboMax);
+  const retryMult = eqRetryMultiplier(quizAttemptNumber);
+  const totalMult = comboMult * retryMult;
+  const xpGain   = Math.round(baseXpGain   * totalMult);
+  const coinGain = Math.round(baseCoinGain * totalMult);
+  const isRetry  = quizAttemptNumber > 1;
 
   // Grant rewards securely
   DB.students[stIdx].xp += xpGain;
   DB.students[stIdx].coins += coinGain;
-  DB.students[stIdx].completedQuizzes.push(activeQuiz.id);
+  // Phase 4 — only the FIRST completion should join completedQuizzes (it's
+  // read as a de-duped "done" set everywhere: the quest board's done/
+  // pending split, achievements' quests_completed trigger, chain-unlock
+  // status). Retries still log a new quizHistory row and grant reward
+  // below; they just don't push a duplicate id here.
+  if (!DB.students[stIdx].completedQuizzes.includes(activeQuiz.id)) {
+    DB.students[stIdx].completedQuizzes.push(activeQuiz.id);
+  }
 
   // Store per-quiz score for history
   if (!DB.quizHistory) DB.quizHistory = {};
   if (!DB.quizHistory[currentUser.id]) DB.quizHistory[currentUser.id] = [];
-  DB.quizHistory[currentUser.id].push({ quizId: activeQuiz.id, score, completedAt: new Date().toISOString() });
+  // Phase 2 — `date` (Asia/Manila calendar day via isoDate()) is what
+  // computeQuestStreak() reads; completedAt stays as the raw ISO timestamp
+  // for display/sorting purposes, unchanged.
+  // Phase 57 — `id` is new: quiz_history now syncs to Supabase via
+  // upsert-by-id (db-service.js), same convention as DB.pointLog's id.
+  // Without it, every save would look like a fresh insert and duplicate
+  // rows server-side; this stamps one once, here, at creation time.
+  DB.quizHistory[currentUser.id].push({ id: 'qh_'+uid(), quizId: activeQuiz.id, score, completedAt: new Date().toISOString(), date: isoDate(), attempt: quizAttemptNumber, results });
 
   // ── FIXED: Safe Quiz Average Calculation (Prevents NaN%) ──
   const history = DB.quizHistory[currentUser.id];
@@ -1395,8 +1886,20 @@ function finishQuiz() {
 
   currentUser = DB.students[stIdx];
   saveDB();
+  // Phase 2 — server-authoritative XP/coins sync. Every other grant site in
+  // this app (mail, achievements, campaign, recitation, world boss, shop)
+  // already calls this right after its local mutation; Quest Board never
+  // had it — see syncStudentStatsToServer()'s note in utils.js for why that
+  // matters (a stale tab's bulk profile upsert can otherwise clobber it).
+  syncStudentStatsToServer(currentUser.id, xpGain, coinGain);
 
   const pass = score >= 60;
+  // Phase 4 — small combo/retry summary line under the score, only shown
+  // when it actually changed the reward (multiplier !== 1) so a normal
+  // first-attempt, no-combo run looks exactly like it always has.
+  const bonusBits = [];
+  if (comboMult > 1) bonusBits.push(`🔥 Combo x${quizComboMax} bonus (${comboMult}x)`);
+  if (isRetry) bonusBits.push(`↻ Attempt #${quizAttemptNumber} (${Math.round(retryMult*100)}% reward)`);
   document.getElementById('s-quiz-active').innerHTML = `
   <div class="results-wrap fade-in">
     <div class="results-emoji">${pass ? '🏆' : '💀'}</div>
@@ -1404,11 +1907,8 @@ function finishQuiz() {
     <div class="results-sub">${activeQuiz.title.toUpperCase().replace(/\s+/g, '_')}</div>
     <div class="results-score-card" style="border:1px solid ${pass ? 'rgba(78,222,163,.3)' : 'rgba(255,180,171,.25)'}">
       <div class="results-big-score" style="color:${score >= 80 ? '#4edea3' : score >= 60 ? '#ffb95f' : '#ffb4ab'}">${score}<span style="font-size:28px">%</span></div>
-      <div class="results-sub-score">${correct} / ${total} CORRECT</div>
-      <div class="results-rewards">
-        <div class="results-reward"><div class="val" style="color:#d0bcff">+${xpGain}</div><div class="lbl">XP Earned</div></div>
-        <div class="results-reward"><div class="val" style="color:#ffb95f">+${coinGain}</div><div class="lbl">Coins</div></div>
-      </div>
+      <div class="results-sub-score">${correctDisplay} / ${total} CORRECT</div>
+      ${bonusBits.length ? `<div style="margin-top:10px;font-size:12px;color:var(--tertiary);display:flex;gap:12px;justify-content:center;flex-wrap:wrap">${bonusBits.map(b=>`<span>${b}</span>`).join('')}</div>` : ''}
     </div>
     <div style="display:flex;gap:12px;margin-top:8px">
       <button class="btn btn-ghost" style="flex:1" onclick="navTo('s-quizzes')">← Quest Board</button>
@@ -1416,6 +1916,42 @@ function finishQuiz() {
     </div>
   </div>`;
   updateTopbar();
+
+  // Phase 2 — wire completion into the same Universal Reward Presentation
+  // (confetti/rarity/claim treatment) Mail and Achievements already use,
+  // instead of the old static reward numbers baked into the results card
+  // (quest_board_report.md §1 "Completion screen", §3.11). The results
+  // card above still shows score/correct-count and stays visible behind
+  // this overlay once it's dismissed.
+  //
+  // Phase 3 — the popup's rarity is now the QUEST's own rarity tier
+  // (teacher-set, reusing the Achievements rarity palette — §3.4), not a
+  // score-derived guess, so an Epic quest always feels like an Epic drop
+  // regardless of how well the student did on it.
+  const rewards = [];
+  if (xpGain   > 0) rewards.push({ type: 'xp',    amount: xpGain,   icon: '⚡', label: 'XP',    color: 'var(--primary)'  });
+  if (coinGain > 0) rewards.push({ type: 'coins', amount: coinGain, icon: '🪙', label: 'Coins', color: 'var(--tertiary)' });
+  const rarity = eqQuizRarity(activeQuiz);
+  const _present = typeof eqRewardPresent === 'function' ? eqRewardPresent
+                 : typeof window.eqRewardPresent === 'function' ? window.eqRewardPresent
+                 : null;
+  const _finishedTitle = activeQuiz.title;
+  const _finishedSubtitle = `${_finishedTitle} — ${correctDisplay}/${total} correct (${score}%)${bonusBits.length ? ' · ' + bonusBits.join(' · ') : ''}`;
+  if (_present) {
+    _present({
+      title:    pass ? 'Quest Complete!' : 'Quest Failed',
+      subtitle: _finishedSubtitle,
+      icon:     pass ? '🏆' : '💀',
+      rarity:   rarity,
+      source:   'quest',
+      rewards:  rewards,
+      onClose:  () => { DB = loadDB(); }
+    });
+  }
+  // Phase 4 — clear activeQuiz only after everything above that reads it
+  // has run, so a re-entrant call this tick still sees quizFinishing=true
+  // and bails before ever reaching a null activeQuiz.questions access.
+  activeQuiz = null;
 }
 function profEnsureFields(user) {
   // Ensure all profile fields exist on a user record

@@ -399,24 +399,44 @@ window._coDeleteTitle = async function (idx) {
 // Same "small screen" depth as the Starter Pack Editor: questions edited as
 // a repeatable list here, not the full Quest Builder.
 
+// Read-only visibility for chain/schedule state — same rationale and same
+// badge styling as _spQuizChainScheduleBadges() in starter-pack-editor.js
+// and the live version in quiz-builder.js. This screen still has no form
+// fields to edit chain/schedule (Edit-as pass-through only, see Phase 60
+// note in content-oversight-service.js), so this is purely a heads-up
+// before an admin edits or deletes a row that turns out to be chained
+// and/or time-boxed.
+function _coQuizChainScheduleBadges(q) {
+  const parts = [];
+  if (q.chainId) {
+    parts.push(`<span class="badge-pill" style="background:rgba(244,114,182,0.15);color:#f472b6">🔗 ${_coEsc(q.chainLabel || q.chainId)} · Part ${q.chainOrder || 1}</span>`);
+  }
+  const status = (typeof eqQuizScheduleStatus === 'function') ? eqQuizScheduleStatus(q) : null;
+  if (status === 'upcoming') parts.push(`<span class="badge-pill bp-gray">📅 Starts ${_coEsc(q.startDate)}</span>`);
+  else if (status === 'expired') parts.push(`<span class="badge-pill" style="background:rgba(255,180,171,.15);color:#ffb4ab">⌛ Expired ${_coEsc(q.endDate)}</span>`);
+  else if (status === 'active' && q.endDate) parts.push(`<span class="badge-pill" style="background:rgba(255,185,95,.15);color:#ffb95f">⏳ Ends ${_coEsc(q.endDate)}</span>`);
+  return parts.join(' ') || `<span style="color:var(--text-muted);font-size:11px">—</span>`;
+}
+
 function _coRenderQuizzes(body) {
   const rows = _coContent.quizzes || [];
   body.innerHTML = `
   ${_coEditMode ? `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-primary" onclick="_coOpenQuizForm(-1)">＋ Add Quiz</button></div>` : ''}
   <div class="glass-card" style="padding:0;overflow:hidden">
     <table class="admin-table">
-      <thead><tr><th>Title</th><th>Questions</th><th style="text-align:right">Reward</th>${_coEditMode ? '<th style="width:120px"></th>' : ''}</tr></thead>
+      <thead><tr><th>Title</th><th>Questions</th><th>Chain / Schedule</th><th style="text-align:right">Reward</th>${_coEditMode ? '<th style="width:120px"></th>' : ''}</tr></thead>
       <tbody>
         ${rows.map((q, i) => `
           <tr>
             <td><strong>${_coEsc(q.title)}</strong><div style="font-size:11px;color:var(--text-muted)">${_coEsc(q.description || '')}</div></td>
             <td>${(q.questions || []).length}</td>
+            <td>${_coQuizChainScheduleBadges(q)}</td>
             <td style="text-align:right;font-size:12px">${q.xpReward} XP / ${q.coinReward} 🪙</td>
             ${_coEditMode ? `<td>
               <button class="btn btn-ghost btn-sm" onclick="_coOpenQuizForm(${i})">Edit</button>
               <button class="btn btn-ghost btn-sm" onclick="_coDeleteQuiz(${i})">🗑️</button>
             </td>` : ''}
-          </tr>`).join('') || `<tr><td colspan="${_coEditMode ? 4 : 3}" style="text-align:center;color:var(--text-muted);padding:20px">No quizzes yet.</td></tr>`}
+          </tr>`).join('') || `<tr><td colspan="${_coEditMode ? 5 : 4}" style="text-align:center;color:var(--text-muted);padding:20px">No quizzes yet.</td></tr>`}
       </tbody>
     </table>
   </div>`;
@@ -424,7 +444,7 @@ function _coRenderQuizzes(body) {
 
 window._coOpenQuizForm = function (idx) {
   if (!_coEditMode) return;
-  const d = idx >= 0 ? _coContent.quizzes[idx] : { id: 'oversight-quiz-' + uid(), title: '', description: '', xpReward: 20, coinReward: 10, timeLimit: 5, questions: [], active: true };
+  const d = idx >= 0 ? _coContent.quizzes[idx] : { id: 'oversight-quiz-' + uid(), title: '', description: '', xpReward: 20, coinReward: 10, timeLimit: 5, rarity: 'Common', cadence: 'standing', questions: [], active: true };
   window._coEditIdx = idx;
   window._coQuizDraft = JSON.parse(JSON.stringify(d));
   _coRenderQuizModal();
@@ -440,6 +460,12 @@ function _coRenderQuizModal() {
       <div><label class="form-label">XP Reward</label><input id="co-q-xp" class="form-control" type="number" min="0" value="${d.xpReward || 0}"></div>
       <div><label class="form-label">Coin Reward</label><input id="co-q-coin" class="form-control" type="number" min="0" value="${d.coinReward || 0}"></div>
       <div><label class="form-label">Time Limit (min)</label><input id="co-q-time" class="form-control" type="number" min="0" value="${d.timeLimit || 0}"></div>
+      <div><label class="form-label">Rarity</label><select id="co-q-rarity" class="form-control">${ACH_RARITIES.map(r => `<option value="${r}"${(d.rarity||'Common') === r ? ' selected' : ''}>${r}</option>`).join('')}</select></div>
+      <div><label class="form-label">Cadence</label><select id="co-q-cadence" class="form-control">
+        <option value="standing"${(d.cadence||'standing') === 'standing' ? ' selected' : ''}>Standing</option>
+        <option value="daily"${d.cadence === 'daily' ? ' selected' : ''}>Daily pool</option>
+        <option value="weekly"${d.cadence === 'weekly' ? ' selected' : ''}>Weekly pool</option>
+      </select></div>
     </div>
     <div class="form-label" style="margin-bottom:6px">Questions</div>
     <div id="co-q-questions">${_coQuizQuestionsHTML(d.questions)}</div>
@@ -477,6 +503,8 @@ window._coSaveQuiz = async function () {
   d.xpReward = parseInt(document.getElementById('co-q-xp').value) || 0;
   d.coinReward = parseInt(document.getElementById('co-q-coin').value) || 0;
   d.timeLimit = parseInt(document.getElementById('co-q-time').value) || null;
+  d.rarity = document.getElementById('co-q-rarity').value;
+  d.cadence = document.getElementById('co-q-cadence').value;
   if (!d.title) { toast('⚠️ Title is required', '#ff6b6b'); return; }
   const res = await ContentOversightService.saveQuiz(_coTeacherId, d, isNew);
   if (!res.ok) { toast('⚠️ ' + res.error, '#ff6b6b'); return; }
@@ -488,7 +516,8 @@ window._coSaveQuiz = async function () {
 window._coDeleteQuiz = async function (idx) {
   const row = _coContent.quizzes[idx];
   if (!row) return;
-  if (!confirm(`Delete "${row.title}" from ${_coTeacherLabel}'s quizzes? This is logged.`)) return;
+  const chainNote = row.chainId ? ` This is Part ${row.chainOrder || 1} of the "${row.chainLabel || row.chainId}" chain — the other steps aren't deleted, but this step's slot will disappear from that chain.` : '';
+  if (!confirm(`Delete "${row.title}" from ${_coTeacherLabel}'s quizzes? This is logged.${chainNote}`)) return;
   const res = await ContentOversightService.deleteQuiz(_coTeacherId, row.id);
   if (!res.ok) { toast('⚠️ ' + res.error, '#ff6b6b'); return; }
   toast('🗑️ Deleted');

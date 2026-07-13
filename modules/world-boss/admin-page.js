@@ -350,9 +350,25 @@ window.wbcImportFromQuiz = function (bossIdx) {
   if (!quizId) { toast('Select a quest first', '#ffb4ab'); return; }
   const quiz = (DB.quizzes || []).find(q => q.id === quizId);
   if (!quiz) return;
-  window._wbcDraftQuestions = JSON.parse(JSON.stringify(quiz.questions));
+  // Quest Board Phase 1/3/5 note: boss combat (battle-overlay.js /
+  // minions.js) renders questions as option buttons and only understands
+  // the opts[]+answer-index shape (mc/tf). Identification (free-text),
+  // Enumeration (multi-blank), and Matching (pairs) questions don't carry
+  // that shape at all — importing one would crash a live raid on an
+  // unguarded `q.opts.map(...)`. mc and tf both still carry an `opts`
+  // array, so they import fine; the other three are skipped here until
+  // boss combat gets dedicated support for each format.
+  const allQs = JSON.parse(JSON.stringify(quiz.questions));
+  const importable = allQs.filter(q => {
+    const t = (typeof eqQType === 'function' ? eqQType(q) : (q.type || 'mc'));
+    return t !== 'id' && t !== 'enum' && t !== 'match';
+  });
+  const skipped = allQs.length - importable.length;
+  window._wbcDraftQuestions = importable;
   document.getElementById('wbq-list').innerHTML = _wbcRenderQuestionList(window._wbcDraftQuestions);
-  toast(`✅ Imported ${quiz.questions.length} questions from "${quiz.title}"`, '#4edea3');
+  toast(skipped
+    ? `✅ Imported ${importable.length} questions (${skipped} question${skipped>1?'s':''} skipped — Identification/Enumeration/Matching aren't supported in boss combat yet)`
+    : `✅ Imported ${importable.length} questions from "${quiz.title}"`, '#4edea3');
 };
 
 window.wbcSaveQuestions = function (bossIdx) {
