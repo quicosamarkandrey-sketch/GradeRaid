@@ -95,6 +95,12 @@ const DEFAULT_DB = {
   recitationLog:[],
   mail:[], // Phase 15 — synced via mail_messages when Supabase is configured
   quizSectionAssignments:{}, // Phase 15 — {quizId: [classId, ...]}, synced via quiz_sections
+  // Phase 60 (exploit fix) — {studentId: {quizId: true}}. A one-time,
+  // teacher/parent-granted exception that lets a student take one more
+  // attempt on a quiz that's hit the hard scored-attempt cap before its
+  // 24h cooldown has elapsed. Consumed (deleted) the moment it's used —
+  // see startQuiz() / eqQuizAttemptStatus() in index.html + utils.js.
+  quizAttemptOverrides:{},
   achievementSectionAssignments:{}, // Phase 16 — {achievementId: [classId, ...]}, synced via achievement_sections
   titleSectionAssignments:{}, // Phase 21 — {titleId: [classId, ...]}, synced via title_sections
   stageMap:[

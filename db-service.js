@@ -255,6 +255,25 @@ const DBService = (function () {
       if (r.error) throw r.error;
     }
 
+    // Phase 63 (bugfix — closes the "quiz reappears / chain resets to step 1"
+    // gap): completedQuizzes used to hardcode to [] here on every pull, on
+    // the theory that "quiz history stays in its own table" — but nothing
+    // ever actually derived it back from that table, so every pull (which
+    // fires automatically right after a quiz is finished, since quiz_history
+    // is in the realtime subscription list) wiped every student's completion
+    // state seconds after they earned it. Built once, up front, from the
+    // already-fetched quiz_history rows, same "reshape by student_id" pattern
+    // as quizHistoryByStudent/inventoryByStudent below. Aborted attempts
+    // (Phase 63's other new column) never count as a completion, matching
+    // finishQuiz()'s local-session behavior (only a real finish pushes an id
+    // onto completedQuizzes — see index.html).
+    const completedQuizzesByStudent = {};
+    (quizHistoryRows.data || []).forEach(row => {
+      if (row.aborted) return;
+      if (!completedQuizzesByStudent[row.student_id]) completedQuizzesByStudent[row.student_id] = new Set();
+      completedQuizzesByStudent[row.student_id].add(row.quiz_id);
+    });
+
     const students = (profiles.data || [])
       .filter(p => p.role === 'student')
       .map(p => ({
@@ -264,7 +283,7 @@ const DBService = (function () {
         firstName: p.first_name, lastName: p.last_name,
         displayName: p.display_name, profilePic: p.profile_pic_url,
         joinDate: p.join_date, classId: p.class_id || 'default-class',
-        completedQuizzes: [], // quiz history stays in its own table (Phase 2)
+        completedQuizzes: Array.from(completedQuizzesByStudent[p.id] || []),
       }));
 
     // Phase 18: equipped title is a scalar column on profiles (see
@@ -410,6 +429,12 @@ const DBService = (function () {
       // always available) unless a row actually has one, same fallback
       // eqQuizScheduleStatus() already treats a pre-Phase-5 row as.
       startDate: q.start_date || null, endDate: q.end_date || null,
+      // Phase 3 (Improvement Plan §2) — per-stage per-question timer
+      // overrides. A row from before this migration (column NULL) or a
+      // row whose json isn't a proper 3-slot array both coalesce to
+      // [null,null,null] — "use shipped defaults everywhere" — same
+      // fallback eqQuizStageSeconds() already applies in utils.js.
+      stageTimers: Array.isArray(q.stage_timers) ? q.stage_timers : [null, null, null],
       questions: q.questions || [], active: q.active !== false,
       createdAt: q.created_at,
     }));
@@ -573,6 +598,15 @@ const DBService = (function () {
         // already treats a missing `results` as "this attempt doesn't
         // contribute to per-question stats" rather than throwing.
         results: Array.isArray(row.question_results) ? row.question_results : undefined,
+        // Phase 63 — an aborted attempt (abortQuiz(), index.html) must stay
+        // distinguishable after a round-trip through Supabase: it counts
+        // toward the attempt cap but never toward completedQuizzes, the
+        // "cleared" quest-board state, or the new perfect-score lock (see
+        // completedQuizzesByStudent above and eqQuizAttemptStatus() in
+        // utils.js). Rows from before this phase have no column value and
+        // default to false server-side, which is correct (they were all
+        // real finishQuiz() completions).
+        aborted: !!row.aborted,
       });
     });
 
@@ -1206,6 +1240,10 @@ const DBService = (function () {
           // an unscheduled quiz pushes both as null (correct; always
           // available, nothing to preserve).
           start_date: q.startDate || null, end_date: q.endDate || null,
+          // Phase 3 — mirror of the pull-side coalesce above; a quiz saved
+          // before the stage-timer fields existed pushes [null,null,null]
+          // (correct — nothing to preserve, defaults apply).
+          stage_timers: Array.isArray(q.stageTimers) ? q.stageTimers : [null, null, null],
           questions: q.questions || [], active: q.active !== false,
         }));
       if (rows.length) {
@@ -1368,6 +1406,11 @@ const DBService = (function () {
             // `results` array, and pushes null rather than an empty array
             // (an empty array would misleadingly imply "0 questions").
             question_results: Array.isArray(h.results) ? h.results : null,
+            // Phase 63: mirror of the pull-side mapping above — without this,
+            // abortQuiz()'s `aborted:true` never left the browser, so a
+            // walked-away attempt looked like a genuine completion (and a
+            // potential perfect score) the moment it synced anywhere else.
+            aborted: !!h.aborted,
           });
         });
       });

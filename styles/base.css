@@ -160,6 +160,29 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 .hero-stat-pill .val{font-family:var(--fh);font-size:20px;font-weight:900}
 .hero-stat-pill .lbl{font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-top:3px}
 
+/* ── STREAK FIRE (Phase 61, Improvement Plan §8 "streak-fire visual for
+   consecutive quest completions") — renderStudentQuizzes() sets
+   data-streak-tier on the Day Streak hero-stat-pill via eqStreakFireTier()
+   in utils.js: 'cold' (no streak yet, or just broke — flame sits still),
+   'warm' (1-6 days — gentle flicker), 'hot' (7+ days — bigger, warmer,
+   more energetic flicker as a reward for a sustained run). */
+.hero-stat-pill[data-streak-tier="warm"] .streak-flame{display:inline-block;animation:streakFlameWarm 1.8s ease-in-out infinite}
+.hero-stat-pill[data-streak-tier="hot"]{border-color:rgba(255,185,95,.35);box-shadow:0 0 14px rgba(255,185,95,.18)}
+.hero-stat-pill[data-streak-tier="hot"] .streak-flame{display:inline-block;animation:streakFlameHot 1.1s ease-in-out infinite;
+  filter:drop-shadow(0 0 6px rgba(255,185,95,.7))}
+@keyframes streakFlameWarm{
+  0%,100%{transform:scale(1) rotate(0deg)}
+  50%{transform:scale(1.08) rotate(-3deg)}
+}
+@keyframes streakFlameHot{
+  0%,100%{transform:scale(1) rotate(-2deg)}
+  30%{transform:scale(1.16) rotate(3deg)}
+  60%{transform:scale(1.05) rotate(-4deg)}
+}
+@media(prefers-reduced-motion:reduce){
+  .hero-stat-pill .streak-flame{animation:none}
+}
+
 /* ── SECTION LABELS ── */
 .section-header{display:flex;align-items:center;gap:8px;margin-bottom:18px}
 .section-header h2{font-family:var(--fh);font-size:18px;font-weight:800;color:var(--on-surface)}
@@ -167,68 +190,260 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 .section-header .badge-pill{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;
   background:rgba(208,188,255,0.12);color:var(--primary);border:1px solid rgba(208,188,255,0.2)}
 
-/* ── QUEST CARDS (with image) ── */
+/* ── QUEST CARDS — esports/RPG HUD redesign (Improvement Plan: visual
+   polish pass for teen/esports aesthetic). Each card carries its own
+   rarity identity via --rc/--rg custom props (set inline by
+   renderQuestCard/renderChainStepCard in index.html from ACH_RARITY), so
+   the border, glow, ribbon and hover treatment are all driven by one
+   source of truth instead of a flat generic purple every time. ── */
 .quest-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;margin-bottom:36px}
 .quest-card{
-  background:rgba(35,31,56,0.8);border:1px solid var(--border);border-radius:16px;
-  display:flex;flex-direction:column;overflow:hidden;cursor:pointer;
-  transition:all .3s cubic-bezier(.4,0,.2,1);backdrop-filter:blur(12px);
+  --rc:var(--primary); --rg:rgba(208,188,255,0.2);
+  position:relative;
+  background:linear-gradient(165deg,rgba(40,36,62,0.9),rgba(28,25,46,0.9));
+  border:1px solid var(--border); border-left:3px solid var(--rc);
+  border-radius:14px; clip-path:polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,0 100%);
+  display:flex;flex-direction:column;overflow:hidden;cursor:pointer;height:100%;
+  transition:transform .25s cubic-bezier(.4,0,.2,1),box-shadow .25s cubic-bezier(.4,0,.2,1),border-color .25s;
+  backdrop-filter:blur(12px);
 }
-.quest-card:hover{border-color:rgba(208,188,255,0.35);transform:translateY(-4px);
-  box-shadow:0 12px 40px rgba(0,0,0,0.4),0 0 24px rgba(139,92,246,0.15)}
+.quest-card::after{
+  /* diagonal scanline sweep — plays once on hover, gaming loot-reveal cue */
+  content:'';position:absolute;inset:0;pointer-events:none;z-index:2;
+  background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.16) 50%,transparent 60%);
+  background-size:250% 250%;background-position:120% -20%;opacity:0;
+  transition:opacity .2s;
+}
+.quest-card:hover{border-color:var(--rc);transform:translateY(-5px);
+  box-shadow:0 14px 36px rgba(0,0,0,0.45),0 0 26px var(--rg)}
+.quest-card:hover::after{opacity:1;animation:questScan .9s ease forwards}
+@keyframes questScan{from{background-position:120% -20%}to{background-position:-20% 120%}}
 .quest-card:hover .quest-img{transform:scale(1.08)}
+@media(prefers-reduced-motion:reduce){.quest-card:hover::after{animation:none;opacity:0}}
+
+/* "Next Up" — the single most relevant open quest gets a pulsing rarity
+   outline + start-here flag so the board reads at a glance instead of
+   requiring a full scan (renderQuestCard's isNext flag). */
+.quest-card.quest-next{box-shadow:0 0 0 2px var(--rc),0 0 26px var(--rg);animation:questNextPulse 2.2s ease-in-out infinite}
+@keyframes questNextPulse{0%,100%{box-shadow:0 0 0 2px var(--rc),0 0 18px var(--rg)}50%{box-shadow:0 0 0 2px var(--rc),0 0 32px var(--rg)}}
+.quest-next-flag{position:absolute;top:10px;left:-1px;z-index:3;padding:4px 12px 4px 10px;
+  background:var(--rc);color:#13121e;font-family:var(--fm);font-size:9px;font-weight:900;
+  letter-spacing:.08em;clip-path:polygon(0 0,100% 0,88% 100%,0 100%);
+  display:flex;align-items:center;gap:4px}
+@media(prefers-reduced-motion:reduce){.quest-card.quest-next{animation:none}}
+
 .quest-img-wrap{height:160px;overflow:hidden;position:relative;border-bottom:1px solid var(--border)}
 .quest-img{width:100%;height:100%;object-fit:cover;transition:transform .7s ease;display:block}
 .quest-img-placeholder{width:100%;height:100%;
   display:flex;align-items:center;justify-content:center;font-size:56px;
-  background:linear-gradient(135deg,rgba(139,92,246,0.15),rgba(78,222,163,0.08))}
-.quest-badge{position:absolute;top:10px;right:10px;padding:4px 10px;border-radius:6px;
-  font-size:10px;font-weight:700;letter-spacing:.06em;backdrop-filter:blur(8px);
-  background:rgba(19,18,30,0.8);border:1px solid var(--border2);color:var(--on-surface)}
-.quest-badge.hot{background:rgba(78,222,163,0.2);border-color:rgba(78,222,163,0.4);color:var(--secondary)}
-.quest-badge.new{background:rgba(208,188,255,0.2);border-color:rgba(208,188,255,0.4);color:var(--primary)}
-.quest-body{padding:18px;flex:1;display:flex;flex-direction:column}
-.quest-title{font-family:var(--fh);font-size:15px;font-weight:800;color:var(--on-surface);margin-bottom:6px}
-.quest-desc{font-size:13px;color:var(--text-muted);line-height:1.5;flex:1;margin-bottom:14px}
-.quest-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-.quest-rewards{display:flex;gap:8px;flex-wrap:wrap}
-.reward-pill{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700}
-.reward-pill.xp{background:rgba(208,188,255,0.12);border:1px solid rgba(208,188,255,0.2);color:var(--primary)}
-.reward-pill.xp .material-symbols-outlined{font-size:13px}
-.reward-pill.coin{background:rgba(255,185,95,0.12);border:1px solid rgba(255,185,95,0.2);color:var(--tertiary)}
-.reward-pill.coin .material-symbols-outlined{font-size:13px;font-variation-settings:'FILL' 1}
-.quest-time{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--text-muted)}
+  background:radial-gradient(circle at 30% 20%,var(--rg),transparent 70%),
+    linear-gradient(135deg,rgba(20,18,32,.9),rgba(20,18,32,.6))}
+
+/* Rarity ribbon — angled corner tag instead of a flat pill, reads like a
+   loot-card rarity flag. */
+.quest-badge{position:absolute;top:0;right:0;padding:6px 16px 5px 20px;
+  font-family:var(--fm);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  clip-path:polygon(14px 0,100% 0,100% 100%,0 100%);
+  background:var(--rc);color:#0e0d19;box-shadow:0 2px 10px rgba(0,0,0,.3)}
+.quest-badge.ending-soon{position:absolute;top:auto;bottom:0;left:0;right:auto;
+  padding:4px 12px 4px 10px;clip-path:polygon(0 0,100% 0,88% 100%,0 100%);
+  background:rgba(19,18,30,0.88);border-top:1px solid #ffb4ab;color:#ffb4ab;
+  font-family:var(--fb);letter-spacing:.02em}
+
+.quest-body{padding:16px 18px 18px;flex:1;display:flex;flex-direction:column}
+.quest-title{font-family:var(--fh);font-size:15px;font-weight:800;color:var(--on-surface);margin-bottom:5px;
+  letter-spacing:-.1px}
+.quest-desc{font-size:12.5px;color:var(--text-muted);line-height:1.5;flex:1;margin-bottom:12px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* Difficulty read — small tiered sword-icon row derived from rarity, an
+   at-a-glance "power level" the way ranked-mode UIs show tier icons. */
+.quest-difficulty{display:flex;align-items:center;gap:2px;margin-bottom:10px}
+.quest-difficulty .material-symbols-outlined{font-size:12px;color:rgba(255,255,255,.15)}
+.quest-difficulty .material-symbols-outlined.lit{color:var(--rc);font-variation-settings:'FILL' 1}
+.quest-difficulty .tier-label{margin-left:6px;font-family:var(--fm);font-size:9px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--rc)}
+
+.quest-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;
+  padding-top:10px;border-top:1px dashed var(--border)}
+.quest-rewards{display:flex;gap:10px;flex-wrap:wrap}
+.reward-pill{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:800;font-family:var(--fm)}
+.reward-pill.xp{color:var(--primary)}
+.reward-pill.xp .material-symbols-outlined{font-size:14px;filter:drop-shadow(0 0 4px var(--primary-container))}
+.reward-pill.coin{color:var(--tertiary)}
+.reward-pill.coin .material-symbols-outlined{font-size:14px;font-variation-settings:'FILL' 1;filter:drop-shadow(0 0 4px rgba(255,185,95,.35))}
+.quest-time{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--text-muted);
+  font-family:var(--fm)}
 .quest-time .material-symbols-outlined{font-size:15px}
+
 .quest-btn{
-  width:100%;padding:11px;border-radius:10px;border:none;cursor:pointer;
-  font-family:var(--fh);font-size:13px;font-weight:800;letter-spacing:.04em;
-  transition:all .2s;
+  width:100%;padding:11px;border:none;cursor:pointer;
+  font-family:var(--fh);font-size:13px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+  clip-path:polygon(12px 0,100% 0,100% 100%,0 100%,0 12px);
+  transition:all .2s; position:relative; overflow:hidden;
 }
 .quest-btn.primary{
-  background:linear-gradient(135deg,var(--primary-dark),#6d28d9);color:#fff;
-  box-shadow:0 4px 16px rgba(109,40,217,0.4);
+  background:linear-gradient(135deg,var(--rc),var(--primary-dark));color:#0e0d19;
+  box-shadow:0 4px 16px var(--rg);
 }
-.quest-btn.primary:hover{box-shadow:0 6px 24px rgba(109,40,217,0.6);transform:scale(1.02)}
-.quest-btn.done{background:rgba(78,222,163,0.1);color:var(--secondary);border:1px solid rgba(78,222,163,0.25);cursor:default}
+.quest-btn.primary:hover{box-shadow:0 6px 22px var(--rg);transform:scale(1.015)}
+.quest-btn.primary:active{transform:scale(.98)}
+.quest-btn.done{background:rgba(78,222,163,0.1);color:var(--secondary);border:1px solid rgba(78,222,163,0.25);cursor:default;
+  clip-path:none;border-radius:10px}
 
-/* ── COMPLETED QUEST ROW ── */
-.completed-list{display:flex;flex-direction:column;gap:10px}
-.completed-row{
-  display:flex;align-items:center;gap:14px;padding:14px 16px;
-  background:rgba(35,31,56,0.75);border:1px solid var(--border);border-radius:12px;
-  transition:all .2s;backdrop-filter:blur(8px);opacity:.75;
+/* ── QUEST BOARD — NODE STATE TREATMENT (Phase 2, Quest Board clarity) ──
+   Distinct color + icon + border per state — not just a text label — so
+   "available", "locked", "completed (passed)" and "completed (failed,
+   retry available)" are unmistakable at a glance. */
+/* border-left now comes from --rc (rarity) set inline per card, so no
+   flat override is needed for the plain "available" state. */
+
+.chain-step.chain-locked{opacity:.55;filter:grayscale(.5);border-left:3px solid rgba(255,255,255,.12) !important;cursor:not-allowed}
+.chain-step.chain-locked:hover{transform:none;box-shadow:none;border-color:var(--border)}
+.chain-step.chain-unlocked{border-left:3px solid var(--rc)}
+.chain-step.chain-done{border-left:3px solid var(--secondary) !important}
+.chain-step.chain-done{--rc:var(--secondary);--rg:rgba(78,222,163,0.2)}
+
+/* ── QUEST CHAIN ROW + TRAIL (Phase 61, Improvement Plan §8 "path/trail
+   animation") — renderChainSection() (index.html) lays chain steps out in
+   a .chain-row with a .chain-trail connector between each pair instead of
+   the general .quest-grid. Each step keeps .quest-card's own card styling;
+   this block only owns the row layout and the connector itself. */
+.chain-row{display:flex;align-items:center;flex-wrap:wrap;gap:0;margin-bottom:36px}
+.chain-row .quest-card{flex:1 1 260px;max-width:320px;margin-bottom:16px}
+.chain-trail{
+  flex:1 1 32px;min-width:24px;max-width:56px;height:3px;align-self:center;
+  margin:0 -2px 16px;position:relative;border-radius:2px;
+  background:rgba(255,255,255,.08);
 }
-.completed-row:hover{opacity:1;border-color:rgba(78,222,163,0.25)}
-.completed-icon{width:40px;height:40px;border-radius:50%;background:rgba(78,222,163,0.12);
-  border:1px solid rgba(78,222,163,0.25);display:flex;align-items:center;justify-content:center;
-  color:var(--secondary);flex-shrink:0}
-.completed-icon .material-symbols-outlined{font-variation-settings:'FILL' 1;font-size:20px}
+.chain-trail.lit{background:linear-gradient(90deg,var(--secondary),rgba(78,222,163,.5));
+  box-shadow:0 0 10px rgba(78,222,163,.5)}
+/* .next — the lit segment leading INTO the current unlocked step gets a
+   traveling shimmer, same visual language as .shimBar elsewhere in the app,
+   so the eye is drawn from "cleared" toward "what to do next" rather than
+   the trail just sitting there as a static color change. */
+.chain-trail.lit.next::after{
+  content:'';position:absolute;inset:0;border-radius:2px;overflow:hidden;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent);
+  background-size:200% 100%;animation:chainTrailShimmer 1.6s linear infinite;
+}
+@keyframes chainTrailShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media(max-width:640px){
+  /* Card-based chains stack vertically on narrow screens; a horizontal
+     sliver of trail reads as a stray line once the cards wrap, so it
+     rotates into a short vertical connector instead. */
+  .chain-row{flex-direction:column;align-items:stretch}
+  .chain-row .quest-card{max-width:none}
+  .chain-trail{width:3px;height:20px;min-width:0;max-width:none;align-self:center;margin:-8px 0 8px}
+  .chain-trail.lit.next::after{background:linear-gradient(180deg,transparent,rgba(255,255,255,.9),transparent);
+    background-size:100% 200%;animation-name:chainTrailShimmerVert}
+  @keyframes chainTrailShimmerVert{0%{background-position:0 200%}100%{background-position:0 -200%}}
+}
+@media(prefers-reduced-motion:reduce){
+  .chain-trail.lit.next::after{animation:none}
+}
+
+.completed-list{display:flex;flex-direction:column;gap:8px}
+.completed-row{
+  display:flex;align-items:center;gap:14px;padding:12px 16px;
+  background:linear-gradient(165deg,rgba(40,36,62,.55),rgba(28,25,46,.55));
+  border:1px solid var(--border);border-left:3px solid var(--border2);border-radius:10px;
+  transition:all .2s;backdrop-filter:blur(8px);opacity:.8;
+}
+.completed-row:hover{opacity:1;transform:translateX(2px)}
+.completed-icon{width:38px;height:38px;border-radius:8px;background:rgba(255,255,255,.04);
+  border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;
+  color:var(--text-muted);flex-shrink:0}
+.completed-icon .material-symbols-outlined{font-variation-settings:'FILL' 1;font-size:19px}
 .completed-info{flex:1}
 .completed-title{font-family:var(--fh);font-size:13px;font-weight:700;color:var(--on-surface)}
-.completed-sub{font-size:11px;color:var(--text-muted);margin-top:2px}
+.completed-sub{font-size:11px;color:var(--text-muted);margin-top:2px;font-family:var(--fm)}
 .completed-score{text-align:right}
-.completed-score .val{font-family:var(--fh);font-size:18px;font-weight:900;color:var(--on-surface)}
-.completed-score .lbl{font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.completed-score .val{font-family:var(--fm);font-size:17px;font-weight:900;color:var(--on-surface)}
+.completed-score .lbl{font-size:9px;color:var(--text-muted);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.completed-state-badge{font-size:9px;font-family:var(--fm);font-weight:700;letter-spacing:.06em;margin-top:5px;text-transform:uppercase}
+.completed-row.state-passed{border-left-color:var(--secondary)}
+.completed-row.state-passed .completed-icon{
+  background:rgba(78,222,163,0.12);border-color:rgba(78,222,163,0.3);color:var(--secondary);
+  box-shadow:0 0 0 3px rgba(78,222,163,0.1); /* Phase 2 — "sealed" glow ring around a genuinely cleared quest */
+}
+.completed-row.state-passed .completed-state-badge{color:var(--secondary)}
+.completed-row.state-retry{border-left-color:#ffb95f;opacity:1}
+.completed-row.state-retry .completed-icon{background:rgba(255,185,95,0.14);border-color:rgba(255,185,95,0.32);color:#ffb95f}
+.completed-row.state-retry .completed-state-badge{color:#ffb95f}
+.completed-row.state-locked{border-left-color:#ffb4ab;opacity:.8}
+.completed-row.state-locked .completed-icon{background:rgba(255,180,171,0.12);border-color:rgba(255,180,171,0.3);color:#ffb4ab}
+.completed-row.state-locked .completed-state-badge{color:#ffb4ab}
+/* Phase 63 — perfected: a permanent terminal state (100% clear, no more
+   retries), visually a tier above a plain "passed" clear so it reads as the
+   ceiling rather than just another green checkmark. */
+.completed-row.state-perfected{border-left-color:var(--tertiary)}
+.completed-row.state-perfected .completed-icon{
+  background:rgba(255,185,95,0.14);border-color:rgba(255,185,95,0.35);color:var(--tertiary);
+  box-shadow:0 0 0 3px rgba(255,185,95,0.12);
+}
+.completed-row.state-perfected .completed-state-badge{color:var(--tertiary)}
+
+/* ── QUEST STAR RATING (Phase 61, Improvement Plan §8 "Star/medal rating
+   per quest based on performance ... a non-exploitable reason to feel good
+   about a quest without re-answering it for free score") — eqQuestStars()
+   in utils.js derives 0-3 from the student's own best scored attempt;
+   renderStudentQuizzes() only renders this row on a 'passed' quest. Stars
+   pop in on mount (same one-shot "born already animating" pattern as the
+   combo band, staggered per star so a 3-star result reads as a small
+   flourish rather than three identical dots appearing at once). */
+.quest-stars{display:flex;gap:3px;margin-top:6px}
+.quest-star{font-size:14px;line-height:1;color:rgba(255,255,255,.15);
+  animation:questStarIn .35s cubic-bezier(.34,1.56,.64,1) backwards}
+.quest-star:nth-child(1){animation-delay:0s}
+.quest-star:nth-child(2){animation-delay:.09s}
+.quest-star:nth-child(3){animation-delay:.18s}
+.quest-star.filled{color:var(--tertiary);text-shadow:0 0 8px rgba(255,185,95,.5)}
+@keyframes questStarIn{0%{transform:scale(.3) rotate(-25deg);opacity:0}100%{transform:scale(1) rotate(0);opacity:1}}
+@media(prefers-reduced-motion:reduce){
+  .quest-star{animation:none}
+}
+
+/* ── QUEST BOARD HERO + SECTION HEADERS — scoped to #s-quizzes only ──
+   .page-hero / .section-header / .hero-stat-pill are shared components
+   used across achievements, shop, mail, world-boss, etc. Rather than
+   restyle those globally, this block layers an esports-HUD treatment on
+   top ONLY inside the Quest Board page container, so every other module
+   keeps its current look untouched. */
+#s-quizzes .page-hero{
+  clip-path:polygon(0 0,calc(100% - 28px) 0,100% 28px,100% 100%,0 100%);
+  border-image:linear-gradient(135deg,rgba(208,188,255,.4),rgba(78,222,163,.25)) 1;
+  background-image:
+    repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 26px),
+    repeating-linear-gradient(90deg,rgba(255,255,255,.025) 0 1px,transparent 1px 26px),
+    linear-gradient(135deg,var(--midnight),var(--deep-indigo));
+}
+#s-quizzes .page-hero-label{
+  display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 0;
+  border-left:2px solid var(--primary);padding-left:10px;
+}
+#s-quizzes .hero-stat-pill{
+  border-radius:4px;clip-path:polygon(8px 0,100% 0,100% 100%,0 100%,0 8px);
+  border-color:var(--border2);position:relative;
+}
+#s-quizzes .hero-stat-pill .val{font-family:var(--fm)}
+#s-quizzes .hero-stat-pill + .hero-stat-pill{position:relative}
+#s-quizzes .hero-stat-pill:not(:last-child)::after{
+  content:'';position:absolute;top:50%;right:-9px;transform:translateY(-50%);
+  width:1px;height:60%;background:var(--border2);
+}
+
+#s-quizzes .section-header{position:relative;padding-bottom:9px;margin-bottom:20px}
+#s-quizzes .section-header::after{
+  content:'';position:absolute;left:0;bottom:0;width:100%;height:1px;
+  background:linear-gradient(90deg,var(--border2) 0%,transparent 60%);
+}
+#s-quizzes .section-header::before{
+  content:'';position:absolute;left:0;bottom:-1px;width:36px;height:2px;background:var(--primary);
+}
+#s-quizzes .section-header h2{
+  font-family:var(--fb);letter-spacing:.03em;
+}
 
 /* ── INVENTORY SYSTEM ── */
 .inv-tab-row{display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)}
@@ -523,26 +738,185 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 .ach-stat-lbl{font-size:9px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase}
 
 /* ── ACTIVE QUIZ ── */
-.quiz-arena{max-width:720px;margin:0 auto;padding:0 0 40px}
-.quiz-hud{display:flex;align-items:center;gap:14px;margin-bottom:8px}
-.quiz-title-label{font-family:var(--fm);font-size:10px;color:var(--primary);letter-spacing:.12em;flex:1}
-.quiz-timer{font-family:var(--fm);font-size:18px;font-weight:900;color:var(--secondary);
-  background:rgba(78,222,163,0.1);border:1px solid rgba(78,222,163,0.3);
-  padding:6px 16px;border-radius:8px;min-width:76px;text-align:center;transition:all .3s}
+/* Landscape redesign (Phase 9 — Quiz Arena Widescreen Layout): the old
+   .quiz-arena was hard-capped at 720px, so on any real desktop/landscape
+   viewport the whole screen read as a narrow portrait strip marooned in
+   the middle of a wide page, with the rest of the viewport sitting empty.
+   .quiz-arena now flexes with the available width (still capped so lines
+   of question text don't run absurdly wide), and .quiz-layout below splits
+   that width into a persistent HUD rail + a generous main content column —
+   using the landscape space instead of just padding around a portrait box. */
+.quiz-arena{max-width:1360px;margin:0 auto;padding:0 0 40px}
+.quiz-title-label{font-family:var(--fm);font-size:10px;color:var(--primary);letter-spacing:.12em;margin-bottom:14px}
+/* ── Quiz screen scale-up (per DREY feedback: the quiz was boxed into the
+   shared .page 1200px cap and everything inside read as too small/cramped
+   for how much desktop space was actually available). .quiz-page-wide is
+   layered on top of #s-quiz-active's existing .page class — .page's own
+   rules (padding, display toggle) are untouched for every other screen;
+   this just raises the cap for this one screen and scales up the pieces
+   inside it, most of all the mascot. */
+.quiz-page-wide{max-width:1680px}
+@media(max-width:1024px){.quiz-page-wide{max-width:none}}
+
+/* ── Landscape split: fixed-width HUD rail (progress/timer/stage/streak/
+   hints/mascot) + a flexible main column (question card, options, nav).
+   Falls back to a single stacked column below 1024px, where the rail
+   itself switches to a horizontal wrapping bar (see media query below). */
+.quiz-layout{display:grid;grid-template-columns:272px minmax(0,1fr);gap:32px;align-items:start}
+.quiz-main{min-width:0}
+
+.quiz-hud{
+  display:flex;flex-direction:column;gap:18px;
+  background:rgba(24,20,42,0.6);border:1px solid rgba(208,188,255,0.14);
+  clip-path:polygon(0 0,calc(100% - 20px) 0,100% 20px,100% 100%,0 100%);
+  padding:22px 20px;backdrop-filter:blur(14px);
+  box-shadow:0 16px 44px rgba(0,0,0,0.28);
+  position:sticky;top:88px;
+}
+.quiz-hud-divider{height:1px;background:var(--border2);margin:0}
+/* HUD-scoped mascot: same figure/cloud markup and IDs as before, just
+   resized to sit comfortably inside the 272px rail instead of the old
+   220px footer dock. */
+.quiz-hud .quiz-mascot-dock{width:100%;height:auto;padding:6px 0 2px}
+.quiz-hud .quiz-mascot-figure{width:132px;height:132px;font-size:64px;margin:0 auto}
+
+/* Below the sidebar-collapse breakpoint the rail no longer has a tall
+   landscape column to live in, so it flattens into a single horizontal
+   HUD bar above the question card — mirroring how it always behaved on
+   mobile, just now sharing the same markup as the desktop rail. */
+@media(max-width:1024px){
+  .quiz-layout{grid-template-columns:1fr;gap:20px}
+  .quiz-hud{
+    position:static;flex-direction:row;flex-wrap:wrap;align-items:center;
+    gap:14px;padding:16px 18px;
+  }
+  .quiz-hud-divider{display:none}
+  .quiz-top-strip{flex:1 1 220px;flex-direction:row;align-items:center;gap:16px}
+  .quiz-progress-block{flex:1}
+  .quiz-timer{width:auto;min-width:88px;padding:10px 22px;font-size:22px}
+  .quiz-meta-row{flex:1 1 auto;flex-direction:row;flex-wrap:wrap;gap:8px}
+  .quiz-stage-badge,.quiz-meta-chip{width:auto}
+  .quiz-hud .quiz-mascot-dock{width:auto;flex-shrink:0;padding:0}
+  .quiz-hud .quiz-mascot-figure{width:64px;height:64px;font-size:32px}
+}
+@media(max-width:640px){
+  .quiz-hud{padding:14px}
+  .quiz-top-strip{flex-direction:column;align-items:stretch;gap:10px}
+  .quiz-timer{width:100%}
+  .quiz-hud .quiz-mascot-figure{width:48px;height:48px;font-size:24px}
+}
+
+.quiz-top-strip{display:flex;flex-direction:column;align-items:stretch;gap:14px;margin-bottom:0}
+.quiz-progress-block{flex:1}
+.quiz-progress-bar{background:rgba(255,255,255,0.06);border-radius:20px;height:10px;overflow:hidden;position:relative;margin-bottom:8px}
+.quiz-progress-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#8b5cf6,#d0bcff);
+  box-shadow:0 0 12px rgba(139,92,246,0.5);transition:width .5s cubic-bezier(.4,0,.2,1)}
+/* Segment ticks — a thin repeating overlay so the bar reads like a
+   game health/XP meter rather than a plain smooth gradient strip. */
+.quiz-progress-bar::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background-image:repeating-linear-gradient(90deg,transparent 0 calc(10% - 2px),rgba(19,18,30,.55) calc(10% - 2px) 10%)}
+.quiz-progress-labels{display:flex;justify-content:space-between;font-size:12px;font-weight:700;letter-spacing:.05em}
+.quiz-timer{font-family:var(--fm);font-size:30px;font-weight:900;color:var(--secondary);
+  background:rgba(78,222,163,0.1);border:1px solid rgba(78,222,163,0.3);flex-shrink:0;
+  clip-path:polygon(10px 0,100% 0,100% 100%,0 100%,0 10px);
+  padding:14px 12px;width:100%;text-align:center;transition:all .3s;box-sizing:border-box;
+  font-variant-numeric:tabular-nums}
+/* Phase 3 (Improvement Plan §2/§3) — per-stage timer tint. Stage 0 (Warm-Up)
+   keeps the original calm green; stage 1 (Surge) shifts to an amber warning
+   tone; stage 2 (Overdrive) shifts to the same danger-red used by .urgent.
+   .urgent (last few seconds of ANY stage) always wins visually via the
+   pulse animation, layered on top of whichever stage tint is active. */
+.quiz-timer.stage-1{color:#ffb95f;background:rgba(255,185,95,0.1);border-color:rgba(255,185,95,0.35)}
+.quiz-timer.stage-2{color:#ffb4ab;background:rgba(255,180,171,0.1);border-color:rgba(255,180,171,0.35)}
 .quiz-timer.urgent{color:#ffb4ab;background:rgba(255,180,171,0.08);border-color:rgba(255,180,171,0.35);
   box-shadow:0 0 16px rgba(255,180,171,0.2);animation:pulse 1s ease infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
-.quiz-abort{padding:6px 14px;background:rgba(255,180,171,0.08);border:1px solid rgba(255,180,171,0.2);
-  border-radius:8px;color:#ffb4ab;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s}
-.quiz-abort:hover{background:rgba(255,180,171,0.18)}
-.quiz-progress-track{margin-bottom:28px}
-.quiz-progress-bar{background:rgba(255,255,255,0.06);border-radius:20px;height:6px;overflow:hidden;position:relative;margin-bottom:6px}
-.quiz-progress-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#8b5cf6,#d0bcff);
-  box-shadow:0 0 12px rgba(139,92,246,0.5);transition:width .5s cubic-bezier(.4,0,.2,1)}
-.quiz-progress-labels{display:flex;justify-content:space-between;font-size:10px;font-weight:700;letter-spacing:.06em}
+/* Phase 4 — meta row: stage badge + streak + hints, as compact secondary
+   chips. Wraps on narrow screens rather than fighting for the top strip's
+   space. */
+.quiz-meta-row{display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-bottom:0}
+.quiz-stage-badge{font-family:var(--fm);font-size:13px;font-weight:800;letter-spacing:.06em;
+  text-transform:uppercase;padding:9px 14px;clip-path:polygon(8px 0,100% 0,100% 100%,0 100%,0 8px);white-space:nowrap;text-align:center;
+  background:rgba(78,222,163,0.1);border:1px solid rgba(78,222,163,0.3);color:var(--secondary);box-sizing:border-box}
+.quiz-stage-badge.stage-1{background:rgba(255,185,95,0.12);border-color:rgba(255,185,95,0.35);color:#ffb95f}
+.quiz-stage-badge.stage-2{background:rgba(255,180,171,0.12);border-color:rgba(255,180,171,0.35);color:#ffb4ab}
+.quiz-meta-chip{font-size:14px;font-weight:700;color:var(--text-muted);white-space:nowrap;text-align:center;
+  padding:9px 14px;clip-path:polygon(8px 0,100% 0,100% 100%,0 100%,0 8px);background:rgba(255,255,255,0.04);border:1px solid var(--border2);transition:all .2s;box-sizing:border-box}
+/* Phase 2 — functional hint chip (was a decorative hardcoded "2" pill) */
+.quiz-meta-chip.quiz-hint-btn{cursor:pointer;color:var(--tertiary);border-color:rgba(255,185,95,0.25);background:rgba(255,185,95,0.06)}
+.quiz-meta-chip.quiz-hint-btn:hover{border-color:rgba(255,185,95,0.45);background:rgba(255,185,95,0.12);transform:translateY(-1px)}
+.quiz-meta-chip.quiz-hint-btn.disabled{cursor:not-allowed;opacity:.45}
+.quiz-meta-chip.quiz-hint-btn.disabled:hover{transform:none;border-color:rgba(255,185,95,0.25);background:rgba(255,185,95,0.06)}
+/* Phase 4 — combo band (§9): full-width, big, sits right below the top
+   strip/meta row so it's impossible to miss. Scales in size/glow with
+   comboLevel (0=none,1=building,2=hot,3=max) — milestone particle bursts
+   and the mascot tie-in are §12 items 6-7, layered on top of this later. */
+/* ── Combo band as a floating toast (per DREY feedback: this shouldn't be
+   a permanent static panel wedged into the layout — it should behave like
+   a notification that pops up top-center, is free to overlap whatever's
+   beneath it, then gets out of the way again). Sits below the fixed
+   topbar (64px) and above the quiz arena's own content; renderQuizQuestion()
+   (index.html) adds/removes .combo-toast-show — see the comment there for
+   the show/auto-hide timing. Hidden (opacity/pointer-events off) by
+   default so a fresh question with no combo yet shows nothing at all. */
+.quiz-combo-band{display:flex;align-items:baseline;justify-content:center;gap:14px;
+  position:fixed;top:84px;left:50%;z-index:150;max-width:min(92vw,480px);
+  padding:22px 30px;clip-path:polygon(18px 0,calc(100% - 18px) 0,100% 50%,calc(100% - 18px) 100%,18px 100%,0 50%);
+  background:rgba(35,31,56,0.9);border:1px solid var(--border2);
+  box-shadow:0 16px 40px rgba(0,0,0,0.45);
+  opacity:0;pointer-events:none;
+  transform:translate(-50%,-14px) scale(.94);
+  transition:opacity .28s ease,transform .28s cubic-bezier(.34,1.56,.64,1);
+}
+.quiz-combo-band.combo-toast-show{opacity:1;transform:translate(-50%,0) scale(1)}
+.quiz-combo-label{font-family:var(--fm);font-size:13px;font-weight:800;letter-spacing:.14em;color:var(--text-muted)}
+.quiz-combo-value{font-family:var(--fh);font-size:36px;font-weight:900;color:var(--text-muted);transition:all .3s}
+.quiz-combo-mult{font-size:14px;font-weight:700;color:var(--text-muted)}
+.quiz-combo-band.combo-level-1{border-color:rgba(255,185,95,0.3);background:rgba(255,185,95,0.06)}
+.quiz-combo-band.combo-level-1 .quiz-combo-value{color:#ffb95f;font-size:42px}
+.quiz-combo-band.combo-level-2{border-color:rgba(208,188,255,0.4);background:rgba(208,188,255,0.08);
+  box-shadow:0 0 20px rgba(208,188,255,0.15)}
+.quiz-combo-band.combo-level-2 .quiz-combo-value{color:var(--primary);font-size:48px}
+.quiz-combo-band.combo-level-3{border-color:rgba(255,185,95,0.5);background:rgba(255,185,95,0.1);
+  box-shadow:0 0 28px rgba(255,185,95,0.25);animation:comboMaxPulse 1.4s ease infinite}
+.quiz-combo-band.combo-level-3 .quiz-combo-value{color:#ffb95f;font-size:54px}
+@keyframes comboMaxPulse{0%,100%{box-shadow:0 0 28px rgba(255,185,95,0.25)}50%{box-shadow:0 0 40px rgba(255,185,95,0.4)}}
+/* Phase 6 (Improvement Plan §5/§10) — combo band mount animations. The band
+   is a brand-new element every render (innerHTML replace), so these are
+   one-shot "born already animating" classes — added by renderQuizQuestion()
+   from quizComboLastEvent (see quizNext()/quizTimeout()) — rather than a
+   transition between two live elements. combo-level-N (above) still governs
+   the STEADY-STATE size/color/glow; these only add the brief entrance beat
+   on top of whichever level the band landed on.
+   NOTE: these are written as their own rules (not merged into .combo-level-N
+   above) specifically so they can be combined with ANY level — a break can
+   land on combo-level-0 (streak wiped to 0) just as easily as a grow can
+   land on combo-level-3, and both need to still play their own animation
+   regardless of which level classes are also present. */
+.quiz-combo-band.combo-pop{animation:comboPop .45s cubic-bezier(.34,1.56,.64,1)}
+@keyframes comboPop{
+  0%{transform:translate(-50%,0) scale(1)}
+  35%{transform:translate(-50%,0) scale(1.12)}
+  60%{transform:translate(-50%,0) scale(.96)}
+  100%{transform:translate(-50%,0) scale(1)}
+}
+.quiz-combo-band.combo-shatter{animation:comboShatter .5s ease}
+@keyframes comboShatter{
+  0%{transform:translate(-50%,0) scale(1) translateX(0);box-shadow:none}
+  15%{transform:translate(-50%,0) scale(.93) translateX(-6px);box-shadow:0 0 24px rgba(255,180,171,0.5)}
+  35%{transform:translate(-50%,0) scale(.97) translateX(5px)}
+  55%{transform:translate(-50%,0) scale(.95) translateX(-4px)}
+  75%{transform:translate(-50%,0) scale(.99) translateX(2px);box-shadow:0 0 8px rgba(255,180,171,0.2)}
+  100%{transform:translate(-50%,0) scale(1) translateX(0);box-shadow:none}
+}
+@media (prefers-reduced-motion: reduce){
+  .quiz-combo-band.combo-pop,.quiz-combo-band.combo-shatter{animation:none}
+}
 .quiz-question-card{
-  background:rgba(35,31,56,0.85);border:1px solid rgba(208,188,255,0.2);border-radius:18px;
-  padding:32px;margin-bottom:20px;position:relative;overflow:hidden;
+  background:rgba(35,31,56,0.85);border:1px solid rgba(208,188,255,0.2);border-radius:22px;
+  border-top-width:3px;
+  clip-path:polygon(0 0,calc(100% - 28px) 0,100% 28px,100% 100%,0 100%);
+  padding:48px;margin-bottom:28px;position:relative;overflow:hidden;
   box-shadow:0 0 32px rgba(139,92,246,0.12),0 16px 48px rgba(0,0,0,0.3);
   backdrop-filter:blur(16px);
 }
@@ -550,30 +924,49 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
   width:200px;height:200px;background:radial-gradient(circle,rgba(208,188,255,0.08),transparent 70%);border-radius:50%}
 .quiz-question-card::after{content:'';position:absolute;bottom:-60px;left:-20px;
   width:160px;height:160px;background:radial-gradient(circle,rgba(78,222,163,0.06),transparent 70%);border-radius:50%}
-.quiz-q-label{font-family:var(--fm);font-size:10px;color:rgba(208,188,255,0.6);letter-spacing:.12em;margin-bottom:14px;position:relative}
-.quiz-q-text{font-family:var(--fh);font-size:22px;font-weight:800;line-height:1.5;position:relative;color:var(--on-surface)}
-.quiz-options{display:flex;flex-direction:column;gap:10px}
+/* HUD corner brackets — small targeting-frame ticks at two corners, a
+   game-console "focus frame" cue rather than a plain soft-edged card. */
+.quiz-q-label::before{content:'';position:absolute;left:-4px;top:-14px;width:14px;height:8px;
+  border-left:2px solid rgba(208,188,255,.5);border-top:2px solid rgba(208,188,255,.5)}
+.quiz-q-label{font-family:var(--fm);font-size:13px;color:rgba(208,188,255,0.6);letter-spacing:.12em;margin-bottom:18px;position:relative}
+.quiz-q-text{font-family:var(--fh);font-size:32px;font-weight:800;line-height:1.5;position:relative;color:var(--on-surface)}
+.quiz-options{display:flex;flex-direction:column;gap:14px}
+/* Phase 4 — adaptive answer grid (§9): short mc/tf answers (≤4 options,
+   ≤18 chars each — see mcGridEligible in index.html) render as a 2x2 grid
+   for bigger tap targets; longer-sentence answers automatically fall back
+   to the stacked list above. */
+.quiz-options.grid-mode{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.quiz-options.grid-mode .quiz-opt{flex-direction:column;justify-content:center;text-align:center;
+  min-height:160px;gap:12px}
 .quiz-opt{
-  display:flex;align-items:center;gap:14px;padding:15px 18px;border-radius:12px;
+  display:flex;align-items:center;gap:18px;padding:24px 28px;border-radius:14px;
+  clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,0 100%);
   border:1px solid var(--border2);cursor:pointer;background:rgba(35,31,56,0.6);
-  backdrop-filter:blur(8px);transition:all .2s;
+  backdrop-filter:blur(8px);transition:all .2s;position:relative;overflow:hidden;
 }
+.quiz-opt::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.1) 50%,transparent 60%);
+  background-size:250% 250%;background-position:120% -20%;opacity:0;transition:opacity .2s}
+.quiz-opt:hover::after{opacity:1;animation:questScan .8s ease forwards}
+@media(prefers-reduced-motion:reduce){.quiz-opt:hover::after{animation:none;opacity:0}}
 .quiz-opt:hover{border-color:rgba(208,188,255,0.4);background:rgba(208,188,255,0.06);transform:translateX(4px)}
+.quiz-options.grid-mode .quiz-opt:hover{transform:translateY(-3px)}
 .quiz-opt.selected{border-color:var(--primary-dark);background:rgba(139,92,246,0.15);
   box-shadow:0 0 0 1px rgba(139,92,246,0.3) inset,0 0 16px rgba(139,92,246,0.15)}
 .quiz-opt.correct{border-color:var(--secondary);background:rgba(78,222,163,0.12);color:var(--secondary)}
 .quiz-opt.wrong{border-color:var(--error);background:rgba(255,180,171,0.08);color:var(--error)}
 .quiz-opt-letter{
-  width:36px;height:36px;border-radius:8px;flex-shrink:0;
+  width:52px;height:52px;flex-shrink:0;
+  clip-path:polygon(9px 0,100% 0,100% 100%,0 100%,0 9px);
   background:rgba(208,188,255,0.1);border:1px solid rgba(208,188,255,0.2);
   display:flex;align-items:center;justify-content:center;
-  font-family:var(--fm);font-size:13px;font-weight:900;color:var(--primary);
+  font-family:var(--fm);font-size:19px;font-weight:900;color:var(--primary);
   transition:all .2s;
 }
 .quiz-opt.selected .quiz-opt-letter{background:var(--primary-dark);border-color:var(--primary-dark);color:#fff}
 .quiz-opt.correct .quiz-opt-letter{background:rgba(78,222,163,0.2);border-color:var(--secondary);color:var(--secondary)}
 .quiz-opt.wrong .quiz-opt-letter{background:rgba(255,180,171,0.15);border-color:var(--error);color:var(--error)}
-.quiz-opt-text{font-size:14px;color:var(--on-surface)}
+.quiz-opt-text{font-size:19px;color:var(--on-surface)}
 /* Phase 2 — hint-eliminated wrong option (MC hint: coin-cost, one per question) */
 .quiz-opt.eliminated{opacity:.4;cursor:not-allowed;text-decoration:line-through;
   border-color:var(--border2);background:rgba(35,31,56,0.3)}
@@ -591,19 +984,19 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 .quiz-enum-input:last-child{margin-bottom:0}
 /* Phase 1 — Identification-type answer input (free-text, fuzzy-graded) */
 .quiz-id-input{
-  width:100%;padding:18px 20px;border-radius:12px;border:1px solid var(--border2);
+  width:100%;padding:24px 26px;border-radius:14px;border:1px solid var(--border2);
   background:rgba(35,31,56,0.6);backdrop-filter:blur(8px);color:var(--on-surface);
-  font-family:var(--fb);font-size:16px;font-weight:600;outline:none;transition:all .2s;
+  font-family:var(--fb);font-size:20px;font-weight:600;outline:none;transition:all .2s;
 }
 .quiz-id-input::placeholder{color:var(--text-muted);font-weight:400}
 .quiz-id-input:focus{border-color:var(--primary-dark);background:rgba(139,92,246,0.08);
   box-shadow:0 0 0 1px rgba(139,92,246,0.3) inset,0 0 16px rgba(139,92,246,0.15)}
-.quiz-nav{display:flex;gap:10px;margin-top:22px}
-.quiz-nav-prev{padding:11px 20px;background:rgba(255,255,255,0.05);border:1px solid var(--border2);
-  border-radius:10px;color:var(--text-muted);font-size:13px;font-weight:700;cursor:pointer;transition:all .2s}
+.quiz-nav{display:flex;gap:14px;margin-top:28px}
+.quiz-nav-prev{padding:16px 26px;background:rgba(255,255,255,0.05);border:1px solid var(--border2);
+  clip-path:polygon(10px 0,100% 0,100% 100%,0 100%,0 10px);color:var(--text-muted);font-size:16px;font-weight:700;cursor:pointer;transition:all .2s}
 .quiz-nav-prev:hover{background:rgba(255,255,255,0.09);border-color:rgba(208,188,255,0.3);color:var(--on-surface)}
-.quiz-nav-next{flex:1;padding:12px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;
-  border:none;border-radius:10px;font-family:var(--fh);font-size:14px;font-weight:800;cursor:pointer;
+.quiz-nav-next{flex:1;padding:18px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;
+  border:none;clip-path:polygon(14px 0,100% 0,100% 100%,0 100%,0 14px);font-family:var(--fh);font-size:18px;font-weight:800;cursor:pointer;
   box-shadow:0 4px 16px rgba(109,40,217,0.4);letter-spacing:.04em;transition:all .2s;
   position:relative;overflow:hidden}
 .quiz-nav-next::after{content:'';position:absolute;inset:0;
@@ -612,35 +1005,194 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 .quiz-nav-next:hover::after{transform:translateX(100%)}
 .quiz-nav-next:hover{box-shadow:0 6px 24px rgba(109,40,217,0.6)}
 .quiz-nav-next:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}
-.quiz-side-panel{position:fixed;right:24px;top:50%;transform:translateY(-50%);
-  display:flex;flex-direction:column;gap:12px}
-.quiz-side-stat{background:rgba(35,31,56,0.9);border:1px solid var(--border2);border-radius:14px;
-  padding:14px 12px;text-align:center;backdrop-filter:blur(12px);min-width:70px}
-.quiz-side-stat .val{font-family:var(--fh);font-size:18px;font-weight:900}
-.quiz-side-stat .lbl{font-size:9px;color:var(--text-muted);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-top:4px}
-.quiz-side-stat .material-symbols-outlined{font-size:22px;margin-bottom:4px;display:block}
-/* Phase 2 — functional hint button (was a decorative hardcoded "2" pill) */
-.quiz-side-stat.quiz-hint-btn{cursor:pointer;transition:all .2s}
-.quiz-side-stat.quiz-hint-btn:hover{border-color:rgba(255,185,95,0.4);background:rgba(255,185,95,0.08);transform:translateY(-2px)}
-.quiz-side-stat.quiz-hint-btn.disabled{cursor:not-allowed;opacity:.45}
-.quiz-side-stat.quiz-hint-btn.disabled:hover{border-color:var(--border2);background:rgba(35,31,56,0.9);transform:none}
+/* Phase 4/9 — footer row: Abort lives here, right-aligned under the main
+   column. The mascot companion now docks in the HUD rail (top-left of the
+   screen) instead of sitting in this row — keeping it far from Abort was
+   always the point (§9's original comment), and putting it in a different
+   region entirely preserves that on the new widescreen layout. */
+.quiz-footer-row{display:flex;align-items:center;justify-content:flex-end;margin-top:28px;gap:20px}
 
-/* ── RESULTS SCREEN ── */
-.results-wrap{max-width:520px;margin:0 auto;text-align:center;padding:40px 20px}
+/* ── Phase 7 — Mascot / Narrator (Improvement Plan §6, §12 item 7) ──
+   Dock stays docked bottom-left at every stage (Improvement Plan §13's open
+   question resolved: readability wins over a chaotic-position mascot — body
+   pose already carries the stage-3 intensity per §6's trigger table, so the
+   dock itself doesn't need to relocate too). position:relative so the cloud
+   can sit absolutely above the figure without shifting layout. */
+/* Enlarged per DREY feedback — the mascot read as an afterthought at 56px.
+   Sized big enough to spill over the footer row on purpose; z-index keeps
+   it drawn on top of whatever it overlaps rather than being clipped. */
+.quiz-mascot-dock{position:relative;display:flex;align-items:center;justify-content:center;
+  width:220px;height:220px;z-index:3}
+.quiz-mascot-figure{display:flex;align-items:center;justify-content:center;
+  width:200px;height:200px;border-radius:50%;background:rgba(208,188,255,0.08);
+  border:1px solid rgba(208,188,255,0.2);font-size:100px;transition:background .3s,border-color .3s;
+  animation:mascotIdleBob 3s ease-in-out infinite;box-shadow:0 12px 40px rgba(0,0,0,0.35)}
+@keyframes mascotIdleBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+
+/* Ambient/idle body-pose animations, per §6's emotion table — these run
+   CONTINUOUSLY while that emotion is the mascot's current resting state
+   (set by updateMascotAmbientMood()/fireMascotEvent() in index.html), not
+   just as one-shot reactions. Chill in stage 1, visibly more anxious/hyped
+   by stage 2-3 — the ambient function picks the CLASS, this just defines
+   the motion each class implies. */
+.mascot-emotion-idle{animation:mascotIdleBob 3s ease-in-out infinite}
+.mascot-emotion-confident{animation:mascotIdleBob 3.2s ease-in-out infinite;
+  background:rgba(78,222,163,0.1);border-color:rgba(78,222,163,0.3)}
+.mascot-emotion-hyped{animation:mascotHypedBounce .55s ease-in-out infinite;
+  background:rgba(255,185,95,0.14);border-color:rgba(255,185,95,0.4)}
+@keyframes mascotHypedBounce{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-9px) scale(1.06)}}
+.mascot-emotion-nervous{animation:mascotNervousFidget .5s ease-in-out infinite;
+  background:rgba(255,185,95,0.08);border-color:rgba(255,185,95,0.3)}
+@keyframes mascotNervousFidget{0%,100%{transform:translate(0,0) rotate(0)}25%{transform:translate(-2px,0) rotate(-3deg)}75%{transform:translate(2px,0) rotate(3deg)}}
+.mascot-emotion-scared{animation:mascotScaredShake .3s ease-in-out infinite;
+  background:rgba(255,180,171,0.14);border-color:rgba(255,180,171,0.45)}
+@keyframes mascotScaredShake{0%,100%{transform:translate(0,0)}25%{transform:translate(-3px,-2px)}75%{transform:translate(3px,-2px)}}
+.mascot-emotion-hiding{animation:mascotHidingPeek 2.2s ease-in-out infinite;
+  background:rgba(208,188,255,0.06);border-color:rgba(208,188,255,0.18);opacity:.85}
+@keyframes mascotHidingPeek{0%,100%{transform:translateY(10px) scale(.88)}50%{transform:translateY(6px) scale(.92)}}
+.mascot-emotion-relieved{animation:mascotIdleBob 3.6s ease-in-out infinite;
+  background:rgba(78,222,163,0.14);border-color:rgba(78,222,163,0.4)}
+.mascot-emotion-sad{animation:mascotSadDroop 3.5s ease-in-out infinite;
+  background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.12);opacity:.8}
+@keyframes mascotSadDroop{0%,100%{transform:translateY(3px) rotate(0)}50%{transform:translateY(6px) rotate(-2deg)}}
+.mascot-emotion-determined{animation:mascotIdleBob 2.4s ease-in-out infinite;
+  background:rgba(139,92,246,0.14);border-color:rgba(139,92,246,0.4)}
+
+/* One-shot "reaction pop" layered on top of whichever ambient class is
+   active, so an acute event (a fresh correct/wrong/milestone/etc.) always
+   reads as a distinct beat even when it doesn't change the resting emotion
+   class. Removed by JS ~400ms after being added (see fireMascotEvent()). */
+.quiz-mascot-figure.mascot-react{animation:mascotReactPop .4s cubic-bezier(.34,1.56,.64,1)}
+@keyframes mascotReactPop{0%{transform:scale(1)}40%{transform:scale(1.22)}100%{transform:scale(1)}}
+
+/* Speech-bubble cloud — Improvement Plan §6: "only appears above the
+   mascot's head while it's actively speaking a line... pops in with the
+   text, holds briefly, then pops back out. No cloud = mascot isn't talking
+   right now." Hidden by default; JS toggles the .show class. */
+.quiz-mascot-cloud{position:absolute;bottom:calc(100% + 14px);left:50%;transform:translate(-50%,8px) scale(.85);
+  min-width:200px;max-width:320px;padding:14px 20px;border-radius:18px;
+  background:rgba(35,31,56,0.95);border:1px solid rgba(208,188,255,0.3);
+  font-size:15px;font-weight:600;line-height:1.45;color:var(--on-surface);text-align:center;
+  opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease;z-index:4;
+  box-shadow:0 8px 20px rgba(0,0,0,0.35)}
+.quiz-mascot-cloud::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
+  border:9px solid transparent;border-top-color:rgba(35,31,56,0.95)}
+.quiz-mascot-cloud.show{opacity:1;transform:translate(-50%,0) scale(1)}
+
+@media (prefers-reduced-motion: reduce){
+  .quiz-mascot-figure,.mascot-emotion-idle,.mascot-emotion-confident,.mascot-emotion-hyped,
+  .mascot-emotion-nervous,.mascot-emotion-scared,.mascot-emotion-hiding,.mascot-emotion-relieved,
+  .mascot-emotion-sad,.mascot-emotion-determined,.quiz-mascot-figure.mascot-react{animation:none}
+  .quiz-mascot-cloud{transition:opacity .2s ease}
+}
+
+.quiz-abort{padding:14px 28px;background:rgba(255,180,171,0.08);border:1px solid rgba(255,180,171,0.2);
+  clip-path:polygon(8px 0,100% 0,100% 100%,0 100%,0 8px);color:#ffb4ab;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;flex-shrink:0}
+.quiz-abort:hover{background:rgba(255,180,171,0.18)}
+
+/* Mini mascot reaction on the results screen (pass/fail) — reuses the same
+   emoji sprite + emotion coloring as the in-quiz dock, just without the
+   dock circle chrome, so "relieved"/"sad-but-supportive" reads as the same
+   character, not a different one. */
+.results-mascot-line{display:flex;align-items:center;justify-content:center;gap:8px;
+  margin-top:10px;font-size:13px;font-weight:700;color:var(--text-muted)}
+.results-mascot-line .results-mascot-emoji{font-size:22px}
+
+/* ── ENVIRONMENTAL INTENSITY SYSTEM (Improvement Plan §3) ──
+   A global tension dial that scales with stage: the ambient drift canvas
+   and vignette ring below sit BEHIND .quiz-arena-content at z-index:0,
+   using the exact same "positioned bg layer + z-index:1 content wrapper"
+   trick as .dash-hero/.dash-hero-canvas/.dash-hero-inner above — so the
+   question card and answer buttons (inside .quiz-arena-content) always
+   paint on top and stay fully legible/stable, per the plan's hard rule
+   that intensity effects live in chrome only. */
+.quiz-arena{position:relative}
+.quiz-arena-content{position:relative;z-index:1}
+/* Ambient drift canvas — driven by modules/shared/ambient-backdrop.js
+   (window.startAmbientBackdrop), the same engine already powering the
+   Dashboard hero band. Speed/color/count escalate per stage via the
+   QI_STAGE_CFG table in renderQuizQuestion() (index.html); this file only
+   owns the canvas's static positioning. */
+.quiz-intensity-canvas{position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:24px}
+/* Vignette ring — hairline+cool in stage 0, thicker amber ring in stage 1,
+   pulsing danger-red ring in stage 2. An inset box-shadow so it never
+   overlaps or dims the actual card content, which sits in its own
+   z-index:1 layer regardless. */
+.quiz-vignette-ring{position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:24px;transition:box-shadow .6s ease}
+.quiz-vignette-ring.qi-stage-0{box-shadow:inset 0 0 0 1px rgba(78,222,163,0.14),inset 0 0 70px rgba(78,222,163,0.05)}
+.quiz-vignette-ring.qi-stage-1{box-shadow:inset 0 0 0 2px rgba(255,185,95,0.24),inset 0 0 100px rgba(255,185,95,0.09)}
+.quiz-vignette-ring.qi-stage-2{box-shadow:inset 0 0 0 3px rgba(255,180,171,0.34),inset 0 0 130px rgba(255,180,171,0.14);
+  animation:qiVignettePulse 1.6s ease infinite}
+@keyframes qiVignettePulse{
+  0%,100%{box-shadow:inset 0 0 0 3px rgba(255,180,171,0.34),inset 0 0 130px rgba(255,180,171,0.14)}
+  50%{box-shadow:inset 0 0 0 4px rgba(255,180,171,0.52),inset 0 0 160px rgba(255,180,171,0.22)}
+}
+@media (prefers-reduced-motion: reduce){
+  .quiz-vignette-ring.qi-stage-2{animation:none}
+}
+/* Neon/color accents (§3): stage-tied tint on the question card's BORDER
+   only — never its background or text — so the calmest zone on screen
+   still reads the tension without losing legibility or stability. */
+.quiz-arena.qi-stage-1 .quiz-question-card{border-color:rgba(255,185,95,0.28)}
+.quiz-arena.qi-stage-2 .quiz-question-card{border-color:rgba(255,180,171,0.32)}
+/* Timer escalation (§3/§10): grows in size per stage; shake becomes
+   CONTINUOUS only in the final stage so it doesn't get numbed out early —
+   stages 0/1 keep the existing calm opacity .urgent pulse (no shake) when
+   time is genuinely low. .stage-2.urgent (both classes) wins over the
+   plain .urgent rule below via specificity, combining a faster shake with
+   a stronger glow for the last few seconds of Overdrive. */
+.quiz-timer.stage-1{font-size:19px}
+.quiz-timer.stage-2{font-size:22px;animation:qiTimerShake .45s ease-in-out infinite}
+.quiz-timer.stage-2.urgent{animation:qiTimerShake .22s ease-in-out infinite;box-shadow:0 0 18px rgba(255,180,171,0.35)}
+@keyframes qiTimerShake{
+  0%,100%{transform:translate(0,0)}
+  20%{transform:translate(-2px,1px)}
+  40%{transform:translate(2px,-1px)}
+  60%{transform:translate(-1px,-2px)}
+  80%{transform:translate(1px,2px)}
+}
+@media (prefers-reduced-motion: reduce){
+  .quiz-timer.stage-2,.quiz-timer.stage-2.urgent{animation:none}
+}
+
+/* ── RESULTS SCREEN — esports match-summary treatment. `--rc` is set
+   inline (pass=secondary green / fail=error red) so the frame, rank badge
+   and glow all key off one value instead of scattered inline colors. */
+.results-wrap{max-width:520px;margin:0 auto;text-align:center;padding:40px 20px;position:relative}
 .results-emoji{font-size:72px;margin-bottom:16px;animation:popIn .5s cubic-bezier(.175,.885,.32,1.275)}
 @keyframes popIn{0%{transform:scale(.4);opacity:0}100%{transform:scale(1);opacity:1}}
 .results-title{font-family:var(--fh);font-size:32px;font-weight:900;margin-bottom:6px}
 .results-sub{font-size:13px;color:var(--text-muted);margin-bottom:28px;font-family:var(--fm);letter-spacing:.08em}
 .results-score-card{
-  background:rgba(35,31,56,0.85);border-radius:20px;padding:28px;margin-bottom:20px;
+  --rc:var(--secondary);
+  background:linear-gradient(165deg,rgba(40,36,62,0.9),rgba(28,25,46,0.9));
+  clip-path:polygon(0 0,calc(100% - 24px) 0,100% 24px,100% 100%,0 100%);
+  padding:32px 28px 28px;margin-bottom:20px;position:relative;overflow:hidden;
+  border:1px solid var(--border2);border-top:3px solid var(--rc);
+  box-shadow:0 0 40px -12px var(--rc),0 16px 48px rgba(0,0,0,0.3);
   backdrop-filter:blur(16px);
 }
-.results-big-score{font-family:var(--fh);font-size:64px;font-weight:900;line-height:1}
-.results-sub-score{font-family:var(--fm);font-size:12px;color:var(--text-muted);margin-top:4px}
-.results-rewards{display:flex;justify-content:center;gap:20px;margin-top:20px;padding-top:20px;border-top:1px solid var(--border)}
+.results-score-card::before{content:'';position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.02) 0 1px,transparent 1px 22px)}
+/* Rank badge — S/A/B/C/D esports-style grade, top-right corner of the
+   card, alongside the existing raw % score rather than replacing it. */
+.results-rank-badge{position:absolute;top:0;right:0;width:56px;height:56px;
+  clip-path:polygon(20px 0,100% 0,100% 100%,0 100%,0 20px);
+  background:var(--rc);color:#0e0d19;display:flex;align-items:center;justify-content:center;
+  font-family:var(--fm);font-size:24px;font-weight:900;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.results-big-score{font-family:var(--fm);font-size:64px;font-weight:900;line-height:1;position:relative}
+.results-sub-score{font-family:var(--fm);font-size:12px;color:var(--text-muted);margin-top:4px;position:relative}
+.results-bonus-row{margin-top:10px;font-size:12px;color:var(--tertiary);display:flex;gap:10px;justify-content:center;flex-wrap:wrap;position:relative}
+.results-bonus-chip{padding:4px 10px;clip-path:polygon(6px 0,100% 0,100% 100%,0 100%,0 6px);
+  background:rgba(255,185,95,0.1);border:1px solid rgba(255,185,95,0.25);font-family:var(--fm);font-weight:700}
+.results-rewards{display:flex;justify-content:center;gap:20px;margin-top:20px;padding-top:20px;border-top:1px solid var(--border);position:relative}
 .results-reward{text-align:center}
 .results-reward .val{font-family:var(--fh);font-size:22px;font-weight:900}
 .results-reward .lbl{font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-top:3px}
+/* Scoped so the app's shared .btn/.btn-primary/.btn-ghost look everywhere
+   else is untouched — only the two results-screen actions get the
+   clipped-corner esports treatment. */
+.results-wrap .btn{clip-path:polygon(10px 0,100% 0,100% 100%,0 100%,0 10px);border-radius:0}
 
 /* ── ADMIN SCREENS ── */
 .admin-table{width:100%;border-collapse:collapse}
@@ -916,7 +1468,10 @@ textarea{resize:vertical}
   .stat-grid{grid-template-columns:1fr 1fr}
   .lb-podium{grid-template-columns:1fr 1fr 1fr;gap:8px}
   .podium-av{width:40px;height:40px}
-  .quiz-side-panel{display:none}
+  .quiz-question-card{padding:24px}
+  .quiz-q-text{font-size:22px}
+  .quiz-mascot-dock{width:120px;height:120px}
+  .quiz-mascot-figure{width:104px;height:104px;font-size:52px}
 }
 
 /* ── QBUILDER ── */

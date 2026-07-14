@@ -26,6 +26,12 @@
    * @param {Object}  [opts]
    * @param {number}  [opts.count=30]
    * @param {string}  [opts.color='#d0bcff']
+   * @param {number}  [opts.speed=1] — drift-velocity multiplier. Added for
+   *   Improvement Plan §3 (Environmental Intensity System), which needs the
+   *   SAME backdrop to visibly speed up per quiz stage rather than standing
+   *   up a second particle system. Default of 1 reproduces the exact
+   *   original velocity, so every existing caller (dashboard hero, world
+   *   boss) is unaffected by this addition.
    * @returns {Function} stop — cancels the animation frame and resize listener
    */
   function startAmbientBackdrop(canvas, opts) {
@@ -39,6 +45,7 @@
     var color = opts.color || '#d0bcff';
     var baseAlpha = opts.alpha || 0.15;
     var dotSize = opts.dotSize || 1.5;
+    var speed = opts.speed || 1;
     var ctx = canvas.getContext('2d');
     var w, h;
 
@@ -53,7 +60,7 @@
     for (var i = 0; i < count; i++) {
       dots.push({
         x: Math.random() * w, y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.15, vy: (Math.random() - 0.5) * 0.15,
+        vx: (Math.random() - 0.5) * 0.15 * speed, vy: (Math.random() - 0.5) * 0.15 * speed,
       });
     }
 

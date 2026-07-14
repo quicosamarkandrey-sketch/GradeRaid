@@ -144,6 +144,12 @@ window.openQuizBuilder = function(editId = null, templateQuestions = null) {
         id: uid(), ownerTeacherId: currentUser.id, title: '', desc: '', xpReward: 100, coinReward: 50, timeLimit: 10,
         rarity: 'Common', cadence: 'standing', chainId: null, chainOrder: 1, chainLabel: '',
         startDate: null, endDate: null,
+        // Phase 3 (Improvement Plan §2) — per-stage per-question timer
+        // overrides. null in any slot means "use the shipped default for
+        // that stage" (see eqQuizStageSeconds() in utils.js) — a brand new
+        // quest starts fully on defaults until a teacher actually touches
+        // one of the three fields below.
+        stageTimers: [null, null, null],
         questions: (templateQuestions && Array.isArray(templateQuestions)) ? JSON.parse(JSON.stringify(templateQuestions)) : [],
       };
   draftQuizSections = ((DB.quizSectionAssignments && DB.quizSectionAssignments[draftQuiz.id]) || []).slice();
@@ -249,6 +255,21 @@ function renderQuizBuilderModal() {
         </select>
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Daily/weekly quests rotate — only some of the pool shows on the board at a time.</div>
       </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Per-Question Timer (sec) — Phase 3 escalation</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        ${['Warm-Up','Surge','Overdrive'].map((label, i) => `
+        <div>
+          <input type="number" id="qb-stage-time-${i}" class="form-control" min="1"
+            placeholder="${QUIZ_STAGE_DEFAULT_SECONDS[i]}"
+            value="${draftQuiz.stageTimers && draftQuiz.stageTimers[i] ? draftQuiz.stageTimers[i] : ''}"
+            style="width:100%"
+            oninput="if(!Array.isArray(draftQuiz.stageTimers))draftQuiz.stageTimers=[null,null,null];draftQuiz.stageTimers[${i}]=this.value?parseInt(this.value)||null:null;">
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;text-align:center">${label}</div>
+        </div>`).join('')}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Seconds per question in each stage. Leave a box blank to use the default shown as its placeholder. Questions auto-split into 3 stages by order (first third/second third/final third).</div>
     </div>
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
       <div class="form-group">
@@ -482,6 +503,15 @@ window.saveQuiz = async function() {
   // Phase 4 — chain fields sanitize: an empty/whitespace chainId is treated
   // as "not chained" (chainOrder/chainLabel become meaningless without it),
   // same defensive-default spirit as eqQuizChain()'s fallback in utils.js.
+  // Phase 3 — normalize stageTimers to exactly 3 slots, each either a
+  // positive integer override or null (meaning "use the shipped default").
+  // Guards against a slot never having been touched (undefined) or a
+  // stray non-numeric value making it into storage.
+  const rawStageTimers = Array.isArray(draftQuiz.stageTimers) ? draftQuiz.stageTimers : [];
+  draftQuiz.stageTimers = [0, 1, 2].map(i => {
+    const v = parseInt(rawStageTimers[i], 10);
+    return (Number.isFinite(v) && v > 0) ? v : null;
+  });
   draftQuiz.chainId = (draftQuiz.chainId && String(draftQuiz.chainId).trim()) || null;
   if (!draftQuiz.chainId) { draftQuiz.chainOrder = 1; draftQuiz.chainLabel = ''; }
   else if (!draftQuiz.chainOrder || draftQuiz.chainOrder < 1) draftQuiz.chainOrder = 1;

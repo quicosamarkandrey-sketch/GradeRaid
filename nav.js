@@ -62,6 +62,7 @@ const NAV_ADMIN=[
   {id:'a-starter-pack', label:'Starter Pack', icon:'redeem'},
   {id:'a-settings', label:'School Settings', icon:'settings'},
   {id:'a-content-oversight', label:'Content Oversight', icon:'travel_explore'},
+  {id:'a-mascot-lines', label:'Mascot Lines', icon:'theater_comedy'},
   {id:'a-audit-log', label:'Audit Log', icon:'fact_check'},
 ];
 // ISOLATION_ROLES_PLAN.md §10/§11 — items only the real oversight `admin`
@@ -71,7 +72,7 @@ const NAV_ADMIN=[
 // inside navTo() below — hiding a button from the sidebar is not access
 // control by itself, see save_dsm_settings()/promote_to_admin() etc. on the
 // SQL side for the actual enforcement.
-const ADMIN_ONLY_NAV_IDS = ['a-nav-manager', 'a-teachers', 'a-starter-pack', 'a-settings', 'a-content-oversight', 'a-audit-log'];
+const ADMIN_ONLY_NAV_IDS = ['a-nav-manager', 'a-teachers', 'a-starter-pack', 'a-settings', 'a-content-oversight', 'a-mascot-lines', 'a-audit-log'];
 function setupSidebar(){
   // Use dynamic nav config if available, else fall back to hardcoded arrays
   // AUTH FIX (post-Phase 33): teacher is staff too — only real students get
@@ -111,6 +112,18 @@ function dsmGetAdminNav(role){
   return (role==='admin') ? NAV_ADMIN : NAV_ADMIN.filter(t=>ADMIN_ONLY_NAV_IDS.indexOf(t.id)===-1);
 }
 function navTo(id){
+  // Phase 60 (exploit fix) — authoritative completion state, independent of
+  // navigation (Improvement Plan §7). Without this, a student could dodge
+  // the Abort-as-loss penalty entirely just by clicking a sidebar link (or
+  // hitting refresh) mid-quiz instead of tapping the Abort button — leaving
+  // NO history row at all, which is worse than an explicit abort, not
+  // better. abortQuiz()/finishQuiz() both null out activeQuiz BEFORE they
+  // call navTo() themselves, so this only fires for the "walked away
+  // without finishing" path, never for their own legitimate exit.
+  if (typeof activeQuiz !== 'undefined' && activeQuiz && typeof quizFinishing !== 'undefined' && !quizFinishing) {
+    abortQuiz();
+    return;
+  }
   // ROLE SPLIT defensive guard (ISOLATION_ROLES_PLAN.md §10/§11): even
   // though a teacher never sees an ADMIN_ONLY_NAV_IDS button rendered, a
   // stale bookmark/console call/back-button could still try to route here
@@ -184,6 +197,7 @@ function navTo(id){
   else if(id==='a-starter-pack') renderStarterPackEditor();
   else if(id==='a-settings') renderSchoolSettings();
   else if(id==='a-content-oversight') renderContentOversight();
+  else if(id==='a-mascot-lines') renderMascotLines();
   else if(id==='a-audit-log') renderAuditLog();
   showPage(id);
   // close sidebar on mobile

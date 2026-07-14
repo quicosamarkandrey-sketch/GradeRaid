@@ -608,6 +608,57 @@ function eqGradeAnswer(q, studentAns){
 window.eqGradeAnswer = eqGradeAnswer;
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  QUEST BOARD — Phase 3 (Improvement Plan §2/§4): 3-Stage Escalation +
+//  Per-Question Timer
+//
+//  Splits a quiz's questions into 3 stages — Warm-Up, Surge, Overdrive —
+//  purely by question ORDER (first third/second third/final third), so
+//  every existing quiz gets staged automatically with zero re-authoring.
+//  Each stage has its own per-question countdown (resets every item, not
+//  once per whole quiz). Defaults are 30/20/10 seconds; an admin can
+//  override any/all of them per-quiz via quiz.stageTimers (quiz-builder.js),
+//  and the system always falls back to the shipped default for any slot
+//  that isn't overridden — see eqQuizStageSeconds() below.
+// ═══════════════════════════════════════════════════════════════════════════
+const QUIZ_STAGE_DEFAULT_SECONDS = [30, 20, 10];
+const QUIZ_STAGE_NAMES = ['Warm-Up', 'Surge', 'Overdrive'];
+window.QUIZ_STAGE_DEFAULT_SECONDS = QUIZ_STAGE_DEFAULT_SECONDS;
+window.QUIZ_STAGE_NAMES = QUIZ_STAGE_NAMES;
+
+// Per-stage seconds-per-question for this quiz. quiz.stageTimers (if
+// present) is a 3-slot array of admin overrides; any missing/invalid slot
+// (undefined, 0, non-numeric) falls back to that slot's shipped default,
+// so a quiz that only overrode stage 3 doesn't lose its stage 1/2 defaults,
+// and a quiz saved before this feature existed (no stageTimers at all)
+// behaves identically to the shipped 30/20/10.
+function eqQuizStageSeconds(quiz){
+  const overrides = (quiz && Array.isArray(quiz.stageTimers)) ? quiz.stageTimers : [];
+  return QUIZ_STAGE_DEFAULT_SECONDS.map((def, i) => {
+    const v = parseInt(overrides[i], 10);
+    return (Number.isFinite(v) && v > 0) ? v : def;
+  });
+}
+window.eqQuizStageSeconds = eqQuizStageSeconds;
+
+// Which stage (0=Warm-Up, 1=Surge, 2=Overdrive) a question index belongs
+// to, given the quiz's total question count. Splits into 3 contiguous
+// chunks as evenly as possible for n>=3. Degrades sensibly for very short
+// quizzes: 1 question stays in stage 0; 2 questions go stage 0 then stage
+// 2, so even a tiny quiz still feels like it escalates rather than sitting
+// in Warm-Up the whole time.
+function eqQuestionStage(totalQuestions, qIndex){
+  const n = Math.max(1, totalQuestions | 0);
+  if (n === 1) return 0;
+  if (n === 2) return qIndex === 0 ? 0 : 2;
+  const stage = Math.floor((qIndex / n) * 3);
+  return Math.min(2, Math.max(0, stage));
+}
+window.eqQuestionStage = eqQuestionStage;
+
+function eqStageName(stageIdx){ return QUIZ_STAGE_NAMES[stageIdx] || QUIZ_STAGE_NAMES[0]; }
+window.eqStageName = eqStageName;
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  QUEST BOARD — Rarity & Cadence Helpers  (Phase 3: content variety §3.4/§3.2)
 //  A quest can carry a `rarity` (reusing the exact Common→Mythic palette
 //  already built for Achievements — window.ACH_RARITY/ACH_RARITIES in
@@ -773,19 +824,289 @@ function eqComboMultiplier(streak){
 }
 window.eqComboMultiplier = eqComboMultiplier;
 
-// eqRetryMultiplier(attemptNumber) — Decision (quest_board_report.md §7):
-// "unlimited retries, reduced reward" — first attempt earns full reward,
-// each retry after that earns progressively less so there's still real
-// incentive to get it right the first time, but a struggling student is
-// never locked out.
+// eqIsComboMilestone(streak) — Phase 6 (Improvement Plan §5: "Milestone
+// bursts: at streaks like x3, x5, x10 — a distinct particle/pop animation").
+// x3 and x5 are one-off call-outs; from x10 on, every +5 (x10, x15, x20...)
+// keeps re-celebrating a long run instead of going quiet after the first
+// couple of milestones. Used by quizNext() (index.html) to decide whether
+// THIS specific grow should also fire a particle burst, not just the pop.
+function eqIsComboMilestone(streak){
+  return streak === 3 || streak === 5 || (streak >= 10 && streak % 5 === 0);
+}
+window.eqIsComboMilestone = eqIsComboMilestone;
+
+// eqQuizPassed(score) — single source of truth for the pass/fail threshold,
+// used by both the quiz runner's own results screen (finishQuiz()) and the
+// Quest Board's node-state treatment (renderStudentQuizzes()) so the two
+// can never quietly disagree about what counts as a "pass."
+function eqQuizPassed(score){ return score >= 60; }
+window.eqQuizPassed = eqQuizPassed;
+
+// eqQuestStars(score) — Phase 61 (Improvement Plan §8: "Star/medal rating
+// per quest based on performance — gives a non-exploitable reason to feel
+// good about a quest without re-answering it for free score"). Purely a
+// display rating derived from the already-stored score; it grants nothing
+// and unlocks nothing, so there's no incentive to replay a passed quiz
+// just to chase a star. Thresholds sit above eqQuizPassed()'s 60% floor —
+// a bare pass is 1 star, not a full sweep.
+function eqQuestStars(score){
+  score = score || 0;
+  if (score >= 90) return 3;
+  if (score >= 75) return 2;
+  if (score >= 60) return 1;
+  return 0;
+}
+window.eqQuestStars = eqQuestStars;
+
+// eqStreakFireTier(streakCount) — Phase 61 (Improvement Plan §8: "streak-fire
+// visual for consecutive quest completions"). Maps the day streak to one of
+// three CSS animation tiers (renderStudentQuizzes() sets this as
+// data-streak-tier on the Day Streak hero-stat-pill): 'cold' has no flicker
+// at all (streak hasn't started or just broke), 'warm' is a gentle flicker
+// from day 1, 'hot' kicks in at a week+ to reward sustained streaks with a
+// visibly bigger, warmer flame instead of the same animation forever.
+function eqStreakFireTier(streakCount){
+  streakCount = streakCount || 0;
+  if (streakCount >= 7) return 'hot';
+  if (streakCount >= 1) return 'warm';
+  return 'cold';
+}
+window.eqStreakFireTier = eqStreakFireTier;
+
+// eqRetryMultiplier(attemptNumber) — Phase 60 (exploit fix — Improvement
+// Plan §7). Superseded the old "unlimited retries, ever-shrinking reward"
+// curve: 100% / 65% / 40% / 25% flat floor. Attempt 4 and anything that
+// manages to run after it (post-cooldown or via teacher override — see
+// eqQuizAttemptStatus() below) all earn the same 25% floor; there is
+// still real incentive to nail it early, but nothing ever pays out 0%
+// just for being a later attempt.
 function eqRetryMultiplier(attemptNumber){
   attemptNumber = attemptNumber || 1;
   if (attemptNumber <= 1) return 1;
-  if (attemptNumber === 2) return 0.7;
-  if (attemptNumber === 3) return 0.5;
-  return 0.35;
+  if (attemptNumber === 2) return 0.65;
+  if (attemptNumber === 3) return 0.40;
+  return 0.25;
 }
 window.eqRetryMultiplier = eqRetryMultiplier;
+
+// Phase 60 (exploit fix) — hard cap of 4 scored attempts per quiz. Every
+// CLOSED attempt counts toward this counter, whether it finished (pass or
+// fail) or was aborted — see finishQuiz()/abortQuiz() in index.html, both
+// of which push a row into DB.quizHistory[studentId]. Switching between
+// "answer badly on purpose" and "abort" can't dodge the cap either way.
+const QUIZ_MAX_SCORED_ATTEMPTS = 4;
+const QUIZ_LOCK_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24h, per the plan's suggested default
+window.QUIZ_MAX_SCORED_ATTEMPTS = QUIZ_MAX_SCORED_ATTEMPTS;
+
+// eqQuizAttemptStatus(quizId, studentId) → whether a NEW attempt may start
+// right now, and what attempt number it would be.
+//   { allowed:true,  attemptNumber } — free to start (attempts 1-4, or the
+//                                      cooldown has elapsed, or an override
+//                                      is on file)
+//   { allowed:false, attemptNumber, cooldownEndsAt } — locked; show the
+//                                      remaining wait / ask-a-teacher copy
+// Phase 63 (exploit fix — closes the gap Phase 60 left open). Phase 60's cap
+// + 24h cooldown only ever slowed farming down: attempt 4 and every attempt
+// after it, forever, still paid out a flat 25% of XP/coins once the
+// cooldown elapsed — including on a quiz the student had already cleared
+// with a perfect score. That's an infinite (if slow) source of reward.
+// A genuine 100% clear is now a permanent stop, not just another cooldown
+// tier — no countdown, no auto-unlock, no re-farming. Aborted attempts
+// (h.aborted) never count toward this: an abandoned run that happened to
+// have several correct answers locked in before quitting must not trigger
+// a lock the student never actually earned. A teacher override still wins
+// over the lock (same escape hatch as the cap below), for the rare case a
+// teacher deliberately wants a student to redo an already-perfected quiz.
+function eqQuizHasPerfected(quizId, studentId){
+  const history = ((DB.quizHistory || {})[studentId] || []).filter(h => h.quizId === quizId);
+  return history.some(h => !h.aborted && h.score === 100);
+}
+window.eqQuizHasPerfected = eqQuizHasPerfected;
+
+function eqQuizAttemptStatus(quizId, studentId){
+  const history = ((DB.quizHistory || {})[studentId] || []).filter(h => h.quizId === quizId);
+  const attemptsSoFar = history.length;
+  const nextAttemptNumber = attemptsSoFar + 1;
+  const overrides = (DB.quizAttemptOverrides || {})[studentId] || {};
+
+  if (eqQuizHasPerfected(quizId, studentId) && !overrides[quizId]) {
+    return { allowed: false, attemptNumber: nextAttemptNumber, locked: true, perfected: true };
+  }
+  if (attemptsSoFar < QUIZ_MAX_SCORED_ATTEMPTS) {
+    return { allowed: true, attemptNumber: nextAttemptNumber, locked: false };
+  }
+  if (overrides[quizId]) {
+    return { allowed: true, attemptNumber: nextAttemptNumber, locked: false, viaOverride: true };
+  }
+  const last = history[history.length - 1];
+  const lastAt = last ? new Date(last.completedAt).getTime() : 0;
+  const cooldownEndsAt = lastAt + QUIZ_LOCK_COOLDOWN_MS;
+  if (Date.now() >= cooldownEndsAt) {
+    return { allowed: true, attemptNumber: nextAttemptNumber, locked: false };
+  }
+  return { allowed: false, attemptNumber: nextAttemptNumber, locked: true, cooldownEndsAt };
+}
+window.eqQuizAttemptStatus = eqQuizAttemptStatus;
+
+// eqFormatCooldown(msRemaining) → "2h 14m" / "14m" — small display helper
+// for the quest board's locked state and the blocked-start toast.
+function eqFormatCooldown(msRemaining){
+  const mins = Math.max(1, Math.ceil(msRemaining / 60000));
+  const hrs = Math.floor(mins / 60), rem = mins % 60;
+  return hrs > 0 ? `${hrs}h ${rem}m` : `${rem}m`;
+}
+window.eqFormatCooldown = eqFormatCooldown;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  QUEST BOARD — Phase 7: Mascot / Narrator (Improvement Plan §6, §12 item 7)
+//
+//  Builds on the Phase 4 mascot dock (placeholder orb) and the Phase 3
+//  stage backbone (stageIdx). This section is pure data/logic — the actual
+//  DOM wiring (fireMascotEvent, updateMascotAmbientMood) lives in index.html
+//  next to renderQuizQuestion(), same split as every other quiz-runner
+//  helper in this file.
+//
+//  EMOTION LIBRARY — exactly the 9 poses from §6's trigger table.
+// ═══════════════════════════════════════════════════════════════════════════
+const MASCOT_EMOTIONS = ['idle','confident','hyped','nervous','scared','hiding','relieved','sad','determined'];
+window.MASCOT_EMOTIONS = MASCOT_EMOTIONS;
+
+// Emoji sprite per emotion — matches the app's existing emoji-illustration
+// convention (Command Center hero, Quest Board nodes, results screen 🏆/💀)
+// rather than standing up a bespoke SVG art pipeline for one component.
+const MASCOT_EMOJI = {
+  idle:       '🐲',
+  confident:  '😎',
+  hyped:      '🤩',
+  nervous:    '😅',
+  scared:     '😱',
+  hiding:     '🙈',
+  relieved:   '😌',
+  sad:        '🥺',
+  determined: '💪',
+};
+window.MASCOT_EMOJI = MASCOT_EMOJI;
+
+// Default line pools (§6: "ships with a default line pool for every event
+// out of the box"). Admin-authored lines (MascotLinesService, see
+// modules/shared/mascot-lines-service.js) are concatenated ON TOP of these
+// in eqMascotLinePool() below — never a replacement — so a partially-
+// customized set never leaves an event with nothing to say.
+//
+// Shape: events that escalate personality by stage (correct/wrong/lowTime)
+// are keyed 0/1/2; stageTransition is keyed by the STAGE BEING ENTERED (1
+// or 2 — there's no "transition into stage 0"); everything else is a flat
+// array.
+const MASCOT_DEFAULT_LINES = {
+  start: [
+    "Let's do this!", "Ready when you are!", "Deep breath — here we go!",
+    "New quest, who dis?", "I believe in you!", "Let's make it count!",
+  ],
+  retry: [
+    "Round two — let's go!", "We learn, we adapt, we conquer.",
+    "Rolling up my sleeves for this one.", "This time's the one!",
+    "Shake it off, here we go again!",
+  ],
+  correct: {
+    0: ["Nice one!", "Yes! Exactly right.", "Smooth!", "You've got this rhythm.", "Clean answer!"],
+    1: ["Yes! Keep it up!", "Boom! Right again!", "You're on fire!", "Nailed it — don't stop now!"],
+    2: ["YES! INCREDIBLE!", "WOW — no hesitation!", "You're UNSTOPPABLE!", "That's how it's done!!"],
+  },
+  wrong: {
+    0: ["Ah, not quite — shake it off!", "So close! Next one's yours.", "No worries, keep going!"],
+    1: ["Whew, tricky one — you got this!", "It's okay! Stay focused.", "Shake it off, eyes forward!"],
+    2: ["Yikes! But we push through!", "It's alright — don't panic!", "Deep breath, next one!"],
+  },
+  milestone: [
+    "COMBO! You're on a roll!!", "Unstoppable streak!!", "Look at you go!!",
+    "That's a hot streak!", "Keep the fire burning!!",
+  ],
+  stageTransition: {
+    1: ["Ooh, things are heating up...", "Here comes Surge — stay sharp!", "Gear two, engage!"],
+    2: ["Uh oh... Overdrive incoming!!", "Hang on tight — final gauntlet!", "This is it — give it everything!"],
+  },
+  lowTime: {
+    0: ["Tick tock, almost there!", "Clock's ticking — you got this!"],
+    1: ["Time's running low — hurry!", "Careful, the clock's closing in!"],
+    2: ["TIME'S ALMOST UP!! GO GO GO!", "SO LITTLE TIME LEFT!!"],
+  },
+  pass: [
+    "You did it! I'm so proud!", "Quest complete — amazing work!",
+    "That's what I call a victory!", "You crushed it!",
+  ],
+  fail: [
+    "Aw, not this time — but you'll get it!", "Every attempt makes you stronger.",
+    "Don't worry, we'll get 'em next time.", "Chin up, champ — try again soon!",
+  ],
+};
+window.MASCOT_DEFAULT_LINES = MASCOT_DEFAULT_LINES;
+
+// eqMascotLinePool(event, stageKey) — default pool + any admin-authored
+// lines layered on top. window._eqMascotCustomLines is populated once per
+// session by MascotLinesService.get() (see startQuiz() in index.html);
+// it's simply {} (never undefined/null) until that resolves or if it
+// fails, so this always degrades gracefully to defaults-only.
+function eqMascotLinePool(event, stageKey){
+  const def = MASCOT_DEFAULT_LINES[event];
+  const defPool = (stageKey === undefined || stageKey === null)
+    ? (Array.isArray(def) ? def : [])
+    : ((def && def[stageKey]) || []);
+  const customRoot = (window._eqMascotCustomLines && window._eqMascotCustomLines[event]) || null;
+  const customPool = (stageKey === undefined || stageKey === null)
+    ? (Array.isArray(customRoot) ? customRoot : [])
+    : ((customRoot && customRoot[stageKey]) || []);
+  return defPool.concat(customPool.filter(l => l && String(l).trim()));
+}
+window.eqMascotLinePool = eqMascotLinePool;
+
+// eqMascotLine(event, stageKey) — picks one line at random from whatever
+// pool applies (§6: "picked at random... so it doesn't repeat identically
+// every time"). Returns '' if somehow both default and custom pools are
+// empty (never happens for shipped events, but stageTransition/lowTime
+// keys are only ever 0/1/2 or 1/2 — a bad key just yields no line, not
+// an error).
+function eqMascotLine(event, stageKey){
+  const pool = eqMascotLinePool(event, stageKey);
+  if (!pool.length) return '';
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+window.eqMascotLine = eqMascotLine;
+
+// eqMascotEmotionFor(event, opts) — §6's trigger table, condensed to one
+// lookup per ACUTE event (an answer just landed, a stage just changed,
+// etc). Ambient/idle body-pose (no event firing) is handled separately by
+// updateMascotAmbientMood() in index.html, since that one needs live
+// timer state, not just a one-shot event name.
+function eqMascotEmotionFor(event, opts){
+  opts = opts || {};
+  switch (event) {
+    case 'start':           return 'idle';
+    case 'retry':           return 'determined';
+    case 'correct':         return (opts.stageIdx >= 1) ? 'hyped' : 'confident';
+    case 'milestone':       return 'hyped';
+    case 'wrong':           return (opts.stageIdx >= 2) ? 'scared' : 'nervous';
+    case 'stageTransition': return 'hiding';
+    case 'lowTime':         return (opts.stageIdx >= 2) ? 'scared' : 'nervous';
+    case 'pass':            return 'relieved';
+    case 'fail':            return 'sad';
+    default:                return 'idle';
+  }
+}
+window.eqMascotEmotionFor = eqMascotEmotionFor;
+
+// eqGrantQuizAttemptOverride(studentId, quizId) — the "teacher/parent
+// override to unlock early" escape hatch from the plan. One-time use: it's
+// deleted the moment the student actually starts the next attempt with it
+// (see startQuiz() in index.html), so it can't be granted once and quietly
+// remove the cap forever.
+function eqGrantQuizAttemptOverride(studentId, quizId){
+  DB = loadDB();
+  if (!DB.quizAttemptOverrides) DB.quizAttemptOverrides = {};
+  if (!DB.quizAttemptOverrides[studentId]) DB.quizAttemptOverrides[studentId] = {};
+  DB.quizAttemptOverrides[studentId][quizId] = true;
+  saveDB();
+}
+window.eqGrantQuizAttemptOverride = eqGrantQuizAttemptOverride;
 
 // eqQuizChain(q) → { chainId, chainOrder, chainLabel } — normalizes the
 // three chain fields with safe defaults, same defensive-fallback style as

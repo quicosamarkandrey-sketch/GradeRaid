@@ -196,7 +196,7 @@
     <div id="s-dashboard" class="page"></div>
     <div id="s-my-section" class="page"></div>
     <div id="s-quizzes" class="page"></div>
-    <div id="s-quiz-active" class="page" style="padding:28px"></div>
+    <div id="s-quiz-active" class="page quiz-page-wide" style="padding:28px"></div>
     <div id="s-store" class="page"></div>
     <div id="s-inventory" class="page"></div>
     <div id="s-leaderboard" class="page"></div>
@@ -230,6 +230,7 @@
     <div id="a-starter-pack" class="page"></div>
     <div id="a-settings" class="page"></div>
     <div id="a-content-oversight" class="page"></div>
+    <div id="a-mascot-lines" class="page"></div>
     <div id="a-audit-log" class="page"></div>
 
   </div>
@@ -725,6 +726,11 @@ AppStore.ready.then(function () {
 <script src="./modules/shared/particles.js"></script>
 <script src="./modules/shared/ambient-backdrop.js"></script>
 <script src="./modules/shared/quick-jump.js"></script>
+<!-- Phase 7 — Mascot / Narrator (Improvement Plan §6, §12 item 7): line-pool
+     service. Lives with the other shared modules (not modules/admin/) because
+     it's called by BOTH the admin editor below AND the student quiz runner
+     (see startQuiz() hydrating window._eqMascotCustomLines). -->
+<script src="./modules/shared/mascot-lines-service.js"></script>
 
 <!-- ─────────────────────────────────────────────────────────────────────────
      PHASE 3 MODULE WIRING — Day 1: Mail (modules/mail/)
@@ -863,6 +869,7 @@ AppStore.ready.then(function () {
 <script src="./modules/admin/teacher-directory.js"></script>
 <script src="./modules/admin/content-oversight-service.js"></script>
 <script src="./modules/admin/content-oversight.js"></script>
+<script src="./modules/admin/mascot-lines.js"></script>
 <script src="./modules/admin/starter-pack-service.js"></script>
 <script src="./modules/admin/starter-pack-editor.js"></script>
 <script src="./modules/admin/teacher-invite-service.js"></script>
@@ -1163,23 +1170,34 @@ function _questRarityStyle(q){
 // "Hot Quest"/"New" badge (qi===0 ? ... : ...) with something actually
 // meaningful: the quest's real rarity, plus a cadence tag when it's a
 // rotating daily/weekly pick.
-function renderQuestCard(q, qi, cadenceTag){
+// Visual-polish pass — `isNext` marks the single most relevant open quest
+// (computed once in renderStudentQuizzes) so it gets a pulsing outline and
+// a "START HERE" flag instead of making the student scan the whole board.
+const QUEST_TIER_ORDER = ['Common','Uncommon','Rare','Epic','Legendary','Mythic'];
+function renderQuestCard(q, qi, cadenceTag, isNext){
   const rs = _questRarityStyle(q);
   // Phase 5 — "ending soon" nudge (quest_board_report.md §18): only shown
   // once a scheduled quiz is within 3 days of its endDate, real urgency
   // instead of noise on every quest that merely has a far-off end date.
   const daysLeft = (q.endDate && typeof eqDaysUntil === 'function') ? eqDaysUntil(q.endDate) : null;
   const endingSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 3;
+  // Difficulty read — sword-tier row derived from the quest's own rarity,
+  // an at-a-glance "power level" cue (1 sword = Common ... 5 = Mythic).
+  const tierIdx = Math.max(0, QUEST_TIER_ORDER.indexOf(rs.rarity));
+  const swordRow = QUEST_TIER_ORDER.slice(0,5).map((_,i)=>
+    `<span class="material-symbols-outlined${i<=tierIdx?' lit':''}">swords</span>`).join('');
   return `
-    <div class="quest-card" onclick="startQuiz('${q.id}')">
+    <div class="quest-card state-available${isNext ? ' quest-next' : ''}" style="--rc:${rs.color};--rg:${rs.glow}" onclick="startQuiz('${q.id}')">
+      ${isNext ? `<div class="quest-next-flag"><span class="material-symbols-outlined" style="font-size:11px">bolt</span>Start Here</div>` : ''}
       <div class="quest-img-wrap">
         <div class="quest-img-placeholder">${['🧬','🔢','🌍','⚗️','💻','🔭','📐','🦠'][qi%8]}</div>
-        <div class="quest-badge" style="background:${rs.glow};color:${rs.color};border:1px solid ${rs.color}">${cadenceTag ? cadenceTag+' · ' : ''}${rs.rarity}</div>
-        ${endingSoon ? `<div class="quest-badge" style="right:auto;left:12px;background:rgba(255,180,171,.18);color:#ffb4ab;border:1px solid #ffb4ab">⏳ Ends in ${daysLeft===0?'<1':daysLeft}d</div>` : ''}
+        <div class="quest-badge">${cadenceTag ? cadenceTag+' · ' : ''}${rs.rarity}</div>
+        ${endingSoon ? `<div class="quest-badge ending-soon">⏳ Ends in ${daysLeft===0?'<1':daysLeft}d</div>` : ''}
       </div>
       <div class="quest-body">
         <div class="quest-title">${q.title}</div>
         <div class="quest-desc">${q.desc}</div>
+        <div class="quest-difficulty">${swordRow}<span class="tier-label">${rs.rarity}</span></div>
         <div class="quest-meta">
           <div class="quest-rewards">
             <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
@@ -1204,10 +1222,10 @@ function renderChainStepCard(q, status, stepIndex){
   const clickAttr = status==='unlocked' ? `onclick="startQuiz('${q.id}')"` : '';
   const stateIcon = status==='done' ? '✅' : status==='unlocked' ? '⚔' : '🔒';
   return `
-    <div class="quest-card chain-step chain-${status}" ${clickAttr}>
+    <div class="quest-card chain-step chain-${status}" style="--rc:${rs.color};--rg:${rs.glow}" ${clickAttr}>
       <div class="quest-img-wrap">
         <div class="quest-img-placeholder">${stateIcon}</div>
-        <div class="quest-badge" style="background:${rs.glow};color:${rs.color};border:1px solid ${rs.color}">Part ${stepIndex+1} · ${rs.rarity}</div>
+        <div class="quest-badge">Part ${stepIndex+1} · ${rs.rarity}</div>
       </div>
       <div class="quest-body">
         <div class="quest-title">${q.title}</div>
@@ -1227,18 +1245,37 @@ function renderChainStepCard(q, status, stepIndex){
 }
 
 // Phase 4 — one row per chain: title + progress dots + the step cards.
+// Phase 61 (Improvement Plan §8) — steps now render in a dedicated
+// .chain-row (flex, not the general auto-fill .quest-grid) with a
+// .chain-trail connector between each pair, so the chain reads as a lit
+// path from "cleared" through the current step and on to what's still
+// locked — the closest fit for the plan's "path/trail animation" bullet
+// given this board is card-based rather than a literal node map (see the
+// campaign module's stage-map for that literal version elsewhere in the
+// app). A trail segment is 'lit' once the step BEFORE it is cleared, and
+// gets the traveling shimmer ('next') on the segment leading into the
+// first not-yet-cleared step — everything past that stays dim/locked.
 function renderChainSection(chain){
   const st = currentUser;
   const completedIds = st.completedQuizzes || [];
   const doneCount = chain.quizzes.filter(q=>completedIds.includes(q.id)).length;
+  const statuses = chain.quizzes.map(q => eqChainStatus(chain.quizzes, q.id, completedIds));
+  let firstUnlockedIdx = statuses.indexOf('unlocked');
   return `
   <div class="section-header" style="margin-top:12px">
     <span class="material-symbols-outlined" style="color:var(--tertiary)">link</span>
     <h2>${_esc(chain.chainLabel)}</h2>
     <span class="badge-pill bp-primary">${doneCount}/${chain.quizzes.length} parts cleared</span>
   </div>
-  <div class="quest-grid">
-    ${chain.quizzes.map((q,i)=>renderChainStepCard(q, eqChainStatus(chain.quizzes, q.id, completedIds), i)).join('')}
+  <div class="chain-row">
+    ${chain.quizzes.map((q,i)=>{
+      const card = renderChainStepCard(q, statuses[i], i);
+      if (i === 0) return card;
+      const prevDone = statuses[i-1] === 'done';
+      const trailClass = prevDone ? 'chain-trail lit' : 'chain-trail';
+      const isNextSegment = firstUnlockedIdx !== -1 && i === firstUnlockedIdx;
+      return `<div class="${trailClass}${isNextSegment ? ' next' : ''}"></div>${card}`;
+    }).join('')}
   </div>`;
 }
 
@@ -1326,6 +1363,11 @@ function renderStudentQuizzes(){
   const pendingWeekly   = pending.filter(q => eqQuizCadence(q) === 'weekly' && q.id === weeklyId && !isChained(q) && !isScheduledOut(q));
   const availableToday  = pendingStanding.length + pendingDaily.length + pendingWeekly.length;
 
+  // Visual-polish pass — pick exactly one "next up" quest (daily first,
+  // then weekly, then the first standing quest) so the board has a clear
+  // starting point instead of every open card competing for attention.
+  const nextUpId = (pendingDaily[0] || pendingWeekly[0] || pendingStanding[0] || {}).id || null;
+
   // Phase 4 — chains visible to this student, built from the same
   // section-scoped quiz set as everything else on the board (a chain step
   // hidden from this section never shows up as a locked placeholder).
@@ -1354,8 +1396,8 @@ function renderStudentQuizzes(){
           <div class="val" style="color:var(--secondary)">${done.length}</div>
           <div class="lbl">Completed</div>
         </div>
-        <div class="hero-stat-pill">
-          <div class="val" style="color:var(--tertiary)">🔥 ${questStreak.current}</div>
+        <div class="hero-stat-pill" data-streak-tier="${eqStreakFireTier(questStreak.current)}">
+          <div class="val" style="color:var(--tertiary)"><span class="streak-flame">🔥</span> ${questStreak.current}</div>
           <div class="lbl">Day Streak</div>
         </div>
       </div>
@@ -1371,7 +1413,7 @@ function renderStudentQuizzes(){
     <span class="badge-pill bp-primary">${pendingDaily.length} today</span>
   </div>
   <div class="quest-grid">
-    ${pendingDaily.map((q,qi)=>renderQuestCard(q,qi,'☀️ Daily')).join('')}
+    ${pendingDaily.map((q,qi)=>renderQuestCard(q,qi,'☀️ Daily',q.id===nextUpId)).join('')}
   </div>` : ''}
 
   ${pendingWeekly.length ? `
@@ -1381,7 +1423,7 @@ function renderStudentQuizzes(){
     <span class="badge-pill bp-primary">${pendingWeekly.length} this week</span>
   </div>
   <div class="quest-grid">
-    ${pendingWeekly.map((q,qi)=>renderQuestCard(q,qi,'🗓️ Weekly')).join('')}
+    ${pendingWeekly.map((q,qi)=>renderQuestCard(q,qi,'🗓️ Weekly',q.id===nextUpId)).join('')}
   </div>` : ''}
 
   ${pendingStanding.length ? `
@@ -1391,7 +1433,7 @@ function renderStudentQuizzes(){
     <span class="badge-pill bp-primary">${pendingStanding.length} available</span>
   </div>
   <div class="quest-grid">
-    ${pendingStanding.map((q,qi)=>renderQuestCard(q,qi,null)).join('')}
+    ${pendingStanding.map((q,qi)=>renderQuestCard(q,qi,null,q.id===nextUpId)).join('')}
   </div>` : ''}
 
   ${chains.map(chain=>renderChainSection(chain)).join('')}
@@ -1403,43 +1445,108 @@ function renderStudentQuizzes(){
     <div style="color:var(--text-muted);font-size:14px">Awaiting new missions from your instructor.</div>
   </div>` : ''}
 
-  ${done.length ? `
+  ${done.length ? (() => {
+    // Phase 2 (Quest Board state clarity) — precompute state counts so the
+    // section header itself doesn't imply every "done" item was a win.
+    const historyAll = (DB.quizHistory||{})[st.id]||[];
+    let passedCount = 0, retryCount = 0;
+    done.forEach(q => {
+      const scored = historyAll.filter(h=>h.quizId===q.id && !h.aborted);
+      const everPassed = scored.some(h => (typeof h.passed==='boolean') ? h.passed : eqQuizPassed(h.score));
+      if (everPassed) passedCount++; else retryCount++;
+    });
+    return `
   <div class="section-header" style="margin-top:12px">
     <span class="material-symbols-outlined" style="color:var(--secondary)">verified</span>
     <h2 style="color:var(--secondary)">Completed Quests</h2>
-    <span class="badge-pill bp-green">${done.length} cleared</span>
+    <span class="badge-pill bp-green">${passedCount} cleared</span>
+    ${retryCount ? `<span class="badge-pill" style="background:rgba(255,185,95,.12);color:#ffb95f;border:1px solid rgba(255,185,95,.3)">${retryCount} need a retry</span>` : ''}
   </div>
   <div class="completed-list">
     ${done.map(q=>{
       const history=(DB.quizHistory||{})[st.id]||[];
       const attemptsForQuiz=history.filter(h=>h.quizId===q.id);
-      const entry=attemptsForQuiz[attemptsForQuiz.length-1];
+      // Phase 60 (exploit fix) — an aborted attempt logs a row too (so it
+      // counts toward the cap) but shouldn't overwrite the displayed score
+      // with a 0% from walking away; show the most recent SCORED (non-abort)
+      // attempt instead.
+      const scoredAttempts=attemptsForQuiz.filter(h=>!h.aborted);
+      const entry=scoredAttempts[scoredAttempts.length-1];
       const scoreDisplay=entry?entry.score+'%':'✓';
-      // Phase 4 — retry with escalating stakes (quest_board_report.md §7):
-      // unlimited retries stay available from the completed list, but
-      // each one is tagged with the reduced reward the NEXT attempt would
-      // earn so the tradeoff is visible before a student commits to it.
-      const nextAttemptNum = attemptsForQuiz.length + 1;
-      const nextMult = (typeof eqRetryMultiplier==='function') ? eqRetryMultiplier(nextAttemptNum) : 1;
+      // Phase 60 — hard cap of 4 scored attempts + 24h cooldown / teacher
+      // override gate (Improvement Plan §7), replacing the old unlimited-
+      // retry footer. The reward % shown is what the NEXT attempt would
+      // actually earn, so the tradeoff is visible before committing to it.
+      const gate = (typeof eqQuizAttemptStatus==='function') ? eqQuizAttemptStatus(q.id, st.id) : {allowed:true, attemptNumber:attemptsForQuiz.length+1};
+      const nextMult = (typeof eqRetryMultiplier==='function') ? eqRetryMultiplier(gate.attemptNumber) : 1;
+
+      // Phase 2 (Quest Board state clarity) — a quiz reaches "done" the
+      // moment ANY attempt finishes, pass or fail (see finishQuiz()), so
+      // "completed" alone was conflating two very different outcomes under
+      // one identical green checkmark. Four distinct node states now:
+      //   perfected       — Phase 63: cleared with a 100% score at least
+      //                     once. Permanently done — no retry, ever (closes
+      //                     the infinite XP/coin farming exploit; see
+      //                     eqQuizAttemptStatus() in utils.js).
+      //   passed          — cleared it at least once, never a perfect score;
+      //                     stamped/sealed, but still retryable to chase 100%.
+      //   retry-available — attempted, never yet passed; still open, not a win.
+      //   locked          — hit the hard attempt cap; cooling down (or needs
+      //                     a teacher/parent override) before trying again.
+      const hasEverPerfected = scoredAttempts.some(h => h.score === 100);
+      const hasEverPassed = scoredAttempts.some(h => (typeof h.passed === 'boolean') ? h.passed : eqQuizPassed(h.score));
+      const state = hasEverPerfected ? 'perfected' : hasEverPassed ? 'passed' : (gate.allowed ? 'retry' : 'locked');
+
+      const stateMeta = {
+        perfected: { rowClass:'state-perfected', icon:'workspace_premium', badge:'★ PERFECTED · QUEST COMPLETE' },
+        passed: { rowClass:'state-passed', icon:'military_tech', badge:'✓ QUEST CLEARED' },
+        retry:  { rowClass:'state-retry',  icon:'flag',          badge:'⚠ RETRY AVAILABLE' },
+        locked: { rowClass:'state-locked', icon:'lock_clock',    badge:`🔒 LOCKED · back in ${eqFormatCooldown(gate.cooldownEndsAt-Date.now())}` },
+      }[state];
+
+      const retryControl = state === 'perfected'
+        ? `<button class="btn btn-ghost btn-sm" style="flex-shrink:0;opacity:.6;cursor:not-allowed" disabled title="Perfect score achieved — nothing left to earn here">★ Completed</button>`
+        : state === 'passed'
+        ? `<button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="event.stopPropagation();startQuiz('${q.id}')" title="Retry for ${Math.round(nextMult*100)}% reward">↻ Retry (${Math.round(nextMult*100)}%)</button>`
+        : state === 'retry'
+        ? `<button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="event.stopPropagation();startQuiz('${q.id}')" title="Retry for ${Math.round(nextMult*100)}% reward">↻ Retry (${Math.round(nextMult*100)}%)</button>`
+        : `<button class="btn btn-ghost btn-sm" style="flex-shrink:0;opacity:.6;cursor:not-allowed" disabled title="Locked — back in ${eqFormatCooldown(gate.cooldownEndsAt-Date.now())}, or ask your teacher to unlock it early">🔒 Locked</button>`;
+      // Phase 61 (Improvement Plan §8) — star rating uses the student's own
+      // BEST scored attempt, not the latest one, so a worse retry never
+      // takes a star away from a genuinely earned run.
+      const bestScore = scoredAttempts.length ? Math.max(...scoredAttempts.map(h => h.score)) : 0;
+      const starCount = (state === 'passed' || state === 'perfected') ? eqQuestStars(bestScore) : 0;
+      const starsHtml = (state === 'passed' || state === 'perfected')
+        ? `<div class="quest-stars">${Array.from({length:3}, (_,i)=>`<span class="quest-star${i<starCount?' filled':''}">★</span>`).join('')}</div>`
+        : '';
       return `
-    <div class="completed-row">
-      <div class="completed-icon"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">check_circle</span></div>
+    <div class="completed-row ${stateMeta.rowClass}">
+      <div class="completed-icon"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">${stateMeta.icon}</span></div>
       <div class="completed-info">
         <div class="completed-title">${q.title}</div>
         <div class="completed-sub">${q.desc}</div>
+        <div class="completed-state-badge">${stateMeta.badge}</div>
+        ${starsHtml}
       </div>
       <div class="completed-score">
         <div class="lbl">SCORE</div>
         <div class="val">${scoreDisplay}</div>
       </div>
-      <button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="event.stopPropagation();startQuiz('${q.id}')" title="Retry for ${Math.round(nextMult*100)}% reward">↻ Retry (${Math.round(nextMult*100)}%)</button>
+      ${retryControl}
     </div>`;}).join('')}
-  </div>` : ''}`;
+  </div>`; })() : ''}`;
 }
 
 
 // ── ACTIVE QUIZ ──
 let activeQuiz=null,quizAnswers=[],quizCurrent=0,quizTimer=null,quizTimeLeft=0;
+// Phase 3 (Improvement Plan §2/§4) — 3-stage escalation state. quizTimer/
+// quizTimeLeft above are now driven PER QUESTION (reset every item) instead
+// of once for the whole quiz — see startQuestionTimer(). quizLastAnnouncedStage
+// tracks the last stage a transition toast fired for, so re-entering the
+// same stage (e.g. Prev then Next again) never re-announces it; reset to
+// -1 in startQuiz() so the very first question never "transitions" either.
+let quizLastAnnouncedStage=-1;
 // Phase 2 — functional hint system state (was a decorative hardcoded "2" —
 // see quest_board_report.md §1/§3.5). quizHintsRemaining counts down from
 // HINT_COST-gated uses; quizEliminated[qi] holds eliminated wrong-option
@@ -1459,6 +1566,36 @@ let quizMatchShuffle=[];
 // student has moved past it with Next, so Prev can't be used to go back,
 // see the correctness feedback, and silently fix the answer — see quizNext().
 let quizCombo=0, quizComboMax=0, quizLocked=[];
+// Phase 6 (Improvement Plan §5/§10) — combo redesign: what the LAST grading
+// pass just did to the combo, purely for one-shot mount animations on the
+// fresh combo-band element renderQuizQuestion() creates next (innerHTML
+// fully replaces the band every render, so there's no persistent element to
+// CSS-transition between old/new values — instead the new element is born
+// already carrying the right one-shot animation class). Consumed (read then
+// reset to null) the moment renderQuizQuestion() uses it, so an unrelated
+// re-render of the SAME question — e.g. useHint() — never replays it, and
+// quizPrev() reviewing an old question never replays it either.
+// quizComboMilestoneHit flags whether THIS grow just crossed a milestone
+// (x3/x5/x10, then every +5) — see _eqIsComboMilestone() below — so the
+// particle burst only fires on the exact question that earned it.
+let quizComboLastEvent = null; // 'grow' | 'break' | null
+let quizComboMilestoneHit = false;
+// Phase 9 — Answer Reveal (environmental correct/wrong feedback): when a
+// question is graded, quizAnswerRevealEvent is set to 'correct' | 'partial'
+// | 'wrong' for the ONE render that just locked it — same one-shot
+// "consumed at the top of renderQuizQuestion()" pattern quizComboLastEvent
+// already uses — so it drives a single flash burst rather than replaying on
+// every unrelated re-render (useHint(), Prev review, etc). The persistent
+// (non one-shot) correct/wrong marking on the options themselves is instead
+// derived straight from eqGradeAnswer() + isLocked every render — see
+// renderQuizQuestion() — so reviewing an old question via Prev always shows
+// its outcome, not just the instant it was answered.
+let quizAnswerRevealEvent = null; // 'correct' | 'partial' | 'wrong' | null
+// quizAdvanceTimer holds the pending "show the reveal, then move on"
+// timeout kicked off by quizNext()/quizTimeout() — cleared defensively by
+// quizPrev()/confirmAbortQuiz()/finishQuiz() so a stale timer can never fire
+// against a question the student has already navigated away from.
+let quizAdvanceTimer = null;
 // Phase 4 — retry state (quest_board_report.md §7): attempt number for
 // THIS run, derived from existing quizHistory rows for this quiz + 1.
 // quizFinishing guards against a single tab double-firing finishQuiz()
@@ -1466,11 +1603,125 @@ let quizCombo=0, quizComboMax=0, quizLocked=[];
 // longer be used as that guard — retries intentionally keep it populated.
 let quizAttemptNumber=1, quizFinishing=false;
 
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 7 — Mascot / Narrator (Improvement Plan §6, §12 item 7)
+//
+// _mascotAmbientEmotion is the figure's current RESTING pose — what it's
+// silently acting out between lines (idle bounce, nervous fidget, hiding,
+// etc). renderQuizQuestion() fully replaces #s-quiz-active's innerHTML on
+// every question, so the figure element itself is recreated each time;
+// this variable is what lets the new element pick up the same pose instead
+// of always resetting to 'idle'. fireMascotEvent() updates it whenever an
+// event implies a new resting pose (see eqMascotEmotionFor() in utils.js);
+// updateMascotAmbientMood() also nudges it directly for continuous,
+// non-event-driven state (low time ticking down with nothing else going on).
+//
+// _mascotCloudTimer holds the pending "pop the cloud back out" timeout so a
+// rapid-fire second event (e.g. a quick correct answer right after a low-
+// time warning) cancels the old hide and starts fresh rather than the two
+// racing.
+//
+// _mascotLowTimeWarnedFor tracks which question index already fired its one
+// lowTime event this attempt, so the per-second timer tick doesn't refire
+// it every second once time is already low.
+let _mascotAmbientEmotion = 'idle';
+let _mascotCloudTimer = null;
+let _mascotLowTimeWarnedFor = null;
+
+// eqHydrateMascotLines() — loads admin-authored custom lines once per
+// session into window._eqMascotCustomLines (read by eqMascotLinePool() in
+// utils.js). Guarded by _mascotLinesHydrated so switching quizzes/retrying
+// doesn't refetch on every startQuiz() call; a failed fetch leaves the
+// default-{} fallback in place (MascotLinesService.get() already resolves
+// {ok:false} rather than throwing) so the mascot still has plenty to say.
+let _mascotLinesHydrated = false;
+async function eqHydrateMascotLines(){
+  if (_mascotLinesHydrated) return;
+  _mascotLinesHydrated = true;
+  if (typeof MascotLinesService === 'undefined') return;
+  const res = await MascotLinesService.get();
+  window._eqMascotCustomLines = res.ok ? (res.customLines || {}) : {};
+}
+
+// fireMascotEvent(event, stageIdx) — the one entry point every quiz-runner
+// call site uses to make the mascot react (§6's per-answer flow, step 3).
+// Picks the emotion + a random line for this event/stage, pops the cloud in
+// with the line, applies a one-shot "react" pop on top of whatever ambient
+// pose is showing, then settles into the NEW ambient pose the event implies
+// and pops the cloud back out after a short hold.
+function fireMascotEvent(event, stageIdx){
+  const figure = document.getElementById('quiz-mascot-figure');
+  const cloud = document.getElementById('quiz-mascot-cloud');
+  const cloudText = document.getElementById('quiz-mascot-cloud-text');
+  const emojiEl = document.getElementById('quiz-mascot-emoji');
+  if (!figure) return; // dock isn't mounted right now (e.g. results screen already swapped it out)
+
+  const emotion = (typeof eqMascotEmotionFor === 'function') ? eqMascotEmotionFor(event, {stageIdx}) : 'idle';
+  const stageKey = (event==='correct'||event==='wrong'||event==='lowTime') ? stageIdx
+    : (event==='stageTransition') ? stageIdx
+    : null;
+  const line = (typeof eqMascotLine === 'function') ? eqMascotLine(event, stageKey) : '';
+
+  _mascotAmbientEmotion = emotion;
+  MASCOT_EMOTIONS.forEach(e => figure.classList.remove('mascot-emotion-'+e));
+  figure.classList.add('mascot-emotion-'+emotion);
+  if (emojiEl && window.MASCOT_EMOJI) emojiEl.textContent = MASCOT_EMOJI[emotion] || '🐲';
+
+  // One-shot reaction pop — re-trigger even if the class is already present
+  // by removing/re-adding on the next frame, same "force a fresh animation
+  // replay" trick used elsewhere in this file (e.g. combo band classes).
+  figure.classList.remove('mascot-react');
+  void figure.offsetWidth;
+  figure.classList.add('mascot-react');
+  setTimeout(() => figure.classList.remove('mascot-react'), 400);
+
+  if (cloud && cloudText && line) {
+    clearTimeout(_mascotCloudTimer);
+    cloudText.textContent = line;
+    cloud.classList.add('show');
+    _mascotCloudTimer = setTimeout(() => { cloud.classList.remove('show'); }, 2200);
+  }
+}
+window.fireMascotEvent = fireMascotEvent;
+
+// updateMascotAmbientMood(stageIdx, timeLeft, stageSeconds) — continuous,
+// non-event-driven ambient pose (§6: "between lines the mascot keeps acting
+// out its current emotional state silently... nervous/fidgety... timer
+// running low"). Called every timer tick from renderQuizTimerDisplay() so
+// the resting pose reacts to the clock even when no acute event just fired.
+// Deliberately light-touch: it only steps the mood towards nervous/scared
+// as time runs low, and only steps it back to the stage's calm idle once a
+// fresh question starts (renderQuizQuestion() resets it directly) — it
+// never overrides a pose an acute event just set, since the next timer
+// tick is always at least ~1s after any fireMascotEvent() call.
+function updateMascotAmbientMood(stageIdx, timeLeft, stageSeconds){
+  const figure = document.getElementById('quiz-mascot-figure');
+  if (!figure) return;
+  const pct = stageSeconds > 0 ? (timeLeft / stageSeconds) : 1;
+  let emotion;
+  if (pct <= 0.2) emotion = (stageIdx >= 2) ? 'scared' : 'nervous';
+  else emotion = (stageIdx >= 1) ? 'confident' : 'idle';
+  if (emotion === _mascotAmbientEmotion) return;
+  _mascotAmbientEmotion = emotion;
+  MASCOT_EMOTIONS.forEach(e => figure.classList.remove('mascot-emotion-'+e));
+  figure.classList.add('mascot-emotion-'+emotion);
+  const emojiEl = document.getElementById('quiz-mascot-emoji');
+  if (emojiEl && window.MASCOT_EMOJI) emojiEl.textContent = MASCOT_EMOJI[emotion] || '🐲';
+  // Low-time warning line — fires once per question, the first tick it
+  // crosses into the "low time" band, not every subsequent second.
+  if (pct <= 0.2 && _mascotLowTimeWarnedFor !== quizCurrent) {
+    _mascotLowTimeWarnedFor = quizCurrent;
+    fireMascotEvent('lowTime', stageIdx);
+  }
+}
+window.updateMascotAmbientMood = updateMascotAmbientMood;
+
 function startQuiz(qid){
   const quiz=DB.quizzes.find(q=>q.id===qid);if(!quiz)return;
-  // Critical Fix #5 (fresh-load) still applies; the old hard "already
-  // completed" block is gone — Phase 4 decision (quest_board_report.md §7)
-  // is unlimited retries at a reduced reward, not a one-and-done lock.
+  // Critical Fix #5 (fresh-load) still applies. Retries are no longer
+  // unlimited — Phase 60 (Improvement Plan §7) caps scored attempts at 4,
+  // gated by eqQuizAttemptStatus() below; the old "no hard lock, just a
+  // shrinking reward forever" behavior is gone.
   DB=loadDB();
   const freshStudent=DB.students.find(s=>s.id===currentUser.id);
   const completedIds=(freshStudent&&freshStudent.completedQuizzes)||[];
@@ -1484,10 +1735,41 @@ function startQuiz(qid){
     if(status==='locked'){ toast('🔒 Finish the earlier part of this chain first.','#ffb4ab'); return; }
   }
   activeQuiz=quiz;
-  quizAttemptNumber = ((DB.quizHistory && DB.quizHistory[currentUser.id]) || []).filter(h=>h.quizId===qid).length + 1;
+  // Phase 60 (exploit fix) — hard attempt cap + cooldown gate (Improvement
+  // Plan §7). Every closed attempt (finished OR aborted) already lives in
+  // DB.quizHistory, so eqQuizAttemptStatus() counting that list IS the
+  // authoritative attempt number — nothing here can be bypassed by
+  // re-entering the screen, since there's no route to 's-quiz-active'
+  // other than through this function.
+  const gate = eqQuizAttemptStatus(qid, currentUser.id);
+  if (!gate.allowed) {
+    // Phase 63 — a perfected quest is a permanent stop (no cooldown to wait
+    // out), distinct from the cap+cooldown lock below; see
+    // eqQuizAttemptStatus() in utils.js.
+    if (gate.perfected) {
+      toast('★ Quest already perfected — nothing left to earn here. Ask your teacher if you just want extra practice.', '#ffb95f');
+    } else {
+      toast(`🔒 Quest locked — you've used all ${QUIZ_MAX_SCORED_ATTEMPTS} scored attempts. Try again in ${eqFormatCooldown(gate.cooldownEndsAt - Date.now())}, or ask your teacher to unlock it early.`, '#ffb4ab');
+    }
+    activeQuiz = null;
+    return;
+  }
+  quizAttemptNumber = gate.attemptNumber;
+  // A one-time override is consumed the instant it's actually used to start
+  // a new attempt, not just when granted — see eqGrantQuizAttemptOverride().
+  if (gate.viaOverride) {
+    if (DB.quizAttemptOverrides && DB.quizAttemptOverrides[currentUser.id]) {
+      delete DB.quizAttemptOverrides[currentUser.id][qid];
+      saveDB();
+    }
+  }
   quizFinishing=false;
   quizAnswers=new Array(activeQuiz.questions.length).fill(null);quizCurrent=0;
-  quizTimeLeft=activeQuiz.timeLimit*60;
+  // Phase 3 — no more whole-quiz countdown (quizTimeLeft is now set fresh
+  // per question by startQuestionTimer(), called from renderQuizQuestion()
+  // below). quizLastAnnouncedStage=-1 means "no stage entered yet", so the
+  // first question's stage never fires a transition toast.
+  quizLastAnnouncedStage=-1;
   // Phase 2 — reset hint budget + eliminated-options tracking for this attempt
   quizHintsRemaining=MAX_HINTS_PER_QUEST;
   quizEliminated=new Array(activeQuiz.questions.length).fill(null).map(()=>[]);
@@ -1495,29 +1777,104 @@ function startQuiz(qid){
   quizStreakSnapshot=computeQuestStreak(currentUser.id).current;
   // Phase 4 — reset combo/lock state for this attempt
   quizCombo=0; quizComboMax=0; quizLocked=new Array(activeQuiz.questions.length).fill(false);
+  // Phase 6 — reset combo animation/milestone state for this attempt too
+  quizComboLastEvent=null; quizComboMilestoneHit=false;
   // Phase 5 — per-question shuffled right-column order for Matching-type
   // questions (quest_board_report.md §2.4), generated lazily the first time
   // each question renders so it stays stable across Prev/Next within one
   // attempt, then reset fresh on the next startQuiz() call.
   quizMatchShuffle=new Array(activeQuiz.questions.length).fill(null);
-  showPage('s-quiz-active');renderQuizQuestion();startQuizTimer();
+  // Phase 7 — Mascot / Narrator (Improvement Plan §6, §12 item 7).
+  // Kick off the admin-authored-lines fetch in the background (never blocks
+  // quiz start — see eqHydrateMascotLines()'s comment) and reset the
+  // ambient pose tracker fresh for this attempt so a leftover 'sad'/'scared'
+  // pose from a previous attempt's results screen never leaks into this
+  // one's first render. renderQuizQuestion() below picks this up via
+  // _mascotAmbientEmotion instead of hardcoding 'idle'.
+  eqHydrateMascotLines();
+  _mascotAmbientEmotion = 'idle';
+  _mascotLowTimeWarnedFor = null;
+  showPage('s-quiz-active');renderQuizQuestion();
+  // §6: "retry begins" gets its own determined line/pose instead of the
+  // plain 'start' one, same event split the admin editor (MASCOT_LINES_EVENTS)
+  // already exposes.
+  fireMascotEvent(quizAttemptNumber > 1 ? 'retry' : 'start', 0);
 }
-function startQuizTimer(){
+// Phase 3 — per-question timer (replaces the old whole-quiz countdown).
+// Called fresh from renderQuizQuestion() every time the LIVE (unlocked)
+// question changes, so it always resets to that question's stage duration
+// rather than counting down across the whole attempt.
+function startQuestionTimer(){
   clearInterval(quizTimer);
+  const stageIdx=eqQuestionStage(activeQuiz.questions.length, quizCurrent);
+  const stageSeconds=eqQuizStageSeconds(activeQuiz)[stageIdx];
+  quizTimeLeft=stageSeconds;
+  renderQuizTimerDisplay(stageIdx);
+  // Phase 7 — §6: ambient body-pose reacts continuously to the live clock,
+  // not just to acute events (correct/wrong/etc). One immediate call so the
+  // pose is right the instant the question mounts, then again every tick.
+  updateMascotAmbientMood(stageIdx, quizTimeLeft, stageSeconds);
   quizTimer=setInterval(()=>{
     quizTimeLeft--;
-    const el=document.getElementById('quiz-timer');
-    if(el){
-      const m=Math.floor(quizTimeLeft/60),s=quizTimeLeft%60;
-      el.textContent=`${m}:${s.toString().padStart(2,'0')}`;
-      if(quizTimeLeft<=60)el.className='quiz-timer urgent';
-    }
-    if(quizTimeLeft<=0){clearInterval(quizTimer);finishQuiz();}
+    renderQuizTimerDisplay(stageIdx);
+    updateMascotAmbientMood(stageIdx, quizTimeLeft, stageSeconds);
+    if(quizTimeLeft<=0){clearInterval(quizTimer);quizTimeout();}
   },1000);
+}
+function renderQuizTimerDisplay(stageIdx){
+  const el=document.getElementById('quiz-timer');
+  if(!el)return;
+  const t=Math.max(0,quizTimeLeft);
+  el.textContent=t+'s';
+  el.className='quiz-timer stage-'+stageIdx+(t<=5?' urgent':'');
+}
+// A question whose timer hits 0 is graded exactly like a genuinely wrong
+// submission (Improvement Plan §4: "time-out = counts as wrong, same
+// 'wrong' feedback beat as an incorrect tap, then auto-advances") — it
+// locks the question with an empty answer (grades to 0 for every question
+// type, see eqGradeAnswer), breaks the combo the same way a miss does, and
+// advances/finishes exactly like quizNext() does for a real answer.
+function quizTimeout(){
+  if(!activeQuiz || quizLocked[quizCurrent])return;
+  quizLocked[quizCurrent]=true;
+  if(quizAnswers[quizCurrent]===null || quizAnswers[quizCurrent]===undefined) quizAnswers[quizCurrent]='';
+  // Phase 6 — timeout breaks the combo the same way a wrong tap does (per
+  // §10's animation map: "Wrong answer or timeout" both trigger the combo
+  // band's shatter), so it gets the same one-shot animation flag.
+  if(quizCombo>=2){ toast('💥 Combo broken — time\'s up!','#ffb4ab'); quizComboLastEvent='break'; }
+  else { quizComboLastEvent=null; }
+  quizCombo=0;
+  toast("⏱ Time's up on that one!",'#ffb4ab');
+  // Phase 7 — §4: "time-out = counts as wrong, same 'wrong' feedback beat
+  // as an incorrect tap." Same mascot reaction quizNext() fires for a miss.
+  fireMascotEvent('wrong', eqQuestionStage(activeQuiz.questions.length, quizCurrent));
+  // Phase 9 — Answer Reveal: a timeout is always graded wrong (empty answer
+  // never matches anything), so it gets the same red flash + reveal beat as
+  // a genuinely wrong tap before advancing — see _quizAdvanceAfterReveal().
+  quizAnswerRevealEvent = 'wrong';
+  _quizShowRevealThenAdvance(1500);
 }
 function renderQuizQuestion(){
   const q=activeQuiz.questions[quizCurrent];const total=activeQuiz.questions.length;
   const fillPct=Math.round((quizCurrent+1)/total*100);
+  // Phase 6 — consume the one-shot combo animation event (see quizNext()/
+  // quizTimeout()) right at the top, before anything else can early-return
+  // or re-render: whatever happens below, this event has now been "used",
+  // so a later unrelated re-render of the same question (useHint()) won't
+  // replay it.
+  const comboEvent = quizComboLastEvent; quizComboLastEvent = null;
+  const comboMilestone = quizComboMilestoneHit; quizComboMilestoneHit = false;
+  // Phase 9 — Answer Reveal: the one-shot flash event (consumed the same
+  // way comboEvent is, immediately above) drives the brief environmental
+  // burst on THIS render only. The persistent green/red marking on the
+  // options/inputs themselves is recomputed below from isLocked + the
+  // saved answer every render, so it survives Prev/Next review too.
+  const revealEvent = quizAnswerRevealEvent; quizAnswerRevealEvent = null;
+  // Phase 3 — 3-stage escalation: which stage this question falls in, purely
+  // by position (see eqQuestionStage in utils.js). Used for the HUD badge,
+  // the timer's stage-tinted color, and the per-question countdown length.
+  const stageIdx=eqQuestionStage(total, quizCurrent);
+  const stageName=eqStageName(stageIdx);
   const letters=['A','B','C','D','E'];
   const qType=eqQType(q); // Phase 1/3 — 'mc' (default), 'tf', 'id', or 'enum'
   const savedAns=quizAnswers[quizCurrent];
@@ -1527,6 +1884,22 @@ function renderQuizQuestion(){
   // without it, seeing "combo broken" would just be a free hint to go back
   // and fix the answer before final submission.
   const isLocked = !!quizLocked[quizCurrent];
+  // Phase 9 — Answer Reveal: once a question is locked, grade it fresh from
+  // the saved answer (cheap — eqGradeAnswer is pure) so BOTH the instant it
+  // was just answered AND every later Prev-review render show the same
+  // correct/wrong/partial state. Nothing is persisted separately — this is
+  // deliberately re-derived every time instead of cached, so it can never
+  // drift from what eqGradeAnswer() would say at finishQuiz() time.
+  const revealFrac = isLocked ? eqGradeAnswer(q, savedAns) : null;
+  const revealState = !isLocked ? null : revealFrac>=1 ? 'correct' : revealFrac>0 ? 'partial' : 'wrong';
+  // Phase 4 (Improvement Plan §9) — answer layout: "2×2 grid for short
+  // answers... fall back to a stacked list if answer text is typically
+  // long sentences." Resolved automatically per-question rather than as a
+  // manual per-quiz setting: mc/tf qualifies for the grid when every
+  // option is short and there are at most 4 of them (5-option MC always
+  // stays a list — a 2x2+1 grid reads worse than a clean 5-row list).
+  const mcGridEligible = (qType==='mc' || qType==='tf') && q.opts && q.opts.length<=4
+    && q.opts.every(o => String(o).length<=18);
   // Phase 2 — hint eligibility for the CURRENT question: mc (>2 opts) can
   // eliminate a wrong option; id reveals first letter + length. tf/enum
   // have no hint (tf would just hand over the answer; enum's own partial
@@ -1556,89 +1929,245 @@ function renderQuizQuestion(){
     quizMatchShuffle[quizCurrent] = rights;
   }
   const matchOptions = qType==='match' ? (quizMatchShuffle[quizCurrent] || []) : [];
+  // Phase 9 — Answer Reveal: per-blank/per-row correctness for enum & match,
+  // mirroring eqGradeAnswer()'s own matching so the visual marks never
+  // disagree with the score. Only computed when locked (nothing to reveal
+  // on a live, still-answerable question).
+  const enumMatchFlags = (qType==='enum' && isLocked) ? (() => {
+    const pool = (Array.isArray(q.answers) ? q.answers.filter(a=>a && String(a).trim()) : []).map(eqNormalizeAnswer);
+    return enumSaved.map(g => {
+      const ng = eqNormalizeAnswer(g);
+      if (!ng) return false;
+      const idx = pool.indexOf(ng);
+      if (idx !== -1) { pool.splice(idx, 1); return true; }
+      return false;
+    });
+  })() : [];
+  const enumCorrectCount = enumMatchFlags.filter(Boolean).length;
+  const matchRowFlags = (qType==='match' && isLocked)
+    ? matchPairs.map((p,pi) => eqNormalizeAnswer(matchSaved[pi]) === eqNormalizeAnswer(p.right) && !!matchSaved[pi])
+    : [];
   const optionsHTML = qType==='id'
-    ? `<div class="quiz-options" id="quiz-opts">
-        <input type="text" id="quiz-id-input" class="quiz-id-input" placeholder="Type your answer…" autocomplete="off" spellcheck="false"
+    ? `<div class="quiz-options${revealEvent?' just-revealed':''}" id="quiz-opts">
+        <input type="text" id="quiz-id-input" class="quiz-id-input${isLocked?' reveal-'+revealState:''}" placeholder="Type your answer…" autocomplete="off" spellcheck="false"
           value="${_esc(typeof savedAns==='string'?savedAns:'')}" ${isLocked?'readonly':''} oninput="submitIdAnswer(this.value)"
           onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('btn-next')?.click();}">
         ${idHintText?`<div class="quiz-hint-reveal">${idHintText}</div>`:''}
+        ${isLocked?`<div class="quiz-reveal-banner ${revealState}">${revealState==='correct'?'✅ Correct!':`❌ Correct answer: <strong>${_esc(q.answer||'')}</strong>`}</div>`:''}
       </div>`
     : qType==='enum'
-    ? `<div class="quiz-options" id="quiz-opts">
+    ? `<div class="quiz-options${revealEvent?' just-revealed':''}" id="quiz-opts">
         <div class="quiz-enum-hint">Fill in all ${enumBlanks} — partial credit for each one you get right.</div>
         ${Array.from({length:enumBlanks}).map((_,bi)=>`
-        <input type="text" class="quiz-id-input quiz-enum-input" placeholder="Answer ${bi+1} of ${enumBlanks}" autocomplete="off" spellcheck="false"
+        <input type="text" class="quiz-id-input quiz-enum-input${isLocked?' reveal-'+(enumMatchFlags[bi]?'correct':'wrong'):''}" placeholder="Answer ${bi+1} of ${enumBlanks}" autocomplete="off" spellcheck="false"
           value="${_esc(enumSaved[bi]||'')}" ${isLocked?'readonly':''} oninput="submitEnumAnswer(${bi},this.value)">`).join('')}
+        ${isLocked?`<div class="quiz-reveal-banner ${revealState}">${enumCorrectCount}/${enumBlanks} correct${revealState!=='correct'?` — full answer: <strong>${_esc((q.answers||[]).join(', '))}</strong>`:''}</div>`:''}
       </div>`
     : qType==='match'
-    ? `<div class="quiz-options" id="quiz-opts">
+    ? `<div class="quiz-options${revealEvent?' just-revealed':''}" id="quiz-opts">
         <div class="quiz-enum-hint">Match each item on the left with its correct pair — partial credit per correct match.</div>
         ${matchPairs.map((p,pi)=>`
         <div class="qb-opt-row" style="align-items:center">
           <span style="flex:1;font-size:13px;color:var(--on-surface)">${_esc(p.left)}</span>
           <span style="color:var(--text-muted);flex-shrink:0">→</span>
-          <select class="quiz-id-input" style="flex:1" ${isLocked?'disabled':''} onchange="submitMatchAnswer(${pi},this.value)">
+          <select class="quiz-id-input${isLocked?' reveal-'+(matchRowFlags[pi]?'correct':'wrong'):''}" style="flex:1" ${isLocked?'disabled':''} onchange="submitMatchAnswer(${pi},this.value)">
             <option value="">Select…</option>
             ${matchOptions.map(opt=>`<option value="${_esc(opt)}" ${matchSaved[pi]===opt?'selected':''}>${_esc(opt)}</option>`).join('')}
           </select>
+          ${isLocked && !matchRowFlags[pi] ? `<span style="flex-shrink:0;font-size:12px;color:var(--secondary);white-space:nowrap">→ ${_esc(p.right)}</span>` : ''}
         </div>`).join('')}
+        ${isLocked?`<div class="quiz-reveal-banner ${revealState}">${matchRowFlags.filter(Boolean).length}/${matchPairs.length} matched correctly</div>`:''}
       </div>`
-    : `<div class="quiz-options" id="quiz-opts">
+    : `<div class="quiz-options${mcGridEligible?' grid-mode':''}${revealEvent?' just-revealed':''}" id="quiz-opts">
         ${q.opts.map((opt,i)=>{
           const isElim = eliminatedForQ.includes(i);
           const isDisabled = isElim || isLocked;
+          const isCorrectOpt = isLocked && i===q.answer;
+          const isWrongPick = isLocked && i===savedAns && i!==q.answer;
+          const revealCls = isCorrectOpt?' correct':isWrongPick?' wrong':'';
           return `
-        <button class="quiz-opt${isElim?' eliminated':''}" id="opt-${i}" ${isDisabled?'disabled':''} onclick="${isDisabled?'':'selectOpt('+i+')'}">
+        <button class="quiz-opt${isElim?' eliminated':''}${revealCls}" id="opt-${i}" ${isDisabled?'disabled':''} onclick="${isDisabled?'':'selectOpt('+i+')'}">
           <div class="quiz-opt-letter">${letters[i]}</div>
           <span class="quiz-opt-text">${opt}</span>
           ${isElim?'<span class="quiz-opt-elim-tag">Eliminated</span>':''}
+          ${isCorrectOpt?'<span class="quiz-opt-reveal-tag correct">✓ Correct</span>':''}
+          ${isWrongPick?'<span class="quiz-opt-reveal-tag wrong">✕ Your pick</span>':''}
         </button>`;}).join('')}
       </div>`;
+  // Phase 4 (Improvement Plan §9) — combo band escalation level, purely for
+  // size/color scaling (0 = no streak yet, 1 = building, 2 = hot, 3 = max —
+  // same x3/x5 thresholds quizNext() already toasts at). Milestone burst
+  // animations and the mascot's own reaction are later phases (§12 items
+  // 6-7); this phase just gives the band its big, always-visible home.
+  const comboLevel = quizCombo>=5?3:quizCombo>=3?2:quizCombo>=1?1:0;
+  // Phase 5 (Improvement Plan §3) — Environmental Intensity System ("Pressure"
+  // layer) config per stage: background-drift color/count/speed for the
+  // ambient canvas (reuses modules/shared/ambient-backdrop.js — the same
+  // engine already driving the Dashboard hero band — rather than standing
+  // up a second particle system) and the vignette ring's stage class.
+  // Deliberately scoped to the quiz-arena's own bounding box, not the raw
+  // browser viewport: the arena is already the natural focal frame of this
+  // screen, and framing it there avoids fighting the fixed topbar/sidebar
+  // for stacking order. Colors are cool/calm in stage 0 and shift warm/
+  // urgent by stage 2, matching the timer's own stage tint.
+  const QI_STAGE_CFG = [
+    { color: '#4edea3', count: 16, alpha: 0.12, dotSize: 1.5, speed: 1   },
+    { color: '#ffb95f', count: 24, alpha: 0.16, dotSize: 1.8, speed: 1.8 },
+    { color: '#ffb4ab', count: 32, alpha: 0.20, dotSize: 2.2, speed: 3   },
+  ][stageIdx];
   document.getElementById('s-quiz-active').innerHTML=`
-  <div class="quiz-arena">
-    <div class="quiz-hud">
-      <div class="quiz-title-label">[ ${activeQuiz.title.toUpperCase().replace(/\s+/g,'_')} ]</div>
-      <div class="quiz-timer" id="quiz-timer">--:--</div>
-      <button class="quiz-abort" onclick="exitQuiz()">✕ Abort</button>
-    </div>
-    <div class="quiz-progress-track">
-      <div class="quiz-progress-bar"><div class="quiz-progress-fill" style="width:${fillPct}%"></div></div>
-      <div class="quiz-progress-labels">
-        <span style="color:var(--text-muted)">Q.${String(quizCurrent+1).padStart(2,'0')} / ${String(total).padStart(2,'0')}</span>
-        <span style="color:var(--primary)">${fillPct}% COMPLETE</span>
+  <div class="quiz-arena qi-stage-${stageIdx}${revealEvent==='wrong'?' qi-shake-wrong':''}">
+    <!-- Phase 5 — intensity chrome (§3): ambient drift canvas + vignette
+         ring, both position:absolute/z-index:0 so they sit strictly BEHIND
+         .quiz-arena-content (z-index:1) — same layering trick as the
+         Dashboard hero band. Pointer-events:none throughout; purely
+         decorative, never intercepts a tap. -->
+    <canvas class="quiz-intensity-canvas" id="quiz-intensity-canvas"></canvas>
+    <div class="quiz-vignette-ring qi-stage-${stageIdx}"></div>
+    <!-- Phase 9 — Answer Reveal flash: a one-shot full-arena color burst
+         (green/amber/red) the instant a question is graded — see
+         revealEvent above. Sits ABOVE everything (z-index higher than the
+         content layer) but pointer-events:none, so it's purely a momentary
+         wash of color, never something a student can accidentally tap
+         through or that blocks the next interaction. -->
+    <div class="quiz-reveal-flash${revealEvent?' flash-'+revealEvent:''}"></div>
+    <div class="quiz-arena-content">
+    <div class="quiz-title-label">[ ${activeQuiz.title.toUpperCase().replace(/\s+/g,'_')} ]</div>
+    <!-- Phase 9 — Widescreen Arena: on landscape/desktop this splits into a
+         persistent HUD rail (progress, timer, stage, streak, hints, mascot
+         companion) plus a generous main column for the question + options,
+         instead of stacking everything into one narrow centered strip.
+         Below 1024px .quiz-hud flattens into a horizontal bar (see CSS). -->
+    <div class="quiz-layout">
+      <aside class="quiz-hud">
+        <!-- Phase 4 — top strip (§9): progress + timer, always visible. -->
+        <div class="quiz-top-strip">
+          <div class="quiz-progress-block">
+            <div class="quiz-progress-bar"><div class="quiz-progress-fill" style="width:${fillPct}%"></div></div>
+            <div class="quiz-progress-labels">
+              <span style="color:var(--text-muted)">Q.${String(quizCurrent+1).padStart(2,'0')} / ${String(total).padStart(2,'0')}</span>
+              <span style="color:var(--primary)">${fillPct}% COMPLETE</span>
+            </div>
+          </div>
+          <div class="quiz-timer stage-${stageIdx}" id="quiz-timer">--</div>
+        </div>
+        <div class="quiz-hud-divider"></div>
+        <!-- Phase 4 — meta row: secondary/ambient stats (stage, streak, hints). -->
+        <div class="quiz-meta-row">
+          <div class="quiz-stage-badge stage-${stageIdx}">${stageIdx===0?'🌱':stageIdx===1?'⚡':'🔥'} ${stageName}</div>
+          <div class="quiz-meta-chip">🔥 ${quizStreakSnapshot} Day Streak</div>
+          <div class="quiz-meta-chip${canHint?' quiz-hint-btn':' quiz-hint-btn disabled'}" ${canHint?'onclick="useHint()"':''} title="${hintReason}">✨ ${quizHintsRemaining} Hint${quizHintsRemaining===1?'':'s'} (${HINT_COST}🪙)</div>
+        </div>
+        <div class="quiz-hud-divider"></div>
+        <!-- Phase 7 — mascot companion now docks in the HUD rail (was the
+             footer row). The cloud only shows while fireMascotEvent() has
+             an active line (§6); between lines the figure keeps acting out
+             updateMascotAmbientMood()'s current pose silently. -->
+        <div class="quiz-mascot-dock" id="quiz-mascot-dock" title="Quest companion">
+          <div class="quiz-mascot-cloud" id="quiz-mascot-cloud"><span id="quiz-mascot-cloud-text"></span></div>
+          <div class="quiz-mascot-figure mascot-emotion-${_mascotAmbientEmotion}" id="quiz-mascot-figure">
+            <span id="quiz-mascot-emoji">${(window.MASCOT_EMOJI && window.MASCOT_EMOJI[_mascotAmbientEmotion]) || '🐲'}</span>
+          </div>
+        </div>
+      </aside>
+      <div class="quiz-main">
+        <!-- Question card: centered, generous padding — the calmest, most
+             stable zone even at max stage intensity (§9). Hard rule from §3:
+             intensity effects live in the chrome around this card — its own
+             background/border/text stay stable, only a faint stage-tinted
+             border accent (chrome, not text) is allowed to shift. -->
+        <div class="quiz-question-card${revealEvent?' card-flash-'+revealEvent:''}">
+          <div class="quiz-q-label">QUESTION_${String(quizCurrent+1).padStart(2,'0')} // ${qType==='id'?'TYPE THE CORRECT ANSWER':qType==='enum'?'FILL IN ALL ANSWERS':qType==='match'?'MATCH EACH ITEM':'SELECT CORRECT RESPONSE'}${isLocked?' · 🔒 LOCKED IN':''}</div>
+          <div class="quiz-q-text">${q.q}</div>
+        </div>
+        ${optionsHTML}
+        <div class="quiz-nav">
+          ${quizCurrent>0?`<button class="quiz-nav-prev" onclick="quizPrev()">← Prev</button>`:''}
+          <button class="quiz-nav-next" id="btn-next" disabled onclick="quizNext()">
+            ${quizCurrent===total-1?'▶ Submit Quest':'Next →'}
+          </button>
+        </div>
+        <!-- Abort stays deliberately far from the mascot/companion (now
+             clear across the layout in the HUD rail), same intent as
+             before: leaving should never be near the "fun" elements. -->
+        <div class="quiz-footer-row">
+          <button class="quiz-abort" onclick="confirmAbortQuiz()">✕ Abort</button>
+        </div>
       </div>
     </div>
-    <div class="quiz-question-card">
-      <div class="quiz-q-label">QUESTION_${String(quizCurrent+1).padStart(2,'0')} // ${qType==='id'?'TYPE THE CORRECT ANSWER':qType==='enum'?'FILL IN ALL ANSWERS':qType==='match'?'MATCH EACH ITEM':'SELECT CORRECT RESPONSE'}${isLocked?' · 🔒 LOCKED IN':''}</div>
-      <div class="quiz-q-text">${q.q}</div>
+    <!-- Phase 4 — combo band (§9): a floating toast, fixed-position, so it
+         overlaps whatever's beneath it regardless of the HUD/main split. -->
+    <div class="quiz-combo-band combo-level-${comboLevel}${comboEvent==='grow'?' combo-pop':comboEvent==='break'?' combo-shatter':''}" id="quiz-combo-band">
+      <span class="quiz-combo-label">COMBO</span>
+      <span class="quiz-combo-value">${quizCombo>0?'x'+quizCombo:'—'}</span>
+      <span class="quiz-combo-mult">${eqComboMultiplier(quizCombo)}× reward</span>
     </div>
-    ${optionsHTML}
-    <div class="quiz-nav">
-      ${quizCurrent>0?`<button class="quiz-nav-prev" onclick="quizPrev()">← Prev</button>`:''}
-      <button class="quiz-nav-next" id="btn-next" disabled onclick="quizNext()">
-        ${quizCurrent===total-1?'▶ Submit Quest':'Next →'}
-      </button>
-    </div>
-  </div>
-  <div class="quiz-side-panel">
-    <div class="quiz-side-stat">
-      <span class="material-symbols-outlined" style="color:var(--secondary);font-variation-settings:'FILL' 1">local_fire_department</span>
-      <div class="val" style="color:var(--secondary)">🔥 ${quizStreakSnapshot}</div>
-      <div class="lbl">Day Streak</div>
-    </div>
-    <div class="quiz-side-stat">
-      <span class="material-symbols-outlined" style="color:#ffb95f;font-variation-settings:'FILL' 1">bolt</span>
-      <div class="val" style="color:#ffb95f">${quizCombo>0?'x'+quizCombo:'—'}</div>
-      <div class="lbl">Combo (${eqComboMultiplier(quizCombo)}x)</div>
-    </div>
-    <div class="quiz-side-stat${canHint?' quiz-hint-btn':' quiz-hint-btn disabled'}" ${canHint?'onclick="useHint()"':''} title="${hintReason}">
-      <span class="material-symbols-outlined" style="color:var(--tertiary);font-variation-settings:'FILL' 1">auto_fix_high</span>
-      <div class="val" style="color:var(--tertiary)">${quizHintsRemaining}</div>
-      <div class="lbl">Hints (${HINT_COST}🪙)</div>
     </div>
   </div>`;
-  const timerEl=document.getElementById('quiz-timer');
-  if(timerEl){const m=Math.floor(quizTimeLeft/60),s=quizTimeLeft%60;timerEl.textContent=`${m}:${s.toString().padStart(2,'0')}`;if(quizTimeLeft<=60)timerEl.className='quiz-timer urgent';}
+  // Phase 5 — (re)start the ambient drift canvas for the CURRENT stage.
+  // Stopping any previous loop first mirrors the exact convention already
+  // used for the Dashboard hero backdrop (see renderStudentDashboard()) —
+  // renderQuizQuestion() re-renders (and thus recreates the canvas element)
+  // on every question, so without this a new rAF loop would stack up on
+  // top of the old one pointing at a now-detached canvas.
+  if (typeof window._eqQuizIntensityBackdropStop === 'function') {
+    window._eqQuizIntensityBackdropStop();
+    window._eqQuizIntensityBackdropStop = null;
+  }
+  const qiCanvas = document.getElementById('quiz-intensity-canvas');
+  if (qiCanvas && typeof startAmbientBackdrop === 'function') {
+    window._eqQuizIntensityBackdropStop = startAmbientBackdrop(qiCanvas, QI_STAGE_CFG);
+  }
+  // Phase 6 (Improvement Plan §5) — milestone particle burst: fires ON TOP
+  // of the combo band's own "pop" mount animation the exact question a
+  // streak crosses x3/x5/x10(+5...). burstParticles() (modules/shared/
+  // particles.js) already no-ops under prefers-reduced-motion on its own,
+  // so no extra guard is needed here.
+  const comboBandEl = document.getElementById('quiz-combo-band');
+  // Combo band now behaves like a floating toast/notification rather than
+  // a permanent static panel (per DREY feedback) — see .quiz-combo-band's
+  // fixed positioning + .combo-toast-show transition in base.css. It's
+  // fully recreated every renderQuizQuestion() call (innerHTML replace),
+  // so "showing" it just means adding the class a beat after mount (so the
+  // opacity/transform transition actually has something to animate FROM),
+  // and "hiding" it again after a short dwell time. Only shown at all while
+  // there's an active combo (quizCombo>0) — an idle "—" combo has nothing
+  // worth interrupting the student's screen for.
+  if (window._eqComboToastHideTimer) clearTimeout(window._eqComboToastHideTimer);
+  if (comboBandEl && quizCombo > 0) {
+    requestAnimationFrame(() => comboBandEl.classList.add('combo-toast-show'));
+    window._eqComboToastHideTimer = setTimeout(() => {
+      const el = document.getElementById('quiz-combo-band');
+      if (el) el.classList.remove('combo-toast-show');
+    }, 2200);
+  }
+  if (comboEvent === 'grow' && comboMilestone && typeof burstParticles === 'function') {
+    if (comboBandEl) burstParticles(comboBandEl, 50);
+  }
+  // Phase 3 — the timer only ever runs for the LIVE question (the one the
+  // student can still answer). Prev-ing back to review an already-locked
+  // question shows no running countdown — same "read-only, no live timer"
+  // rule the Improvement Plan (§7) already applies to fully-completed quizzes,
+  // just scoped to a single question here.
+  if(isLocked){
+    clearInterval(quizTimer);
+    const el=document.getElementById('quiz-timer');
+    if(el){ el.textContent='—'; el.className='quiz-timer stage-'+stageIdx; }
+  } else {
+    if(stageIdx!==quizLastAnnouncedStage){
+      if(quizLastAnnouncedStage!==-1){
+        const stageMsg=stageIdx===1?'⚡ Stage 2: Surge!':stageIdx===2?'🔥 Stage 3: Overdrive!':'🌱 Stage 1: Warm-Up!';
+        const stageColor=stageIdx===1?'#ffb95f':stageIdx===2?'#ffb4ab':'#4EDEA3';
+        toast(stageMsg, stageColor);
+        // Phase 7 — §6: "hiding" reaction on the gear-change into a harder
+        // stage. Only stages 1/2 exist as a "transition INTO" per
+        // MASCOT_DEFAULT_LINES.stageTransition's keys (no entering stage 0).
+        if(stageIdx>=1) fireMascotEvent('stageTransition', stageIdx);
+      }
+      quizLastAnnouncedStage=stageIdx;
+    }
+    startQuestionTimer();
+  }
   if(qType==='id'){
     const btn=document.getElementById('btn-next');
     if(btn) btn.disabled = !(typeof savedAns==='string' && savedAns.trim().length);
@@ -1772,33 +2301,183 @@ function submitMatchAnswer(pi,val){
 // anything else (a miss, or an enum's partial credit) resets it to 0.
 // quizComboMax (the run's peak) is what finishQuiz() actually rewards —
 // see eqComboMultiplier() in utils.js.
+// Phase 9 — Answer Reveal: grading no longer advances immediately. It now
+// re-renders the SAME question locked (showing the green/red marks, the
+// flash burst, and the mascot's reaction) and only moves on after a short
+// beat — see _quizShowRevealThenAdvance() below — so a student actually
+// gets to see whether they were right instead of the screen jumping
+// straight to the next question.
 function quizNext(){
   const ans=quizAnswers[quizCurrent];
   const unanswered = ans===null || ans===undefined
     || (typeof ans==='string' && !ans.trim().length)
     || (Array.isArray(ans) && !ans.some(v=>v && String(v).trim().length));
   if(unanswered)return;
-  if(!quizLocked[quizCurrent]){
-    quizLocked[quizCurrent]=true;
-    const frac=eqGradeAnswer(activeQuiz.questions[quizCurrent], ans);
-    if(frac>=1){
-      quizCombo++;
-      if(quizCombo>quizComboMax) quizComboMax=quizCombo;
-      if(quizCombo>=5) toast(`🔥 COMBO x${quizCombo}! Max multiplier reached!`,'#ffb95f');
-      else if(quizCombo>=3) toast(`⚡ Combo x${quizCombo}!`,'#d0bcff');
-    } else if(quizCombo>=2){
-      toast('💥 Combo broken!','#ffb4ab');
-      quizCombo=0;
-    } else {
-      quizCombo=0;
-    }
+  if(quizLocked[quizCurrent]){
+    // Already graded earlier (student Prev'd back to review it, then hit
+    // Next/Submit again) — nothing new to reveal, so advance right away.
+    _quizAdvanceNow();
+    return;
   }
+  quizLocked[quizCurrent]=true;
+  const frac=eqGradeAnswer(activeQuiz.questions[quizCurrent], ans);
+  quizAnswerRevealEvent = frac>=1 ? 'correct' : frac>0 ? 'partial' : 'wrong';
+  // Phase 7 — §6's per-answer flow step 3: mascot reacts right alongside
+  // the combo update. Stage is the one the question being GRADED belongs
+  // to (same "question being left" convention the combo logic above uses).
+  const mascotStageIdx=eqQuestionStage(activeQuiz.questions.length, quizCurrent);
+  if(frac>=1){
+    quizCombo++;
+    if(quizCombo>quizComboMax) quizComboMax=quizCombo;
+    // Phase 6 — one-shot "pop" mount animation on the combo band that's
+    // about to render for the next question, plus a particle burst on
+    // top of it if this exact streak count is a milestone.
+    quizComboLastEvent = 'grow';
+    quizComboMilestoneHit = eqIsComboMilestone(quizCombo);
+    if(quizCombo>=5) toast(`🔥 COMBO x${quizCombo}! Max multiplier reached!`,'#ffb95f');
+    else if(quizCombo>=3) toast(`⚡ Combo x${quizCombo}!`,'#d0bcff');
+    // A milestone streak gets its own hyped line instead of the plain
+    // per-stage "correct" one — matches the admin editor's separate
+    // 🔥 Combo Milestone pool.
+    fireMascotEvent(quizComboMilestoneHit ? 'milestone' : 'correct', mascotStageIdx);
+  } else if(quizCombo>=2){
+    toast('💥 Combo broken!','#ffb4ab');
+    quizCombo=0;
+    // Phase 6 — "shatter" mount animation, not a silent reset, per §5.
+    quizComboLastEvent = 'break';
+    fireMascotEvent('wrong', mascotStageIdx);
+  } else {
+    quizCombo=0;
+    quizComboLastEvent = null;
+    fireMascotEvent('wrong', mascotStageIdx);
+  }
+  // Correct answers get a shorter, snappier beat; wrong/partial ones linger
+  // slightly longer so there's actually time to read the correct-answer
+  // callout before the screen moves on.
+  _quizShowRevealThenAdvance(frac>=1 ? 1000 : 1500);
+}
+// Phase 9 — shared "show the just-graded question, then move on" step used
+// by both quizNext() (real answers) and quizTimeout() (auto-graded misses).
+// Re-renders now (so the reveal marks/flash/mascot line are visible right
+// away), freezes Prev/Next so a fast double-tap can't race the timer, and
+// schedules the actual advance. quizPrev()/abortQuiz() both defensively
+// clear quizAdvanceTimer so a stale one can never fire against a question
+// the student has since navigated away from.
+function _quizShowRevealThenAdvance(delayMs){
+  clearInterval(quizTimer);
+  renderQuizQuestion();
+  const nextBtn=document.getElementById('btn-next'); if(nextBtn) nextBtn.disabled=true;
+  const prevBtn=document.querySelector('.quiz-nav-prev'); if(prevBtn) prevBtn.disabled=true;
+  clearTimeout(quizAdvanceTimer);
+  quizAdvanceTimer=setTimeout(_quizAdvanceNow, delayMs);
+}
+function _quizAdvanceNow(){
   if(quizCurrent===activeQuiz.questions.length-1){clearInterval(quizTimer);finishQuiz();}else{quizCurrent++;renderQuizQuestion();}
 }
-function quizPrev(){if(quizCurrent>0){quizCurrent--;renderQuizQuestion();}}
-function exitQuiz(){clearInterval(quizTimer);activeQuiz=null;navTo('s-quizzes');}
+// Phase 6 — Prev is a review action, not a grading event; defensively clear
+// any pending one-shot combo animation flag so reviewing an old question
+// never replays a pop/shatter that belonged to a different question. (In
+// practice this is already consumed by the very next render after
+// quizNext()/quizTimeout(), but this keeps that invariant explicit here too.)
+// Phase 9 — also clears any pending reveal→advance timer, so navigating
+// away mid-reveal can never trigger an advance from a question the student
+// isn't looking at anymore.
+function quizPrev(){if(quizCurrent>0){clearTimeout(quizAdvanceTimer);quizComboLastEvent=null;quizComboMilestoneHit=false;quizCurrent--;renderQuizQuestion();}}
+// Phase 60 (exploit fix) — Abort & Retry Rules. Abort is no longer a free,
+// consequence-free exit: a confirmation step is mandatory, "Stay & Finish"
+// is the highlighted/easy tap, and "Abort Anyway" is de-emphasized on
+// purpose so leaving is never the path of least resistance.
+function confirmAbortQuiz(){
+  if(!activeQuiz) return;
+  showModal(`
+    <div style="text-align:center;padding:4px">
+      <div style="font-size:34px;margin-bottom:10px">⚠️</div>
+      <div class="modal-h2" style="text-align:center">Leave this quest?</div>
+      <div style="color:var(--text-muted);margin-bottom:22px;font-size:13px;line-height:1.6">
+        Leaving now counts as a loss. Your score won't count, and rewards will be reduced if you retry.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-primary" style="width:100%" onclick="closeModalForce()">Stay &amp; Finish</button>
+        <button style="width:100%;background:none;border:none;color:var(--text-muted);font-size:12px;padding:6px;cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="closeModalForce();abortQuiz()">Abort Anyway</button>
+      </div>
+    </div>`, 'sm');
+}
+// Abort = loss (Improvement Plan §7): same penalty bucket as a timeout or a
+// failing score — no clean/consequence-free exit. Credits only whatever was
+// already locked in (answered + advanced past with Next) before the abort;
+// the in-progress/unanswered current question earns nothing. Pushes the
+// SAME quizHistory row shape finishQuiz() does (tagged aborted:true) so it
+// counts toward the shared attempt/lock counter (eqQuizAttemptStatus()) —
+// switching between "answer badly on purpose" and "abort" can't dodge the
+// cap either way. Completion is authoritative the instant this runs:
+// activeQuiz is cleared and there is no route back into this same attempt,
+// only a brand-new (further-penalized, or locked) one via startQuiz().
+function abortQuiz(){
+  clearInterval(quizTimer);
+  // Phase 5 — stop the ambient intensity backdrop the instant this attempt
+  // ends; #s-quiz-active's innerHTML is about to be replaced with the
+  // results screen (or navTo() will replace it again), which detaches
+  // #quiz-intensity-canvas but doesn't stop its rAF loop on its own.
+  if (typeof window._eqQuizIntensityBackdropStop === 'function') {
+    window._eqQuizIntensityBackdropStop();
+    window._eqQuizIntensityBackdropStop = null;
+  }
+  if (quizFinishing || !activeQuiz) { activeQuiz=null; navTo('s-quizzes'); return; }
+  quizFinishing = true;
+
+  DB = loadDB();
+  const stIdx = DB.students.findIndex(s=>s.id===currentUser.id);
+  const total = activeQuiz.questions.length;
+
+  let correct = 0; const results = [];
+  activeQuiz.questions.forEach((q,i) => {
+    const frac = quizLocked[i] ? eqGradeAnswer(q, quizAnswers[i]) : 0;
+    correct += frac; results.push(frac);
+  });
+  const score = Math.round((correct/total)*100);
+
+  if (!DB.quizHistory) DB.quizHistory = {};
+  if (!DB.quizHistory[currentUser.id]) DB.quizHistory[currentUser.id] = [];
+  // Phase 2 (Quest Board state clarity) — passed is hard-coded false here,
+  // never derived from `score`: Abort & Retry Rules (Phase 1/60, §7) say
+  // "Abort always counts as a loss," full stop, even if a student had
+  // already locked in a passing number of correct answers before bailing.
+  DB.quizHistory[currentUser.id].push({
+    id:'qh_'+uid(), quizId:activeQuiz.id, score, passed:false, completedAt:new Date().toISOString(),
+    date:isoDate(), attempt:quizAttemptNumber, results, aborted:true
+  });
+
+  // No completedQuizzes credit, no XP/coins, no streak, no level check — an
+  // abort earns nothing, it only logs the attempt against the cap.
+  const hist = DB.quizHistory[currentUser.id];
+  if (hist.length) {
+    const totalScore = hist.reduce((s,e)=>s+e.score,0);
+    DB.students[stIdx].quizAvg = Math.round(totalScore/hist.length);
+  }
+  currentUser = DB.students[stIdx];
+  saveDB();
+  updateTopbar();
+
+  toast('🚩 Quest aborted — counted as a loss.', '#ffb4ab');
+  activeQuiz = null;
+  navTo('s-quizzes');
+}
+// Phase 60 (exploit fix) — best-effort coverage for the tab-close/hard-
+// refresh case: navTo() already catches "walked away via the sidebar", but
+// that never runs if the page itself goes away. The local DB write inside
+// abortQuiz() is synchronous (DBService mirrors to localStorage before ever
+// touching the network), so the history row lands even if the outbound
+// Supabase push gets cut off mid-flight.
+window.addEventListener('beforeunload', function(){
+  if (activeQuiz && !quizFinishing) { try { abortQuiz(); } catch(e) {} }
+});
 function finishQuiz() {
   clearInterval(quizTimer);
+  // Phase 5 — same backdrop-loop cleanup as abortQuiz(); see comment there.
+  if (typeof window._eqQuizIntensityBackdropStop === 'function') {
+    window._eqQuizIntensityBackdropStop();
+    window._eqQuizIntensityBackdropStop = null;
+  }
 
   // Phase 4 — same-tab re-entrancy guard (quest_board_report.md §7). The
   // old guard checked `completedQuizzes.includes(activeQuiz.id)`, which
@@ -1862,7 +2541,12 @@ function finishQuiz() {
   // upsert-by-id (db-service.js), same convention as DB.pointLog's id.
   // Without it, every save would look like a fresh insert and duplicate
   // rows server-side; this stamps one once, here, at creation time.
-  DB.quizHistory[currentUser.id].push({ id: 'qh_'+uid(), quizId: activeQuiz.id, score, completedAt: new Date().toISOString(), date: isoDate(), attempt: quizAttemptNumber, results });
+  // Phase 2 (Quest Board state clarity) — `passed` makes the pass/fail
+  // outcome an explicit, stored fact instead of something re-derived from
+  // `score` ad hoc at render time; renderStudentQuizzes() reads this to
+  // tell a genuinely "completed (passed)" node apart from a "completed
+  // (failed, retry available)" one.
+  DB.quizHistory[currentUser.id].push({ id: 'qh_'+uid(), quizId: activeQuiz.id, score, passed: eqQuizPassed(score), completedAt: new Date().toISOString(), date: isoDate(), attempt: quizAttemptNumber, results });
 
   // ── FIXED: Safe Quiz Average Calculation (Prevents NaN%) ──
   const history = DB.quizHistory[currentUser.id];
@@ -1893,22 +2577,38 @@ function finishQuiz() {
   // matters (a stale tab's bulk profile upsert can otherwise clobber it).
   syncStudentStatsToServer(currentUser.id, xpGain, coinGain);
 
-  const pass = score >= 60;
+  const pass = eqQuizPassed(score);
+  // Visual-polish pass — S/A/B/C/D rank badge alongside the existing raw
+  // score, purely a cosmetic read of the same `score` value already
+  // computed above (no change to how passing/XP/coins are determined).
+  const rankLetter = score>=95?'S':score>=90?'A':score>=80?'B':score>=70?'C':score>=60?'D':'F';
+  const _rc = pass ? 'var(--secondary)' : 'var(--error)';
   // Phase 4 — small combo/retry summary line under the score, only shown
   // when it actually changed the reward (multiplier !== 1) so a normal
   // first-attempt, no-combo run looks exactly like it always has.
   const bonusBits = [];
   if (comboMult > 1) bonusBits.push(`🔥 Combo x${quizComboMax} bonus (${comboMult}x)`);
   if (isRetry) bonusBits.push(`↻ Attempt #${quizAttemptNumber} (${Math.round(retryMult*100)}% reward)`);
+  // Phase 7 — §6/§10: "relieved/celebrating" on a pass, "sad-but-supportive"
+  // on a fail. This reuses the same emoji + line pool as the in-quiz dock
+  // (.results-mascot-line, base.css) rather than calling fireMascotEvent()
+  // itself — the quiz dock DOM is about to be replaced by this very innerHTML
+  // write, so animating it first would be invisible.
+  const _resultsMascotEmotion = pass ? 'relieved' : 'sad';
+  const _resultsMascotLine = (typeof eqMascotLine === 'function') ? eqMascotLine(pass ? 'pass' : 'fail') : '';
+  const _resultsMascotEmoji = (window.MASCOT_EMOJI && window.MASCOT_EMOJI[_resultsMascotEmotion]) || (pass ? '😌' : '🥺');
+  const _eqEsc = s => { const d = document.createElement('div'); d.textContent = (s===null||s===undefined) ? '' : String(s); return d.innerHTML; };
   document.getElementById('s-quiz-active').innerHTML = `
   <div class="results-wrap fade-in">
     <div class="results-emoji">${pass ? '🏆' : '💀'}</div>
     <div class="results-title" style="color:${pass ? '#4edea3' : '#ffb4ab'}">${pass ? 'Quest Complete!' : 'Quest Failed'}</div>
     <div class="results-sub">${activeQuiz.title.toUpperCase().replace(/\s+/g, '_')}</div>
-    <div class="results-score-card" style="border:1px solid ${pass ? 'rgba(78,222,163,.3)' : 'rgba(255,180,171,.25)'}">
+    <div class="results-score-card" style="--rc:${_rc}">
+      <div class="results-rank-badge">${rankLetter}</div>
       <div class="results-big-score" style="color:${score >= 80 ? '#4edea3' : score >= 60 ? '#ffb95f' : '#ffb4ab'}">${score}<span style="font-size:28px">%</span></div>
       <div class="results-sub-score">${correctDisplay} / ${total} CORRECT</div>
-      ${bonusBits.length ? `<div style="margin-top:10px;font-size:12px;color:var(--tertiary);display:flex;gap:12px;justify-content:center;flex-wrap:wrap">${bonusBits.map(b=>`<span>${b}</span>`).join('')}</div>` : ''}
+      ${bonusBits.length ? `<div class="results-bonus-row">${bonusBits.map(b=>`<span class="results-bonus-chip">${b}</span>`).join('')}</div>` : ''}
+      ${_resultsMascotLine ? `<div class="results-mascot-line"><span class="results-mascot-emoji">${_resultsMascotEmoji}</span><span>${_eqEsc(_resultsMascotLine)}</span></div>` : ''}
     </div>
     <div style="display:flex;gap:12px;margin-top:8px">
       <button class="btn btn-ghost" style="flex:1" onclick="navTo('s-quizzes')">← Quest Board</button>
