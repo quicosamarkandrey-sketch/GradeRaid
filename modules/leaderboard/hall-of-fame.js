@@ -9,80 +9,22 @@
      shared/dom.js   (showModal, closeModalForce, toast)
    Exports via window.*:
      window.renderLeaderboard(activeTab?, activePeriod?) → void
-     window.renderLeaderboard()  [base XP podium + rankings — RESTORED below]
+
+   All five tabs (hall, overall, recitation, boss, academic) render through
+   the SAME premium HOL stage pipeline (_holRenderStage / _holRenderCard /
+   _holRenderRow) — 'hall' is no longer a plain XP list bolted on top of the
+   fancy tabs; it gets the full podium/beams/embers treatment PLUS its own
+   "legendary" flourishes (multicolor shimmer rim, ambient sparkle field,
+   class-wide summary strip) since it's the class's flagship rankings page.
+
+   Renders into #s-leaderboard for students, and into #a-hall-of-fame for
+   teachers/admins (see _holTargetPageId()) so staff can view the Hall of
+   Fame without needing the separate Leaderboard Admin config page.
+
    References tsBuildBadgeHTML via typeof guard (extracted Day 8).
    ============================================================ */
 
-// ── Base Hall of Fame renderer (XP podium + full class rankings) ──────────────
-// RESTORED: this was the original, pre-HOL renderLeaderboard() — it renders
-// the page hero, top-3 podium, and full sorted student rankings list. The IIFE
-// below wraps "the original renderLeaderboard" expecting it to already exist
-// under this exact name so it can call it for the 'hall' tab and inject the
-// HOL category/period nav bar above it. That original function was never
-// actually carried over during extraction (only this file's header comment
-// claimed it lived in auth.js — it did not), so _origRenderLeaderboard below
-// resolved to null and the 'hall' tab silently rendered nothing but the nav
-// bar. Ported verbatim from the original inline script.
-function renderLeaderboard(){
-  const sorted = [...DB.students].sort((a,b)=>b.xp-a.xp);
-  const st = currentUser;
-  const myRank = sorted.findIndex(s=>s.id===st.id)+1;
-  const medals = ['🥇','🥈','🥉'];
-  const podiumColors = [
-    {b:'rgba(255,185,95,0.35)',av:'rgba(255,185,95,0.12)',c:'#ffb95f'},
-    {b:'rgba(203,195,215,0.25)',av:'rgba(203,195,215,0.1)',c:'#cbc3d7'},
-    {b:'rgba(205,127,50,0.25)',av:'rgba(205,127,50,0.1)',c:'#cd7f32'},
-  ];
 
-  const pg = document.getElementById('s-leaderboard');
-  if (!pg) return;
-  pg.innerHTML = `
-  <div class="page-hero">
-    <div class="page-hero-bg"></div>
-    <div style="position:relative;z-index:1">
-      <div class="page-hero-label">🏆 Hall of Fame</div>
-      <h1 style="font-family:var(--fh);font-size:32px;font-weight:900;color:var(--on-surface);margin-bottom:8px">Class Rankings</h1>
-      <p style="font-size:14px;color:var(--text-muted)">Where legends are forged. Your rank: <span style="color:var(--primary);font-weight:700">#${myRank}</span></p>
-    </div>
-  </div>
-
-  <!-- PODIUM TOP 3 -->
-  <div class="lb-podium" style="margin-bottom:24px">
-    ${sorted.slice(0,3).map((s,i)=>`
-    <div class="podium-card p${i+1}">
-      <div class="podium-medal">${medals[i]}</div>
-      <div class="podium-av" style="background:${podiumColors[i].av};color:${podiumColors[i].c};border-color:${podiumColors[i].c+'66'}">${_esc(s.init)}</div>
-      <div class="podium-name">${_esc(s.name.split(' ')[0])}</div>
-      <div class="podium-xp">${s.xp.toLocaleString()}</div>
-      <div class="podium-sub">XP · Level ${s.level}</div>
-    </div>`).join('')}
-  </div>
-
-  <!-- FULL LIST -->
-  <div class="section-header">
-    <span class="material-symbols-outlined">format_list_numbered</span>
-    <h2>Full Rankings</h2>
-  </div>
-  <div class="lb-list">
-    ${sorted.map((s,i)=>{
-      const isMe = s.id===st.id;
-      return `<div class="lb-row ${isMe?'me':''}">
-        <div class="lb-rank">${i<3?medals[i]:`<span>${i+1}</span>`}</div>
-        <div class="lb-av" style="background:${s.color+'22'};color:${s.color};border-color:${s.color+'44'}">${_esc(s.init)}</div>
-        <div style="flex:1">
-          <div class="lb-name">${_esc(s.name)}${isMe?`<span class="lb-badge-me">You</span>`:''}</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${_esc(s.tier)} · Level ${s.level}</div>
-        </div>
-        <div style="text-align:right">
-          <div class="lb-xp">${s.xp.toLocaleString()} XP</div>
-          <div class="lb-attendance">${s.attendance}% ✓</div>
-        </div>
-        <div class="lb-level">${'LV'+s.level}</div>
-      </div>`;
-    }).join('')}
-  </div>`;
-}
-window.renderLeaderboard = renderLeaderboard;
 
 (function () {
   'use strict';
@@ -644,6 +586,74 @@ window.renderLeaderboard = renderLeaderboard;
   }
   .hol-embers{display:none;}
 }
+
+/* ════════════════════════════════════════════════════════
+   HOL: "Legendary" flourishes — exclusive to the hall tab,
+   since it's the flagship class-wide rankings page and
+   should read as a tier above the individual category boards.
+   ════════════════════════════════════════════════════════ */
+/* Slim shimmering rim across the very top of the stage, cycling
+   through every category's color so it reads as "the sum of all
+   boards" rather than any one activity's palette. */
+.hol-legend-bar{
+  position:absolute;top:0;left:0;right:0;height:3px;z-index:3;
+  background:linear-gradient(90deg,#ffb95f,#d0bcff,#4edea3,#EC4899,#ffb95f);
+  background-size:250% 100%;
+  animation:holLegendShimmer 5s linear infinite;
+  border-radius:20px 20px 0 0;
+}
+@keyframes holLegendShimmer{
+  0%{background-position:0% 0}
+  100%{background-position:250% 0}
+}
+.hol-stage-legendary{
+  box-shadow:0 0 0 1px rgba(255,255,255,.08),0 24px 70px rgba(0,0,0,.5),0 0 50px rgba(208,188,255,.1);
+}
+/* Slow-drifting gold dust across the whole stage (not just the podium
+   cards) — a much bigger, lazier field than the per-card embers, to
+   signal "the whole room is celebrating", not just the champion. */
+.hol-sparkle-field{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:1;}
+.hol-sparkle{
+  position:absolute;border-radius:50%;
+  background:radial-gradient(circle,#fff7ed 0%,#fde68a 45%,transparent 100%);
+  opacity:0;
+  animation:holSparkleDrift ease-in-out infinite;
+}
+@keyframes holSparkleDrift{
+  0%{transform:translateY(0) scale(.6);opacity:0;}
+  15%{opacity:.65;}
+  50%{opacity:.85;}
+  85%{opacity:.2;}
+  100%{transform:translateY(-40px) scale(1);opacity:0;}
+}
+@media(prefers-reduced-motion:reduce){
+  .hol-legend-bar,.hol-sparkle{animation:none!important;}
+  .hol-sparkle-field{display:none;}
+}
+
+/* Class-wide summary strip beneath the podium — gives the hall tab
+   a "hub overview" feel none of the single-category boards have. */
+.hol-hall-summary{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
+  margin:0 0 24px;
+}
+.hol-summary-card{
+  background:rgba(35,31,56,.55);backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.07);border-radius:14px;
+  padding:14px 12px;text-align:center;
+}
+.hol-summary-icon{font-size:18px;margin-bottom:6px;}
+.hol-summary-val{
+  font-family:var(--fh);font-size:20px;font-weight:900;color:var(--on-surface);
+  letter-spacing:-.02em;line-height:1.1;
+}
+.hol-summary-lbl{
+  font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-muted);margin-top:4px;
+}
+@media(max-width:680px){
+  .hol-hall-summary{grid-template-columns:repeat(2,1fr);}
+}
     `;
     document.head.appendChild(s);
   })();
@@ -652,7 +662,7 @@ window.renderLeaderboard = renderLeaderboard;
   // Category metadata — colors, gradients, spotlight tints
   // ─────────────────────────────────────────────────────────────────────────────
   const HOL_CAT = {
-    hall:       { label: 'Hall of Fame',   icon: '🏛️', color: '#d0bcff', grad: 'linear-gradient(135deg,#d0bcff,#8b5cf6)',      glow: 'rgba(208,188,255,.28)', beam: 'rgba(208,188,255,.18)' },
+    hall:       { label: 'Hall of Fame',   icon: '🏛️', color: '#ffd873', grad: 'linear-gradient(135deg,#ffb95f,#d0bcff 55%,#4edea3)', glow: 'rgba(255,216,115,.32)', beam: 'rgba(255,255,255,.16)' },
     recitation: { label: 'Recitation',     icon: '🎤', color: '#4edea3', grad: 'linear-gradient(135deg,#4edea3,#06b6d4)',      glow: 'rgba(78,222,163,.28)',  beam: 'rgba(78,222,163,.14)'  },
     boss:       { label: 'Boss Raider',    icon: '⚔️',  color: '#EC4899', grad: 'linear-gradient(135deg,#EC4899,#9333ea)',      glow: 'rgba(236,72,153,.3)',   beam: 'rgba(236,72,153,.16)'  },
     academic:   { label: 'Academic',       icon: '📚', color: '#d0bcff', grad: 'linear-gradient(135deg,#8b5cf6,#d0bcff)',      glow: 'rgba(139,92,246,.28)',  beam: 'rgba(139,92,246,.14)'  },
@@ -842,7 +852,7 @@ window.renderLeaderboard = renderLeaderboard;
       </div>
       <div class="hol-card-name">${firstName}</div>
       <div class="hol-card-score" style="color:${meta.color}">${entry.scoreLabel}</div>
-      <div class="hol-card-score-lbl">${catKey === 'boss' ? 'damage' : catKey === 'recitation' ? 'points' : 'score'}</div>
+      <div class="hol-card-score-lbl">${catKey === 'boss' ? 'damage' : catKey === 'recitation' ? 'points' : catKey === 'hall' ? 'experience' : 'score'}</div>
       ${titleDisplayHTML}
     </div>`;
   }
@@ -853,6 +863,7 @@ window.renderLeaderboard = renderLeaderboard;
   function _holRenderStage(entries, catKey, periodKey, myEntry) {
     const meta        = HOL_CAT[catKey] || HOL_CAT.overall;
     const periodLabel = (HOL_PERIODS.find(p => p.key === periodKey) || HOL_PERIODS[0]).label;
+    const isHall       = catKey === 'hall';
 
     // Slot order: index 1 (2nd), index 0 (1st), index 2 (3rd)
     const slots = [entries[1], entries[0], entries[2]];
@@ -863,19 +874,33 @@ window.renderLeaderboard = renderLeaderboard;
     const myName      = myEntry ? (myEntry.student.displayName || myEntry.student.name).split(' ')[0] : 'You';
     const isInPodium  = myEntry && myEntry.rank <= 3;
 
-    return `<div class="hol-stage">
+    // Hall exclusive: a lazy drifting field of gold dust across the whole
+    // stage (not just the podium cards) — reads as "the whole room", since
+    // this is the class's flagship board, not one activity's leaderboard.
+    const sparkleLefts = [4, 12, 20, 30, 38, 48, 58, 66, 74, 82, 90, 96];
+    const sparkleHtml = isHall
+      ? `<div class="hol-sparkle-field">${sparkleLefts.map((left, i) => {
+          const size = 2 + (i % 3);
+          const top  = 15 + ((i * 37) % 70);
+          return `<span class="hol-sparkle" style="left:${left}%;top:${top}%;width:${size}px;height:${size}px;animation-delay:${(i * 0.55).toFixed(2)}s;animation-duration:${(4.5 + (i % 4)).toFixed(1)}s"></span>`;
+        }).join('')}</div>`
+      : '';
+
+    return `<div class="hol-stage${isHall ? ' hol-stage-legendary' : ''}">
+      ${isHall ? '<div class="hol-legend-bar"></div>' : ''}
+      ${sparkleHtml}
       <div class="hol-beams">${_holBeamSVG(meta.beam)}</div>
       <div class="hol-scene-header">
-        <div class="hol-scene-kicker">Hall of Legends</div>
+        <div class="hol-scene-kicker">${isHall ? 'The Flagship Board' : 'Hall of Legends'}</div>
         <div class="hol-scene-title" style="--hol-grad:${meta.grad};--hol-glow:${meta.glow}">${meta.icon} ${meta.label}</div>
-        <div class="hol-scene-period">${periodLabel}</div>
+        <div class="hol-scene-period">${isHall ? 'Class-wide · All Activities' : periodLabel}</div>
       </div>
 
       <div class="hol-podium-row">
         ${slots.map((e, i) => _holRenderCard(e, ranks[i], catKey, meta)).join('')}
       </div>
 
-      ${!isInPodium ? `<div class="hol-my-rank-bar">
+      ${(myEntry && !isInPodium) ? `<div class="hol-my-rank-bar">
         <div>
           <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Your Standing</div>
           <div style="font-size:13px;font-weight:700;color:var(--on-surface)">${myName}</div>
@@ -891,6 +916,35 @@ window.renderLeaderboard = renderLeaderboard;
           </div>
         </div>
       </div>` : ''}
+    </div>`;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Hall-exclusive: class-wide summary strip beneath the podium — total
+  // legends, combined XP, average level, and top tier count. Gives the
+  // flagship board a "hub overview" feel none of the single-category
+  // leaderboards have.
+  // ─────────────────────────────────────────────────────────────────────────────
+  function _holRenderHallSummary(entries) {
+    const totalStudents = entries.length;
+    const active        = entries.filter(e => e.score > 0).length;
+    const totalXP        = entries.reduce((a, e) => a + (e.score || 0), 0);
+    const avgLevel       = totalStudents ? Math.round(entries.reduce((a, e) => a + (e.student.level || 1), 0) / totalStudents) : 0;
+    const masters        = entries.filter(e => e.student.tier === 'Master').length;
+
+    const cards = [
+      { icon: '🎓', val: totalStudents.toLocaleString(), lbl: 'Class Legends' },
+      { icon: '✨', val: totalXP.toLocaleString(),        lbl: 'Combined XP' },
+      { icon: '📈', val: 'Lv ' + avgLevel,                lbl: 'Average Level' },
+      { icon: '👑', val: masters.toLocaleString(),        lbl: 'Grand Masters' },
+    ];
+
+    return `<div class="hol-hall-summary">
+      ${cards.map(c => `<div class="hol-summary-card">
+        <div class="hol-summary-icon">${c.icon}</div>
+        <div class="hol-summary-val">${c.val}</div>
+        <div class="hol-summary-lbl">${c.lbl}</div>
+      </div>`).join('')}
     </div>`;
   }
 
@@ -920,7 +974,10 @@ window.renderLeaderboard = renderLeaderboard;
 
     let sub = '';
     switch (catKey) {
-      case 'recitation': case 'hall':
+      case 'hall':
+        sub = `✅ ${(s.attendance || 0)}% attendance · ${s.tier || 'Novice'}`;
+        break;
+      case 'recitation':
         sub = `🎤 ${(stats.sessionCount || 0)} sessions · 🔥 ${(stats.streak || 0)} streak`;
         break;
       case 'boss':
@@ -988,28 +1045,30 @@ window.renderLeaderboard = renderLeaderboard;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // MAIN PATCH: renderLeaderboard
-  // Wraps the original Hall of Fame renderer (defined earlier in index.html)
-  // and adds the full HOL category/period system on top.
+  // Which page container to render into — students get #s-leaderboard,
+  // teachers/admins get their own #a-hall-of-fame page so staff can view
+  // the Hall of Fame without needing the separate Leaderboard Admin
+  // (config-only) page.
   // ─────────────────────────────────────────────────────────────────────────────
-  const _origRenderLeaderboard = (typeof renderLeaderboard === 'function') ? renderLeaderboard : null;
+  function _holTargetPageId() {
+    const staff = (typeof currentRole !== 'undefined') && (currentRole === 'admin' || currentRole === 'teacher');
+    return staff ? 'a-hall-of-fame' : 's-leaderboard';
+  }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // MAIN PATCH: renderLeaderboard
+  // All five tabs — hall, overall, recitation, boss, academic — share this
+  // one pipeline. 'hall' is class-wide XP/level standing (no period concept,
+  // since XP is cumulative, not an event log); the other four are EQL
+  // category scores with optional period filtering.
+  // ─────────────────────────────────────────────────────────────────────────────
   window.renderLeaderboard = function (activeTab, activePeriod) {
     activeTab    = activeTab    || window._eqlActiveTab    || 'hall';
     activePeriod = activePeriod || window._eqlActivePeriod || 'all';
     window._eqlActiveTab    = activeTab;
     window._eqlActivePeriod = activePeriod;
 
-    // ── Hall of Fame tab: delegate to original + inject HOL nav above it ──
-    if (activeTab === 'hall') {
-      if (_origRenderLeaderboard) _origRenderLeaderboard();
-      const pg = document.getElementById('s-leaderboard');
-      if (!pg) return;
-      pg.insertAdjacentHTML('afterbegin', _holBuildNavBars('hall', activePeriod));
-      return;
-    }
-
-    // ── Specialised leaderboard category ──
+    const isStaffViewer = (typeof currentRole !== 'undefined') && (currentRole === 'admin' || currentRole === 'teacher');
     const cfg     = (DB.leaderboardConfig || {})[activeTab] || {};
     const enabled = cfg.enabled !== false;
     const meta    = HOL_CAT[activeTab] || HOL_CAT.overall;
@@ -1023,6 +1082,14 @@ window.renderLeaderboard = renderLeaderboard;
       entries = DB.students.map(student => {
         let stats, score, scoreLabel;
         switch (activeTab) {
+          case 'hall': {
+            // Class-wide flagship ranking — raw XP/level standing, the same
+            // number shown on the student's own sidebar and dashboard.
+            stats      = { xp: student.xp || 0, level: student.level || 1, tier: student.tier || 'Novice', attendance: student.attendance || 0 };
+            score      = student.xp || 0;
+            scoreLabel = score.toLocaleString() + ' XP';
+            break;
+          }
           case 'recitation': {
             stats      = eqlComputeRecitation(student.id, periodResetAt);
             score      = stats.totalPts;
@@ -1063,8 +1130,9 @@ window.renderLeaderboard = renderLeaderboard;
     const myRank  = myEntry ? myEntry.rank : '—';
     const active  = entries.filter(e => e.score > 0).length;
     const top3    = entries.slice(0, 3);
+    const isHall  = activeTab === 'hall';
 
-    const pg = document.getElementById('s-leaderboard');
+    const pg = document.getElementById(_holTargetPageId());
     if (!pg) return;
 
     pg.innerHTML = `
@@ -1073,8 +1141,12 @@ window.renderLeaderboard = renderLeaderboard;
       <div class="page-hero-bg2"></div>
       <div style="position:relative;z-index:1">
         <div class="page-hero-label">🏆 Hall of Legends</div>
-        <h1 style="font-family:var(--fh);font-size:32px;font-weight:900;color:var(--on-surface);margin-bottom:8px">${meta.label} Rankings</h1>
-        <p style="font-size:14px;color:var(--text-muted)">Your rank: <span style="color:${meta.color};font-weight:700">#${myRank}</span></p>
+        <h1 style="font-family:var(--fh);font-size:32px;font-weight:900;color:var(--on-surface);margin-bottom:8px">${isHall ? 'Class Rankings' : meta.label + ' Rankings'}</h1>
+        <p style="font-size:14px;color:var(--text-muted)">${
+          isStaffViewer
+            ? (isHall ? 'Where your class\'s legends are forged.' : `See how your class stacks up in ${meta.label}.`)
+            : (myEntry ? `Your rank: <span style="color:${meta.color};font-weight:700">#${myRank}</span>` : 'Where legends are forged.')
+        }</p>
       </div>
     </div>
 
@@ -1084,7 +1156,7 @@ window.renderLeaderboard = renderLeaderboard;
       ? `<div class="hol-disabled">
           <div style="font-size:44px;margin-bottom:14px">🔒</div>
           <div style="font-family:var(--fh);font-size:17px;font-weight:900;color:var(--on-surface);margin-bottom:6px">Leaderboard Disabled</div>
-          <div style="font-size:13px;color:var(--text-muted)">This leaderboard is currently turned off by your teacher.</div>
+          <div style="font-size:13px;color:var(--text-muted)">This leaderboard is currently turned off${isStaffViewer ? '.' : ' by your teacher.'}</div>
          </div>`
       : entries.length < 1
         ? `<div class="hol-empty">
@@ -1094,6 +1166,8 @@ window.renderLeaderboard = renderLeaderboard;
            </div>`
         : `
     ${_holRenderStage(top3, activeTab, activePeriod, myEntry)}
+
+    ${isHall ? _holRenderHallSummary(entries) : ''}
 
     <div class="hol-list-header">
       <div class="hol-list-title">

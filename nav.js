@@ -57,6 +57,7 @@ const NAV_ADMIN=[
   {id:'a-nav-manager',label:'Navigation Manager',icon:'tune'},
   {id:'a-classroom',  label:'Seating Layout',    icon:'chair'},
   {id:'a-classroom-monitor', label:'Live Monitor', icon:'monitoring'},
+  {id:'a-hall-of-fame', label:'Hall of Fame', icon:'military_tech'},
   {id:'a-leaderboard', label:'Leaderboard Admin', icon:'leaderboard'},
   {id:'a-teachers', label:'Teacher Directory', icon:'groups'},
   {id:'a-starter-pack', label:'Starter Pack', icon:'redeem'},
@@ -140,6 +141,7 @@ function navTo(id){
   if(id!=='a-store'&&_adminStoreInterval){ clearInterval(_adminStoreInterval); _adminStoreInterval=null; }
   // Stop RFID capture (focus-stealing interval + AppStore subscription) when leaving the scanner
   if(id!=='a-scanner'&&typeof unmountRfidScanner==='function'){ unmountRfidScanner(); }
+  if(id!=='a-pos'&&typeof unmountPosPayCapture==='function'){ unmountPosPayCapture(); }
   if(id!=='a-classroom'&&typeof unmountClassroomBuilder==='function'){ unmountClassroomBuilder(); }
   if(id!=='a-classroom-monitor'&&typeof unmountClassroomMonitor==='function'){ unmountClassroomMonitor(); }
   if(id!=='a-sections'&&typeof unmountSectionMaker==='function'){ unmountSectionMaker(); }
@@ -192,6 +194,7 @@ function navTo(id){
     if(typeof unmountClassroomMonitor==='function') unmountClassroomMonitor();
     renderClassroomMonitor();
   }
+  else if(id==='a-hall-of-fame') renderLeaderboard();
   else if(id==='a-leaderboard') renderAdminLeaderboards();
   else if(id==='a-teachers') renderTeacherDirectory();
   else if(id==='a-starter-pack') renderStarterPackEditor();

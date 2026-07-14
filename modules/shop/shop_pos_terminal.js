@@ -53,6 +53,24 @@
 .item-rank-chip:hover{border-color:rgba(208,188,255,.25)}
 .item-rank-num{font-family:var(--fm);font-size:11px;font-weight:900;color:var(--text-muted);width:20px;text-align:right;flex-shrink:0}
 .aord-filter-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.pos-pay-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;max-height:520px;overflow-y:auto;padding-right:4px}
+.pos-pay-tile{background:rgba(35,31,56,.85);border:1px solid var(--border);border-radius:14px;padding:12px 10px;text-align:center;cursor:pointer;transition:all .15s;position:relative}
+.pos-pay-tile:hover{border-color:rgba(78,222,163,.35);transform:translateY(-2px)}
+.pos-pay-tile.out{opacity:.4;cursor:not-allowed;pointer-events:none}
+.pos-pay-tile-emoji{font-size:26px;margin-bottom:6px}
+.pos-pay-tile-name{font-family:var(--fh);font-size:11px;font-weight:800;color:var(--on-surface);line-height:1.25;margin-bottom:4px;min-height:28px;display:flex;align-items:center;justify-content:center}
+.pos-pay-tile-cost{font-family:var(--fh);font-size:13px;font-weight:900;color:var(--tertiary)}
+.pos-pay-tile-stock{font-size:9px;color:var(--text-muted);margin-top:2px}
+.pos-pay-cart-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.pos-pay-waiting{text-align:center;padding:20px 10px;background:rgba(78,222,163,.06);border:1px solid rgba(78,222,163,.22);border-radius:14px}
+.pos-pay-waiting-pulse{font-size:38px;animation:posPayPulse 1.3s ease-in-out infinite}
+@keyframes posPayPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.15);opacity:.7}}
+.pos-pay-identified{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:4px}
+.pos-pay-declined{background:rgba(255,180,171,.06);border:1px solid rgba(255,180,171,.25);border-radius:14px;padding:16px}
+.pos-pay-declined-row{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--on-surface)}
+.pos-pay-success{background:rgba(78,222,163,.07);border:1px solid rgba(78,222,163,.25);border-radius:14px;padding:18px;text-align:center}
+.pos-pay-manual-row{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(35,31,56,.85);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer;transition:all .15s}
+.pos-pay-manual-row:hover{border-color:rgba(78,222,163,.3);background:rgba(35,31,56,1)}
 `;
   document.head.appendChild(style);
 })();
@@ -76,6 +94,9 @@ AppStore.ready.then(function () {
  */
 window.renderPOS = function () {
   DB = loadDB();
+  _posPayCart = {};
+  _posPayManualStudentId = null;
+  if (typeof window.unmountPosPayCapture === 'function') window.unmountPosPayCapture();
   const orders    = DB.orders || [];
   const pending   = orders.filter(o => o.status === 'pending');
   const claimed   = orders.filter(o => o.status === 'claimed');
@@ -97,6 +118,7 @@ window.renderPOS = function () {
 
   <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:24px">
     <button class="pos-tab active" id="postab-scanner"   onclick="posSwitchTab('scanner')"><span class="material-symbols-outlined" style="font-size:16px">qr_code_scanner</span> Claim Code Scanner</button>
+    <button class="pos-tab"        id="postab-pay"       onclick="posSwitchTab('pay')"><span class="material-symbols-outlined" style="font-size:16px">contactless</span> Scan &amp; Pay</button>
     <button class="pos-tab"        id="postab-queue"     onclick="posSwitchTab('queue')"><span class="material-symbols-outlined" style="font-size:16px">pending_actions</span> Pending Queue ${pending.length > 0 ? `<span style="background:rgba(255,185,95,.2);border:1px solid rgba(255,185,95,.3);border-radius:10px;padding:1px 7px;font-size:10px;font-weight:900;color:var(--tertiary);font-family:var(--fh)">${pending.length}</span>` : ''}</button>
     <button class="pos-tab"        id="postab-history"   onclick="posSwitchTab('history')"><span class="material-symbols-outlined" style="font-size:16px">history</span> Redemption Log</button>
     <button class="pos-tab"        id="postab-analytics" onclick="posSwitchTab('analytics')"><span class="material-symbols-outlined" style="font-size:16px">bar_chart</span> Analytics</button>
@@ -122,6 +144,31 @@ window.renderPOS = function () {
     </div>
     <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:-12px;margin-bottom:12px">
       Press <kbd style="background:rgba(255,255,255,.08);border:1px solid var(--border2);border-radius:4px;padding:1px 5px;font-family:var(--fm);font-size:10px">Enter</kbd> to lookup · Format: <span style="font-family:var(--fm);color:var(--secondary)">XXX-NNN-XXX</span>
+    </div>
+  </div>
+
+  <div id="pos-panel-pay" style="display:none">
+    <input type="text" id="pos-pay-capture-input" autocomplete="off" inputmode="none"
+      style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px"
+      oninput="_posPayOnCaptureInput()"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();_posPayFinalizeCapture();}">
+    <div style="display:grid;grid-template-columns:1.3fr .9fr;gap:20px;align-items:start" id="pos-pay-layout">
+      <div class="pos-terminal" style="margin-bottom:0">
+        <div style="font-family:var(--fm);font-size:9px;color:var(--secondary);letter-spacing:.18em;text-transform:uppercase;margin-bottom:14px">🏪 RING UP SALE — TAP ITEMS TO ADD</div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+          <input type="text" id="pos-pay-search" placeholder="Search items…" oninput="_posPayRenderGrid()"
+            style="flex:1;min-width:160px;background:rgba(35,31,56,.9);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;font-size:12px;color:var(--text);outline:none">
+          <select id="pos-pay-cat" onchange="_posPayRenderGrid()" style="background:rgba(35,31,56,.9);border:1px solid var(--border2);border-radius:10px;padding:9px 10px;font-size:12px;color:var(--text);cursor:pointer">
+            <option value="all">All Categories</option>
+            <option value="food">🍔 Food</option><option value="supplies">📦 Supplies</option>
+            <option value="privilege">⭐ Privilege</option><option value="mystery">❓ Mystery</option>
+          </select>
+        </div>
+        <div id="pos-pay-grid" class="pos-pay-grid"></div>
+      </div>
+      <div class="pos-terminal" style="margin-bottom:0">
+        <div id="pos-pay-cart-box"></div>
+      </div>
     </div>
   </div>
 
@@ -176,12 +223,18 @@ window.renderPOS = function () {
 };
 
 window.posSwitchTab = function (tab) {
-  ['scanner', 'queue', 'history', 'analytics'].forEach(t => {
+  ['scanner', 'pay', 'queue', 'history', 'analytics'].forEach(t => {
     const btn   = document.getElementById('postab-' + t);
     const panel = document.getElementById('pos-panel-' + t);
     if (btn)   btn.classList.toggle('active', t === tab);
     if (panel) panel.style.display = t === tab ? 'block' : 'none';
   });
+  // Leaving the Scan & Pay tab always disarms the card reader capture —
+  // a lingering armed scanner listening in the background while the
+  // teacher is on another tab would let a stray card tap silently charge
+  // whatever sale was last in the cart.
+  if (tab !== 'pay' && typeof window.unmountPosPayCapture === 'function') window.unmountPosPayCapture();
+  if (tab === 'pay')       _posPayRenderPanel();
   if (tab === 'queue')     posFilterQueue();
   if (tab === 'history')   posFilterHistory();
   if (tab === 'analytics') { const ap = document.getElementById('pos-panel-analytics'); if (ap) ap.innerHTML = _posAnalyticsHTML(); }
@@ -314,6 +367,487 @@ window.posExecuteCancel = function (orderId) {
   renderPOS();
   posSwitchTab('queue');
 };
+
+// ── Scan & Pay — live cashier checkout ──────────────────────────────────────
+//
+//  A proper point-of-sale flow that runs entirely on the teacher's own
+//  device: the teacher (cashier) builds the sale by tapping items from the
+//  store catalog, then the student taps their RFID card on the reader to
+//  pay — same "ring it up, customer taps to pay" motion as a real POS.
+//  This is what lets a student without their own internet access still buy
+//  from the Armory: they never need to be online themselves, since the
+//  whole transaction is submitted from the teacher's connected terminal.
+//
+//  Payment resolves the tapped card to a student via the same rfidCards
+//  slice AttendanceService/RecitationService already use (read-only here),
+//  then reuses the exact same purchase_shop_product RPC + coin-delta sync
+//  cartCheckout() uses for the student-initiated Armory checkout — so
+//  stock reservation stays race-safe and coins are never a locally-guessed
+//  absolute value. Orders created here land as ALREADY claimed (no claim
+//  code needed — the "claim" already happened in person at the register).
+//
+//  A manual student-search fallback exists for a lost/unregistered card —
+//  the cashier still has to positively identify who's paying and click a
+//  final "Confirm & Charge" button, so a scan and a manual pick require the
+//  same level of deliberate confirmation before money moves.
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _posPayCart = {};              // itemId -> { item, qty }
+let _posPayManualStudentId = null; // set once a manual search result is picked
+let _posPayScanArmed = false;
+let _posPayCaptureFocusInterval = null;
+let _posPayCaptureTimer = null;
+let _posPayLastChargedTag = null;
+let _posPayLastChargeAt = 0;
+let _posPayBusy = false;           // guards against a double-charge while an RPC round-trip is in flight
+
+function _posPayTotal() { return Object.values(_posPayCart).reduce((s, e) => s + e.item.cost * e.qty, 0); }
+
+// ── Panel bootstrap ─────────────────────────────────────────────────────────
+
+function _posPayRenderPanel() {
+  _posPayRenderGrid();
+  _posPayRenderCart();
+}
+
+function _posPayRenderGrid() {
+  DB = loadDB();
+  const grid = document.getElementById('pos-pay-grid');
+  if (!grid) return;
+  const q   = (document.getElementById('pos-pay-search')?.value || '').toLowerCase().trim();
+  const cat = document.getElementById('pos-pay-cat')?.value || 'all';
+  let items = DB.store || [];
+  if (cat !== 'all') items = items.filter(i => i.cat === cat);
+  if (q)             items = items.filter(i => (i.name || '').toLowerCase().includes(q));
+
+  if (!items.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px 10px;color:var(--text-muted);font-size:12px">No items match.</div>`;
+    return;
+  }
+  grid.innerHTML = items.map(item => {
+    const out = item.stock === 0;
+    const inCart = _posPayCart[item.id] ? _posPayCart[item.id].qty : 0;
+    return `<div class="pos-pay-tile ${out ? 'out' : ''}" onclick="posPayAddItem('${item.id}')" title="${out ? 'Out of stock' : 'Add to sale'}">
+      <div class="pos-pay-tile-emoji">${item.emoji}</div>
+      <div class="pos-pay-tile-name">${_esc(item.name)}</div>
+      <div class="pos-pay-tile-cost">${item.cost.toLocaleString()} 🪙</div>
+      <div class="pos-pay-tile-stock">${out ? 'Out of stock' : `${item.stock} in stock`}${inCart ? ` · ${inCart} in sale` : ''}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Cart mutation ────────────────────────────────────────────────────────────
+
+window.posPayAddItem = function (id) {
+  DB = loadDB();
+  const item = DB.store.find(i => i.id === id);
+  if (!item) return;
+  if (item.stock === 0) { toast('❌ Out of stock!', '#ffb4ab'); return; }
+  const cartQty = _posPayCart[id] ? _posPayCart[id].qty : 0;
+  if (cartQty >= item.stock) { toast(`❌ Only ${item.stock} in stock!`, '#ffb4ab'); return; }
+  if (!_posPayCart[id]) _posPayCart[id] = { item, qty: 0 };
+  _posPayCart[id].qty++;
+  _posPayCart[id].item = item;
+  _posPayRenderGrid();
+  _posPayRenderCart();
+};
+
+window.posPayIncQty = function (id) { window.posPayAddItem(id); };
+
+window.posPayDecQty = function (id) {
+  if (!_posPayCart[id]) return;
+  _posPayCart[id].qty--;
+  if (_posPayCart[id].qty <= 0) delete _posPayCart[id];
+  _posPayRenderGrid();
+  _posPayRenderCart();
+};
+
+window.posPayClearCart = function () {
+  _posPayCart = {};
+  _posPayManualStudentId = null;
+  window.unmountPosPayCapture();
+  _posPayRenderGrid();
+  _posPayRenderCart();
+};
+
+// ── Cart + payment box render ────────────────────────────────────────────────
+
+function _posPayRenderCart() {
+  const box = document.getElementById('pos-pay-cart-box');
+  if (!box) return;
+  const entries = Object.values(_posPayCart);
+  const total   = _posPayTotal();
+  box.innerHTML = `
+    <div class="section-header" style="margin-bottom:12px">
+      <span class="material-symbols-outlined" style="color:var(--secondary)">shopping_cart</span>
+      <h2>Current Sale</h2>
+      ${entries.length ? `<button class="btn btn-ghost btn-xs" style="margin-left:auto" onclick="posPayClearCart()">Clear</button>` : ''}
+    </div>
+    ${!entries.length
+      ? `<div style="text-align:center;padding:30px 10px;color:var(--text-muted);font-size:12px;border:2px dashed rgba(255,255,255,.07);border-radius:14px">🛍️ Tap items on the left to ring them up.</div>`
+      : `<div style="max-height:230px;overflow-y:auto;margin-bottom:14px">
+          ${entries.map(e => `
+          <div class="pos-pay-cart-row">
+            <div style="font-size:20px">${e.item.emoji}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-family:var(--fh);font-size:12px;font-weight:800;color:var(--on-surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(e.item.name)}</div>
+              <div style="font-size:11px;color:var(--tertiary)">${e.item.cost.toLocaleString()} × ${e.qty} = ${(e.item.cost * e.qty).toLocaleString()} 🪙</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+              <button class="btn btn-ghost btn-xs" onclick="posPayDecQty('${e.item.id}')">−</button>
+              <span style="min-width:16px;text-align:center;font-size:12px;font-weight:700">${e.qty}</span>
+              <button class="btn btn-ghost btn-xs" onclick="posPayIncQty('${e.item.id}')">+</button>
+            </div>
+          </div>`).join('')}
+        </div>`}
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-top:1px solid var(--border);margin-bottom:4px">
+      <span style="font-size:12px;color:var(--text-muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">Total Due</span>
+      <span style="font-family:var(--fh);font-size:24px;font-weight:900;color:var(--tertiary)">${total.toLocaleString()} 🪙</span>
+    </div>
+    <div id="pos-pay-status">${_posPayIdleStatusHTML(entries.length)}</div>
+  `;
+}
+
+function _posPayIdleStatusHTML(count) {
+  return `
+  <button class="btn btn-success btn-block" style="padding:14px;font-size:14px" ${count ? '' : 'disabled'} onclick="posPayArmScan()">
+    <span class="material-symbols-outlined">contactless</span> Tap Card to Pay
+  </button>
+  <div style="text-align:center;margin:10px 0;font-size:11px;color:var(--text-muted)">or, if the card is lost/unregistered</div>
+  <input type="text" id="pos-pay-manual-search" placeholder="Search student by name…" oninput="posPaySearchStudent()" ${count ? '' : 'disabled'}
+    style="width:100%;background:rgba(35,31,56,.9);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;font-size:12px;color:var(--text);outline:none">
+  <div id="pos-pay-manual-results" style="margin-top:6px"></div>`;
+}
+
+// ── Card-tap capture (keyboard-wedge RFID reader) ────────────────────────────
+// Same hardware model as the attendance kiosk (see att_scanner_rfid.js
+// file header): the reader "types" the tag into a focused input, then
+// sends Enter. Scoped to a single hidden input on this panel only — no
+// document-wide keydown listener, so it never steals keystrokes from any
+// other field on the page.
+
+function _posPayStartCapture() {
+  if (_posPayCaptureFocusInterval) { clearInterval(_posPayCaptureFocusInterval); _posPayCaptureFocusInterval = null; }
+  if (_posPayCaptureTimer)         { clearTimeout(_posPayCaptureTimer); _posPayCaptureTimer = null; }
+  const input = document.getElementById('pos-pay-capture-input');
+  if (!input) return;
+  input.value = '';
+  input.focus();
+  _posPayCaptureFocusInterval = setInterval(() => {
+    const el = document.getElementById('pos-pay-capture-input');
+    if (el && _posPayScanArmed && document.activeElement !== el) el.focus();
+  }, 300);
+}
+
+window.unmountPosPayCapture = function () {
+  if (_posPayCaptureFocusInterval) { clearInterval(_posPayCaptureFocusInterval); _posPayCaptureFocusInterval = null; }
+  if (_posPayCaptureTimer)         { clearTimeout(_posPayCaptureTimer); _posPayCaptureTimer = null; }
+  _posPayScanArmed = false;
+};
+
+window._posPayOnCaptureInput = function () {
+  if (_posPayCaptureTimer) clearTimeout(_posPayCaptureTimer);
+  // 120ms inactivity fallback, for reader models that don't emit Enter.
+  _posPayCaptureTimer = setTimeout(window._posPayFinalizeCapture, 120);
+};
+
+window._posPayFinalizeCapture = function () {
+  const input = document.getElementById('pos-pay-capture-input');
+  if (!input) return;
+  const tag = (input.value || '').trim();
+  input.value = '';
+  if (!tag || !_posPayScanArmed) return;
+  _posPayHandleTag(tag);
+};
+
+window.posPayArmScan = function () {
+  if (!Object.keys(_posPayCart).length) { toast('Add items to the sale first.', '#ffb95f'); return; }
+  _posPayScanArmed = true;
+  const status = document.getElementById('pos-pay-status');
+  if (status) status.innerHTML = `
+    <div class="pos-pay-waiting">
+      <div class="pos-pay-waiting-pulse">💳</div>
+      <div style="font-family:var(--fh);font-size:14px;font-weight:800;color:var(--secondary);margin-top:10px">Waiting for card tap…</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Have the student tap their card on the reader</div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:14px" onclick="posPayCancelScan()">Cancel</button>
+    </div>`;
+  _posPayStartCapture();
+};
+
+window.posPayCancelScan = function () {
+  window.unmountPosPayCapture();
+  _posPayRenderCart();
+};
+
+window.posPayEditSale = function () {
+  window.unmountPosPayCapture();
+  _posPayRenderCart();
+};
+
+function _posPayHandleTag(tag) {
+  DB = loadDB();
+  const card = (DB.rfidCards || []).find(c => c.tagId === tag && c.isActive);
+  if (!card) {
+    _posPayRenderScanError('Card not recognized — it isn\'t registered to any student.');
+    return;
+  }
+  // Debounce: a card left sitting on the reader (or a bounce) must not
+  // fire two charges for the same tap.
+  const now = Date.now();
+  if (_posPayLastChargedTag === tag && (now - _posPayLastChargeAt) < 5000) return;
+  _posPayLastChargedTag = tag;
+  _posPayLastChargeAt   = now;
+  window.unmountPosPayCapture();
+  _posPayAttemptCharge(card.studentId, 'scan');
+}
+
+function _posPayRenderScanError(msg) {
+  const status = document.getElementById('pos-pay-status');
+  if (!status) return;
+  status.innerHTML = `
+    <div style="text-align:center;padding:16px;background:rgba(255,180,171,.06);border:1px solid rgba(255,180,171,.22);border-radius:14px">
+      <div style="font-size:28px;margin-bottom:6px">🚫</div>
+      <div style="font-size:12px;color:#ffb4ab;margin-bottom:12px">${_esc(msg)}</div>
+      <button class="btn btn-ghost btn-sm" onclick="posPayArmScan()">Try Again</button>
+    </div>`;
+}
+
+// ── Manual student search (lost/unregistered card fallback) ─────────────────
+
+window.posPaySearchStudent = function () {
+  DB = loadDB();
+  const q   = (document.getElementById('pos-pay-manual-search')?.value || '').toLowerCase().trim();
+  const box = document.getElementById('pos-pay-manual-results');
+  if (!box) return;
+  if (!q) { box.innerHTML = ''; return; }
+  const matches = (DB.students || []).filter(s => (s.name || '').toLowerCase().includes(q)).slice(0, 6);
+  if (!matches.length) { box.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:6px 2px">No students match "${_esc(q)}".</div>`; return; }
+  box.innerHTML = matches.map(s => `
+    <div class="pos-pay-manual-row" onclick="posPaySelectStudent('${s.id}')">
+      <span class="pos-av" style="background:${s.color || '#8b5cf6'}22;border:1px solid ${s.color || '#8b5cf6'}44;color:${s.color || '#8b5cf6'}">${_esc(s.init || '?')}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:var(--on-surface)">${_esc(s.name)}</div>
+        <div style="font-size:10px;color:var(--text-muted)">${(s.coins || 0).toLocaleString()} 🪙 balance</div>
+      </div>
+    </div>`).join('');
+};
+
+window.posPaySelectStudent = function (id) {
+  DB = loadDB();
+  const student = (DB.students || []).find(s => s.id === id);
+  if (!student) return;
+  _posPayManualStudentId = id;
+  const total  = _posPayTotal();
+  const status = document.getElementById('pos-pay-status');
+  if (!status) return;
+  status.innerHTML = `
+    <div class="pos-pay-identified">
+      <span class="pos-av" style="width:34px;height:34px;font-size:13px;background:${student.color || '#8b5cf6'}22;border:1px solid ${student.color || '#8b5cf6'}44;color:${student.color || '#8b5cf6'}">${_esc(student.init || '?')}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface)">${_esc(student.name)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">Balance: ${(student.coins || 0).toLocaleString()} 🪙</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn btn-ghost" style="flex:1" onclick="posPayEditSale()">Cancel</button>
+      <button class="btn btn-success" style="flex:1" onclick="posPayManualCharge()">Confirm &amp; Charge ${total.toLocaleString()} 🪙</button>
+    </div>`;
+};
+
+window.posPayManualCharge = function () {
+  if (!_posPayManualStudentId) return;
+  _posPayAttemptCharge(_posPayManualStudentId, 'manual');
+};
+
+// ── Charge core — reuses the same atomic RPCs cartCheckout() uses ───────────
+
+function _posPayRenderProcessing(student) {
+  const status = document.getElementById('pos-pay-status');
+  if (!status) return;
+  status.innerHTML = `
+    <div class="pos-pay-identified">
+      <span class="pos-av" style="width:34px;height:34px;font-size:13px;background:${student.color || '#8b5cf6'}22;border:1px solid ${student.color || '#8b5cf6'}44;color:${student.color || '#8b5cf6'}">${_esc(student.init || '?')}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface)">${_esc(student.name)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">Balance: ${(student.coins || 0).toLocaleString()} 🪙</div>
+      </div>
+    </div>
+    <div style="text-align:center;padding:14px 0;color:var(--text-muted);font-size:12px">⏳ Processing payment…</div>`;
+}
+
+function _posPayRenderDeclined(student, total) {
+  const status = document.getElementById('pos-pay-status');
+  if (!status) return;
+  const shortBy = Math.max(0, total - (student.coins || 0));
+  status.innerHTML = `
+    <div class="pos-pay-declined">
+      <div style="font-size:34px;text-align:center">❌</div>
+      <div style="font-family:var(--fh);font-size:15px;font-weight:900;color:#ffb4ab;text-align:center;margin:6px 0 2px">DECLINED</div>
+      <div style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:12px">Insufficient balance</div>
+      <div class="pos-pay-declined-row">
+        <span class="pos-av" style="background:${student.color || '#8b5cf6'}22;border:1px solid ${student.color || '#8b5cf6'}44;color:${student.color || '#8b5cf6'}">${_esc(student.init || '?')}</span>
+        ${_esc(student.name)}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:10px"><span style="color:var(--text-muted)">Sale Total</span><span style="font-weight:700">${total.toLocaleString()} 🪙</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:4px"><span style="color:var(--text-muted)">Student Balance</span><span style="font-weight:700">${(student.coins || 0).toLocaleString()} 🪙</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:4px;padding-top:6px;border-top:1px solid rgba(255,180,171,.2)"><span style="color:#ffb4ab;font-weight:700">Short By</span><span style="color:#ffb4ab;font-weight:900">${shortBy.toLocaleString()} 🪙</span></div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn btn-ghost" style="flex:1" onclick="posPayEditSale()">✏️ Edit Sale</button>
+        <button class="btn btn-danger" style="flex:1" onclick="posPayEditSale()">Try Different Card</button>
+      </div>
+    </div>`;
+}
+
+function _posPayRenderStockFail(failed) {
+  const status = document.getElementById('pos-pay-status');
+  if (!status) return;
+  status.innerHTML = `
+    <div class="pos-pay-declined">
+      <div style="font-size:30px;text-align:center">📦</div>
+      <div style="font-family:var(--fh);font-size:14px;font-weight:900;color:#ffb4ab;text-align:center;margin:6px 0 10px">Stock Ran Out Mid-Sale</div>
+      ${failed.map(f => `<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">${_esc(f.e.item.name)} — ${_esc(f.reason)}</div>`).join('')}
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="posPayEditSale()">Back to Sale</button>
+    </div>`;
+}
+
+function _posPayRenderReceipt(student, receiptItems, chargeable, failed) {
+  const status = document.getElementById('pos-pay-status');
+  if (!status) return;
+  status.innerHTML = `
+    <div class="pos-pay-success">
+      <div style="font-size:38px;margin-bottom:6px">✅</div>
+      <div style="font-family:var(--fh);font-size:16px;font-weight:900;color:var(--secondary);margin-bottom:2px">Payment Approved</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${_esc(student.name)} · new balance ${(student.coins || 0).toLocaleString()} 🪙</div>
+      <div style="text-align:left;background:rgba(0,0,0,.15);border-radius:10px;padding:10px 12px;margin-bottom:10px">
+        ${receiptItems.map(r => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0"><span>${r.item.emoji} ${_esc(r.item.name)} ×${r.qty}</span><span style="color:var(--tertiary)">${(r.item.cost * r.qty).toLocaleString()}</span></div>`).join('')}
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:800;padding-top:6px;margin-top:4px;border-top:1px solid rgba(255,255,255,.08)"><span>Total Charged</span><span style="color:var(--tertiary)">${chargeable.toLocaleString()} 🪙</span></div>
+      </div>
+      ${failed && failed.length ? `<div style="font-size:11px;color:#ffb95f;margin-bottom:10px">⚠️ ${failed.length} item(s) couldn't be added — ${failed.map(f => _esc(f.e.item.name)).join(', ')}</div>` : ''}
+      <button class="btn btn-success btn-block" onclick="posPayNewTransaction()">🧾 New Sale</button>
+    </div>`;
+}
+
+window.posPayNewTransaction = function () {
+  _posPayCart = {};
+  _posPayManualStudentId = null;
+  _posPayLastChargedTag = null;
+  window.unmountPosPayCapture();
+  _posPayRenderGrid();
+  _posPayRenderCart();
+  document.getElementById('pos-pay-search') && (document.getElementById('pos-pay-search').value = '');
+};
+
+async function _posPayAttemptCharge(studentId, method) {
+  if (_posPayBusy) return;
+  DB = loadDB();
+  const student = (DB.students || []).find(s => s.id === studentId);
+  const entries = Object.values(_posPayCart);
+  if (!student)      { _posPayRenderScanError('Student not found.'); return; }
+  if (!entries.length) { toast('Cart is empty.', '#ffb95f'); return; }
+
+  const total = entries.reduce((s, e) => s + e.item.cost * e.qty, 0);
+  _posPayRenderProcessing(student);
+
+  // Same affordability check cartCheckout() does before reserving any
+  // stock — this is the "fails like a proper POS" declined path.
+  if ((student.coins || 0) < total) {
+    _posPayRenderDeclined(student, total);
+    return;
+  }
+
+  _posPayBusy = true;
+  const succeeded = [];
+  const failed    = [];
+  for (const e of entries) {
+    const item = DB.store.find(i => i.id === e.item.id);
+    if (!item) { failed.push({ e, reason: 'no longer available' }); continue; }
+    const { data, error } = await DBService.rpc('purchase_shop_product', {
+      p_product_id: item.id, p_student_id: studentId, p_quantity: e.qty,
+    });
+    const result = Array.isArray(data) ? data[0] : data;
+    if (error || !result || !result.ok) {
+      const remaining = result ? result.remaining_stock : item.stock;
+      item.stock = remaining ?? item.stock;
+      failed.push({ e, reason: `only ${remaining ?? 0} left` });
+      continue;
+    }
+    item.stock = result.remaining_stock;
+    succeeded.push({ e, item });
+  }
+
+  if (!succeeded.length) {
+    _posPayBusy = false;
+    _posPayRenderStockFail(failed);
+    return;
+  }
+
+  const chargeable = succeeded.reduce((s, { e }) => s + e.item.cost * e.qty, 0);
+  const stIdx = DB.students.findIndex(s => s.id === studentId);
+  DB.students[stIdx].coins -= chargeable;
+  // Same atomic-delta persistence path every other spend site in the app
+  // uses — see utils.js's syncStudentStatsToServer() header for why a
+  // local-only mutation here would silently "refund" the student on the
+  // next reload.
+  syncStudentStatsToServer(studentId, 0, -chargeable);
+
+  if (!DB.orders)                    DB.orders = [];
+  if (!DB.redemptions)                DB.redemptions = [];
+  if (!DB.inventory)                  DB.inventory = {};
+  if (!DB.inventory[studentId])       DB.inventory[studentId] = [];
+
+  const cashier = (DB.admin && DB.admin.name) || (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || 'Teacher';
+  const receiptItems = [];
+  succeeded.forEach(({ e, item }) => {
+    for (let q = 0; q < e.qty; q++) {
+      const claimCode = posGenCode();
+      const orderId   = 'POS-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(100 + Math.random() * 900);
+      // Created already-claimed: unlike a self-checkout Armory order, this
+      // reward was handed over in person at the moment of payment — there
+      // is no separate claim step for the teacher to do later.
+      DB.orders.unshift({
+        orderId, claimCode,
+        studentId, studentName: student.name, studentInit: student.init, studentColor: student.color,
+        itemId: item.id, itemName: item.name, emoji: item.emoji,
+        cost: item.cost, category: item.cat,
+        status: 'claimed',
+        createdAt: new Date().toISOString(), createdDateStr: todayStr() + ' at ' + nowStr(),
+        claimedAt: Date.now(), claimedBy: cashier, cancelledAt: null, cancelReason: null,
+        entryMethod: method === 'scan' ? 'POS Card Tap' : 'POS Manual',
+      });
+      DB.redemptions.unshift({
+        studentId, itemId: item.id, itemName: item.name, emoji: item.emoji,
+        item: `${item.emoji} ${item.name}`, pts: item.cost, date: todayStr(), time: nowStr(), orderId, claimCode,
+      });
+    }
+    const inv      = DB.inventory[studentId];
+    const existing = inv.find(i => i.itemId === item.id);
+    if (existing) {
+      existing.quantity      = (existing.quantity || 1) + e.qty;
+      existing.lastPurchased = todayStr() + ' ' + nowStr();
+    } else {
+      inv.unshift({
+        itemId: item.id, itemName: item.name, emoji: item.emoji,
+        category: item.cat, quantity: e.qty,
+        datePurchased: todayStr() + ' at ' + nowStr(), source: 'Teacher POS', status: 'active',
+      });
+    }
+    receiptItems.push({ item, qty: e.qty });
+    if (typeof promoRecordPurchase === 'function') promoRecordPurchase(item.id);
+  });
+
+  if (typeof currentUser !== 'undefined' && currentUser && currentUser.id === studentId) currentUser = DB.students[stIdx];
+  saveDB();
+  _posPayBusy = false;
+
+  toast(`✅ ${chargeable.toLocaleString()} 🪙 charged to ${student.name}`, '#4edea3');
+  succeeded.forEach(({ e }) => delete _posPayCart[e.item.id]);
+  _posPayManualStudentId = null;
+  _posPayRenderGrid();
+  _posPayRenderCart();
+  _posPayRenderReceipt(DB.students[stIdx], receiptItems, chargeable, failed);
+  if (typeof invUpdateSidebarBadge === 'function' && typeof currentUser !== 'undefined' && currentUser && currentUser.id === studentId) invUpdateSidebarBadge();
+  if (typeof achCheckAndAward === 'function') setTimeout(() => achCheckAndAward(studentId), 400);
+}
 
 // ── Queue filter & render ─────────────────────────────────────────────────────
 

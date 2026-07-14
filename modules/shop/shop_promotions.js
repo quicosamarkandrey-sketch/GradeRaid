@@ -65,17 +65,34 @@ window.promoRecordClick = function (id) {
 
 /**
  * promoRecordPurchase(itemId) → void  [window.promoRecordPurchase]
- * Called from cartCheckout() when a student buys an item with an active linked promo.
- * Increments purchases for every active promo linked to itemId.
+ * Called from cartCheckout() / POS's _posPayAttemptCharge() — both are
+ * mid-transaction: they've already built up (but not yet saved) new
+ * DB.orders/DB.redemptions/DB.inventory entries on the live `DB` object and
+ * only call saveDB() once, after their own forEach loop finishes.
+ *
+ * BUGFIX: this used to call `DB = loadDB(); ...; saveDB();` itself. Since
+ * `DB` is a single shared global, that reassigned it to a completely fresh
+ * snapshot mid-loop, silently discarding every order/redemption/inventory
+ * mutation the caller had made so far (and any it makes for the next cart
+ * item) — the caller's own saveDB() at the end then persisted that fresh,
+ * still-order-less snapshot. For a purchase whose cart had 2+ distinct
+ * items, the *next* iteration's `DB.inventory[studentId]` lookup then hit
+ * this fresh snapshot (never initialized for that student) and threw
+ * ("Cannot read properties of undefined (reading 'find')"), aborting the
+ * whole checkout before the final saveDB() ever ran. Either way — crash or
+ * not — the purchased item's order/history/inventory records were lost even
+ * though the coins were already charged server-side (that RPC is separate
+ * and unaffected). Fix: operate on the DB object the caller already has
+ * loaded, and don't save here — the caller's own saveDB() call right after
+ * its loop covers this write along with everything else it just did, in one
+ * atomic flush.
  */
 window.promoRecordPurchase = function (itemId) {
-  DB = loadDB();
   if (!DB.promoAnalytics) DB.promoAnalytics = {};
   (DB.promotions || []).filter(p => p.linkedItemId === itemId && promoIsActive(p)).forEach(p => {
     if (!DB.promoAnalytics[p.id]) DB.promoAnalytics[p.id] = { views: 0, clicks: 0, purchases: 0 };
     DB.promoAnalytics[p.id].purchases++;
   });
-  saveDB();
 };
 
 // ── Auto-label logic ──────────────────────────────────────────────────────────
