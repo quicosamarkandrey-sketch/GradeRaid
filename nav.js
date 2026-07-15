@@ -65,6 +65,7 @@ const NAV_ADMIN=[
   {id:'a-content-oversight', label:'Content Oversight', icon:'travel_explore'},
   {id:'a-mascot-lines', label:'Mascot Lines', icon:'theater_comedy'},
   {id:'a-audit-log', label:'Audit Log', icon:'fact_check'},
+  {id:'a-system-health', label:'System Health', icon:'monitor_heart'},
 ];
 // ISOLATION_ROLES_PLAN.md §10/§11 — items only the real oversight `admin`
 // role should ever see, never a `teacher` account, regardless of what DSM's
@@ -73,7 +74,7 @@ const NAV_ADMIN=[
 // inside navTo() below — hiding a button from the sidebar is not access
 // control by itself, see save_dsm_settings()/promote_to_admin() etc. on the
 // SQL side for the actual enforcement.
-const ADMIN_ONLY_NAV_IDS = ['a-nav-manager', 'a-teachers', 'a-starter-pack', 'a-settings', 'a-content-oversight', 'a-mascot-lines', 'a-audit-log'];
+const ADMIN_ONLY_NAV_IDS = ['a-nav-manager', 'a-teachers', 'a-starter-pack', 'a-settings', 'a-content-oversight', 'a-mascot-lines', 'a-audit-log', 'a-system-health'];
 function setupSidebar(){
   // Use dynamic nav config if available, else fall back to hardcoded arrays
   // AUTH FIX (post-Phase 33): teacher is staff too — only real students get
@@ -139,6 +140,8 @@ function navTo(id){
   if(id!=='s-store'){ const f=document.getElementById('cart-fab'); if(f) f.remove(); }
   // Stop admin store live refresh when leaving
   if(id!=='a-store'&&_adminStoreInterval){ clearInterval(_adminStoreInterval); _adminStoreInterval=null; }
+  // Stop system-health stat-card auto-refresh (Phase 4) when leaving
+  if(id!=='a-system-health'&&typeof shStopCountsRefresh==='function'){ shStopCountsRefresh(); }
   // Stop RFID capture (focus-stealing interval + AppStore subscription) when leaving the scanner
   if(id!=='a-scanner'&&typeof unmountRfidScanner==='function'){ unmountRfidScanner(); }
   if(id!=='a-pos'&&typeof unmountPosPayCapture==='function'){ unmountPosPayCapture(); }
@@ -202,6 +205,7 @@ function navTo(id){
   else if(id==='a-content-oversight') renderContentOversight();
   else if(id==='a-mascot-lines') renderMascotLines();
   else if(id==='a-audit-log') renderAuditLog();
+  else if(id==='a-system-health') renderSystemHealth();
   showPage(id);
   // close sidebar on mobile
   if(window.innerWidth<=1024)document.getElementById('sidebar').classList.remove('open');

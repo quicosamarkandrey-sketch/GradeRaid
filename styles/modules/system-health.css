@@ -1,0 +1,62 @@
+/* ══════════════════════════════════════════════════════════════════════
+   styles/modules/system-health.css
+   Admin System Health page (a-system-health) — ADMIN_SYSTEM_HEALTH.md Phase 3.
+
+   Reuses base.css tokens (--primary/--secondary/--tertiary, --fh/--fb/--fm,
+   .page-hero, .glass-card, .stat-grid, .stat-card, .btn) rather than
+   inventing a parallel system, same convention command-center.css and
+   analytics.js already follow.
+
+   The one thing base.css doesn't already cover is a mobile-safe error log
+   table: audit-log.js's table (the closest existing analog) uses a fixed
+   inline grid-template-columns with no mobile breakpoint at all, which is
+   exactly the "retrofitted later" pattern ADMIN_SYSTEM_HEALTH.md's Phase 3
+   entry calls out to avoid here. Below ~720px the header row hides and
+   each row becomes a stacked card via [data-label] pseudo-labels instead
+   of trying to squeeze 5 grid columns into a phone width.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.sh-log-table{background:var(--surface,rgba(35,31,56,.8));border:1px solid var(--border);border-radius:16px;overflow:hidden}
+.sh-log-head{
+  display:grid;grid-template-columns:130px 90px 1fr 100px 110px;gap:10px;align-items:center;
+  padding:10px 16px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--text-muted);border-bottom:1px solid var(--border2);
+}
+.sh-log-row{
+  display:grid;grid-template-columns:130px 90px 1fr 100px 110px;gap:10px;align-items:start;
+  padding:12px 16px;border-bottom:1px solid var(--border2);
+}
+.sh-log-row:last-child{border-bottom:none}
+.sh-log-row.resolved{opacity:.55}
+.sh-log-msg{font-size:12.5px;color:var(--on-surface);word-break:break-word}
+.sh-log-msg-source{font-size:10px;color:var(--text-muted);margin-top:2px}
+.sh-log-stack-toggle{font-size:10px;color:var(--primary);cursor:pointer;margin-top:4px;display:inline-block}
+.sh-log-stack{
+  font-family:var(--fm);font-size:10px;color:var(--text-muted);white-space:pre-wrap;word-break:break-all;
+  margin-top:6px;padding:8px;background:rgba(0,0,0,.2);border-radius:6px;max-height:180px;overflow:auto;
+}
+.sh-role-chip{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:6px;width:fit-content}
+.sh-role-chip.admin{background:rgba(255,107,129,.15);color:#ff6b81}
+.sh-role-chip.teacher{background:rgba(208,188,255,.15);color:#d0bcff}
+.sh-role-chip.student{background:rgba(78,222,163,.15);color:var(--secondary)}
+.sh-role-chip.none{background:rgba(255,255,255,.06);color:var(--text-muted)}
+
+.sh-filter-bar{padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sh-filter-bar label{display:block;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px}
+
+/* ── Mobile: stacked-card rows instead of a squeezed 5-column grid ── */
+@media(max-width:720px){
+  .sh-log-head{display:none}
+  .sh-log-row{grid-template-columns:1fr;gap:6px;position:relative}
+  .sh-log-row [data-label]::before{
+    content:attr(data-label);display:block;font-size:9px;font-weight:800;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--text-muted);margin-bottom:2px;
+  }
+  .sh-log-row .sh-log-resolve-btn{position:absolute;top:12px;right:16px}
+}
+
+@media(max-width:640px){
+  .sh-filter-bar{flex-direction:column;align-items:stretch}
+  .sh-filter-bar > div{width:100%}
+  .sh-filter-bar select{width:100%}
+}

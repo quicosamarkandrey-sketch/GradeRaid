@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="./styles/modules/perceived-speed.css">
 <link rel="stylesheet" href="./styles/modules/motion-foundation.css">
 <link rel="stylesheet" href="./styles/modules/command-center.css">
+<link rel="stylesheet" href="./styles/modules/system-health.css">
 </head>
 <body>
 <div id="app">
@@ -233,6 +234,7 @@
     <div id="a-content-oversight" class="page"></div>
     <div id="a-mascot-lines" class="page"></div>
     <div id="a-audit-log" class="page"></div>
+    <div id="a-system-health" class="page"></div>
 
   </div>
 </div>
@@ -613,6 +615,15 @@
 </div>
 
 <!-- ─────────────────────────────────────────────────────────────────────────
+     GLOBAL ERROR CAPTURE (ADMIN_SYSTEM_HEALTH.md Phase 2) — loaded before
+     EVERYTHING else, including the Supabase SDK, so window.onerror /
+     unhandledrejection can catch boot-time errors too (a broken
+     db-service.js, a bad config value below, etc). See error-capture.js's
+     own header for how it copes with DBService not existing yet.
+     ───────────────────────────────────────────────────────────────────────── -->
+<script src="./error-capture.js"></script>
+
+<!-- ─────────────────────────────────────────────────────────────────────────
      SUPABASE CONFIG — must load before db-service.js, which reads these
      two globals to construct its client. Replace with your own project's
      values from Project Settings → API in the Supabase dashboard.
@@ -877,6 +888,9 @@ AppStore.ready.then(function () {
 <script src="./modules/admin/teacher-invite.js"></script>
 <script src="./modules/admin/audit-log-service.js"></script>
 <script src="./modules/admin/audit-log.js"></script>
+<!-- ADMIN_SYSTEM_HEALTH.md Phase 3 — render layer, nav entry wired in nav.js. -->
+<script src="./modules/admin/system-health-service.js"></script>
+<script src="./modules/admin/system-health.js"></script>
 <script src="./modules/admin/ownership-service.js"></script>
 <script src="./modules/admin/school-settings-service.js"></script>
 <script src="./modules/admin/school-settings.js"></script>

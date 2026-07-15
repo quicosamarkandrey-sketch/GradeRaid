@@ -390,6 +390,11 @@ async function doLogout(){
   if(WBC.cooldownTimeout){clearTimeout(WBC.cooldownTimeout);WBC.cooldownTimeout=null;}
   // Stop minion timers
   wbmStopSpawnLoop();
+  // System Health presence heartbeat (ADMIN_SYSTEM_HEALTH.md Phase 2):
+  // paired with the startPresenceHeartbeat() call in bootApp() below, same
+  // start/stop lifecycle pairing as WBC.refreshInterval just above.
+  if (typeof SystemHealthService !== 'undefined') SystemHealthService.stopPresenceHeartbeat();
+  if (typeof shStopCountsRefresh === 'function') shStopCountsRefresh();
   document.getElementById('main-app').style.display='none';
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('login-user').value='';document.getElementById('login-pass').value='';
@@ -414,6 +419,11 @@ function bootApp(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('main-app').style.display='block';
   updateTopbar();setupSidebar();
+  // System Health presence heartbeat (ADMIN_SYSTEM_HEALTH.md Phase 2): starts
+  // on every bootApp() call — both a fresh doLogin() and a restoreSession()
+  // on refresh — and is idempotent (no-ops if already running), since
+  // bootApp() itself runs from both call sites. Stopped in doLogout() above.
+  if (typeof SystemHealthService !== 'undefined') SystemHealthService.startPresenceHeartbeat();
   if(typeof restoreSidebarState==='function')restoreSidebarState();
   if(currentRole==='admin'||currentRole==='teacher'){renderAdminDashboard();showPage('a-dashboard');}
   else{renderStudentDashboard();showPage('s-dashboard');}

@@ -94,6 +94,11 @@ const DEFAULT_DB = {
   attendanceSessions:[],
   recitationLog:[],
   mail:[], // Phase 15 — synced via mail_messages when Supabase is configured
+  // Phase 67 — student notification bell. Rows are synthesized client-side
+  // by notification-service.js from DB.pointLog / DB.orders (never written
+  // directly at the source — see that file's header comment for why), and
+  // synced via the `notifications` table (phase67_notifications.sql).
+  notifications:[],
   quizSectionAssignments:{}, // Phase 15 — {quizId: [classId, ...]}, synced via quiz_sections
   // Phase 60 (exploit fix) — {studentId: {quizId: true}}. A one-time,
   // teacher/parent-granted exception that lets a student take one more
@@ -103,6 +108,12 @@ const DEFAULT_DB = {
   quizAttemptOverrides:{},
   achievementSectionAssignments:{}, // Phase 16 — {achievementId: [classId, ...]}, synced via achievement_sections
   titleSectionAssignments:{}, // Phase 21 — {titleId: [classId, ...]}, synced via title_sections
+  // Phase 7 (Campaign Redesign) — {studentId: {hint, heal, shield}} skill
+  // counts (Decision #5). Written ONLY via the campaign engine's
+  // adjust_student_skill_count() RPC calls (modules/campaign/campaign_engine.js)
+  // — same "RPC only, never bulk upsert" convention as titleUnlocks/
+  // achievementUnlocks above. See supabase/phase68_campaign_student_skills.sql.
+  studentSkills:{},
   stageMap:[
     {
       id:'w1',label:'Arcanum Basics',icon:'⚗️',color:'#8b5cf6',desc:'Foundation spells of knowledge.',

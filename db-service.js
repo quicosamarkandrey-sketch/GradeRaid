@@ -217,7 +217,7 @@ const DBService = (function () {
            registrations, pointLog, redemptions, recitationLog,
            rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
            achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
-           orders, inventoryRows, campaignStageSections, quizHistoryRows] =
+           orders, inventoryRows, campaignStageSections, quizHistoryRows, notifications, studentSkillRows] =
       await Promise.all([
         client.from('profiles').select('*'),
         client.from('boss_events').select('*'),
@@ -245,13 +245,15 @@ const DBService = (function () {
         client.from('inventory').select('*'), // Phase 48
         client.from('campaign_stage_sections').select('*'), // Phase 53 — read side of campaign per-section visibility (table existed since Phase 14, never wired up until now)
         client.from('quiz_history').select('*').order('completed_at', { ascending: false }), // Phase 57 — was local-only; see phase57_quiz_history_sync.sql
+        client.from('notifications').select('*').order('created_at', { ascending: false }), // Phase 67 — student notification bell; see phase67_notifications.sql
+        client.from('student_skills').select('*'), // Phase 7 (Campaign Redesign) — see phase68_campaign_student_skills.sql
       ]);
 
     for (const r of [profiles, bossEvents, bossParticipants, lootClaims, achievements, userAchievements,
                       registrations, pointLog, redemptions, recitationLog,
                       rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
                       achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
-                      orders, inventoryRows, campaignStageSections, quizHistoryRows]) {
+                      orders, inventoryRows, campaignStageSections, quizHistoryRows, notifications, studentSkillRows]) {
       if (r.error) throw r.error;
     }
 
@@ -610,6 +612,21 @@ const DBService = (function () {
       });
     });
 
+    // Phase 7 (Campaign Redesign) — student_skills is per-student, one row
+    // per student (id = student_id, unlike inventory's per-item rows above)
+    // — reshape into DB.studentSkills[studentId] = {hint, heal, shield}
+    // exactly as campaign_engine.js's _campGetSkillCounts() expects. Every
+    // write to this table goes exclusively through
+    // adjust_student_skill_count() (see phase68_campaign_student_skills.sql)
+    // — there is no bulk-push counterpart to this block, same "RPC only"
+    // convention as titleUnlocks/achievementUnlocks above.
+    const studentSkillsObj = {};
+    (studentSkillRows.data || []).forEach(row => {
+      studentSkillsObj[row.student_id] = {
+        hint: row.hint_count || 0, heal: row.heal_count || 0, shield: row.shield_count || 0,
+      };
+    });
+
     return {
       schemaVersion: _SCHEMA_VER,
       students,
@@ -661,13 +678,23 @@ const DBService = (function () {
           reviewedBy: r.reviewed_by, rejectionReason: r.rejection_reason,
           approvedStudentId: r.approved_student_id,
         })),
+      // Phase 67 — `createdAt` added: this column already existed server-side
+      // (created_at timestamptz default now(), see wave1_registrations_and_logs.sql)
+      // but was never mapped back into the local cache, so every render was
+      // stuck using `when` (a cosmetic string frozen at write time, e.g.
+      // literally the word "Just now" forever — see FIXES_APPLIED doc for
+      // Phase 67). Dashboard/notification rendering now computes a live
+      // relative-time label from this real timestamp via window.eqTimeAgo()
+      // instead of trusting the frozen string.
       pointLog: (pointLog.data || []).map(p => ({
         id: p.id, studentId: p.student_id, what: p.what, pts: p.pts, when: p.when_label,
+        createdAt: p.created_at,
       })),
       redemptions: (redemptions.data || []).map(r => ({
         orderId: r.order_id, studentId: r.student_id, itemId: r.item_id,
         itemName: r.item_name, emoji: r.emoji, item: r.item_label, pts: r.pts,
         date: r.date_label, time: r.time_label, claimCode: r.claim_code,
+        createdAt: r.created_at, // Phase 67 — same fix as point_log above
       })),
       // Phase 48 — mirrors DB.orders[] exactly. See cartCheckout() (creates),
       // shop_pos_terminal.js (staff claim/cancel), shop_orders.js (student
@@ -694,6 +721,19 @@ const DBService = (function () {
       // Phase 57 — mirrors DB.quizHistory{} exactly. See the
       // quizHistoryByStudent reshape above.
       quizHistory: quizHistoryByStudent,
+      // Phase 7 (Campaign Redesign) — mirrors DB.studentSkills{} exactly.
+      // See the studentSkillsObj reshape above.
+      studentSkills: studentSkillsObj,
+      // Phase 67 — student notification bell. Rows are written by
+      // notification-service.js (client-side synthesis from pointLog/orders,
+      // never inserted directly at the source — see that file's header
+      // comment), so this pull is a straight passthrough, same shape as
+      // pointLog above.
+      notifications: (notifications.data || []).map(n => ({
+        id: n.id, studentId: n.student_id, type: n.type, icon: n.icon,
+        title: n.title, body: n.body, action: n.action, pts: n.pts,
+        sourceId: n.source_id, read: n.read, createdAt: n.created_at,
+      })),
       recitationLog: (recitationLog.data || []).map(r => ({
         id: r.id, studentId: r.student_id, pts: r.pts, note: r.note, when: r.when_label,
         // Phase 3 additions — additive only, every pre-Phase-3 row simply has
@@ -1303,6 +1343,27 @@ const DBService = (function () {
       });
     }
 
+    // Notifications: same upsert-by-id shape as point_log above. Unlike
+    // point_log (append-only), these rows DO get updated in place — marking
+    // one read, or "mark all read" — so this table needed the UPDATE policy
+    // from day one (see phase67_notifications.sql's header comment; this is
+    // the exact bug class Phase 47/61 had to fix after the fact elsewhere).
+    if (Array.isArray(cache.notifications) && cache.notifications.length) {
+      await _pushTable('notifications', async () => {
+      const rows = cache.notifications
+        .filter(n => n.id && n.studentId) // skip anything malformed
+        .map(n => ({
+          id: n.id, student_id: n.studentId, type: n.type, icon: n.icon,
+          title: n.title, body: n.body, action: n.action, pts: n.pts,
+          source_id: n.sourceId, read: !!n.read,
+        }));
+      if (rows.length) {
+        const { error } = await client.from('notifications').upsert(rows, { onConflict: 'id' });
+        if (error) throw error;
+      }
+      });
+    }
+
     // Redemptions: orderId is already a unique client-generated key from
     // checkout time, so it's reused directly as the upsert conflict target.
     if (Array.isArray(cache.redemptions) && cache.redemptions.length) {
@@ -1501,6 +1562,18 @@ const DBService = (function () {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => _schedulePullRefresh()) // Phase 48
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => _schedulePullRefresh()) // Phase 48
       .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_history' }, () => _schedulePullRefresh()) // Phase 57
+      // Phase 67: point_log was pulled/pushed correctly since Wave 1 but,
+      // like achievements/titles before Phase 19, was never added to this
+      // subscription list — a recitation grant, boss victory, or admin point
+      // adjustment on one tab/device never live-reached another tab's
+      // notification bell until its next full reload. notifications gets
+      // the same treatment so the badge/toast update live too.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'point_log' }, () => _schedulePullRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => _schedulePullRefresh())
+      // Phase 7 (Campaign Redesign) — a skill grant/spend on one device
+      // (campaign_engine.js's adjust_student_skill_count() calls) now live-
+      // reaches the same student's other open tabs/devices too.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_skills' }, () => _schedulePullRefresh())
       .subscribe();
   }
 

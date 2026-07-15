@@ -1468,10 +1468,32 @@ textarea{resize:vertical}
   .stat-grid{grid-template-columns:1fr 1fr}
   .lb-podium{grid-template-columns:1fr 1fr 1fr;gap:8px}
   .podium-av{width:40px;height:40px}
-  .quiz-question-card{padding:24px}
-  .quiz-q-text{font-size:22px}
+  .quiz-question-card{padding:18px}
+  .quiz-q-text{font-size:19px}
+  .quiz-q-label{font-size:11px;margin-bottom:12px}
   .quiz-mascot-dock{width:120px;height:120px}
   .quiz-mascot-figure{width:104px;height:104px;font-size:52px}
+  /* Options: shrink padding/gaps and the letter badge, and force the
+     2x2 grid-mode layout back to a single left-aligned column — on
+     mobile there's no room for a centered 2-up grid, and a stacked
+     list with the letter on the left reads better at this width. */
+  .quiz-options{gap:10px}
+  .quiz-opt{padding:14px 16px;gap:12px}
+  .quiz-opt-letter{width:32px;height:32px;font-size:14px}
+  .quiz-opt-text{font-size:15px}
+  .quiz-options.grid-mode{display:flex;flex-direction:column;gap:10px}
+  .quiz-options.grid-mode .quiz-opt{
+    flex-direction:row;justify-content:flex-start;text-align:left;
+    min-height:unset;gap:12px;padding:14px 16px;
+  }
+  .quiz-options.grid-mode .quiz-opt:hover{transform:translateX(4px)}
+}
+@media(max-width:400px){
+  .quiz-question-card{padding:14px}
+  .quiz-q-text{font-size:17px}
+  .quiz-opt{padding:12px 14px}
+  .quiz-opt-letter{width:28px;height:28px;font-size:13px}
+  .quiz-opt-text{font-size:14px}
 }
 
 /* ── QBUILDER ── */

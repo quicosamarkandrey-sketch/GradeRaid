@@ -72,7 +72,9 @@ window.renderAdminStageMap = function () {
               <span style="font-family:var(--fh);font-size:14px;font-weight:700;color:var(--on-surface)">${_esc(s.title)}</span>
               <span class="${s.type === 'boss' ? 'boss-tag' : 'normal-tag'}">${s.type === 'boss' ? '⚔️ BOSS' : 'NORMAL'}</span>
             </div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:3px">❤️ ${s.lives || 3} lives · ⚡ +${s.xp} XP · 🪙 ${s.coins} · ${(s.scenes || []).length} scenes · ${(s.enemies || []).length} enemies · ${(s.enemies || []).reduce((a, e) => a + (e.questions || []).length, 0)} questions</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:3px">❤️ ${s.lives || 3} lives · ⚡ +${s.xp} XP · 🪙 ${s.coins} · ${Array.isArray(s.beats)
+              ? `${s.beats.length} beats · ${s.beats.filter(b => b.type === 'encounter').reduce((a, b) => a + (b.questions || []).length, 0)} questions`
+              : `${(s.scenes || []).length} scenes · ${(s.enemies || []).length} enemies · ${(s.enemies || []).reduce((a, e) => a + (e.questions || []).length, 0)} questions`}</div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button class="btn btn-ghost btn-xs" onclick="adminEditStage(${wi},${si})">✏️ Edit</button>
@@ -225,11 +227,16 @@ window.adminDeleteWorld = async function (wi) {
 // ── Stage CRUD ────────────────────────────────────────────────────────────────
 
 window.adminAddStage = function (wi) {
+  // Phase 3 — new stages are authored on the beat-list model (Decision #6):
+  // an empty `beats: []` array is the same presence check the engine uses
+  // (Phase 1's `Array.isArray(stage.beats)` in launchCampaignStage, Decision
+  // #13), so a stage created here automatically plays through the beat
+  // engine with zero extra wiring. Existing stages already saved with
+  // scenes/enemies/outro are never touched or migrated — they keep loading
+  // into the legacy three-section editor below via adminEditStage.
   window._stageDraft = {
     id: 's_' + uid(), title: 'New Stage', icon: '⭐', type: 'normal', xp: 100, coins: 50, lives: 3,
-    scenes:  [{ type: 'story', speaker: 'NARRATOR', text: 'Your story begins here...', bg: '#1a0a2e' }],
-    enemies: [{ sprite: '👹', name: 'Enemy', title: 'ENEMY ENCOUNTER', questions: [{ q: '', opts: ['', '', '', ''], answer: 0 }] }],
-    outro:   [{ type: 'story', speaker: 'NARRATOR', text: 'Victory!', bg: '#0e1a0e' }],
+    beats: [],
   };
   window._stageDraftWi = wi; window._stageDraftSi = null;
   showModal(_stageModalHTML(), 'lg');
@@ -256,7 +263,7 @@ function _stageModalHTML() {
 
 function _stageEditorHTML(d, icons) {
   if (!icons) icons = ['⭐','📖','🔢','✏️','👑','🔬','☀️','⚗️','⚛️','🐉'];
-  return `
+  const header = `
   <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:12px;margin-bottom:12px">
     <div class="form-group" style="margin:0"><label class="form-label">Title</label>
       <input type="text" id="sf-title" value="${_esc(d.title || '')}" style="width:100%" oninput="window._stageDraft.title=this.value"></div>
@@ -279,7 +286,22 @@ function _stageEditorHTML(d, icons) {
       ${icons.map(ic => `<div onclick="document.getElementById('sf-icon-val').value='${ic}';window._stageDraft.icon='${ic}'" style="width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.06);border:2px solid ${d.icon === ic ? 'var(--primary)' : 'transparent'};display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer">${ic}</div>`).join('')}
       <input type="text" id="sf-icon-val" value="${_esc(d.icon || '⭐')}" style="width:56px" oninput="window._stageDraft.icon=this.value">
     </div>
-  </div>
+  </div>`;
+
+  // Phase 3 — presence-based branch, same detection rule the engine uses
+  // (Decision #13 / Phase 1's `Array.isArray(stage.beats)` check): a stage
+  // saved with a `beats` array gets the new reorderable beat-list editor; a
+  // stage still on the legacy scenes/enemies/outro shape keeps opening in
+  // the original three-section editor, byte-for-byte unchanged below.
+  return header + (Array.isArray(d.beats) ? _beatListEditorHTML(d) : _legacyStageEditorHTML(d));
+}
+
+// ── Legacy three-section editor (scenes / enemies / outro) ─────────────────────
+// Unchanged since before Phase 3. Only stages that predate the beat-list
+// model (no `beats` array) ever render through this path — see the branch
+// in _stageEditorHTML above.
+function _legacyStageEditorHTML(d) {
+  return `
   <div style="border-top:1px solid var(--border);padding-top:14px;margin:12px 0 8px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-family:var(--fh);font-size:14px;font-weight:800">📖 Intro Story Scenes</div>
@@ -302,6 +324,436 @@ function _stageEditorHTML(d, icons) {
     <div id="sf-outro">${(d.outro || []).map((sc, i) => _sceneBlockHTML(sc, i, 'outro')).join('')}</div>
   </div>`;
 }
+
+// ── Beat-list editor (Phase 3) ──────────────────────────────────────────────────
+// New stages only (see adminAddStage). One reorderable ordered list replacing
+// the three-section split; `story` and `encounter` are the only beat types
+// with real editor blocks so far (matches what Phase 2's engine can render).
+// The `_beatBlockHTML` switch below is the deliberate extension point for
+// Phases 4–6 (`interaction`/reveal, `dialogue`, `interaction`/dragdrop) —
+// add a case + add-beat button there when those phases land; nothing else
+// in this section should need to change.
+function _beatListEditorHTML(d) {
+  if (!d.beats) d.beats = [];
+  return `
+  <div style="border-top:1px solid var(--border);padding-top:14px;margin:12px 0 8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-family:var(--fh);font-size:14px;font-weight:800">🧩 Beats</div>
+      <div class="beat-add-picker">
+        <button class="btn btn-ghost btn-sm" onclick="adminAddBeat('story')">📖 ＋ Story</button>
+        <button class="btn btn-ghost btn-sm" onclick="adminAddBeat('encounter')">⚔️ ＋ Encounter</button>
+        <button class="btn btn-ghost btn-sm" onclick="adminAddBeat('interaction')">🔎 ＋ Reveal</button>
+        <button class="btn btn-ghost btn-sm" onclick="adminAddBeat('dialogue')">💬 ＋ Dialogue</button>
+        <button class="btn btn-ghost btn-sm" onclick="adminAddBeat('dragdrop')">🧲 ＋ Drag &amp; Drop</button>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">One ordered sequence — mix story and encounter beats freely and use ↑/↓ to reorder (same pattern as stage reordering on the map).</div>
+    <div id="beat-list-body" class="beat-list">
+      ${d.beats.length ? d.beats.map((b, i) => _beatBlockHTML(b, i)).join('') : `
+      <div style="text-align:center;padding:32px;border:2px dashed rgba(255,255,255,.08);border-radius:12px;color:var(--text-muted);font-size:12px">
+        No beats yet — add a Story or Encounter beat above to begin.
+      </div>`}
+    </div>
+  </div>`;
+}
+
+function _beatBlockHTML(beat, i) {
+  switch (beat.type) {
+    case 'story':     return _storyBeatBlockHTML(beat, i);
+    case 'encounter': return _encounterBeatBlockHTML(beat, i);
+    case 'interaction':
+      // Phase 4 built the 'reveal' subtype; Phase 6 adds 'dragdrop' as a
+      // sibling case here.
+      if (beat.subtype === 'reveal')   return _revealBeatBlockHTML(beat, i);
+      if (beat.subtype === 'dragdrop') return _dragDropBeatBlockHTML(beat, i);
+      return `<div class="beat-block">Unknown interaction subtype: ${_esc(beat.subtype)}</div>`;
+    case 'dialogue':  return _dialogueBeatBlockHTML(beat, i);
+    default:          return `<div class="beat-block">Unknown beat type: ${_esc(beat.type)}</div>`;
+  }
+}
+
+function _beatBlockHeaderHTML(i, badgeClass, badgeLabel) {
+  const total = (window._stageDraft.beats || []).length;
+  return `<div class="beat-block-header">
+    <div class="beat-drag-handle" title="Use the arrows to reorder">⠿</div>
+    <div class="beat-type-badge ${badgeClass}">${badgeLabel}</div>
+    <div class="beat-block-num">BEAT ${i + 1}</div>
+    <div style="flex:1"></div>
+    <button class="btn btn-ghost btn-xs" onclick="adminMoveBeat(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+    <button class="btn btn-ghost btn-xs" onclick="adminMoveBeat(${i},1)" ${i === total - 1 ? 'disabled' : ''}>↓</button>
+    <button class="btn btn-danger btn-xs" onclick="adminRemoveBeat(${i})">✕ Remove</button>
+  </div>`;
+}
+
+function _storyBeatBlockHTML(beat, i) {
+  return `<div class="beat-block">
+    ${_beatBlockHeaderHTML(i, 'beat-type-story', '📖 STORY')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 8px">
+      <div><label class="form-label" style="font-size:9px">SPEAKER</label>
+        <input type="text" value="${_esc(beat.speaker || 'NARRATOR')}" style="width:100%" oninput="window._stageDraft.beats[${i}].speaker=this.value"></div>
+      <div><label class="form-label" style="font-size:9px">BG COLOR (hex)</label>
+        <input type="text" value="${_esc(beat.bg || '#1a0a2e')}" placeholder="#1a0a2e" style="width:100%" oninput="window._stageDraft.beats[${i}].bg=this.value"></div>
+    </div>
+    <label class="form-label" style="font-size:9px">STORY TEXT (typewriter effect)</label>
+    <textarea style="width:100%;min-height:72px;resize:vertical" oninput="window._stageDraft.beats[${i}].text=this.value">${_esc(beat.text || '')}</textarea>
+  </div>`;
+}
+
+function _encounterBeatBlockHTML(beat, i) {
+  return `<div class="beat-block">
+    ${_beatBlockHeaderHTML(i, 'beat-type-encounter', '⚔️ ENCOUNTER')}
+    <label style="display:flex;align-items:center;gap:8px;margin:10px 0;cursor:pointer;font-size:11px;color:var(--text-muted)">
+      <input type="checkbox" ${beat.boss ? 'checked' : ''} onchange="window._stageDraft.beats[${i}].boss=this.checked;_reloadStageEditor()">
+      ⚔️ Boss encounter (cosmetic framing only — mechanically identical per Decision #2)
+    </label>
+    <div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:8px;margin-bottom:10px">
+      <div><label class="form-label" style="font-size:9px">SPRITE</label>
+        <input type="text" value="${_esc(beat.sprite || '👹')}" style="width:100%" oninput="window._stageDraft.beats[${i}].sprite=this.value"></div>
+      <div><label class="form-label" style="font-size:9px">ENEMY NAME</label>
+        <input type="text" value="${_esc(beat.name || '')}" style="width:100%" oninput="window._stageDraft.beats[${i}].name=this.value"></div>
+      <div><label class="form-label" style="font-size:9px">ENCOUNTER TITLE</label>
+        <input type="text" value="${_esc(beat.title || '')}" placeholder="${beat.boss ? 'BOSS BATTLE' : 'ENEMY ENCOUNTER'}" style="width:100%" oninput="window._stageDraft.beats[${i}].title=this.value"></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--primary)">Questions</div>
+      <button class="btn btn-ghost btn-xs" onclick="adminAddBeatQuestion(${i})">＋ Add Question</button>
+    </div>
+    ${(beat.questions || []).map((q, qi) => _beatQuestionBlockHTML(q, i, qi)).join('')}
+  </div>`;
+}
+
+function _beatQuestionBlockHTML(q, bi, qi) {
+  return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-family:var(--fm);font-size:9px;color:var(--primary)">QUESTION ${qi + 1}</div>
+      <button class="btn btn-danger btn-xs" onclick="adminRemoveBeatQuestion(${bi},${qi})">✕</button>
+    </div>
+    <input type="text" value="${_esc(q.q || '')}" placeholder="Type your question here..." style="width:100%;margin-bottom:10px" oninput="window._stageDraft.beats[${bi}].questions[${qi}].q=this.value">
+    <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px">Answer choices — click ● to mark correct</div>
+    ${(q.opts || ['', '', '', '']).map((opt, oi) => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <div onclick="adminSetBeatAnswer(${bi},${qi},${oi})" style="width:22px;height:22px;border-radius:50%;border:2px solid ${q.answer === oi ? '#4edea3' : 'rgba(255,255,255,.15)'};background:${q.answer === oi ? 'rgba(78,222,163,.2)' : ''};cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px">${q.answer === oi ? '✓' : ''}</div>
+      <input type="text" value="${_esc(opt || '')}" placeholder="Option ${String.fromCharCode(65 + oi)}" style="flex:1" oninput="window._stageDraft.beats[${bi}].questions[${qi}].opts[${oi}]=this.value">
+    </div>`).join('')}
+  </div>`;
+}
+
+// ── Interaction/reveal beat editor (Phase 4) ────────────────────────────────────
+// Click-to-reveal hotspots: teacher-configurable count (Decision #9) and
+// per-hotspot text/image payload (Decision #8). Rendered as a card per
+// hotspot rather than positioned over a diagram — the roadmap only requires
+// hotspot count and payload to be configurable, not pixel placement, and a
+// card list is the simplest thing that renders correctly on both desktop and
+// touch (positioned drag/place authoring is the kind of complexity Phase 6
+// takes on for drag-drop, not this phase).
+function _revealBeatBlockHTML(beat, i) {
+  const hotspots = beat.hotspots || [];
+  return `<div class="beat-block">
+    ${_beatBlockHeaderHTML(i, 'beat-type-reveal', '🔎 REVEAL')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 8px">
+      <div><label class="form-label" style="font-size:9px">PROMPT / INSTRUCTIONS</label>
+        <input type="text" value="${_esc(beat.prompt || '')}" placeholder="Click each item to learn more." style="width:100%" oninput="window._stageDraft.beats[${i}].prompt=this.value"></div>
+      <div><label class="form-label" style="font-size:9px">BG COLOR (hex)</label>
+        <input type="text" value="${_esc(beat.bg || '#1a0a2e')}" placeholder="#1a0a2e" style="width:100%" oninput="window._stageDraft.beats[${i}].bg=this.value"></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--primary)">Hotspots (${hotspots.length}) — student must click all to continue</div>
+      <button class="btn btn-ghost btn-xs" onclick="adminAddRevealHotspot(${i})">＋ Add Hotspot</button>
+    </div>
+    ${hotspots.length ? hotspots.map((h, hi) => _revealHotspotBlockHTML(h, i, hi)).join('') : `
+    <div style="text-align:center;padding:16px;border:2px dashed rgba(255,255,255,.08);border-radius:10px;color:var(--text-muted);font-size:12px">
+      No hotspots yet — add at least one so this beat has something to reveal.
+    </div>`}
+  </div>`;
+}
+
+function _revealHotspotBlockHTML(h, bi, hi) {
+  return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-family:var(--fm);font-size:9px;color:var(--primary)">HOTSPOT ${hi + 1}</div>
+      <button class="btn btn-danger btn-xs" onclick="adminRemoveRevealHotspot(${bi},${hi})">✕</button>
+    </div>
+    <input type="text" value="${_esc(h.label || '')}" placeholder="Label (e.g. Mitochondria)" style="width:100%;margin-bottom:8px" oninput="window._stageDraft.beats[${bi}].hotspots[${hi}].label=this.value">
+    <textarea style="width:100%;min-height:56px;resize:vertical;margin-bottom:8px" placeholder="Info shown when the student clicks this hotspot..." oninput="window._stageDraft.beats[${bi}].hotspots[${hi}].text=this.value">${_esc(h.text || '')}</textarea>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      ${h.image
+        ? `<img src="${_esc(h.image)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.1)">`
+        : `<div style="width:56px;height:56px;border-radius:8px;border:2px dashed rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--text-muted)">📁</div>`}
+      <label class="btn btn-ghost btn-xs" style="cursor:pointer">
+        📁 ${h.image ? 'Replace Image' : 'Add Image (optional)'}
+        <input type="file" accept="image/png,image/webp,image/jpeg,image/gif" style="display:none" onchange="_revealHandleHotspotImage(${bi},${hi},this)">
+      </label>
+      ${h.image ? `<button class="btn btn-ghost btn-xs" onclick="_revealClearHotspotImage(${bi},${hi})">✕ Remove Image</button>` : ''}
+    </div>
+  </div>`;
+}
+
+window.adminAddRevealHotspot = function (bi) {
+  const d = window._stageDraft; if (!d) return;
+  if (!d.beats[bi].hotspots) d.beats[bi].hotspots = [];
+  d.beats[bi].hotspots.push({ label: 'Item ' + (d.beats[bi].hotspots.length + 1), text: '', image: '' });
+  _reloadStageEditor();
+};
+window.adminRemoveRevealHotspot = function (bi, hi) {
+  const d = window._stageDraft; if (!d) return;
+  d.beats[bi].hotspots.splice(hi, 1);
+  _reloadStageEditor();
+};
+
+// Image upload for hotspot payloads — same base64-dataURL-via-FileReader
+// pattern as boss-studio's `_bsHandleFileUpload` (see bs_editor.js), the
+// named precedent per the roadmap's Phase 4 risk note; no new upload
+// mechanism invented, same 3MB cap.
+window._revealHandleHotspotImage = function (bi, hi, inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  if (!file) return;
+  const MAX = 3 * 1024 * 1024;
+  if (file.size > MAX) {
+    toast('❌ File is too large (max 3 MB)', '#ffb4ab');
+    if (inputEl && inputEl.value !== undefined) inputEl.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const d = window._stageDraft; if (!d) return;
+    d.beats[bi].hotspots[hi].image = e.target.result;
+    _reloadStageEditor();
+  };
+  reader.readAsDataURL(file);
+};
+window._revealClearHotspotImage = function (bi, hi) {
+  const d = window._stageDraft; if (!d) return;
+  d.beats[bi].hotspots[hi].image = '';
+  _reloadStageEditor();
+};
+
+// ── Dialogue beat editor (Phase 5) ──────────────────────────────────────────────
+// 2–4 choice buttons, flavor/narrative only (Decision #10) — no scoring,
+// state, or branching fields to author, just a prompt plus a label + short
+// response line per option. Add/Remove Option is bounded to the 2–4 range
+// the roadmap and engine expect.
+function _dialogueBeatBlockHTML(beat, i) {
+  const options = beat.options || [];
+  return `<div class="beat-block">
+    ${_beatBlockHeaderHTML(i, 'beat-type-dialogue', '💬 DIALOGUE')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 8px">
+      <div><label class="form-label" style="font-size:9px">PROMPT / QUESTION</label>
+        <input type="text" value="${_esc(beat.prompt || '')}" placeholder="What do you say?" style="width:100%" oninput="window._stageDraft.beats[${i}].prompt=this.value"></div>
+      <div><label class="form-label" style="font-size:9px">BG COLOR (hex)</label>
+        <input type="text" value="${_esc(beat.bg || '#1a0a2e')}" placeholder="#1a0a2e" style="width:100%" oninput="window._stageDraft.beats[${i}].bg=this.value"></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--primary)">Choices (${options.length}) — any choice advances the same way (flavor only)</div>
+      <button class="btn btn-ghost btn-xs" onclick="adminAddDialogueOption(${i})" ${options.length >= 4 ? 'disabled' : ''}>＋ Add Choice</button>
+    </div>
+    ${options.map((opt, oi) => _dialogueOptionBlockHTML(opt, i, oi, options.length)).join('')}
+  </div>`;
+}
+
+function _dialogueOptionBlockHTML(opt, bi, oi, total) {
+  return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-family:var(--fm);font-size:9px;color:var(--primary)">CHOICE ${oi + 1}</div>
+      <button class="btn btn-danger btn-xs" onclick="adminRemoveDialogueOption(${bi},${oi})" ${total <= 2 ? 'disabled' : ''}>✕</button>
+    </div>
+    <input type="text" value="${_esc(opt.label || '')}" placeholder="Choice button text..." style="width:100%;margin-bottom:8px" oninput="window._stageDraft.beats[${bi}].options[${oi}].label=this.value">
+    <textarea style="width:100%;min-height:48px;resize:vertical" placeholder="Response line shown after picking this choice..." oninput="window._stageDraft.beats[${bi}].options[${oi}].response=this.value">${_esc(opt.response || '')}</textarea>
+  </div>`;
+}
+
+window.adminAddDialogueOption = function (bi) {
+  const d = window._stageDraft; if (!d) return;
+  if (!d.beats[bi].options) d.beats[bi].options = [];
+  if (d.beats[bi].options.length >= 4) return; // Decision #10 range: 2–4 choices
+  d.beats[bi].options.push({ label: '', response: '' });
+  _reloadStageEditor();
+};
+window.adminRemoveDialogueOption = function (bi, oi) {
+  const d = window._stageDraft; if (!d) return;
+  if (d.beats[bi].options.length <= 2) return; // Decision #10 range: 2–4 choices
+  d.beats[bi].options.splice(oi, 1);
+  _reloadStageEditor();
+};
+
+// ── Drag-and-drop beat editor (Phase 6) ─────────────────────────────────────────
+// Two modes, teacher picks per beat (Decision #11): `match` (drag items onto
+// labeled targets) and `sequence` (drag items into the correct order — the
+// authored item order *is* the correct order, reordered via the same
+// ↑/↓ pattern `adminMoveStage`/`adminMoveBeat` already use). Item authoring
+// (label + optional image) reuses Phase 4's reveal-hotspot pattern, same
+// upload handler shape (3MB cap, base64 data URL).
+function _dragDropBeatBlockHTML(beat, i) {
+  if (!beat.mode)    beat.mode    = 'match';
+  if (!beat.items)   beat.items   = [];
+  if (!beat.targets) beat.targets = [];
+  const isMatch = beat.mode === 'match';
+  return `<div class="beat-block">
+    ${_beatBlockHeaderHTML(i, 'beat-type-dragdrop', '🧲 DRAG & DROP')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 8px">
+      <div><label class="form-label" style="font-size:9px">PROMPT / INSTRUCTIONS</label>
+        <input type="text" value="${_esc(beat.prompt || '')}" placeholder="${isMatch ? 'Drag each item to its match.' : 'Drag the items into the correct order.'}" style="width:100%" oninput="window._stageDraft.beats[${i}].prompt=this.value"></div>
+      <div><label class="form-label" style="font-size:9px">BG COLOR (hex)</label>
+        <input type="text" value="${_esc(beat.bg || '#1a0a2e')}" placeholder="#1a0a2e" style="width:100%" oninput="window._stageDraft.beats[${i}].bg=this.value"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label" style="font-size:9px">MODE (Decision #11 — teacher picks per beat)</label>
+      <select style="width:100%" onchange="adminSetDragDropMode(${i}, this.value)">
+        <option value="match"    ${isMatch  ? 'selected' : ''}>🎯 Drag onto target (matching)</option>
+        <option value="sequence" ${!isMatch ? 'selected' : ''}>🔢 Drag into sequence (ordering)</option>
+      </select>
+    </div>
+    ${isMatch ? _dragDropMatchEditorHTML(beat, i) : _dragDropSequenceEditorHTML(beat, i)}
+  </div>`;
+}
+
+function _dragDropMatchEditorHTML(beat, i) {
+  const targets = beat.targets || [];
+  const items   = beat.items || [];
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--primary)">Targets (${targets.length})</div>
+      <button class="btn btn-ghost btn-xs" onclick="adminAddDragTarget(${i})">＋ Add Target</button>
+    </div>
+    ${targets.map((t, ti) => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input type="text" value="${_esc(t.label || '')}" placeholder="Target label (e.g. Nucleus)" style="flex:1" oninput="window._stageDraft.beats[${i}].targets[${ti}].label=this.value">
+      <button class="btn btn-danger btn-xs" onclick="adminRemoveDragTarget(${i},${ti})" ${targets.length <= 1 ? 'disabled' : ''}>✕</button>
+    </div>`).join('')}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px">
+      <div style="font-size:12px;font-weight:700;color:var(--primary)">Items (${items.length}) — one per target, pick which target each belongs to</div>
+      <button class="btn btn-ghost btn-xs" onclick="adminAddDragItem(${i})">＋ Add Item</button>
+    </div>
+    ${items.length ? items.map((it, ii) => _dragItemBlockHTML(it, i, ii, targets, 'match')).join('') : `
+    <div style="text-align:center;padding:16px;border:2px dashed rgba(255,255,255,.08);border-radius:10px;color:var(--text-muted);font-size:12px">
+      No items yet — add at least one item to match against a target.
+    </div>`}`;
+}
+
+function _dragDropSequenceEditorHTML(beat, i) {
+  const items = beat.items || [];
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--primary)">Items in correct order (${items.length}) — use ↑/↓ to set the correct sequence</div>
+      <button class="btn btn-ghost btn-xs" onclick="adminAddDragItem(${i})">＋ Add Item</button>
+    </div>
+    ${items.length ? items.map((it, ii) => _dragItemBlockHTML(it, i, ii, [], 'sequence')).join('') : `
+    <div style="text-align:center;padding:16px;border:2px dashed rgba(255,255,255,.08);border-radius:10px;color:var(--text-muted);font-size:12px">
+      No items yet — add items in the order students should end up placing them.
+    </div>`}`;
+}
+
+// Shared item card for both modes: `mode==='match'` shows a target picker
+// (no reorder — order is irrelevant to matching); `mode==='sequence'` shows
+// ↑/↓ reorder controls instead (authored order defines the correct sequence,
+// no target picker needed).
+function _dragItemBlockHTML(it, bi, ii, targets, mode) {
+  const total = (window._stageDraft.beats[bi].items || []).length;
+  return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-family:var(--fm);font-size:9px;color:var(--primary)">ITEM ${ii + 1}</div>
+      <div style="display:flex;gap:4px">
+        ${mode === 'sequence' ? `
+        <button class="btn btn-ghost btn-xs" onclick="adminMoveDragItem(${bi},${ii},-1)" ${ii === 0 ? 'disabled' : ''}>↑</button>
+        <button class="btn btn-ghost btn-xs" onclick="adminMoveDragItem(${bi},${ii},1)" ${ii === total - 1 ? 'disabled' : ''}>↓</button>` : ''}
+        <button class="btn btn-danger btn-xs" onclick="adminRemoveDragItem(${bi},${ii})">✕</button>
+      </div>
+    </div>
+    <input type="text" value="${_esc(it.label || '')}" placeholder="Item label" style="width:100%;margin-bottom:8px" oninput="window._stageDraft.beats[${bi}].items[${ii}].label=this.value">
+    ${mode === 'match' ? `
+    <select style="width:100%;margin-bottom:8px" onchange="window._stageDraft.beats[${bi}].items[${ii}].targetId=this.value">
+      ${(targets || []).map(t => `<option value="${t.id}" ${it.targetId === t.id ? 'selected' : ''}>${_esc(t.label || 'Target')}</option>`).join('')}
+    </select>` : ''}
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      ${it.image
+        ? `<img src="${_esc(it.image)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.1)">`
+        : `<div style="width:56px;height:56px;border-radius:8px;border:2px dashed rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--text-muted)">📁</div>`}
+      <label class="btn btn-ghost btn-xs" style="cursor:pointer">
+        📁 ${it.image ? 'Replace Image' : 'Add Image (optional)'}
+        <input type="file" accept="image/png,image/webp,image/jpeg,image/gif" style="display:none" onchange="_dragHandleItemImage(${bi},${ii},this)">
+      </label>
+      ${it.image ? `<button class="btn btn-ghost btn-xs" onclick="_dragClearItemImage(${bi},${ii})">✕ Remove Image</button>` : ''}
+    </div>
+  </div>`;
+}
+
+window.adminSetDragDropMode = function (bi, mode) {
+  const d = window._stageDraft; if (!d) return;
+  const beat = d.beats[bi];
+  beat.mode = mode;
+  // Switching into match mode for the first time seeds one target and
+  // points any target-less items at it, so the picker never renders empty.
+  if (mode === 'match' && (!beat.targets || !beat.targets.length)) {
+    beat.targets = [{ id: 'tg_' + uid(), label: 'Target 1' }];
+    (beat.items || []).forEach(it => { if (!it.targetId) it.targetId = beat.targets[0].id; });
+  }
+  _reloadStageEditor();
+};
+
+window.adminAddDragTarget = function (bi) {
+  const d = window._stageDraft; if (!d) return;
+  if (!d.beats[bi].targets) d.beats[bi].targets = [];
+  d.beats[bi].targets.push({ id: 'tg_' + uid(), label: 'Target ' + (d.beats[bi].targets.length + 1) });
+  _reloadStageEditor();
+};
+window.adminRemoveDragTarget = function (bi, ti) {
+  const d = window._stageDraft; if (!d) return;
+  const targets = d.beats[bi].targets;
+  if (targets.length <= 1) return;
+  const removed = targets[ti];
+  targets.splice(ti, 1);
+  // Items pointing at the removed target fall back to the first remaining
+  // one rather than being left with a dangling targetId.
+  (d.beats[bi].items || []).forEach(it => { if (it.targetId === removed.id) it.targetId = targets[0].id; });
+  _reloadStageEditor();
+};
+window.adminAddDragItem = function (bi) {
+  const d = window._stageDraft; if (!d) return;
+  const beat = d.beats[bi];
+  if (!beat.items) beat.items = [];
+  const item = { id: 'it_' + uid(), label: 'Item ' + (beat.items.length + 1), image: '' };
+  if (beat.mode === 'match') item.targetId = (beat.targets && beat.targets[0]) ? beat.targets[0].id : null;
+  beat.items.push(item);
+  _reloadStageEditor();
+};
+window.adminRemoveDragItem = function (bi, ii) {
+  const d = window._stageDraft; if (!d) return;
+  d.beats[bi].items.splice(ii, 1);
+  _reloadStageEditor();
+};
+window.adminMoveDragItem = function (bi, ii, dir) {
+  const d = window._stageDraft; if (!d) return;
+  const items = d.beats[bi].items;
+  const ni = ii + dir;
+  if (ni < 0 || ni >= items.length) return;
+  [items[ii], items[ni]] = [items[ni], items[ii]];
+  _reloadStageEditor();
+};
+
+// Image upload for item payloads — same base64-dataURL-via-FileReader
+// pattern as Phase 4's `_revealHandleHotspotImage` (itself ported from
+// boss-studio's `_bsHandleFileUpload`), same 3MB cap.
+window._dragHandleItemImage = function (bi, ii, inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  if (!file) return;
+  const MAX = 3 * 1024 * 1024;
+  if (file.size > MAX) {
+    toast('❌ File is too large (max 3 MB)', '#ffb4ab');
+    if (inputEl && inputEl.value !== undefined) inputEl.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const d = window._stageDraft; if (!d) return;
+    d.beats[bi].items[ii].image = e.target.result;
+    _reloadStageEditor();
+  };
+  reader.readAsDataURL(file);
+};
+window._dragClearItemImage = function (bi, ii) {
+  const d = window._stageDraft; if (!d) return;
+  d.beats[bi].items[ii].image = '';
+  _reloadStageEditor();
+};
 
 function _sceneBlockHTML(sc, i, key) {
   return `<div class="scene-block">
@@ -401,5 +853,50 @@ window.adminRemoveEnemy   = function (ei)       { const d = window._stageDraft; 
 window.adminAddQuestion   = function (ei)       { const d = window._stageDraft; if (!d) return; d.enemies[ei].questions.push({ q: '', opts: ['', '', '', ''], answer: 0 }); _reloadStageEditor(); };
 window.adminRemoveQuestion = function (ei, qi) { const d = window._stageDraft; if (!d) return; d.enemies[ei].questions.splice(qi, 1); _reloadStageEditor(); };
 window.adminSetAnswer     = function (ei, qi, oi) { const d = window._stageDraft; if (!d) return; d.enemies[ei].questions[qi].answer = oi; _reloadStageEditor(); };
+
+// Beat-list inline editor helpers (Phase 3) — parallel to the legacy scene/
+// enemy/question helpers above, but operating on window._stageDraft.beats.
+window.adminAddBeat = function (type) {
+  const d = window._stageDraft; if (!d) return;
+  if (!d.beats) d.beats = [];
+  if (type === 'encounter') {
+    d.beats.push({ type: 'encounter', boss: false, sprite: '👹', name: 'Enemy', title: 'ENEMY ENCOUNTER', questions: [{ q: '', opts: ['', '', '', ''], answer: 0 }] });
+  } else if (type === 'interaction') {
+    // Phase 4 — interaction/reveal beat: one or more click-to-reveal
+    // hotspots (Decisions #1, #8, #9). Seeded with a single hotspot so the
+    // editor never shows an empty required list.
+    d.beats.push({ type: 'interaction', subtype: 'reveal', bg: '#1a0a2e', prompt: 'Click each item to learn more.', hotspots: [{ label: 'Item 1', text: '', image: '' }] });
+  } else if (type === 'dialogue') {
+    // Phase 5 — dialogue beat: 2–4 choice buttons, flavor/narrative only
+    // (Decision #10: no scoring/state/branching). Seeded with the minimum
+    // of 2 options so the editor never shows an under-filled choice list.
+    d.beats.push({ type: 'dialogue', bg: '#1a0a2e', prompt: '', options: [{ label: '', response: '' }, { label: '', response: '' }] });
+  } else if (type === 'dragdrop') {
+    // Phase 6 — interaction/dragdrop beat: drag-onto-target/matching or
+    // drag-into-sequence/ordering, teacher picks per beat (Decision #11).
+    // Seeded in match mode with one target and one item pointing at it, so
+    // the editor never opens on an empty/unpaired state.
+    const tgId = 'tg_' + uid();
+    d.beats.push({
+      type: 'interaction', subtype: 'dragdrop', mode: 'match', bg: '#1a0a2e', prompt: '',
+      targets: [{ id: tgId, label: 'Target 1' }],
+      items: [{ id: 'it_' + uid(), label: 'Item 1', image: '', targetId: tgId }],
+    });
+  } else {
+    d.beats.push({ type: 'story', speaker: 'NARRATOR', text: '', bg: '#1a0a2e' });
+  }
+  _reloadStageEditor();
+};
+window.adminRemoveBeat = function (i) { const d = window._stageDraft; if (!d || !d.beats) return; d.beats.splice(i, 1); _reloadStageEditor(); };
+window.adminMoveBeat   = function (i, dir) {
+  const d = window._stageDraft; if (!d || !d.beats) return;
+  const ni = i + dir;
+  if (ni < 0 || ni >= d.beats.length) return;
+  [d.beats[i], d.beats[ni]] = [d.beats[ni], d.beats[i]];
+  _reloadStageEditor();
+};
+window.adminAddBeatQuestion    = function (bi)      { const d = window._stageDraft; if (!d) return; d.beats[bi].questions.push({ q: '', opts: ['', '', '', ''], answer: 0 }); _reloadStageEditor(); };
+window.adminRemoveBeatQuestion = function (bi, qi)  { const d = window._stageDraft; if (!d) return; d.beats[bi].questions.splice(qi, 1); _reloadStageEditor(); };
+window.adminSetBeatAnswer      = function (bi, qi, oi) { const d = window._stageDraft; if (!d) return; d.beats[bi].questions[qi].answer = oi; _reloadStageEditor(); };
 
 console.log('[EduQuest] campaign/admin-map-editor.js loaded — renderAdminStageMap, world/stage CRUD registered.');

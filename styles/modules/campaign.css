@@ -20,7 +20,19 @@
 .camp-scene{
   flex:1;display:flex;flex-direction:column;
   position:relative;overflow:hidden;
+  /* Phase 8 — shared cross-fade (150–250ms range; 180ms picked to match
+     CAMP_BEAT_FADE_MS in campaign_engine.js). Single transition applied at
+     the beat-dispatcher level (_campShowBeat) instead of each panel
+     independently snapping via display:none/flex — replaces the abrupt
+     screen-snap flagged in the Reference Facts UX finding. Panels
+     themselves keep toggling display exactly as every prior phase left
+     them; this just fades the shared container around that swap. */
+  transition:opacity .18s ease;
 }
+/* Toggled by _campShowBeat() immediately before rendering the next beat,
+   removed (via rAF) right after — fades #camp-scene out then back in around
+   every beat swap, uniformly across all beat types. */
+.camp-scene.camp-beat-fade{opacity:0;}
 
 /* Parallax bg */
 .camp-bg{
@@ -136,6 +148,34 @@
   font-family:var(--fh);font-size:18px;font-weight:800;
   color:#f0eeff;margin-bottom:20px;line-height:1.5;text-align:center;
 }
+
+/* Phase 8 — mini-monster vs. boss re-skin (Decision #2: same combat loop for
+   both, cosmetic difference only). `.camp-mini-mode`/`.camp-boss-mode` are
+   toggled on #camp-encounter once per beat by the dispatcher in
+   campaign_engine.js (_campShowBeat), driven off the beat's own `boss`
+   flag — no mechanic here, purely smaller/lower-key framing for minis so
+   a boss beat still reads as the bigger moment. The un-suffixed
+   .camp-enemy-sprite/.camp-enemy-title/.camp-question-box rules above stay
+   the boss-scale baseline; .camp-mini-mode scales those down, .camp-boss-mode
+   only adds a slightly stronger glow so a boss stands out even more. */
+.camp-encounter.camp-mini-mode .camp-enemy-sprite{
+  font-size:56px;margin-bottom:8px;
+  filter:drop-shadow(0 0 14px rgba(239,68,68,.35));
+}
+.camp-encounter.camp-mini-mode .camp-enemy-title{
+  font-size:10px;color:rgba(239,68,68,.7);letter-spacing:.14em;
+}
+.camp-encounter.camp-mini-mode .camp-question-box{
+  max-width:480px;
+  box-shadow:0 16px 40px rgba(0,0,0,.45),0 0 20px rgba(139,92,246,.08);
+}
+.camp-encounter.camp-boss-mode .camp-enemy-sprite{
+  filter:drop-shadow(0 0 38px rgba(239,68,68,.65));
+}
+.camp-encounter.camp-boss-mode .camp-enemy-title{
+  color:#fcd34d;
+}
+
 .camp-options{display:flex;flex-direction:column;gap:10px;}
 .camp-opt{
   background:rgba(255,255,255,.05);border:1.5px solid rgba(255,255,255,.1);
@@ -768,6 +808,165 @@
 .scene-block-num{font-family:var(--fm);font-size:9px;font-weight:900;color:var(--primary);letter-spacing:.12em}
 .boss-tag{background:rgba(245,158,11,.15);color:#ffb95f;border:1px solid rgba(245,158,11,.3);border-radius:5px;padding:1px 7px;font-family:var(--fm);font-size:9px;font-weight:800;letter-spacing:.06em}
 .normal-tag{background:rgba(78,222,163,.1);color:#4edea3;border:1px solid rgba(78,222,163,.25);border-radius:5px;padding:1px 7px;font-family:var(--fm);font-size:9px;font-weight:800;letter-spacing:.06em}
+
+/* ── Beat-list editor (Phase 3) ── */
+.beat-add-picker{display:flex;gap:8px;flex-wrap:wrap}
+.beat-list{display:flex;flex-direction:column;gap:10px}
+.beat-block{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px;position:relative}
+.beat-block-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.beat-drag-handle{color:var(--text-muted);font-size:14px;cursor:default;flex-shrink:0;line-height:1}
+.beat-block-num{font-family:var(--fm);font-size:9px;color:var(--text-muted);letter-spacing:.1em}
+.beat-type-badge{font-family:var(--fm);font-size:9px;font-weight:800;letter-spacing:.06em;border-radius:5px;padding:2px 8px;flex-shrink:0}
+.beat-type-story{background:rgba(139,92,246,.1);color:#c4b5fd;border:1px solid rgba(139,92,246,.25)}
+.beat-type-encounter{background:rgba(245,158,11,.12);color:#ffb95f;border:1px solid rgba(245,158,11,.3)}
+.beat-type-reveal{background:rgba(147,197,253,.12);color:#93c5fd;border:1px solid rgba(147,197,253,.3)}
+.beat-type-dialogue{background:rgba(78,222,163,.1);color:#4edea3;border:1px solid rgba(78,222,163,.28)}
+
+/* ── Interaction/reveal beat — student-facing (Phase 4) ──
+   New DOM, not present in index.html — appended to #camp-scene at runtime
+   by campaign_engine.js (`_campEnsureRevealPanel`/`_campEnsureRevealPopup`),
+   same full-screen layering convention .camp-encounter already uses. */
+.camp-reveal-panel{
+  position:absolute;inset:0;z-index:20;display:none;
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:18px;padding:24px;
+  background:radial-gradient(ellipse at 50% 40%,rgba(147,197,253,.12),rgba(10,9,20,.9) 70%);
+}
+.camp-reveal-prompt{
+  font-family:var(--fh);font-size:17px;font-weight:800;color:#f0eeff;
+  text-align:center;max-width:640px;
+}
+.camp-reveal-grid{
+  display:flex;flex-wrap:wrap;gap:12px;justify-content:center;
+  max-width:640px;
+}
+.camp-reveal-hotspot{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  width:132px;padding:14px 10px;position:relative;
+  background:rgba(35,31,56,.9);border:1.5px solid rgba(147,197,253,.3);
+  border-radius:16px;cursor:pointer;transition:all .2s;
+  font-family:var(--fb);color:#e2d9f3;
+}
+.camp-reveal-hotspot:hover{background:rgba(147,197,253,.12);border-color:#93c5fd;transform:translateY(-2px);}
+.camp-reveal-hotspot.viewed{border-color:#4edea3;background:rgba(78,222,163,.08);}
+.camp-reveal-hotspot-icon{font-size:26px;}
+.camp-reveal-hotspot-thumb{width:48px;height:48px;object-fit:cover;border-radius:10px;}
+.camp-reveal-hotspot-label{font-size:12px;font-weight:700;text-align:center;line-height:1.3;}
+.camp-reveal-hotspot-check{
+  position:absolute;top:6px;right:8px;color:#4edea3;font-size:13px;font-weight:900;
+}
+.camp-reveal-progress{
+  font-family:var(--fm);font-size:10px;letter-spacing:.1em;
+  color:rgba(208,188,255,.6);
+}
+.camp-reveal-continue-btn{opacity:1;transition:opacity .2s;}
+.camp-reveal-continue-btn:disabled{opacity:.35;cursor:not-allowed;}
+
+/* Hotspot info popup — sits above the reveal panel */
+.camp-reveal-popup-overlay{
+  position:absolute;inset:0;z-index:25;display:none;
+  align-items:center;justify-content:center;padding:24px;
+  background:rgba(10,9,20,.7);
+}
+.camp-reveal-popup-card{
+  background:rgba(35,31,56,.98);border:1px solid rgba(147,197,253,.3);
+  border-radius:18px;padding:24px 26px;max-width:420px;width:100%;
+  box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 40px rgba(147,197,253,.12);
+  display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;
+}
+.camp-reveal-popup-img{width:100%;max-height:200px;object-fit:contain;border-radius:12px;}
+.camp-reveal-popup-label{font-family:var(--fh);font-size:16px;font-weight:800;color:#93c5fd;}
+.camp-reveal-popup-text{font-family:var(--fb);font-size:14px;color:#e2d9f3;line-height:1.5;}
+
+/* ── Dialogue choice beat — student-facing (Phase 5) ──
+   New DOM, not present in index.html — appended to #camp-scene at runtime
+   by campaign_engine.js (`_campEnsureDialoguePanel`), same full-screen
+   layering convention .camp-reveal-panel already uses. */
+.camp-dialogue-panel{
+  position:absolute;inset:0;z-index:20;display:none;
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:18px;padding:24px;
+  background:radial-gradient(ellipse at 50% 40%,rgba(78,222,163,.12),rgba(10,9,20,.9) 70%);
+}
+.camp-dialogue-prompt{
+  font-family:var(--fh);font-size:17px;font-weight:800;color:#f0eeff;
+  text-align:center;max-width:640px;
+}
+.camp-dialogue-choices{
+  display:flex;flex-direction:column;gap:10px;
+  width:100%;max-width:440px;
+}
+.camp-dialogue-choice{
+  font-family:var(--fb);font-size:14px;color:#e2d9f3;text-align:left;
+  background:rgba(35,31,56,.9);border:1.5px solid rgba(78,222,163,.3);
+  border-radius:12px;padding:12px 16px;cursor:pointer;transition:all .2s;
+}
+.camp-dialogue-choice:hover{background:rgba(78,222,163,.12);border-color:#4edea3;transform:translateY(-2px);}
+.camp-dialogue-response{
+  font-family:var(--fb);font-size:15px;color:#e2d9f3;line-height:1.5;
+  text-align:center;max-width:520px;
+  background:rgba(35,31,56,.9);border:1px solid rgba(78,222,163,.25);
+  border-radius:14px;padding:16px 20px;
+}
+.camp-dialogue-continue-btn{opacity:1;}
+
+.beat-type-dragdrop{background:rgba(251,146,60,.12);color:#fb923c;border:1px solid rgba(251,146,60,.3)}
+
+/* ── Drag-and-drop beat — student-facing (Phase 6) ──
+   New DOM, not present in index.html — appended to #camp-scene at runtime
+   by campaign_engine.js (`_campEnsureDragDropPanel`), same full-screen
+   layering convention .camp-reveal-panel/.camp-dialogue-panel use.
+   Dragging itself is Pointer Events based (mouse + touch + pen through one
+   code path) rather than the HTML5 Drag-and-Drop API `classroom_builder.js`
+   uses, since HTML5 DnD has no native touch support — see the comment in
+   campaign_engine.js for the full reasoning. `touch-action:none` on the
+   chip keeps a touch-drag from also scrolling the page underneath it. */
+.camp-dragdrop-panel{
+  position:absolute;inset:0;z-index:20;display:none;
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:16px;padding:24px;overflow:auto;
+  background:radial-gradient(ellipse at 50% 40%,rgba(251,146,60,.12),rgba(10,9,20,.9) 70%);
+}
+.camp-dd-prompt{
+  font-family:var(--fh);font-size:17px;font-weight:800;color:#f0eeff;
+  text-align:center;max-width:640px;
+}
+.camp-dd-board{display:flex;flex-direction:column;gap:20px;width:100%;max-width:640px;}
+.camp-dd-pool{
+  display:flex;flex-wrap:wrap;gap:10px;justify-content:center;
+  min-height:64px;padding:12px;border-radius:14px;
+  background:rgba(255,255,255,.03);border:1.5px dashed rgba(255,255,255,.15);
+}
+.camp-dd-pool-empty{font-size:12px;color:var(--text-muted);align-self:center;padding:8px;}
+.camp-dd-targets{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;}
+.camp-dd-target,.camp-dd-slot{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  width:140px;min-height:96px;padding:10px;
+  background:rgba(35,31,56,.9);border:1.5px solid rgba(251,146,60,.3);
+  border-radius:14px;
+}
+.camp-dd-target.filled,.camp-dd-slot.filled{border-color:#fb923c;background:rgba(251,146,60,.08);}
+.camp-dd-target-label{font-size:11px;font-weight:700;color:#fb923c;text-align:center;}
+.camp-dd-slot-num{font-family:var(--fm);font-size:9px;color:var(--text-muted);letter-spacing:.1em;}
+.camp-dd-slot-empty{font-size:11px;color:var(--text-muted);}
+.camp-dd-chip{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  width:100px;padding:10px 8px;
+  background:rgba(35,31,56,.95);border:1.5px solid rgba(255,255,255,.15);
+  border-radius:12px;cursor:grab;user-select:none;touch-action:none;
+  font-family:var(--fb);color:#e2d9f3;transition:opacity .15s,border-color .15s;
+}
+.camp-dd-chip:hover{border-color:#fb923c;}
+.camp-dd-chip.locked{cursor:default;border-color:#4edea3;}
+.camp-dd-chip.dragging-source{opacity:.35;}
+.camp-dd-chip-img{width:40px;height:40px;object-fit:cover;border-radius:8px;}
+.camp-dd-chip-label{font-size:11px;font-weight:700;text-align:center;line-height:1.25;}
+.camp-dd-ghost{opacity:.92;transform:translate(-50%,-50%) scale(1.05);box-shadow:0 12px 32px rgba(0,0,0,.5);pointer-events:none;}
+.camp-dd-status{font-family:var(--fb);font-size:13px;font-weight:700;text-align:center;}
+.camp-dd-status.ok{color:#4edea3;}
+.camp-dd-status.bad{color:#fca5a5;}
+.camp-dd-continue-btn{opacity:1;transition:opacity .2s;}
+.camp-dd-continue-btn:disabled{opacity:.35;cursor:not-allowed;}
 
 /* ── Dashboard stage notif dot ── */
 #stage-notif{display:none;width:8px;height:8px;border-radius:50%;background:#8b5cf6;box-shadow:0 0 8px rgba(139,92,246,.6);animation:achBadgePulse 2s ease-in-out infinite}
