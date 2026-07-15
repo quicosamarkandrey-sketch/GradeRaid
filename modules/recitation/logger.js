@@ -37,7 +37,8 @@ window.logRecitation = function () {
     studentId: sid,
     what: `Recitation${note ? ': ' + note : ''}`,
     pts,
-    when: 'Just now'
+    when: 'Just now',
+    createdAt: new Date().toISOString()
   });
   saveDB();
 

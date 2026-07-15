@@ -154,7 +154,7 @@ window.wbcApplyDamage = async function (bossIdx, damage, studentId, isCrit) {
       DB.students[si].xp    += xpReward;
       DB.students[si].coins += coinReward;
       syncStudentStatsToServer(p.studentId, xpReward, coinReward);
-      DB.pointLog.unshift({ id: 'pl_' + uid(), studentId: p.studentId, what: `⚔️ Boss Raid: "${boss.name}" DEFEATED! Victory rewards granted.`, pts: xpReward, when: 'Just now' });
+      DB.pointLog.unshift({ id: 'pl_' + uid(), studentId: p.studentId, what: `⚔️ Boss Raid: "${boss.name}" DEFEATED! Victory rewards granted.`, pts: xpReward, when: 'Just now', createdAt: new Date().toISOString() });
     });
     saveDB();
     if (typeof achCheckAndAward === 'function') {

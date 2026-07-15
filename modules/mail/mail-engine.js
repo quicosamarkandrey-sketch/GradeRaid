@@ -89,7 +89,8 @@ function mailClaimRewards(mailId, sid) {
         studentId: sid, 
         what: `📬 Mail Reward: ${m.subject}`, 
         pts: coinGrant || xpGrant || 0, 
-        when: window.getNowLabel() 
+        when: window.getNowLabel(),
+        createdAt: new Date().toISOString()
       });
     }
 

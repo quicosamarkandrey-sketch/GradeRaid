@@ -81,28 +81,94 @@ window.eqTimeAgo = function (iso) {
 
   let _panelOpen = false;
 
-  // ── Classification: DB.pointLog[].what (free text) → icon/title/action ───
+  // ── Classification: DB.pointLog[].what (free text) → notification content ─
   // pointLog entries are written by 7 different call sites with their own
   // free-text `what` strings (see header comment). This is a best-effort
-  // keyword match, not a structured field — if a future call site's wording
-  // doesn't match any pattern here it just falls through to the generic
-  // "Points Awarded/Deducted" bucket, which is always a safe default.
+  // keyword/regex match, not a structured field — if a future call site's
+  // wording doesn't match any pattern here it just falls through to the
+  // generic "Points Awarded/Deducted" bucket, which is always a safe default.
+  //
+  // IMPORTANT — title/body here are deliberately NOT the same text the
+  // dashboard's Overall Activity feed shows. Overall Activity is a terse,
+  // ledger-style history (it displays entry.what verbatim, e.g. "Quest:
+  // Algebra Basics (86%)"); a notification is a one-off alert, so it gets a
+  // friendlier, reworded sentence built from the same underlying data
+  // ("Quest Completed! You scored 86% on 'Algebra Basics' and earned 15
+  // XP."). Only the icon is intentionally shared between the two — that's
+  // just consistent iconography, not duplicated wording.
   function _classifyPointLog(entry) {
     const what = entry.what || '';
-    if (/^Quest:/.test(what))            return { type: 'quiz',        icon: '⚔️', title: 'Quest Completed',        action: 's-quizzes' };
-    if (/^Stage:/.test(what))            return { type: 'campaign',    icon: '🗺️', title: 'Campaign Stage Cleared', action: 's-quizzes' };
-    if (/Boss Raid/.test(what))          return { type: 'boss',        icon: '👹', title: 'Boss Raid Victory!',     action: 's-world-boss' };
-    if (/Achievement Claimed/.test(what))return { type: 'achievement', icon: '🏅', title: 'Achievement Reward Claimed', action: 's-badges' };
-    if (/Mail Reward/.test(what))        return { type: 'mail_reward', icon: '📬', title: 'Mail Reward Claimed',    action: 's-mail' };
-    if (/^Recitation/.test(what))        return { type: 'points',      icon: '🎤', title: 'Recitation Points',      action: 's-dashboard' };
-    if (/^Attendance/.test(what))        return { type: 'points',      icon: '📅', title: 'Attendance',             action: 's-dashboard' };
-    if ((entry.pts || 0) < 0)             return { type: 'points',      icon: '⚠️', title: 'Points Deducted',        action: 's-dashboard' };
-    return { type: 'points', icon: '⭐', title: 'Points Awarded', action: 's-dashboard' };
+    const pts  = typeof entry.pts === 'number' ? entry.pts : 0;
+    let m;
+
+    if ((m = /^Quest:\s*(.+?)\s*\((\d+)%\)\s*$/.exec(what))) {
+      return {
+        type: 'quiz', icon: '⚔️', action: 's-quizzes',
+        title: 'Quest Completed!',
+        body: `You scored ${m[2]}% on "${m[1]}"${pts ? ` and earned ${pts} XP` : ''}.`,
+      };
+    }
+    if ((m = /^Stage:\s*(.+)$/.exec(what))) {
+      return {
+        type: 'campaign', icon: '🗺️', action: 's-quizzes',
+        title: 'Campaign Stage Cleared!',
+        body: `You cleared "${m[1]}"${pts ? ` and earned ${pts} XP` : ''}.`,
+      };
+    }
+    if ((m = /Boss Raid:\s*"([^"]+)"/.exec(what))) {
+      return {
+        type: 'boss', icon: '👹', action: 's-world-boss',
+        title: 'Boss Defeated!',
+        body: `Your party brought down ${m[1]}. Victory rewards are waiting in your inventory.`,
+      };
+    }
+    if ((m = /Achievement Claimed:\s*(.+)$/.exec(what))) {
+      return {
+        type: 'achievement', icon: '🏅', action: 's-badges',
+        title: 'Achievement Unlocked!',
+        body: `You claimed the reward for "${m[1]}".`,
+      };
+    }
+    if ((m = /Mail Reward:\s*(.+)$/.exec(what))) {
+      return {
+        type: 'mail_reward', icon: '📬', action: 's-mail',
+        title: 'Mail Reward Claimed!',
+        body: `You picked up a reward attached to "${m[1]}".`,
+      };
+    }
+    if (/^Recitation/.test(what)) {
+      return {
+        type: 'points', icon: '🎤', action: 's-dashboard',
+        title: pts >= 0 ? 'Recitation Points' : 'Recitation Deduction',
+        body: pts >= 0
+          ? `Your teacher awarded you ${pts} points for reciting in class.`
+          : `${Math.abs(pts)} points were deducted for recitation.`,
+      };
+    }
+    if (/^Attendance/.test(what)) {
+      return {
+        type: 'points', icon: '📅', action: 's-dashboard',
+        title: 'Attendance Logged',
+        body: `Your attendance was just recorded${pts ? ` (+${pts} pts)` : ''}.`,
+      };
+    }
+    if (pts < 0) {
+      return {
+        type: 'points', icon: '⚠️', action: 's-dashboard',
+        title: 'Points Deducted',
+        body: `Your teacher deducted ${Math.abs(pts)} points. Tap to see your recent activity.`,
+      };
+    }
+    return {
+      type: 'points', icon: '⭐', action: 's-dashboard',
+      title: 'Points Awarded',
+      body: `Your teacher awarded you ${pts} points. Tap to see your recent activity.`,
+    };
   }
 
   // Exposed globally — index.html's renderStudentDashboard() Overall Activity
-  // feed (Phase 67 rework of the old "Point Activity" widget) reuses this
-  // exact classification instead of duplicating the keyword matching.
+  // feed reuses this for its icon ONLY (c.icon), never c.title/c.body, so the
+  // two surfaces stay visually consistent without repeating the same wording.
   window.eqClassifyActivity = _classifyPointLog;
 
   function _existingSourceIds(sid) {
@@ -132,7 +198,7 @@ window.eqTimeAgo = function (iso) {
       const c = _classifyPointLog(p);
       created.push({
         id: 'ntf_' + uid(), studentId: sid, type: c.type, icon: c.icon, title: c.title,
-        body: p.what, action: c.action, pts: typeof p.pts === 'number' ? p.pts : null,
+        body: c.body, action: c.action, pts: typeof p.pts === 'number' ? p.pts : null,
         sourceId: p.id, read: isBootstrap,
         createdAt: p.createdAt || new Date().toISOString(),
       });
@@ -143,7 +209,11 @@ window.eqTimeAgo = function (iso) {
     ordRows.forEach(o => {
       created.push({
         id: 'ntf_' + uid(), studentId: sid, type: 'store', icon: o.emoji || '🛍️',
-        title: 'Store Purchase', body: `Purchased ${o.itemName}`, action: 's-inventory',
+        // Distinct from the dashboard's "Purchased {itemName}" ledger line —
+        // this is the alert version, phrased as a receipt/confirmation.
+        title: 'Purchase Confirmed',
+        body: `Your order for "${o.itemName}" (${o.cost || 0} pts) was placed. Visit the Armory to claim it.`,
+        action: 's-inventory',
         pts: -(o.cost || 0), sourceId: o.orderId, read: isBootstrap,
         createdAt: o.createdAt || new Date().toISOString(),
       });

@@ -265,7 +265,7 @@ window.achGrantRewardsForClaim = function (studentId, achId) {
 
   if (xpGrant > 0 || coinGrant > 0) {
     const achName = (DB.achievements || []).find(a => a.id === achId)?.name || 'Achievement';
-    DB.pointLog.unshift({ id: 'pl_' + uid(), studentId, what: `🏅 Achievement Claimed: ${achName}`, pts: coinGrant || xpGrant, when: 'Just now' });
+    DB.pointLog.unshift({ id: 'pl_' + uid(), studentId, what: `🏅 Achievement Claimed: ${achName}`, pts: coinGrant || xpGrant, when: 'Just now', createdAt: new Date().toISOString() });
   }
   currentUser = DB.students[sIdx];
   saveDB();

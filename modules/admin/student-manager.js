@@ -45,7 +45,8 @@ window.doAwardPoints = function() {
       // Critical Fix #2: Recalculate level/tier after XP change
       window.checkLevelUp(DB.students[idx]);
       // Minor fix: real timestamp instead of always 'Just now'
-      DB.pointLog.unshift({ id: 'pl_' + uid(), studentId: id, what: cat + (note ? ': ' + note : ''), pts, when: new Date().toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) });
+      // Phase 67: createdAt added — see notification-service.js header comment.
+      DB.pointLog.unshift({ id: 'pl_' + uid(), studentId: id, what: cat + (note ? ': ' + note : ''), pts, when: new Date().toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}), createdAt: new Date().toISOString() });
     }
   });
   // Sync currentUser if it was updated

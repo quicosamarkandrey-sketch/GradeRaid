@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="./styles/modules/perceived-speed.css">
 <link rel="stylesheet" href="./styles/modules/motion-foundation.css">
 <link rel="stylesheet" href="./styles/modules/command-center.css">
+<link rel="stylesheet" href="./styles/modules/notifications.css">
 <link rel="stylesheet" href="./styles/modules/system-health.css">
 </head>
 <body>
@@ -158,7 +159,13 @@
         <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">monetization_on</span>
         <span id="topbar-coin-val">0</span>
       </div>
-      <button class="icon-btn"><span class="material-symbols-outlined">notifications</span></button>
+      <div class="notif-wrap" id="notif-wrap" style="display:none">
+        <button class="icon-btn" id="notif-bell-btn" onclick="event.stopPropagation();NotificationService.toggle()" title="Notifications">
+          <span class="material-symbols-outlined">notifications</span>
+          <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+        </button>
+        <div class="notif-panel" id="notif-panel" style="display:none"></div>
+      </div>
       <div class="topbar-avatar" id="topbar-av" title="View Profile" style="cursor:pointer;position:relative;overflow:hidden"></div>
     </div>
   </div>
@@ -650,6 +657,7 @@
      the reusable eqButtonLoading()/eqWithButtonLoading() API (also usable
      for reward-claim buttons etc. wherever the same pattern is wanted). -->
 <script src="./modules/shared/button-loading.js"></script>
+<script src="./modules/shared/notification-service.js"></script>
 <script src="./auth.js"></script>
 <script src="./recovery.js"></script>
 
@@ -908,7 +916,31 @@ function renderStudentDashboard(){
   const xpInCurrentLevel = st.xp - xpCurrentLevelBase;
   const xpPct = Math.min(100, Math.round((xpInCurrentLevel / window.XP_PER_LEVEL) * 100));
   const xpNext = (st.level + 1) * window.XP_PER_LEVEL;
-  const logs=DB.pointLog.filter(l=>l.studentId===st.id).slice(0,6);
+  // Phase 67 — "Point Activity" reworked into "Overall Activity": merges
+  // DB.pointLog (recitation, attendance, quiz/campaign/boss rewards,
+  // achievement + mail reward claims, admin point adjustments — everything
+  // that already funnels into pointLog) with DB.orders (store purchases,
+  // the one activity type that never wrote a pointLog row). Sorted by the
+  // real createdAt timestamp — not the frozen 'when' string the old widget
+  // used to display — and rendered with window.eqTimeAgo() so "5m ago"
+  // keeps updating on every re-render instead of freezing forever.
+  //
+  // Text here is deliberately terse/ledger-style (raw entry.what, e.g.
+  // "Quest: Algebra Basics (86%)") — the notification bell shows a
+  // reworded, friendlier sentence for the same event ("Quest Completed!
+  // You scored 86%..."), see notification-service.js's _classifyPointLog().
+  // Only the icon is shared between the two surfaces.
+  const activityFeed = [
+    ...DB.pointLog.filter(l => l.studentId === st.id).map(l => {
+      const c = (typeof eqClassifyActivity === 'function') ? eqClassifyActivity(l) : { icon: '⭐' };
+      return { icon: c.icon, label: l.what, pts: l.pts, createdAt: l.createdAt };
+    }),
+    ...(DB.orders || []).filter(o => o.studentId === st.id).map(o => ({
+      icon: o.emoji || '🛍️', label: `Purchased ${o.itemName}`, pts: -(o.cost || 0), createdAt: o.createdAt,
+    })),
+  ]
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 8);
   // Phase 27: same section-scoping gate as renderStudentQuizzes() below —
   // this dashboard widget reads DB.quizzes independently and has its own
   // clickable "Begin Quest" cards, so it needs the same filter or a
@@ -1036,14 +1068,17 @@ function renderStudentDashboard(){
         <div style="color:var(--text-muted);font-size:13px">Check back when new quests are posted.</div>
       </div>`}
 
-      <!-- POINT LOG -->
-      <div class="section-header"><span class="material-symbols-outlined">receipt_long</span><h2>Point Activity</h2></div>
+      <!-- OVERALL ACTIVITY (Phase 67 — was "Point Activity"; now merges every
+           reward/purchase source, not just DB.pointLog, and shows a live
+           relative time via window.eqTimeAgo() instead of a frozen string) -->
+      <div class="section-header"><span class="material-symbols-outlined">receipt_long</span><h2>Overall Activity</h2></div>
       <div class="glass-card" style="padding:16px">
         <div class="pt-events">
-          ${logs.length ? logs.map(e=>`
+          ${activityFeed.length ? activityFeed.map(e=>`
           <div class="pt-event">
-            <div class="pt-delta" style="color:${e.pts>0?'#4edea3':'#ffb4ab'}">${e.pts>0?'+':''}${e.pts}</div>
-            <div class="pt-info"><div class="pt-what">${e.what}</div><div class="pt-when">${e.when}</div></div>
+            <div class="pt-icon" style="font-size:18px">${e.icon || '⭐'}</div>
+            <div class="pt-delta" style="color:${e.pts>0?'#4edea3':e.pts<0?'#ffb4ab':'var(--text-muted)'}">${e.pts>0?'+':''}${e.pts||0}</div>
+            <div class="pt-info"><div class="pt-what">${e.label}</div><div class="pt-when">${window.eqTimeAgo(e.createdAt)}</div></div>
           </div>`).join('') : '<div style="color:var(--text-muted);text-align:center;padding:16px;font-size:13px">No activity yet</div>'}
         </div>
       </div>
@@ -2580,7 +2615,9 @@ function finishQuiz() {
     studentId: currentUser.id,
     what: `Quest: ${activeQuiz.title} (${score}%)`,
     pts: xpGain, 
-    when: window.getNowLabel() 
+    when: window.getNowLabel(),
+    id: 'pl_' + uid(),
+    createdAt: new Date().toISOString()
   });
 
   currentUser = DB.students[stIdx];

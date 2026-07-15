@@ -54,6 +54,9 @@ function updateTopbar(){
   if(typeof wbcUpdateTopbarWidget === 'function') wbcUpdateTopbarWidget();
   // Cleanup 5: absorbed from index.html patch — refreshAllAvatars after every update
   if(typeof refreshAllAvatars === 'function') refreshAllAvatars();
+  // Phase 67 — student-only notification bell. NotificationService.refresh()
+  // itself no-ops (and hides the bell) for non-student roles.
+  if(typeof NotificationService !== 'undefined') NotificationService.refresh();
 }
 // Sidebar collapse — dual behavior depending on viewport:
 //   Mobile (≤1024px):  existing overlay drawer, unchanged. Toggles #sidebar.open;

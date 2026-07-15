@@ -72,6 +72,9 @@ if(!DB.promoAnalytics){DB.promoAnalytics={};_migrationDirty=true;}
 // ── STUDENT REGISTRATION DB MIGRATION ──
 if(!DB.registrations){DB.registrations=[];_migrationDirty=true;}
 
+// ── NOTIFICATION SYSTEM DB MIGRATION (Phase 67) ──
+if(!DB.notifications){DB.notifications=[];_migrationDirty=true;}
+
 // ── INVENTORY SYSTEM DB MIGRATION ──
 if(!DB.inventory){DB.inventory={};_migrationDirty=true;}
 // Migrate existing redemptions into inventory on first load
