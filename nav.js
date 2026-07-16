@@ -80,12 +80,18 @@ function setupSidebar(){
   // Use dynamic nav config if available, else fall back to hardcoded arrays
   // AUTH FIX (post-Phase 33): teacher is staff too — only real students get
   // the student nav. See auth.js's currentRole assignment comment.
-  // ROLE SPLIT (ISOLATION_ROLES_PLAN.md §10/§11): admin and teacher no
-  // longer see an identical sidebar — pass currentRole through so
-  // dsmGetAdminNav() can drop ADMIN_ONLY_NAV_IDS items for a teacher caller.
-  const tabs = (currentRole==='admin'||currentRole==='teacher')
-    ? dsmGetAdminNav(currentRole)
-    : dsmGetStudentNav();
+  // ROLE SPLIT (ISOLATION_ROLES_PLAN.md §10/§11, Phase 70): admin and
+  // teacher no longer share one sidebar config at all — each role now reads
+  // its own DSM scope (dsmGetAdminNav() / dsmGetTeacherNav()), so an admin
+  // can hide/reorder/lock a page for teachers without it also changing for
+  // the admin account, and vice versa. ADMIN_ONLY_NAV_IDS items (Nav
+  // Manager, Teacher Directory, Settings, etc.) are additionally stripped
+  // from the teacher list inside dsmGetTeacherNav() itself as a defensive
+  // floor, regardless of what's saved in the 'teacher' scope.
+  const tabs =
+    currentRole === 'admin'   ? dsmGetAdminNav() :
+    currentRole === 'teacher' ? dsmGetTeacherNav() :
+    dsmGetStudentNav();
 
   document.getElementById('sidebar-nav').innerHTML = tabs.map(t => {
     const cfg = t._cfg || {};
@@ -110,10 +116,12 @@ function setupSidebar(){
   });
 }
 // DSM helpers — defined later in the DSM script block; stubs so setupSidebar doesn't crash before DSM loads
+// Phase 70: teacher now reads its OWN dsmGetTeacherNav() (backed by a
+// separate 'teacher' dsm_settings scope) instead of sharing dsmGetAdminNav()
+// with the real admin account — see dsm-manager.js's DSM_TEACHER_DEFAULTS.
 function dsmGetStudentNav(){return NAV_STUDENT;}
-function dsmGetAdminNav(role){
-  return (role==='admin') ? NAV_ADMIN : NAV_ADMIN.filter(t=>ADMIN_ONLY_NAV_IDS.indexOf(t.id)===-1);
-}
+function dsmGetAdminNav(){return NAV_ADMIN;}
+function dsmGetTeacherNav(){return NAV_ADMIN.filter(t=>ADMIN_ONLY_NAV_IDS.indexOf(t.id)===-1);}
 function navTo(id){
   // Phase 60 (exploit fix) — authoritative completion state, independent of
   // navigation (Improvement Plan §7). Without this, a student could dodge

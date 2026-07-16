@@ -67,19 +67,37 @@ const DSM_ADMIN_DEFAULTS = [
 // shared dsm_settings row that any teacher could previously edit for the
 // whole school (see save_dsm_settings()'s is_admin() check, same phase).
 
+// PHASE 70 — teacher gets its OWN persisted list, no longer a filtered view
+// of DSM_ADMIN_DEFAULTS at read time. Before this, teacher and admin sessions
+// shared the exact same 'admin' dsm_settings row — the only thing that ever
+// separated them was the hardcoded ADMIN_ONLY_NAV_IDS/adminOnly check, so any
+// OTHER admin-facing page (Analytics, Boss Studio, Store Promotions, etc.)
+// showed up in a teacher's sidebar too, and an admin had no lever in Nav
+// Manager to hide/reorder/lock it for teachers without also changing it for
+// the real admin account. Seeding the defaults as "everything admin has,
+// minus the adminOnly rows" preserves today's actual behavior on first
+// load — nothing new appears or disappears for existing teachers the
+// moment this ships — while giving admins a genuinely separate "Teacher
+// Nav" tab to diverge from there.
+const DSM_TEACHER_DEFAULTS = DSM_ADMIN_DEFAULTS
+  .filter(x => !x.adminOnly)
+  .map(x => ({ ...x }));
+
 // ── STATE ──────────────────────────────────────────────
 // _dsmState holds the *working* (in-memory) copy the Nav Manager
 // UI edits. Nothing touches localStorage until dsmApplyAndRefresh()
 // or dsmResetToDefaults() is called.
 
-let _dsmState = null;          // { student: [...], admin: [...] }
-let _dsmActiveTab = 'admin';   // 'student' | 'admin' — which tab the UI shows
+let _dsmState = null;          // { student: [...], teacher: [...], admin: [...] }
+let _dsmActiveTab = 'admin';   // 'student' | 'teacher' | 'admin' — which tab the UI shows
 let _dsmExpanded = {};         // { [itemId]: true } — expanded advanced-fields rows
 let _dsmDirty = false;         // true when there are unsaved edits
+let _dsmSearch = '';           // filters the current tab's rows by label/id/group
 
 function _dsmCloneDefaults() {
   return {
     student: DSM_STUDENT_DEFAULTS.map(x => ({ ...x })),
+    teacher: DSM_TEACHER_DEFAULTS.map(x => ({ ...x })),
     admin:   DSM_ADMIN_DEFAULTS.map(x => ({ ...x })),
   };
 }
@@ -135,11 +153,24 @@ function dsmLoad() {
   } else {
     _dsmState = {
       student: _dsmMergeList(DSM_STUDENT_DEFAULTS, raw.student),
+      // Phase 70: fall back to the teacher defaults (admin minus adminOnly
+      // rows) when nothing's been saved to the 'teacher' scope yet — e.g.
+      // right after this migration ships, before any admin has hit "Apply &
+      // Refresh" on the new Teacher Nav tab.
+      teacher: _dsmMergeList(DSM_TEACHER_DEFAULTS, (raw.teacher && raw.teacher.length) ? raw.teacher : null),
       admin:   _dsmMergeList(DSM_ADMIN_DEFAULTS, raw.admin),
     };
   }
   _dsmState.student = _dsmReconcileWithNav(_dsmState.student, typeof NAV_STUDENT !== 'undefined' ? NAV_STUDENT : null);
   _dsmState.admin   = _dsmReconcileWithNav(_dsmState.admin, typeof NAV_ADMIN !== 'undefined' ? NAV_ADMIN : null);
+  // Teacher reconciles against NAV_ADMIN too (its only source of truth for
+  // new nav ids), but with ADMIN_ONLY_NAV_IDS items excluded — a brand-new
+  // admin-only page added to NAV_ADMIN later should never silently leak
+  // into the teacher sidebar just because it's missing from the teacher list.
+  const _teacherNavSource = (typeof NAV_ADMIN !== 'undefined' && typeof ADMIN_ONLY_NAV_IDS !== 'undefined')
+    ? NAV_ADMIN.filter(t => ADMIN_ONLY_NAV_IDS.indexOf(t.id) === -1)
+    : null;
+  _dsmState.teacher = _dsmReconcileWithNav(_dsmState.teacher, _teacherNavSource);
 }
 
 function dsmSave() {
@@ -161,16 +192,17 @@ function _dsmFindItem(tab, id) {
 // order, with `_group` marker rows inserted whenever the group
 // changes, and per-item `_cfg` (status/locked/disabled) for badges.
 
-function _dsmBuildNav(list, role) {
-  // ISOLATION_ROLES_PLAN.md §10/§11: adminOnly rows never reach a `teacher`
-  // caller's sidebar, no matter what a saved DSM row says for `visible` —
-  // a teacher account has no legitimate way to flip that back on for
-  // itself, since save_dsm_settings() only accepts admin-only-item changes
-  // from an actual admin caller in the first place (student nav has no
-  // adminOnly rows, so `role` is simply unused/undefined there).
+function _dsmBuildNav(list, isRealAdmin) {
+  // ISOLATION_ROLES_PLAN.md §10/§11: adminOnly rows never reach anything
+  // but the real admin's own sidebar, no matter what a saved DSM row says
+  // for `visible`. Phase 70: teacher now reads a completely separate
+  // 'teacher' scope that has no adminOnly rows in it to begin with (see
+  // DSM_TEACHER_DEFAULTS / _dsmReconcileWithNav's teacher-specific source),
+  // so this filter is now just a defensive floor on the admin list itself —
+  // it's not what separates teacher from admin anymore.
   const items = [...list]
     .filter(it => it.visible !== false)
-    .filter(it => !it.adminOnly || role === 'admin')
+    .filter(it => !it.adminOnly || isRealAdmin)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   const out = [];
@@ -196,9 +228,20 @@ window.dsmGetStudentNav = function () {
   return _dsmBuildNav(_dsmState.student);
 };
 
-window.dsmGetAdminNav = function (role) {
+window.dsmGetAdminNav = function () {
   _dsmEnsureLoaded();
-  return _dsmBuildNav(_dsmState.admin, role);
+  return _dsmBuildNav(_dsmState.admin, /* isRealAdmin */ true);
+};
+
+// PHASE 70 — teacher's own nav, built from its own persisted 'teacher'
+// scope rather than a role-filtered view of the admin list. isRealAdmin is
+// always false here: a teacher's saved list should never contain an
+// adminOnly row in the first place (DSM_TEACHER_DEFAULTS excludes them and
+// reconciliation only ever adds NON-adminOnly NAV_ADMIN items), but this
+// keeps the same defensive floor in case of stale/hand-edited data.
+window.dsmGetTeacherNav = function () {
+  _dsmEnsureLoaded();
+  return _dsmBuildNav(_dsmState.teacher, /* isRealAdmin */ false);
 };
 
 // ── UI: NAVIGATION MANAGER PAGE ────────────────────────
@@ -214,12 +257,13 @@ window.renderNavManager = function () {
     <div style="position:relative;z-index:1">
       <div class="page-hero-label">🧭 System Control</div>
       <h1 style="font-family:var(--fh);font-size:32px;font-weight:900;color:var(--on-surface);margin-bottom:8px">Navigation Manager</h1>
-      <p style="font-size:14px;color:var(--text-muted)">Show, hide, lock, relabel, or reorder the sidebar tabs students and admins see.${_dsmDirty ? ' <span style="color:#ffb95f;font-weight:700">● Unsaved changes</span>' : ''}</p>
+      <p style="font-size:14px;color:var(--text-muted)">Show, hide, lock, relabel, or reorder the sidebar tabs students, teachers, and admins see.${_dsmDirty ? ' <span style="color:#ffb95f;font-weight:700">● Unsaved changes</span>' : ''}</p>
     </div>
   </div>
 
   <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:center">
     <button class="btn ${_dsmActiveTab === 'student' ? 'btn-primary' : 'btn-ghost'} btn-sm" onclick="dsmSwitchTab('student')">🎓 Student Nav</button>
+    <button class="btn ${_dsmActiveTab === 'teacher' ? 'btn-primary' : 'btn-ghost'} btn-sm" onclick="dsmSwitchTab('teacher')">🍎 Teacher Nav</button>
     <button class="btn ${_dsmActiveTab === 'admin' ? 'btn-primary' : 'btn-ghost'} btn-sm" onclick="dsmSwitchTab('admin')">🛠️ Admin Nav</button>
     <div style="flex:1"></div>
     <button class="btn btn-ghost btn-sm" onclick="dsmShowAll('${_dsmActiveTab}')">👁️ Show All</button>
@@ -229,20 +273,32 @@ window.renderNavManager = function () {
     <button class="btn btn-success btn-sm" onclick="dsmApplyAndRefresh()">✅ Apply &amp; Refresh</button>
   </div>
 
+  <div style="margin-bottom:12px;max-width:280px">
+    <input type="text" placeholder="Search tabs by name, id, or group…" value="${_esc(_dsmSearch)}" oninput="dsmSetSearch(this.value)">
+  </div>
+
   <div class="glass-card" style="padding:0;overflow:hidden">
     <div style="display:grid;grid-template-columns:56px 34px 1fr 132px 96px 96px 96px 34px;gap:10px;align-items:center;padding:10px 16px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border2)">
       <span>Order</span><span></span><span>Tab</span><span>Status</span><span>Visible</span><span>Locked</span><span>Enabled</span><span></span>
     </div>
-    ${_dsmRenderRows()}
+    <div id="dsm-rows">${_dsmRenderRows()}</div>
   </div>
   `;
 };
 
 function _dsmRenderRows() {
   const tab = _dsmActiveTab;
-  const list = [...(_dsmState[tab] || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  let list = [...(_dsmState[tab] || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const q = _dsmSearch.trim().toLowerCase();
+  if (q) {
+    list = list.filter(it =>
+      (it.label || '').toLowerCase().includes(q) ||
+      (it.id || '').toLowerCase().includes(q) ||
+      (it.group || '').toLowerCase().includes(q)
+    );
+  }
   if (list.length === 0) {
-    return `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">No nav items configured for this tab.</div>`;
+    return `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">${q ? 'No tabs match your search.' : 'No nav items configured for this tab.'}</div>`;
   }
   const statusOptions = [
     { v: 'active', l: 'Active' },
@@ -307,9 +363,16 @@ function _dsmRenderRows() {
 // (or Reset to Defaults, which saves immediately).
 
 window.dsmSwitchTab = function (tab) {
-  if (tab !== 'student' && tab !== 'admin') return;
+  if (tab !== 'student' && tab !== 'teacher' && tab !== 'admin') return;
   _dsmActiveTab = tab;
+  _dsmSearch = '';
   renderNavManager();
+};
+
+window.dsmSetSearch = function (value) {
+  _dsmSearch = String(value || '');
+  const rows = document.getElementById('dsm-rows');
+  if (rows) rows.innerHTML = _dsmRenderRows();
 };
 
 window.dsmToggle = function (tab, id, field) {
@@ -374,6 +437,7 @@ window.dsmUnlockAll = function (tab) {
 window.dsmResetToDefaults = function (tab) {
   _dsmEnsureLoaded();
   if (tab === 'student') _dsmState.student = DSM_STUDENT_DEFAULTS.map(x => ({ ...x }));
+  else if (tab === 'teacher') _dsmState.teacher = DSM_TEACHER_DEFAULTS.map(x => ({ ...x }));
   else if (tab === 'admin') _dsmState.admin = DSM_ADMIN_DEFAULTS.map(x => ({ ...x }));
   else _dsmState = _dsmCloneDefaults();
   dsmSave();

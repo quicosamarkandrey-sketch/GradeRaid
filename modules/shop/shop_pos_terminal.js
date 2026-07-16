@@ -883,8 +883,43 @@ window.posFilterQueue = function () {
 
 // ── History filter & render ───────────────────────────────────────────────────
 
-window.posFilterHistory = function () {
+let _posHistPage = 1;
+const _POS_HIST_PAGE_SIZE = 20;
+
+window.posGoToHistPage = function (page) {
+  _posHistPage = Math.max(1, page | 0);
+  window.posFilterHistory(false);
+  const list = document.getElementById('pos-hist-list');
+  if (list) list.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+window.posPrevHistPage = function () { window.posGoToHistPage(_posHistPage - 1); };
+window.posNextHistPage = function () { window.posGoToHistPage(_posHistPage + 1); };
+
+function _posHistPagination(page, totalPages, totalCount, rangeStart, rangeEnd) {
+  if (totalPages <= 1) {
+    return `<div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text-muted)">Showing all ${totalCount}</div>`;
+  }
+  const nums = new Set([1, totalPages, page, page - 1, page + 1, page - 2, page + 2]);
+  const pages = Array.from(nums).filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+  let btns = '';
+  let prevN = 0;
+  pages.forEach(n => {
+    if (n - prevN > 1) btns += `<span style="padding:0 6px;color:var(--text-muted);font-size:11px">…</span>`;
+    btns += `<button class="btn btn-ghost btn-sm" style="${n === page ? 'background:var(--primary);color:#fff;font-weight:800' : ''}" onclick="posGoToHistPage(${n})">${n}</button>`;
+    prevN = n;
+  });
+  return `
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:14px">
+    <button class="btn btn-ghost btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="posPrevHistPage()">← Prev</button>
+    ${btns}
+    <button class="btn btn-ghost btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="posNextHistPage()">Next →</button>
+  </div>
+  <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--text-muted)">Showing ${rangeStart}–${rangeEnd} of ${totalCount}</div>`;
+}
+
+window.posFilterHistory = function (resetPage) {
   DB = loadDB();
+  if (resetPage !== false) _posHistPage = 1;
   const q      = (document.getElementById('pos-hist-search')?.value || '').toLowerCase().trim();
   const filter = document.getElementById('pos-hist-filter')?.value || 'claimed';
   let orders   = DB.orders || [];
@@ -897,9 +932,14 @@ window.posFilterHistory = function () {
   if (!list) return;
   if (!orders.length) { list.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-muted);font-size:13px"><div style="font-size:40px;margin-bottom:12px">📋</div>No history found.</div>`; return; }
 
+  const totalPages = Math.max(1, Math.ceil(orders.length / _POS_HIST_PAGE_SIZE));
+  if (_posHistPage > totalPages) _posHistPage = totalPages;
+  const start = (_posHistPage - 1) * _POS_HIST_PAGE_SIZE;
+  const shown = orders.slice(start, start + _POS_HIST_PAGE_SIZE);
+
   list.innerHTML = `<table class="admin-table" style="width:100%">
     <thead><tr><th>Item</th><th>Student</th><th>Claim Code</th><th>Coins</th><th>Ordered</th><th>Status</th><th>Resolved</th></tr></thead>
-    <tbody>${orders.map(o => `<tr>
+    <tbody>${shown.map(o => `<tr>
       <td><span style="font-size:16px;margin-right:6px">${o.emoji || '🎁'}</span>${_esc(o.itemName)}</td>
       <td><div style="display:flex;align-items:center;gap:7px"><span style="width:24px;height:24px;border-radius:50%;background:${o.studentColor || '#8b5cf6'}22;border:1px solid ${o.studentColor || '#8b5cf6'}44;color:${o.studentColor || '#8b5cf6'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;font-family:var(--fh)">${_esc(o.studentInit || '?')}</span>${_esc(o.studentName)}</div></td>
       <td><span style="font-family:var(--fm);font-size:11px;color:${o.status === 'claimed' ? 'var(--secondary)' : 'var(--text-muted)'}">${_esc(o.claimCode)}</span></td>
@@ -908,7 +948,8 @@ window.posFilterHistory = function () {
       <td>${ordStatusPill(o.status)}</td>
       <td style="color:var(--text-muted);font-size:11px">${o.claimedAt ? new Date(o.claimedAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : o.cancelledAt ? new Date(o.cancelledAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
     </tr>`).join('')}</tbody>
-  </table>`;
+  </table>
+  ${_posHistPagination(_posHistPage, totalPages, orders.length, start + 1, start + shown.length)}`;
 };
 
 // ── Analytics ─────────────────────────────────────────────────────────────────

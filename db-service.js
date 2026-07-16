@@ -212,71 +212,37 @@ const DBService = (function () {
     return role === 'admin' ? 'admin' : (role === 'teacher' ? 'teacher' : 'student');
   }
 
-  async function _pullCacheFromSupabase(client) {
-    const [profiles, bossEvents, bossParticipants, lootClaims, achievements, userAchievements,
-           registrations, pointLog, redemptions, recitationLog,
-           rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
-           achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
-           orders, inventoryRows, campaignStageSections, quizHistoryRows, notifications, studentSkillRows] =
-      await Promise.all([
-        client.from('profiles').select('*'),
-        client.from('boss_events').select('*'),
-        client.from('boss_participants').select('*'),
-        client.from('loot_claims').select('*'),
-        client.from('achievements').select('*'),
-        client.from('user_achievements').select('*'),
-        client.from('registrations').select('*'),
-        client.from('point_log').select('*').order('created_at', { ascending: false }),
-        client.from('redemptions').select('*').order('created_at', { ascending: false }),
-        client.from('recitation_log').select('*').order('created_at', { ascending: false }),
-        client.from('rfid_cards').select('*'),
-        client.from('attendance_schedules').select('*'),
-        client.from('attendance_logs').select('*').order('log_date', { ascending: false }),
-        client.from('shop_products').select('*'), // Phase 14
-        client.from('mail_messages').select('*').order('created_at', { ascending: false }), // Phase 15
-        client.from('quiz_sections').select('*'), // Phase 15
-        client.from('achievement_sections').select('*'), // Phase 16
-        client.from('titles').select('*'), // Phase 18
-        client.from('title_unlocks').select('*'), // Phase 18
-        client.from('quizzes').select('*'), // Phase 20 — quiz content (was local-only; see phase20_quiz_content_sync.sql)
-        client.from('title_sections').select('*'), // Phase 21 — read side of title section-scoping
-        client.from('campaign_worlds').select('*').order('sort_order', { ascending: true }), // Phase 22 — campaign content (was local-only; see phase22_campaign_content_sync.sql)
-        client.from('orders').select('*').order('created_at', { ascending: false }), // Phase 48
-        client.from('inventory').select('*'), // Phase 48
-        client.from('campaign_stage_sections').select('*'), // Phase 53 — read side of campaign per-section visibility (table existed since Phase 14, never wired up until now)
-        client.from('quiz_history').select('*').order('completed_at', { ascending: false }), // Phase 57 — was local-only; see phase57_quiz_history_sync.sql
-        client.from('notifications').select('*').order('created_at', { ascending: false }), // Phase 67 — student notification bell; see phase67_notifications.sql
-        client.from('student_skills').select('*'), // Phase 7 (Campaign Redesign) — see phase68_campaign_student_skills.sql
-      ]);
+  // ── Priority 2 Fix 2: bounded history windows ─────────────────────────────
+  // These 8 append-only tables previously came back with COMPLETE, unbounded
+  // history on every single pull — including the first-login blocking pull.
+  // See EduQuest_Priority2_Plan.md "Fix 2". Limits below are a first pass
+  // (200-500 rows), not exact science — point_log/quiz_history/
+  // attendance_logs get a larger window since older rows still feed streak/
+  // analytics math; notifications only needs enough to fill the bell
+  // dropdown. loadMoreHistory() (public API, near the bottom of this file)
+  // is the escape hatch for anything that needs to page further back.
+  const _HISTORY_LIMITS = {
+    point_log: 500,
+    redemptions: 300,
+    recitation_log: 300,
+    attendance_logs: 500,
+    mail_messages: 300,
+    orders: 300,
+    quiz_history: 500,
+    notifications: 100,
+  };
 
-    for (const r of [profiles, bossEvents, bossParticipants, lootClaims, achievements, userAchievements,
-                      registrations, pointLog, redemptions, recitationLog,
-                      rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
-                      achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
-                      orders, inventoryRows, campaignStageSections, quizHistoryRows, notifications, studentSkillRows]) {
-      if (r.error) throw r.error;
-    }
+  // ── Priority 2 Fix 1: per-table derive helpers ────────────────────────────
+  // Every one of these mirrors a transform that used to be written inline,
+  // once, inside _pullCacheFromSupabase()'s giant return statement. Pulled
+  // out into standalone functions so BOTH the full 27-table pull below AND
+  // the scoped realtime refresh (_REFRESH_GROUPS, further down) share the
+  // exact same transform logic — one source of truth, no risk of the two
+  // paths silently drifting apart. See EduQuest_Priority2_Plan.md "Fix 1".
 
-    // Phase 63 (bugfix — closes the "quiz reappears / chain resets to step 1"
-    // gap): completedQuizzes used to hardcode to [] here on every pull, on
-    // the theory that "quiz history stays in its own table" — but nothing
-    // ever actually derived it back from that table, so every pull (which
-    // fires automatically right after a quiz is finished, since quiz_history
-    // is in the realtime subscription list) wiped every student's completion
-    // state seconds after they earned it. Built once, up front, from the
-    // already-fetched quiz_history rows, same "reshape by student_id" pattern
-    // as quizHistoryByStudent/inventoryByStudent below. Aborted attempts
-    // (Phase 63's other new column) never count as a completion, matching
-    // finishQuiz()'s local-session behavior (only a real finish pushes an id
-    // onto completedQuizzes — see index.html).
-    const completedQuizzesByStudent = {};
-    (quizHistoryRows.data || []).forEach(row => {
-      if (row.aborted) return;
-      if (!completedQuizzesByStudent[row.student_id]) completedQuizzesByStudent[row.student_id] = new Set();
-      completedQuizzesByStudent[row.student_id].add(row.quiz_id);
-    });
-
-    const students = (profiles.data || [])
+  function _deriveStudents(profilesData, quizHistoryByStudent) {
+    const qh = quizHistoryByStudent || {};
+    return (profilesData || [])
       .filter(p => p.role === 'student')
       .map(p => ({
         id: p.id, pass: p.pass, name: p.display_name, init: p.init, color: p.color,
@@ -285,21 +251,37 @@ const DBService = (function () {
         firstName: p.first_name, lastName: p.last_name,
         displayName: p.display_name, profilePic: p.profile_pic_url,
         joinDate: p.join_date, classId: p.class_id || 'default-class',
-        completedQuizzes: Array.from(completedQuizzesByStudent[p.id] || []),
+        // Phase 63 completedQuizzes — built from the already-shaped
+        // quizHistoryByStudent map (id: [{quizId, aborted, ...}]) rather
+        // than raw quiz_history rows, so this same function works whether
+        // the caller just did a fresh quiz_history pull (full pull) or is
+        // reusing the existing cached quizHistory slice unchanged (scoped
+        // 'profiles' group refresh, where quiz_history itself didn't change).
+        completedQuizzes: Array.from(new Set(
+          (qh[p.id] || []).filter(h => !h.aborted).map(h => h.quizId)
+        )),
       }));
+  }
 
-    // Phase 18: equipped title is a scalar column on profiles (see
-    // set_equipped_title() RPC), read here alongside the rest of the
-    // profile row rather than a separate fetch.
+  function _deriveAdmin(profilesData, previousAdmin) {
+    const adminRow = (profilesData || []).find(p => p.role === 'admin' || p.role === 'teacher');
+    return adminRow ? {
+      id: adminRow.id, name: adminRow.display_name, role: 'Teacher',
+      pass: previousAdmin?.pass ?? (typeof DEFAULT_DB !== 'undefined' ? DEFAULT_DB.admin?.pass : 'admin123'),
+    } : (previousAdmin ?? (typeof DEFAULT_DB !== 'undefined' ? DEFAULT_DB.admin : null));
+  }
+
+  function _deriveEquippedTitles(profilesData) {
     const equippedTitles = {};
-    (profiles.data || []).forEach(p => {
+    (profilesData || []).forEach(p => {
       if (p.role === 'student' && p.equipped_title_id) equippedTitles[p.id] = p.equipped_title_id;
     });
+    return equippedTitles;
+  }
 
-    const adminRow = (profiles.data || []).find(p => p.role === 'admin' || p.role === 'teacher');
-
+  function _deriveBossEvents(bossEventsData, lootClaimsData) {
     const bossIdById = {};
-    const bossEventsArr = (bossEvents.data || [])
+    const bossEventsArr = (bossEventsData || [])
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
       .map((b, idx) => {
         bossIdById[b.id] = idx;
@@ -331,7 +313,7 @@ const DBService = (function () {
           skillIntervalMax: b.skill_interval_max || undefined,
           rageSettings: b.rage_settings || {},
           phases: b.phases || [],
-          lootClaims: (lootClaims.data || [])
+          lootClaims: (lootClaimsData || [])
             .filter(c => c.boss_id === b.id)
             .map(c => ({
               id: c.id, rewardId: c.reward_id, itemName: c.item_name, rarity: c.rarity,
@@ -345,9 +327,12 @@ const DBService = (function () {
           createdAt: b.created_at ? Date.parse(b.created_at) : null,
         };
       });
+    return { bossEventsArr, bossIdById };
+  }
 
+  function _deriveBossParticipants(bossParticipantsData, bossIdById) {
     const bossParticipantsObj = {};
-    (bossParticipants.data || []).forEach(row => {
+    (bossParticipantsData || []).forEach(row => {
       const idx = bossIdById[row.boss_id];
       if (idx === undefined) return;
       if (!bossParticipantsObj[idx]) bossParticipantsObj[idx] = {};
@@ -361,9 +346,23 @@ const DBService = (function () {
         lastQIdx: row.last_question_idx,
       };
     });
+    return bossParticipantsObj;
+  }
 
+  function _deriveAchievements(achievementsData) {
+    // Phase 38: same starter-template filter as titlesArr/quizzesArr/campaignWorldsArr.
+    return (achievementsData || []).filter(a => !a.is_starter_template).map(a => ({
+      id: a.id, ownerTeacherId: a.owner_teacher_id, // Phase 32: catalog owner scoping
+      name: a.name, description: a.description, icon: a.icon,
+      category: a.category, rarity: a.rarity, xpReward: a.xp_reward,
+      coinReward: a.coin_reward, triggerType: a.trigger_type,
+      triggerValue: a.trigger_value, active: a.active,
+    }));
+  }
+
+  function _deriveAchievementUnlocks(userAchievementsData) {
     const achievementUnlocks = {};
-    (userAchievements.data || []).forEach(u => {
+    (userAchievementsData || []).forEach(u => {
       if (!achievementUnlocks[u.student_id]) achievementUnlocks[u.student_id] = [];
       achievementUnlocks[u.student_id].push({
         achId: u.achievement_id, unlockedAt: u.unlocked_at,
@@ -372,17 +371,14 @@ const DBService = (function () {
         classId: u.class_id || 'default-class', // Phase 14: section ownership
       });
     });
+    return achievementUnlocks;
+  }
 
-    // Phase 18: titles (catalog) + title_unlocks (per-student), same shape
-    // as achievements/achievementUnlocks above. equippedTitles is built
-    // earlier alongside `students`, from profiles.equipped_title_id.
-    // Phase 38: is_starter_template rows are the admin-only starter-pack
-    // templates (seeded via seed_new_teacher()) — RLS lets an admin session
-    // see them (admin bypasses the owner check), but they must never show up
-    // mixed into a regular catalog screen. Filtered here, not in RLS, so the
-    // new Starter Pack Editor screen (which fetches them via the dedicated
-    // get_starter_pack() RPC instead) is the only place they're visible.
-    const titlesArr = (titles.data || []).filter(t => !t.is_starter_template).map(t => ({
+  function _deriveTitles(titlesData) {
+    // Phase 38: is_starter_template rows are admin-only starter-pack
+    // templates — filtered here, not RLS, same reasoning as the original
+    // inline version of this transform.
+    return (titlesData || []).filter(t => !t.is_starter_template).map(t => ({
       id: t.id, ownerTeacherId: t.owner_teacher_id, // Phase 32: catalog owner scoping
       name: t.name, description: t.description, icon: t.icon,
       rarity: t.rarity, active: t.active !== false, achievementId: t.achievement_id,
@@ -392,115 +388,78 @@ const DBService = (function () {
       animation: t.animation, particles: t.particles, bgEffect: t.bg_effect,
       customBorderCSS: t.custom_border_css, customAnimationCSS: t.custom_animation_css,
       customBgCSS: t.custom_bg_css, createdAt: t.created_at,
-      // Phase 52: Designer v3 fields — see phase52_titles_designer_v3_columns.sql.
-      // Fall back to tsDefaultTitle()'s own defaults so a pre-Phase-52 row
-      // (column exists now, but this particular title was saved before the
-      // backfill/re-save) renders identically to a brand-new draft instead
-      // of some other stale fallback.
       frameShape: t.frame_shape || 'classic', frameStyle: t.frame_style || 'none',
       accentColor: t.accent_color, effect: t.effect || 'none',
       frameTemplate: t.frame_template || 'solid',
     }));
+  }
 
+  function _deriveTitleUnlocks(titleUnlocksData) {
     const titleUnlocksObj = {};
-    (titleUnlocks.data || []).forEach(u => {
+    (titleUnlocksData || []).forEach(u => {
       if (!titleUnlocksObj[u.student_id]) titleUnlocksObj[u.student_id] = [];
       titleUnlocksObj[u.student_id].push(u.title_id);
     });
+    return titleUnlocksObj;
+  }
 
-    // Phase 20: quiz content catalog — same shape/pattern as
-    // achievements/titles above. quiz_sections (who can see a quiz) is
-    // unchanged and still read separately below into
-    // quizSectionAssignments; this is the quiz CONTENT itself.
+  function _deriveTitleSectionAssignments(titleSectionsData) {
+    const titleSectionAssignments = {};
+    (titleSectionsData || []).forEach(row => {
+      if (!titleSectionAssignments[row.title_id]) titleSectionAssignments[row.title_id] = [];
+      titleSectionAssignments[row.title_id].push(row.class_id);
+    });
+    return titleSectionAssignments;
+  }
+
+  function _deriveQuizzes(quizzesData) {
     // Phase 38: same starter-template filter as titlesArr above.
-    const quizzesArr = (quizzes.data || []).filter(q => !q.is_starter_template).map(q => ({
+    return (quizzesData || []).filter(q => !q.is_starter_template).map(q => ({
       id: q.id, ownerTeacherId: q.owner_teacher_id, // Phase 32: catalog owner scoping
       title: q.title, desc: q.description,
       xpReward: q.xp_reward, coinReward: q.coin_reward, timeLimit: q.time_limit,
-      // Phase 54: rarity/cadence — coalesce here too (not just in the SQL
-      // backfill) so a row pulled from a REST cache or replica that
-      // predates the migration's backfill still lands on the same
-      // defaults eqQuizRarity()/eqQuizCadence() already use.
       rarity: q.rarity || 'Common', cadence: q.cadence || 'standing',
-      // Phase 56: quest chains — chainId stays null (unchained) unless a
-      // row actually has one; chainOrder coalesces to 1, same fallback
-      // eqQuizChain() already uses in utils.js for a row from before this
-      // migration's backfill.
       chainId: q.chain_id || null, chainOrder: q.chain_order || 1, chainLabel: q.chain_label || '',
-      // Phase 58: scheduling — startDate/endDate stay null (no schedule =
-      // always available) unless a row actually has one, same fallback
-      // eqQuizScheduleStatus() already treats a pre-Phase-5 row as.
       startDate: q.start_date || null, endDate: q.end_date || null,
-      // Phase 3 (Improvement Plan §2) — per-stage per-question timer
-      // overrides. A row from before this migration (column NULL) or a
-      // row whose json isn't a proper 3-slot array both coalesce to
-      // [null,null,null] — "use shipped defaults everywhere" — same
-      // fallback eqQuizStageSeconds() already applies in utils.js.
       stageTimers: Array.isArray(q.stage_timers) ? q.stage_timers : [null, null, null],
       questions: q.questions || [], active: q.active !== false,
       createdAt: q.created_at,
     }));
+  }
 
-    // Phase 22: campaign content catalog. One row per world; stages
-    // (with their nested scenes/enemies/questions/outro) ride along as a
-    // single jsonb column — see phase22_campaign_content_sync.sql for why
-    // this isn't split into a relational stage table. Already
-    // sort_order-ordered by the query above.
+  function _deriveCampaignWorlds(campaignWorldsData) {
     // Phase 38: same starter-template filter as titlesArr/quizzesArr above.
-    const campaignWorldsArr = (campaignWorlds.data || []).filter(w => !w.is_starter_template).map(w => ({
+    return (campaignWorldsData || []).filter(w => !w.is_starter_template).map(w => ({
       id: w.id, ownerTeacherId: w.owner_teacher_id, // Phase 32: catalog owner scoping
       label: w.label, icon: w.icon, color: w.color, desc: w.description,
       stages: w.stages || [],
     }));
+  }
 
-    // Phase 53: campaign_stage_sections exists since Phase 14 (see
-    // phase14_section_isolation.sql) but was never read from here — every
-    // campaign world rendered visible to every section of its owning
-    // teacher, with no way to scope a world (or one topic's worth of
-    // stages) to just one section. set_campaign_world_sections() (Phase 53)
-    // writes one row per (stage, class) pair for every stage in a world, so
-    // reading it back is a two-step fold: build a stageId -> worldId
-    // lookup from the catalog we just mapped above, then group the raw
-    // rows by worldId into the same {catalogId: [classId, ...]} shape
-    // quizSectionAssignments/achievementSectionAssignments already use —
-    // renderWorldTabs()/renderStageMap() (campaign_stage_map.js) and
-    // getMapProgress()/getStageProgress() (campaign_engine.js) key off this
-    // by worldId, not by individual stage.
+  function _deriveCampaignSectionAssignments(campaignStageSectionsData, campaignWorldsArr) {
     const worldIdByStageId = {};
-    campaignWorldsArr.forEach(w => (w.stages || []).forEach(s => { worldIdByStageId[s.id] = w.id; }));
+    (campaignWorldsArr || []).forEach(w => (w.stages || []).forEach(s => { worldIdByStageId[s.id] = w.id; }));
     const campaignSectionAssignments = {};
-    (campaignStageSections.data || []).forEach(row => {
+    (campaignStageSectionsData || []).forEach(row => {
       const worldId = worldIdByStageId[row.stage_id];
       if (!worldId) return; // stale row for a since-deleted stage — ignore
       if (!campaignSectionAssignments[worldId]) campaignSectionAssignments[worldId] = [];
       if (!campaignSectionAssignments[worldId].includes(row.class_id)) campaignSectionAssignments[worldId].push(row.class_id);
     });
+    return campaignSectionAssignments;
+  }
 
-    // Phase 15: mail_messages is one row per single recipient (see
-    // phase14_section_isolation.sql's comment on why); the local app's mail
-    // object is one compose action shared across many recipients with
-    // per-recipient read/claimed tracking. Reconstruct that shape here by
-    // grouping rows back up by batch_id (stamped by the send_mail() RPC —
-    // see phase15_mail_and_quiz_sections_sync.sql), so every other module
-    // (mail-engine.js, admin-compose.js, student-inbox.js) keeps working
-    // against the exact same {id, to:[], readBy:{}, claimedBy:{}, rewards:[]}
-    // shape it already expects, with zero call-site changes needed there.
+  function _deriveMail(mailMessagesData, profilesData, titlesArr) {
     const mailByBatch = {};
-    (mailMessages.data || []).forEach(row => {
-      const batchId = row.batch_id || row.id; // defensive: a row with no
-      // batch_id can't happen via send_mail(), but don't drop it silently
-      // if one ever shows up (e.g. a manual DB edit) — treat it as its own
-      // single-recipient batch instead.
+    (mailMessagesData || []).forEach(row => {
+      const batchId = row.batch_id || row.id;
       if (!mailByBatch[batchId]) {
-        const senderProfile = (profiles.data || []).find(p => p.id === row.sender_teacher_id);
+        const senderProfile = (profilesData || []).find(p => p.id === row.sender_teacher_id);
         const rewards = [];
         if (row.xp_reward)   rewards.push({ type: 'xp', amount: row.xp_reward, icon: '⚡', label: 'XP', color: 'var(--primary)' });
         if (row.coin_reward) rewards.push({ type: 'coins', amount: row.coin_reward, icon: '🪙', label: 'Coins', color: 'var(--tertiary)' });
         if (row.title_reward_id) {
-          // Phase 18: titles is now synced — look it up against the real
-          // pulled data instead of the old "whatever's in this tab's local
-          // cache" workaround.
-          const t = titlesArr.find(x => x.id === row.title_reward_id);
+          const t = (titlesArr || []).find(x => x.id === row.title_reward_id);
           rewards.push({ type: 'title', amount: 1, icon: (t && t.icon) || '🎖️', label: (t && t.name) || 'Title', color: '#EC4899', titleId: row.title_reward_id });
         }
         mailByBatch[batchId] = {
@@ -512,18 +471,6 @@ const DBService = (function () {
           to: [],
           sentAt: row.created_at,
           readBy: {}, claimedBy: {},
-          // Phase 15 fix: mark_mail_read()/mark_mail_claimed() are scoped to
-          // ONE mail_messages row (`where id = p_mail_id and
-          // recipient_student_id = auth.uid()`), but that row's real primary
-          // key is per-recipient, NOT the batch_id this reconstructed object
-          // uses as its own `id`. Without this map, mailMarkRead/
-          // mailClaimRewards (mail-engine.js) had no way to know the actual
-          // row id and were silently sending the batch_id as p_mail_id —
-          // matching zero rows server-side, so read/claimed state never
-          // actually persisted past a refresh even though the RPC call
-          // "succeeded" (0 rows updated is not an error). Keyed by
-          // recipient_student_id so mail-engine.js can look up the right row
-          // id for the current student.
           rowIdBySid: {},
         };
       }
@@ -532,50 +479,30 @@ const DBService = (function () {
       mailByBatch[batchId].claimedBy[row.recipient_student_id] = !!row.claimed;
       mailByBatch[batchId].rowIdBySid[row.recipient_student_id] = row.id;
     });
+    return Object.values(mailByBatch);
+  }
 
-    // Phase 15: quiz_sections is read-only from this bulk-pull path — writes
-    // go exclusively through set_quiz_sections() (see quiz-builder.js and
-    // phase15_mail_and_quiz_sections_sync.sql) so a stale tab's cached
-    // assignment list can never bulk-clobber another teacher's. Exposed here
-    // as a simple {quizId: [classId, ...]} map for the section-picker UI to
-    // read back what's currently assigned.
+  function _deriveQuizSectionAssignments(quizSectionsData) {
     const quizSectionAssignments = {};
-    (quizSections.data || []).forEach(row => {
+    (quizSectionsData || []).forEach(row => {
       if (!quizSectionAssignments[row.quiz_id]) quizSectionAssignments[row.quiz_id] = [];
       quizSectionAssignments[row.quiz_id].push(row.class_id);
     });
+    return quizSectionAssignments;
+  }
 
-    // Phase 16: same shape as quizSectionAssignments above, but for
-    // achievement_sections — read-only from this bulk-pull path, writes go
-    // exclusively through set_achievement_sections() (see
-    // ach_admin_page.js and phase16_achievement_sections_rpc.sql) so a
-    // stale tab's cached assignment list can never bulk-clobber another
-    // teacher's. Exposed as a simple {achievementId: [classId, ...]} map
-    // for the section-picker UI to read back what's currently assigned.
+  function _deriveAchievementSectionAssignments(achievementSectionsData) {
     const achievementSectionAssignments = {};
-    (achievementSections.data || []).forEach(row => {
+    (achievementSectionsData || []).forEach(row => {
       if (!achievementSectionAssignments[row.achievement_id]) achievementSectionAssignments[row.achievement_id] = [];
       achievementSectionAssignments[row.achievement_id].push(row.class_id);
     });
+    return achievementSectionAssignments;
+  }
 
-    // Phase 21: same shape as achievementSectionAssignments above, but for
-    // title_sections — read-only from this bulk-pull path, writes go
-    // exclusively through set_title_sections() (see titles_designer.js and
-    // phase21_title_sections_rpc.sql). Only meaningful for standalone
-    // (non-achievement-linked) titles — a title unlocked through a linked
-    // achievement already inherits that achievement's section scoping.
-    const titleSectionAssignments = {};
-    (titleSections.data || []).forEach(row => {
-      if (!titleSectionAssignments[row.title_id]) titleSectionAssignments[row.title_id] = [];
-      titleSectionAssignments[row.title_id].push(row.class_id);
-    });
-
-    // Phase 48: inventory is per-student, one row per (student_id, item_id) —
-    // reshape into DB.inventory[studentId] = [...] exactly as cartCheckout()
-    // and (after the loot-service.js patch shipped alongside this)
-    // LootService.claimReward() already expect it.
+  function _deriveInventory(inventoryRowsData) {
     const inventoryByStudent = {};
-    (inventoryRows.data || []).forEach(row => {
+    (inventoryRowsData || []).forEach(row => {
       if (!inventoryByStudent[row.student_id]) inventoryByStudent[row.student_id] = [];
       inventoryByStudent[row.student_id].push({
         itemId: row.item_id, itemName: row.item_name, emoji: row.emoji, category: row.category,
@@ -583,49 +510,190 @@ const DBService = (function () {
         source: row.source, status: row.status, usedAt: row.used_at,
       });
     });
+    return inventoryByStudent;
+  }
 
-    // Phase 57: quiz_history is per-student, one row per attempt — reshape
-    // into DB.quizHistory[studentId] = [...] exactly as computeQuestStreak()/
-    // getStudentQuestRecords() (utils.js) and finishQuiz() (index.html)
-    // already expect, same reasoning as inventoryByStudent above.
+  function _deriveQuizHistory(quizHistoryRowsData) {
     const quizHistoryByStudent = {};
-    (quizHistoryRows.data || []).forEach(row => {
+    const completedQuizzesByStudent = {};
+    (quizHistoryRowsData || []).forEach(row => {
       if (!quizHistoryByStudent[row.student_id]) quizHistoryByStudent[row.student_id] = [];
       quizHistoryByStudent[row.student_id].push({
         id: row.id, quizId: row.quiz_id, score: row.score, attempt: row.attempt,
         completedAt: row.completed_at, date: row.date_label,
-        // Phase 59 — per-question fractions (quest_board_report.md §19).
-        // Rows logged before this phase have no column value (NULL), which
-        // reads back as undefined here — eqComputeQuizAnalytics() (utils.js)
-        // already treats a missing `results` as "this attempt doesn't
-        // contribute to per-question stats" rather than throwing.
         results: Array.isArray(row.question_results) ? row.question_results : undefined,
-        // Phase 63 — an aborted attempt (abortQuiz(), index.html) must stay
-        // distinguishable after a round-trip through Supabase: it counts
-        // toward the attempt cap but never toward completedQuizzes, the
-        // "cleared" quest-board state, or the new perfect-score lock (see
-        // completedQuizzesByStudent above and eqQuizAttemptStatus() in
-        // utils.js). Rows from before this phase have no column value and
-        // default to false server-side, which is correct (they were all
-        // real finishQuiz() completions).
         aborted: !!row.aborted,
       });
+      if (!row.aborted) {
+        if (!completedQuizzesByStudent[row.student_id]) completedQuizzesByStudent[row.student_id] = new Set();
+        completedQuizzesByStudent[row.student_id].add(row.quiz_id);
+      }
     });
+    return { quizHistoryByStudent, completedQuizzesByStudent };
+  }
 
-    // Phase 7 (Campaign Redesign) — student_skills is per-student, one row
-    // per student (id = student_id, unlike inventory's per-item rows above)
-    // — reshape into DB.studentSkills[studentId] = {hint, heal, shield}
-    // exactly as campaign_engine.js's _campGetSkillCounts() expects. Every
-    // write to this table goes exclusively through
-    // adjust_student_skill_count() (see phase68_campaign_student_skills.sql)
-    // — there is no bulk-push counterpart to this block, same "RPC only"
-    // convention as titleUnlocks/achievementUnlocks above.
+  function _deriveStudentSkills(studentSkillRowsData) {
     const studentSkillsObj = {};
-    (studentSkillRows.data || []).forEach(row => {
+    (studentSkillRowsData || []).forEach(row => {
       studentSkillsObj[row.student_id] = {
         hint: row.hint_count || 0, heal: row.heal_count || 0, shield: row.shield_count || 0,
       };
     });
+    return studentSkillsObj;
+  }
+
+  function _derivePointLog(pointLogData) {
+    return (pointLogData || []).map(p => ({
+      id: p.id, studentId: p.student_id, what: p.what, pts: p.pts, when: p.when_label,
+      createdAt: p.created_at,
+    }));
+  }
+
+  function _deriveRedemptions(redemptionsData) {
+    return (redemptionsData || []).map(r => ({
+      orderId: r.order_id, studentId: r.student_id, itemId: r.item_id,
+      itemName: r.item_name, emoji: r.emoji, item: r.item_label, pts: r.pts,
+      date: r.date_label, time: r.time_label, claimCode: r.claim_code,
+      createdAt: r.created_at,
+    }));
+  }
+
+  function _deriveOrders(ordersData) {
+    return (ordersData || []).map(o => ({
+      orderId: o.order_id, claimCode: o.claim_code,
+      studentId: o.student_id, studentName: o.student_name,
+      studentInit: o.student_init, studentColor: o.student_color,
+      itemId: o.item_id, itemName: o.item_name, emoji: o.emoji,
+      cost: o.cost, category: o.category,
+      status: o.status,
+      createdAt: o.created_at, createdDateStr: o.created_date_str,
+      claimedAt: o.claimed_at ? Date.parse(o.claimed_at) : null, claimedBy: o.claimed_by,
+      cancelledAt: o.cancelled_at ? Date.parse(o.cancelled_at) : null,
+      cancelReason: o.cancel_reason, cancelledBy: o.cancelled_by,
+    }));
+  }
+
+  function _deriveNotifications(notificationsData) {
+    return (notificationsData || []).map(n => ({
+      id: n.id, studentId: n.student_id, type: n.type, icon: n.icon,
+      title: n.title, body: n.body, action: n.action, pts: n.pts,
+      sourceId: n.source_id, read: n.read, createdAt: n.created_at,
+    }));
+  }
+
+  function _deriveRecitationLog(recitationLogData) {
+    return (recitationLogData || []).map(r => ({
+      id: r.id, studentId: r.student_id, pts: r.pts, note: r.note, when: r.when_label,
+      classId: r.class_id || null, createdAt: r.created_at || null,
+    }));
+  }
+
+  function _deriveRfidCards(rfidCardsData) {
+    return (rfidCardsData || []).map(c => ({
+      id: c.id, tagId: c.tag_id, studentId: c.student_id,
+      isActive: c.is_active, assignedAt: c.assigned_at, revokedAt: c.revoked_at,
+    }));
+  }
+
+  function _deriveAttendanceSchedules(attendanceSchedulesData) {
+    return (attendanceSchedulesData || []).map(s => ({
+      id: s.id, classId: s.class_id, openTime: s.open_time, startTime: s.start_time,
+      lateCutoff: s.late_cutoff, closeTime: s.close_time, active: s.active,
+    }));
+  }
+
+  function _deriveAttendanceLogs(attendanceLogsData) {
+    return (attendanceLogsData || []).map(a => ({
+      id: a.id, studentId: a.student_id, classId: a.class_id, logDate: a.log_date,
+      status: a.status, scannedAt: a.scanned_at, entryMethod: a.entry_method,
+      rfidTag: a.rfid_tag, recordedBy: a.recorded_by, notes: a.notes,
+    }));
+  }
+
+  function _deriveStore(shopProductsData) {
+    // Phase 38: same starter-template filter as the other catalog tables.
+    return (shopProductsData || []).filter(p => !p.is_starter_template).map(p => ({
+      id: p.id, ownerTeacherId: p.owner_teacher_id,
+      name: p.name, emoji: p.emoji, desc: p.description, cat: p.category,
+      cost: p.cost, stock: p.stock, active: p.active,
+      addedAt: p.created_at,
+    }));
+  }
+
+  function _deriveRegistrations(registrationsData) {
+    return (registrationsData || [])
+      .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at))
+      .map(r => ({
+        id: r.id, firstName: r.first_name, lastName: r.last_name,
+        username: r.username, email: r.email, studentId: r.student_id_text,
+        gradeLevel: r.grade_level, section: r.section, classId: r.class_id, // Phase 33
+        status: r.status, submittedAt: r.submitted_at, reviewedAt: r.reviewed_at,
+        reviewedBy: r.reviewed_by, rejectionReason: r.rejection_reason,
+        approvedStudentId: r.approved_student_id,
+      }));
+  }
+
+  async function _pullCacheFromSupabase(client) {
+    const [profiles, bossEvents, bossParticipants, lootClaims, achievements, userAchievements,
+           registrations, pointLog, redemptions, recitationLog,
+           rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
+           achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
+           orders, inventoryRows, campaignStageSections, quizHistoryRows, notifications, studentSkillRows] =
+      await Promise.all([
+        client.from('profiles').select('*'),
+        client.from('boss_events').select('*'),
+        client.from('boss_participants').select('*'),
+        client.from('loot_claims').select('*'),
+        client.from('achievements').select('*'),
+        client.from('user_achievements').select('*'),
+        client.from('registrations').select('*'),
+        // Priority 2 Fix 2 — bounded history windows on the 8 append-only
+        // tables (see _HISTORY_LIMITS above). "load more" beyond this
+        // default window goes through loadMoreHistory() (public API).
+        client.from('point_log').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.point_log),
+        client.from('redemptions').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.redemptions),
+        client.from('recitation_log').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.recitation_log),
+        client.from('rfid_cards').select('*'),
+        client.from('attendance_schedules').select('*'),
+        client.from('attendance_logs').select('*').order('log_date', { ascending: false }).limit(_HISTORY_LIMITS.attendance_logs),
+        client.from('shop_products').select('*'), // Phase 14
+        client.from('mail_messages').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.mail_messages), // Phase 15
+        client.from('quiz_sections').select('*'), // Phase 15
+        client.from('achievement_sections').select('*'), // Phase 16
+        client.from('titles').select('*'), // Phase 18
+        client.from('title_unlocks').select('*'), // Phase 18
+        client.from('quizzes').select('*'), // Phase 20 — quiz content (was local-only; see phase20_quiz_content_sync.sql)
+        client.from('title_sections').select('*'), // Phase 21 — read side of title section-scoping
+        client.from('campaign_worlds').select('*').order('sort_order', { ascending: true }), // Phase 22 — campaign content (was local-only; see phase22_campaign_content_sync.sql)
+        client.from('orders').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.orders), // Phase 48
+        client.from('inventory').select('*'), // Phase 48
+        client.from('campaign_stage_sections').select('*'), // Phase 53 — read side of campaign per-section visibility (table existed since Phase 14, never wired up until now)
+        client.from('quiz_history').select('*').order('completed_at', { ascending: false }).limit(_HISTORY_LIMITS.quiz_history), // Phase 57 — was local-only; see phase57_quiz_history_sync.sql
+        client.from('notifications').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.notifications), // Phase 67 — student notification bell; see phase67_notifications.sql
+        client.from('student_skills').select('*'), // Phase 7 (Campaign Redesign) — see phase68_campaign_student_skills.sql
+      ]);
+
+    for (const r of [profiles, bossEvents, bossParticipants, lootClaims, achievements, userAchievements,
+                      registrations, pointLog, redemptions, recitationLog,
+                      rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
+                      achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
+                      orders, inventoryRows, campaignStageSections, quizHistoryRows, notifications, studentSkillRows]) {
+      if (r.error) throw r.error;
+    }
+
+    // Priority 2 Fix 1 — every transform below now lives in a standalone
+    // _deriveX() helper (defined above _pullCacheFromSupabase) shared with
+    // the scoped realtime refresh path (_REFRESH_GROUPS, further down).
+    // This function's only job now is: fetch all 27 tables, then call the
+    // same derive helpers a scoped refresh would call for a subset.
+    const { quizHistoryByStudent } = _deriveQuizHistory(quizHistoryRows.data);
+    const students = _deriveStudents(profiles.data, quizHistoryByStudent);
+    const admin = _deriveAdmin(profiles.data, _cache?.admin);
+    const equippedTitles = _deriveEquippedTitles(profiles.data);
+    const { bossEventsArr, bossIdById } = _deriveBossEvents(bossEvents.data, lootClaims.data);
+    const bossParticipantsObj = _deriveBossParticipants(bossParticipants.data, bossIdById);
+    const titlesArr = _deriveTitles(titles.data);
+    const campaignWorldsArr = _deriveCampaignWorlds(campaignWorlds.data);
 
     return {
       schemaVersion: _SCHEMA_VER,
@@ -634,183 +702,314 @@ const DBService = (function () {
       // no admin/teacher profile row exists in Supabase yet (e.g. fresh deployment,
       // RLS preventing the anon key from reading that row, or Phase-2 auth not yet
       // set up). Without this, DB.admin is null and doLogin() throws on DB.admin.id.
-      admin: adminRow ? {
-        id: adminRow.id, name: adminRow.display_name, role: 'Teacher',
-        pass: _cache?.admin?.pass ?? (typeof DEFAULT_DB !== 'undefined' ? DEFAULT_DB.admin?.pass : 'admin123'),
-      } : (_cache?.admin ?? (typeof DEFAULT_DB !== 'undefined' ? DEFAULT_DB.admin : null)),
+      admin,
       bossEvents: bossEventsArr,
       bossParticipants: bossParticipantsObj,
-      // Phase 38: same starter-template filter as titlesArr/quizzesArr/
-      // campaignWorldsArr above.
-      achievements: (achievements.data || []).filter(a => !a.is_starter_template).map(a => ({
-        id: a.id, ownerTeacherId: a.owner_teacher_id, // Phase 32: catalog owner scoping
-        name: a.name, description: a.description, icon: a.icon,
-        category: a.category, rarity: a.rarity, xpReward: a.xp_reward,
-        coinReward: a.coin_reward, triggerType: a.trigger_type,
-        triggerValue: a.trigger_value, active: a.active,
-      })),
-      achievementUnlocks,
-      titles: titlesArr, titleUnlocks: titleUnlocksObj, equippedTitles, // Phase 18
-      titleSectionAssignments, // Phase 21
+      achievements: _deriveAchievements(achievements.data),
+      achievementUnlocks: _deriveAchievementUnlocks(userAchievements.data),
+      titles: titlesArr, titleUnlocks: _deriveTitleUnlocks(titleUnlocks.data), equippedTitles, // Phase 18
+      titleSectionAssignments: _deriveTitleSectionAssignments(titleSections.data), // Phase 21
       // Phase 14: shop is per-teacher — RLS on shop_products already scopes
       // this to (a) products this session's own teacher owns, or (b)
       // products owned by the adviser of this session's own section, so no
       // extra client-side filter is needed here, same as every other table.
-      // Phase 38: same starter-template filter as the other four catalog
-      // tables above (achievements/titles/quizzes/campaignWorlds).
-      store: (shopProducts.data || []).filter(p => !p.is_starter_template).map(p => ({
-        id: p.id, ownerTeacherId: p.owner_teacher_id,
-        name: p.name, emoji: p.emoji, desc: p.description, cat: p.category,
-        cost: p.cost, stock: p.stock, active: p.active,
-        addedAt: p.created_at,
-      })),
-      // Phase 15 — see the mailByBatch/quizSectionAssignments comments above.
-      mail: Object.values(mailByBatch),
-      quizSectionAssignments,
-      achievementSectionAssignments, // Phase 16
-      registrations: (registrations.data || [])
-        .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at))
-        .map(r => ({
-          id: r.id, firstName: r.first_name, lastName: r.last_name,
-          username: r.username, email: r.email, studentId: r.student_id_text,
-          gradeLevel: r.grade_level, section: r.section, classId: r.class_id, // Phase 33
-          status: r.status, submittedAt: r.submitted_at, reviewedAt: r.reviewed_at,
-          reviewedBy: r.reviewed_by, rejectionReason: r.rejection_reason,
-          approvedStudentId: r.approved_student_id,
-        })),
-      // Phase 67 — `createdAt` added: this column already existed server-side
-      // (created_at timestamptz default now(), see wave1_registrations_and_logs.sql)
-      // but was never mapped back into the local cache, so every render was
-      // stuck using `when` (a cosmetic string frozen at write time, e.g.
-      // literally the word "Just now" forever — see FIXES_APPLIED doc for
-      // Phase 67). Dashboard/notification rendering now computes a live
-      // relative-time label from this real timestamp via window.eqTimeAgo()
-      // instead of trusting the frozen string.
-      pointLog: (pointLog.data || []).map(p => ({
-        id: p.id, studentId: p.student_id, what: p.what, pts: p.pts, when: p.when_label,
-        createdAt: p.created_at,
-      })),
-      redemptions: (redemptions.data || []).map(r => ({
-        orderId: r.order_id, studentId: r.student_id, itemId: r.item_id,
-        itemName: r.item_name, emoji: r.emoji, item: r.item_label, pts: r.pts,
-        date: r.date_label, time: r.time_label, claimCode: r.claim_code,
-        createdAt: r.created_at, // Phase 67 — same fix as point_log above
-      })),
+      store: _deriveStore(shopProducts.data),
+      // Phase 15 — see _deriveMail's comments.
+      mail: _deriveMail(mailMessages.data, profiles.data, titlesArr),
+      quizSectionAssignments: _deriveQuizSectionAssignments(quizSections.data),
+      achievementSectionAssignments: _deriveAchievementSectionAssignments(achievementSections.data), // Phase 16
+      registrations: _deriveRegistrations(registrations.data),
+      pointLog: _derivePointLog(pointLog.data),
+      redemptions: _deriveRedemptions(redemptions.data),
       // Phase 48 — mirrors DB.orders[] exactly. See cartCheckout() (creates),
       // shop_pos_terminal.js (staff claim/cancel), shop_orders.js (student
       // self-cancel) — all pre-existing client logic, previously local-only.
-      orders: (orders.data || []).map(o => ({
-        orderId: o.order_id, claimCode: o.claim_code,
-        studentId: o.student_id, studentName: o.student_name,
-        studentInit: o.student_init, studentColor: o.student_color,
-        itemId: o.item_id, itemName: o.item_name, emoji: o.emoji,
-        cost: o.cost, category: o.category,
-        status: o.status,
-        createdAt: o.created_at, createdDateStr: o.created_date_str,
-        // claimedAt/cancelledAt are epoch-ms numbers in the local shape
-        // (posExecuteClaim/posExecuteCancel/ordExecuteCancel all use
-        // Date.now()), so convert the stored timestamptz back to that shape
-        // on the way in, same convention as bossEvents.defeatedAt/endedAt above.
-        claimedAt: o.claimed_at ? Date.parse(o.claimed_at) : null, claimedBy: o.claimed_by,
-        cancelledAt: o.cancelled_at ? Date.parse(o.cancelled_at) : null,
-        cancelReason: o.cancel_reason, cancelledBy: o.cancelled_by,
-      })),
-      // Phase 48 — mirrors DB.inventory{} exactly. See the inventoryByStudent
-      // reshape above.
-      inventory: inventoryByStudent,
-      // Phase 57 — mirrors DB.quizHistory{} exactly. See the
-      // quizHistoryByStudent reshape above.
+      orders: _deriveOrders(orders.data),
+      // Phase 48 — mirrors DB.inventory{} exactly.
+      inventory: _deriveInventory(inventoryRows.data),
+      // Phase 57 — mirrors DB.quizHistory{} exactly.
       quizHistory: quizHistoryByStudent,
       // Phase 7 (Campaign Redesign) — mirrors DB.studentSkills{} exactly.
-      // See the studentSkillsObj reshape above.
-      studentSkills: studentSkillsObj,
+      studentSkills: _deriveStudentSkills(studentSkillRows.data),
       // Phase 67 — student notification bell. Rows are written by
       // notification-service.js (client-side synthesis from pointLog/orders,
       // never inserted directly at the source — see that file's header
       // comment), so this pull is a straight passthrough, same shape as
       // pointLog above.
-      notifications: (notifications.data || []).map(n => ({
-        id: n.id, studentId: n.student_id, type: n.type, icon: n.icon,
-        title: n.title, body: n.body, action: n.action, pts: n.pts,
-        sourceId: n.source_id, read: n.read, createdAt: n.created_at,
-      })),
-      recitationLog: (recitationLog.data || []).map(r => ({
-        id: r.id, studentId: r.student_id, pts: r.pts, note: r.note, when: r.when_label,
-        // Phase 3 additions — additive only, every pre-Phase-3 row simply has
-        // classId: null. See phase3_recitation_command_center.sql for why
-        // this reuses the existing table instead of a new one.
-        classId: r.class_id || null, createdAt: r.created_at || null,
-      })),
+      notifications: _deriveNotifications(notifications.data),
+      recitationLog: _deriveRecitationLog(recitationLog.data),
       // ── Phase 1 RFID/Attendance — READ-ONLY slices ──────────────────────
       // Every write to these three comes from AttendanceService via
       // DBService.rpc(), never from this bulk-pull/push path — see
       // attendance-service.js and the RPC functions in
       // supabase/phase1_rfid_attendance.sql. Pulling them here just keeps
       // AppStore's slices fresh for read paths (dashboards, analytics).
-      rfidCards: (rfidCards.data || []).map(c => ({
-        id: c.id, tagId: c.tag_id, studentId: c.student_id,
-        isActive: c.is_active, assignedAt: c.assigned_at, revokedAt: c.revoked_at,
-      })),
-      attendanceSchedules: (attendanceSchedules.data || []).map(s => ({
-        id: s.id, classId: s.class_id, openTime: s.open_time, startTime: s.start_time,
-        lateCutoff: s.late_cutoff, closeTime: s.close_time, active: s.active,
-      })),
-      attendanceLogs: (attendanceLogs.data || []).map(a => ({
-        id: a.id, studentId: a.student_id, classId: a.class_id, logDate: a.log_date,
-        status: a.status, scannedAt: a.scanned_at, entryMethod: a.entry_method,
-        rfidTag: a.rfid_tag, recordedBy: a.recorded_by, notes: a.notes,
-      })),
+      rfidCards: _deriveRfidCards(rfidCards.data),
+      attendanceSchedules: _deriveAttendanceSchedules(attendanceSchedules.data),
+      attendanceLogs: _deriveAttendanceLogs(attendanceLogs.data),
       // Fields not yet migrated to relational tables (Phase 2/3 scope — see
       // migration-strategy.md "What stays on localStorage for now"):
-      //
-      // BUGFIX (found while wiring Phase 15): `store` used to be listed here
-      // too, which — since this is a single object literal — silently won
-      // over the real `store: (shopProducts.data || []).map(...)` mapping
-      // above (later duplicate keys win in JS). That meant every fresh pull
-      // threw away the just-synced shop data and fell back to whatever this
-      // tab's in-memory cache happened to have (empty, on first load), i.e.
-      // the Phase 14 shop migration's cross-device sync was silently
-      // inert. `store` is fully migrated now (see above) — removed from
-      // this fallback list, which is exactly what should have happened when
-      // it was migrated. `mail` was never listed here (it had no local
-      // fallback before Phase 15), so no equivalent bug existed for it.
-      //
-      // BUGFIX #2 (found during the shop/mail/quiz/achievement/titles
-      // audit, right after Phase 18): `titles`, `titleUnlocks`, and
-      // `equippedTitles` were ALSO still listed here as
-      // `_cache?.titles || []` etc., the exact same duplicate-key mistake
-      // as the `store` bug above — silently winning over the real
-      // `titles: titlesArr, titleUnlocks: titleUnlocksObj, equippedTitles`
-      // mapping added earlier in this same object for Phase 18. Every
-      // fresh pull was throwing away the just-synced title data and
-      // falling back to local cache, making the entire Phase 18 sync
-      // silently inert, identically to how the shop bug played out.
-      // Removed from this fallback list for the same reason `store` was.
-      //
-      // Phase 20: `quizzes` was the last remaining member of this fallback
-      // list that actually had real backing data to sync (see
-      // SYNC_AUDIT_REPORT.md, "Quiz — bigger gap than 'done' implies").
-      // Unlike the `store`/`titles` cases above, this wasn't a duplicate-key
-      // bug — there was simply no `quizzes` table and no push block at all,
-      // so quiz content never left the device that authored it. Now synced
-      // via quizzesArr above; see phase20_quiz_content_sync.sql.
-      quizzes: quizzesArr,
+      quizzes: _deriveQuizzes(quizzes.data),
       attendanceSessions: _cache?.attendanceSessions || [],
-      // Phase 22: `stageMap` was the other remaining fallback list member
-      // with real backing data to sync (see SYNC_AUDIT_REPORT.md,
-      // "Campaign — confirmed fully local"). Same as `quizzes` above,
-      // this wasn't a duplicate-key bug — there was simply no
-      // `campaign_worlds` table and no push block at all, so campaign
-      // content never left the device that authored it. Now synced via
-      // campaignWorldsArr above; see phase22_campaign_content_sync.sql.
-      // stageProgress (per-student progress) stays local-cache-only —
-      // out of scope for now. quiz history is NO LONGER in this bucket —
-      // see quizHistory: quizHistoryByStudent above (Phase 57).
+      // Phase 22: campaign content catalog — see _deriveCampaignWorlds/
+      // _deriveCampaignSectionAssignments. stageProgress (per-student
+      // progress) stays local-cache-only — out of scope for now. quiz
+      // history is NO LONGER in this bucket — see quizHistory above (Phase 57).
       stageMap: campaignWorldsArr, stageProgress: _cache?.stageProgress || {},
-      campaignSectionAssignments, // Phase 53
+      campaignSectionAssignments: _deriveCampaignSectionAssignments(campaignStageSections.data, campaignWorldsArr), // Phase 53
       _bossIdById: bossIdById, // internal map, see _pushCacheToSupabase
     };
   }
+
+  // ── Priority 2 Fix 1: scoped realtime refresh ─────────────────────────────
+  // Maps each realtime-subscribed table to a small "refresh group" — the
+  // minimal set of Supabase tables that must be re-fetched together to
+  // correctly rebuild the cache slice(s) that table feeds into — and gives
+  // each group a fetch()+apply() pair built entirely from the _deriveX()
+  // helpers above. _schedulePullRefresh()/_applyScopedRefresh() (below) use
+  // this to re-fetch only the 1-4 tables a realtime burst actually touched
+  // instead of unconditionally re-running all 27 queries in
+  // _pullCacheFromSupabase() on every single event. See
+  // EduQuest_Priority2_Plan.md "Fix 1" for the full writeup, including why
+  // boss_events/boss_participants/loot_claims are grouped as one "raid" unit.
+  const _REALTIME_TABLE_GROUPS = {
+    profiles: 'profiles',
+    boss_events: 'raid',
+    boss_participants: 'raid',
+    loot_claims: 'raid',
+    achievements: 'achievements',
+    user_achievements: 'achievements',
+    point_log: 'pointLog',
+    recitation_log: 'recitationLog',
+    rfid_cards: 'rfidCards',
+    attendance_logs: 'attendanceLogs',
+    mail_messages: 'mail',
+    quiz_sections: 'quizSectionAssignments',
+    achievement_sections: 'achievementSectionAssignments',
+    titles: 'titles',
+    title_unlocks: 'titles',
+    title_sections: 'titles',
+    quizzes: 'quizzes',
+    campaign_worlds: 'campaign',
+    campaign_stage_sections: 'campaign',
+    orders: 'orders',
+    inventory: 'inventory',
+    quiz_history: 'quizHistory',
+    notifications: 'notifications',
+    student_skills: 'studentSkills',
+  };
+
+  const _REFRESH_GROUPS = {
+    profiles: {
+      fetch: async (client) => ({ profiles: await client.from('profiles').select('*') }),
+      apply: (raw, cache) => ({
+        students: _deriveStudents(raw.profiles.data, cache.quizHistory),
+        admin: _deriveAdmin(raw.profiles.data, cache.admin),
+        equippedTitles: _deriveEquippedTitles(raw.profiles.data),
+      }),
+    },
+    raid: {
+      // The plan's documented stress case: a boss-event raid where up to 30
+      // students trigger boss_participants/loot_claims changes in a tight
+      // window. All three tables feed the same two cache keys, so they're
+      // always fetched together — refreshing them separately would just
+      // mean re-deriving bossEvents/bossParticipants 2-3x in a row for no
+      // benefit.
+      fetch: async (client) => {
+        const [bossEvents, bossParticipants, lootClaims] = await Promise.all([
+          client.from('boss_events').select('*'),
+          client.from('boss_participants').select('*'),
+          client.from('loot_claims').select('*'),
+        ]);
+        return { bossEvents, bossParticipants, lootClaims };
+      },
+      apply: (raw) => {
+        const { bossEventsArr, bossIdById } = _deriveBossEvents(raw.bossEvents.data, raw.lootClaims.data);
+        return {
+          bossEvents: bossEventsArr,
+          bossParticipants: _deriveBossParticipants(raw.bossParticipants.data, bossIdById),
+          _bossIdById: bossIdById,
+        };
+      },
+    },
+    achievements: {
+      fetch: async (client) => {
+        const [achievements, userAchievements] = await Promise.all([
+          client.from('achievements').select('*'),
+          client.from('user_achievements').select('*'),
+        ]);
+        return { achievements, userAchievements };
+      },
+      apply: (raw) => ({
+        achievements: _deriveAchievements(raw.achievements.data),
+        achievementUnlocks: _deriveAchievementUnlocks(raw.userAchievements.data),
+      }),
+    },
+    pointLog: {
+      fetch: async (client) => ({
+        pointLog: await client.from('point_log').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.point_log),
+      }),
+      apply: (raw) => ({ pointLog: _derivePointLog(raw.pointLog.data) }),
+    },
+    recitationLog: {
+      fetch: async (client) => ({
+        recitationLog: await client.from('recitation_log').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.recitation_log),
+      }),
+      apply: (raw) => ({ recitationLog: _deriveRecitationLog(raw.recitationLog.data) }),
+    },
+    rfidCards: {
+      fetch: async (client) => ({ rfidCards: await client.from('rfid_cards').select('*') }),
+      apply: (raw) => ({ rfidCards: _deriveRfidCards(raw.rfidCards.data) }),
+    },
+    attendanceLogs: {
+      fetch: async (client) => ({
+        attendanceLogs: await client.from('attendance_logs').select('*').order('log_date', { ascending: false }).limit(_HISTORY_LIMITS.attendance_logs),
+      }),
+      apply: (raw) => ({ attendanceLogs: _deriveAttendanceLogs(raw.attendanceLogs.data) }),
+    },
+    mail: {
+      // Needs profiles alongside mail_messages purely to resolve sender
+      // display names (see _deriveMail) — still just 2 tables instead of 27.
+      // Title-reward lookups reuse the already-cached titles slice instead
+      // of re-fetching titles too.
+      fetch: async (client) => {
+        const [mailMessages, profiles] = await Promise.all([
+          client.from('mail_messages').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.mail_messages),
+          client.from('profiles').select('*'),
+        ]);
+        return { mailMessages, profiles };
+      },
+      apply: (raw, cache) => ({ mail: _deriveMail(raw.mailMessages.data, raw.profiles.data, cache.titles) }),
+    },
+    quizSectionAssignments: {
+      fetch: async (client) => ({ quizSections: await client.from('quiz_sections').select('*') }),
+      apply: (raw) => ({ quizSectionAssignments: _deriveQuizSectionAssignments(raw.quizSections.data) }),
+    },
+    achievementSectionAssignments: {
+      fetch: async (client) => ({ achievementSections: await client.from('achievement_sections').select('*') }),
+      apply: (raw) => ({ achievementSectionAssignments: _deriveAchievementSectionAssignments(raw.achievementSections.data) }),
+    },
+    titles: {
+      // titles + title_unlocks + title_sections grouped together: unlocking
+      // or re-scoping a title routinely touches more than one of these at
+      // once, and all three only ever feed the "titles domain" of the cache.
+      fetch: async (client) => {
+        const [titles, titleUnlocks, titleSections] = await Promise.all([
+          client.from('titles').select('*'),
+          client.from('title_unlocks').select('*'),
+          client.from('title_sections').select('*'),
+        ]);
+        return { titles, titleUnlocks, titleSections };
+      },
+      apply: (raw) => ({
+        titles: _deriveTitles(raw.titles.data),
+        titleUnlocks: _deriveTitleUnlocks(raw.titleUnlocks.data),
+        titleSectionAssignments: _deriveTitleSectionAssignments(raw.titleSections.data),
+      }),
+    },
+    quizzes: {
+      fetch: async (client) => ({ quizzes: await client.from('quizzes').select('*') }),
+      apply: (raw) => ({ quizzes: _deriveQuizzes(raw.quizzes.data) }),
+    },
+    campaign: {
+      fetch: async (client) => {
+        const [campaignWorlds, campaignStageSections] = await Promise.all([
+          client.from('campaign_worlds').select('*').order('sort_order', { ascending: true }),
+          client.from('campaign_stage_sections').select('*'),
+        ]);
+        return { campaignWorlds, campaignStageSections };
+      },
+      apply: (raw) => {
+        const campaignWorldsArr = _deriveCampaignWorlds(raw.campaignWorlds.data);
+        return {
+          stageMap: campaignWorldsArr,
+          campaignSectionAssignments: _deriveCampaignSectionAssignments(raw.campaignStageSections.data, campaignWorldsArr),
+        };
+      },
+    },
+    orders: {
+      fetch: async (client) => ({
+        orders: await client.from('orders').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.orders),
+      }),
+      apply: (raw) => ({ orders: _deriveOrders(raw.orders.data) }),
+    },
+    inventory: {
+      fetch: async (client) => ({ inventory: await client.from('inventory').select('*') }),
+      apply: (raw) => ({ inventory: _deriveInventory(raw.inventory.data) }),
+    },
+    quizHistory: {
+      fetch: async (client) => ({
+        quizHistory: await client.from('quiz_history').select('*').order('completed_at', { ascending: false }).limit(_HISTORY_LIMITS.quiz_history),
+      }),
+      apply: (raw, cache) => {
+        const { quizHistoryByStudent, completedQuizzesByStudent } = _deriveQuizHistory(raw.quizHistory.data);
+        // quiz_history also feeds students[].completedQuizzes (Phase 63) —
+        // patch the already-cached student list in place instead of
+        // re-fetching profiles just for this; this group already has
+        // everything it needs to keep the two in sync (see the "quiz
+        // reappears / chain resets to step 1" bug this originally fixed).
+        const students = (cache.students || []).map(s => ({
+          ...s,
+          completedQuizzes: Array.from(completedQuizzesByStudent[s.id] || []),
+        }));
+        return { quizHistory: quizHistoryByStudent, students };
+      },
+    },
+    notifications: {
+      fetch: async (client) => ({
+        notifications: await client.from('notifications').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.notifications),
+      }),
+      apply: (raw) => ({ notifications: _deriveNotifications(raw.notifications.data) }),
+    },
+    studentSkills: {
+      fetch: async (client) => ({ studentSkills: await client.from('student_skills').select('*') }),
+      apply: (raw) => ({ studentSkills: _deriveStudentSkills(raw.studentSkills.data) }),
+    },
+  };
+
+  const _FULL_PULL_SENTINEL = '__full__';
+
+  async function _applyScopedRefresh(client, changedTables) {
+    // No cache yet, or an explicit/unmapped full-refresh request: fall back
+    // to the original full 27-table pull. This is the safe default —
+    // realtime only ever subscribes after the first full pull has already
+    // seeded _cache, and any table not (yet) listed in
+    // _REALTIME_TABLE_GROUPS falls back here too, rather than silently
+    // no-op'ing on a table this file doesn't know how to scope yet.
+    if (!_cache || changedTables.includes(_FULL_PULL_SENTINEL)) {
+      _cache = await _pullCacheFromSupabase(client);
+      return;
+    }
+
+    const groups = new Set();
+    for (const t of changedTables) {
+      const g = _REALTIME_TABLE_GROUPS[t];
+      if (!g) { groups.add(_FULL_PULL_SENTINEL); break; }
+      groups.add(g);
+    }
+    if (groups.has(_FULL_PULL_SENTINEL)) {
+      _cache = await _pullCacheFromSupabase(client);
+      return;
+    }
+
+    // Fetch + transform every affected group in parallel (a raid burst
+    // touching both 'raid' and 'pointLog' groups still fires one Promise.all,
+    // not two sequential round-trips), then merge into a shallow copy of
+    // _cache. Keys nothing here touches keep their exact previous object
+    // reference — cheaper for anything downstream that diffs by reference.
+    const groupList = Array.from(groups);
+    const results = await Promise.all(groupList.map(async (g) => {
+      const def = _REFRESH_GROUPS[g];
+      const raw = await def.fetch(client);
+      for (const key in raw) { if (raw[key].error) throw raw[key].error; }
+      return def.apply(raw, _cache);
+    }));
+
+    const merged = { ..._cache };
+    results.forEach(partial => Object.assign(merged, partial));
+    _cache = merged;
+  }
+
 
   async function _pushCacheToSupabase(client, cache) {
     // Shared staff-session flag — reused below to skip catalog-table pushes
@@ -1535,16 +1734,16 @@ const DBService = (function () {
     // logic other modules depend on.
     client
       .channel('eduquest-table-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => _schedulePullRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'boss_events' }, () => _schedulePullRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'loot_claims' }, () => _schedulePullRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_achievements' }, () => _schedulePullRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_logs' }, () => _schedulePullRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rfid_cards' }, () => _schedulePullRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'recitation_log' }, () => _schedulePullRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mail_messages' }, () => _schedulePullRefresh()) // Phase 15
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_sections' }, () => _schedulePullRefresh()) // Phase 15
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'achievement_sections' }, () => _schedulePullRefresh()) // Phase 16
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => _schedulePullRefresh('profiles'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'boss_events' }, () => _schedulePullRefresh('boss_events'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loot_claims' }, () => _schedulePullRefresh('loot_claims'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_achievements' }, () => _schedulePullRefresh('user_achievements'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_logs' }, () => _schedulePullRefresh('attendance_logs'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rfid_cards' }, () => _schedulePullRefresh('rfid_cards'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recitation_log' }, () => _schedulePullRefresh('recitation_log'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mail_messages' }, () => _schedulePullRefresh('mail_messages')) // Phase 15
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_sections' }, () => _schedulePullRefresh('quiz_sections')) // Phase 15
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'achievement_sections' }, () => _schedulePullRefresh('achievement_sections')) // Phase 16
       // Phase 19: achievements/titles catalogs and title_unlocks were pulled
       // and pushed correctly since Phase 17/18, but never added to this
       // subscription list — a badge or title created on one device only
@@ -1552,42 +1751,56 @@ const DBService = (function () {
       // live. user_achievements was already here; title_unlocks gets the
       // same treatment for parity (equipped_title_id rides on `profiles`,
       // already covered by the profiles subscription above).
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'achievements' }, () => _schedulePullRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'titles' }, () => _schedulePullRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'title_unlocks' }, () => _schedulePullRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quizzes' }, () => _schedulePullRefresh()) // Phase 20
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'title_sections' }, () => _schedulePullRefresh()) // Phase 21
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_worlds' }, () => _schedulePullRefresh()) // Phase 22
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_stage_sections' }, () => _schedulePullRefresh()) // Phase 53
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => _schedulePullRefresh()) // Phase 48
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => _schedulePullRefresh()) // Phase 48
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_history' }, () => _schedulePullRefresh()) // Phase 57
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'achievements' }, () => _schedulePullRefresh('achievements'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'titles' }, () => _schedulePullRefresh('titles'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'title_unlocks' }, () => _schedulePullRefresh('title_unlocks'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quizzes' }, () => _schedulePullRefresh('quizzes')) // Phase 20
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'title_sections' }, () => _schedulePullRefresh('title_sections')) // Phase 21
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_worlds' }, () => _schedulePullRefresh('campaign_worlds')) // Phase 22
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_stage_sections' }, () => _schedulePullRefresh('campaign_stage_sections')) // Phase 53
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => _schedulePullRefresh('orders')) // Phase 48
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => _schedulePullRefresh('inventory')) // Phase 48
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_history' }, () => _schedulePullRefresh('quiz_history')) // Phase 57
       // Phase 67: point_log was pulled/pushed correctly since Wave 1 but,
       // like achievements/titles before Phase 19, was never added to this
       // subscription list — a recitation grant, boss victory, or admin point
       // adjustment on one tab/device never live-reached another tab's
       // notification bell until its next full reload. notifications gets
       // the same treatment so the badge/toast update live too.
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'point_log' }, () => _schedulePullRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => _schedulePullRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'point_log' }, () => _schedulePullRefresh('point_log'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => _schedulePullRefresh('notifications'))
       // Phase 7 (Campaign Redesign) — a skill grant/spend on one device
       // (campaign_engine.js's adjust_student_skill_count() calls) now live-
       // reaches the same student's other open tabs/devices too.
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_skills' }, () => _schedulePullRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_skills' }, () => _schedulePullRefresh('student_skills'))
       .subscribe();
   }
 
   let _pullRefreshTimer = null;
-  function _schedulePullRefresh() {
+  let _pendingRefreshTables = new Set();
+  function _schedulePullRefresh(table) {
     // Debounce incoming realtime bursts (e.g. a raid with 30 students
     // hitting at once) into a single re-pull, same 400ms rhythm as uploads.
+    //
+    // Priority 2 Fix 1: track WHICH table(s) changed during this debounce
+    // window (every .on('postgres_changes', ...) handler above now passes
+    // its own table name) so the eventual refresh only re-fetches the
+    // groups those tables actually belong to — see _applyScopedRefresh() /
+    // _REFRESH_GROUPS above — instead of unconditionally re-running all 27
+    // queries in _pullCacheFromSupabase() on every single event. Calling
+    // this with no argument (or a table _applyScopedRefresh doesn't
+    // recognize) still falls back to a full pull, so this stays safe by
+    // default for anything not yet mapped.
+    _pendingRefreshTables.add(table || _FULL_PULL_SENTINEL);
+
     if (_pullRefreshTimer) clearTimeout(_pullRefreshTimer);
     _pullRefreshTimer = setTimeout(async () => {
+      const changedTables = Array.from(_pendingRefreshTables);
+      _pendingRefreshTables = new Set();
       const client = _getClient();
       if (!client) return;
       try {
-        const fresh = await _pullCacheFromSupabase(client);
-        _cache = fresh;
+        await _applyScopedRefresh(client, changedTables);
         _localStorageProvider.write(JSON.stringify(_cache)); // keep offline mirror current
         _meta.lastRemoteSyncAt = new Date().toISOString();
         // Notify AppStore so subscribed UI re-renders with the synced data.
@@ -1600,7 +1813,55 @@ const DBService = (function () {
     }, 400);
   }
 
+  // ── Priority 2 Fix 2 follow-up: "load more" beyond the default window ────
+  // _HISTORY_LIMITS keeps every pull fast by default. This is the escape
+  // hatch for any screen that wants to page further back than that default
+  // window (e.g. a "load older redemptions" button) — see
+  // EduQuest_Priority2_Plan.md "Fix 2".
+  //
+  // Deliberately covers only the 6 tables whose cache shape is a flat
+  // array keyed purely by insertion order. mail_messages and quiz_history
+  // are NOT here: mail is reshaped from many per-recipient rows into fewer
+  // grouped batches (_deriveMail), and quiz_history feeds both a
+  // per-student map AND students[].completedQuizzes (see the 'quizHistory'
+  // refresh group above) — naive offset pagination on either risks
+  // duplicate/incomplete batches or silently un-completing a quest. Left as
+  // a follow-up if "load more" is ever actually needed for either screen.
+  const _HISTORY_TABLE_CONFIG = {
+    pointLog:       { table: 'point_log',       orderCol: 'created_at', derive: _derivePointLog },
+    redemptions:    { table: 'redemptions',     orderCol: 'created_at', derive: _deriveRedemptions },
+    recitationLog:  { table: 'recitation_log',  orderCol: 'created_at', derive: _deriveRecitationLog },
+    attendanceLogs: { table: 'attendance_logs', orderCol: 'log_date',   derive: _deriveAttendanceLogs },
+    orders:         { table: 'orders',          orderCol: 'created_at', derive: _deriveOrders },
+    notifications:  { table: 'notifications',   orderCol: 'created_at', derive: _deriveNotifications },
+  };
+
+  async function _loadMoreHistory(cacheKey, pageSize) {
+    const cfg = _HISTORY_TABLE_CONFIG[cacheKey];
+    if (!cfg) {
+      throw new Error(`[DBService] loadMoreHistory: unsupported key "${cacheKey}" (expected one of: ${Object.keys(_HISTORY_TABLE_CONFIG).join(', ')})`);
+    }
+    const client = _getClient();
+    if (!client || !_cache) return { added: 0, exhausted: true };
+
+    const already = (_cache[cacheKey] || []).length;
+    const limit = pageSize || _HISTORY_LIMITS[cfg.table] || 200;
+    const res = await client.from(cfg.table).select('*')
+      .order(cfg.orderCol, { ascending: false })
+      .range(already, already + limit - 1);
+    if (res.error) throw res.error;
+
+    const newRows = cfg.derive(res.data);
+    _cache = { ..._cache, [cacheKey]: [...(_cache[cacheKey] || []), ...newRows] };
+    _localStorageProvider.write(JSON.stringify(_cache));
+    if (window.AppStore && typeof window.AppStore.syncFromLegacy === 'function') {
+      window.AppStore.syncFromLegacy(_cache, 'state:remote-sync');
+    }
+    return { added: newRows.length, exhausted: newRows.length < limit };
+  }
+
   // ── Public API ─────────────────────────────────────────────────────────────
+
   return {
 
     /**
@@ -1969,6 +2230,20 @@ const DBService = (function () {
       if (_signalChannel) {
         _signalChannel.send({ type: 'broadcast', event: eventName, payload: payload });
       }
+    },
+
+    /**
+     * loadMoreHistory(cacheKey, pageSize?) → Promise<{added, exhausted}>
+     * Priority 2 Fix 2 follow-up — pages a bounded-history table (see
+     * _HISTORY_LIMITS) further back than its default window. cacheKey is
+     * one of: pointLog, redemptions, recitationLog, attendanceLogs, orders,
+     * notifications. Not wired into any screen yet; exposed here so a
+     * future "load older…" button is a small UI addition, not a
+     * DBService change. Appends into _cache[cacheKey] and re-syncs
+     * AppStore, same as a realtime refresh would.
+     */
+    loadMoreHistory: async function (cacheKey, pageSize) {
+      return _loadMoreHistory(cacheKey, pageSize);
     },
 
     _meta: _meta,

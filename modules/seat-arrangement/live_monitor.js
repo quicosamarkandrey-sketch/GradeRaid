@@ -373,7 +373,16 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     // Default to whatever class/layout the builder was last looking at, if
     // any — otherwise the first class with students.
     const classIds = window.getActiveClassIds(state);
-    if (!classIds.includes(_lmClassId)) _lmClassId = classIds[0] || 'default-class';
+    // BUGFIX (same race as classroom_builder.js — see its matching note):
+    // only force-reassign _lmClassId when nothing's selected yet, or when
+    // classSections has genuinely finished loading and confirms the
+    // previous class no longer exists. A transient, fallback-derived
+    // classIds list (state.classSections not loaded yet) must never
+    // silently switch the teacher onto a different class's monitor view.
+    const _sectionsLoadedLM = Array.isArray(state.classSections) && state.classSections.length > 0;
+    if (classIds.length && (_lmClassId === 'default-class' || (_sectionsLoadedLM && !classIds.includes(_lmClassId)))) {
+      _lmClassId = classIds[0];
+    }
 
     const layoutsForClass = (state.classroomLayouts || []).filter(l => l.classId === _lmClassId);
     if (!_lmLayoutId || !layoutsForClass.some(l => l.id === _lmLayoutId)) {
@@ -453,6 +462,23 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
           // tab's own taps.
           if (_lmRecitationMode) _lmAnimateNewRecitationEntries();
         }
+        return;
+      }
+
+      // BUGFIX (section reverting to raw id + wrong class after reload):
+      // class_sections data can finish loading AFTER this page already
+      // mounted (see auth.js's post-login/refresh refreshSectionData()
+      // call). Re-render once real data lands so labels resolve from raw
+      // ids to real names, and only now re-validate the selected class
+      // against the authoritative list — same fix as classroom_builder.js.
+      if (type && type.startsWith('sections:')) {
+        const page = document.getElementById('a-classroom-monitor');
+        if (!page || !page.classList.contains('active')) return;
+        const classIds = window.getActiveClassIds(state);
+        if (classIds.length && !classIds.includes(_lmClassId)) {
+          _lmClassId = classIds[0] || 'default-class';
+        }
+        _lmRender(page, classIds, state);
       }
     });
   }

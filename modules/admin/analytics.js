@@ -39,6 +39,98 @@ let _anlRollupTeachers = null;   // cached TeacherDirectoryService.getDirectory(
 let _anlRollupLoading = false;
 let _anlRollupError = null;
 
+// Student Performance Matrix — search + pagination (same house pattern as
+// registrations.js / quiz-builder.js: page size 20, filter-then-slice,
+// re-render just the table container rather than the whole screen).
+let _anlSearch = '';
+let _anlPage = 1;
+const ANL_PAGE_SIZE = 20;
+
+window.anlSetSearch = function (value) {
+  _anlSearch = String(value || '');
+  _anlPage = 1;
+  _anlRenderStudentTable();
+};
+
+window.anlGoToPage = function (page) {
+  _anlPage = Math.max(1, page | 0);
+  _anlRenderStudentTable();
+  const table = document.getElementById('anl-student-table');
+  if (table) table.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+window.anlPrevPage = function () { window.anlGoToPage(_anlPage - 1); };
+window.anlNextPage = function () { window.anlGoToPage(_anlPage + 1); };
+
+function _anlPagination(page, totalPages, totalCount, rangeStart, rangeEnd) {
+  if (totalPages <= 1) {
+    return `<div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text-muted)">Showing all ${totalCount}</div>`;
+  }
+  const nums = new Set([1, totalPages, page, page - 1, page + 1, page - 2, page + 2]);
+  const pages = Array.from(nums).filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+  let btns = '';
+  let prevN = 0;
+  pages.forEach(n => {
+    if (n - prevN > 1) btns += `<span style="padding:0 6px;color:var(--text-muted);font-size:11px">…</span>`;
+    btns += `<button class="btn btn-ghost btn-sm" style="${n === page ? 'background:var(--primary);color:#fff;font-weight:800' : ''}" onclick="anlGoToPage(${n})">${n}</button>`;
+    prevN = n;
+  });
+  return `
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:14px">
+    <button class="btn btn-ghost btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="anlPrevPage()">← Prev</button>
+    ${btns}
+    <button class="btn btn-ghost btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="anlNextPage()">Next →</button>
+  </div>
+  <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--text-muted)">Showing ${rangeStart}–${rangeEnd} of ${totalCount}</div>`;
+}
+
+/** Re-renders just the Student Performance Matrix (search/page changes skip the full dashboard repaint). */
+function _anlRenderStudentTable() {
+  const el = document.getElementById('anl-student-table');
+  if (!el) return;
+  const q = _anlSearch.trim().toLowerCase();
+  const sorted = [...DB.students].sort((a, b) => b.xp - a.xp);
+  const filtered = q
+    ? sorted.filter(s => (s.name || '').toLowerCase().includes(q) || (s.id || '').toLowerCase().includes(q))
+    : sorted;
+
+  if (!filtered.length) {
+    el.innerHTML = `<div class="glass-card" style="text-align:center;padding:48px">
+      <div style="font-size:36px;margin-bottom:10px">🔍</div>
+      <div style="font-family:var(--fh);font-size:16px;font-weight:800;margin-bottom:4px">${q ? 'No students match your search' : 'No students yet'}</div>
+      <div style="color:var(--text-muted);font-size:13px">${q ? 'Try a different name or ID.' : ''}</div>
+    </div>`;
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ANL_PAGE_SIZE));
+  if (_anlPage > totalPages) _anlPage = totalPages;
+  const start = (_anlPage - 1) * ANL_PAGE_SIZE;
+  const shown = filtered.slice(start, start + ANL_PAGE_SIZE);
+
+  el.innerHTML = `
+  <div class="glass-card" style="padding:0;overflow:hidden">
+    <table class="admin-table">
+      <thead><tr><th>#</th><th>Student</th><th>Level</th><th>XP</th><th>Coins</th><th>Attendance</th><th>Quiz Avg</th><th>Quests</th></tr></thead>
+      <tbody>
+        ${shown.map((s, i) => `<tr>
+          <td style="font-family:var(--fm);font-size:10px;color:var(--text-muted)">${String(start + i + 1).padStart(2, '0')}</td>
+          <td><div style="display:flex;align-items:center;gap:10px">
+            <div style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:10px;background:${s.color + '22'};color:${s.color};border:1.5px solid ${s.color + '44'};flex-shrink:0">${s.init}</div>
+            <div><div style="font-weight:600;font-size:13px">${s.name}</div><div style="font-size:9px;color:var(--text-muted);letter-spacing:.04em">ID:${s.id.toUpperCase()}</div></div>
+          </div></td>
+          <td><span class="badge-pill bp-primary" style="font-size:10px">LV ${s.level}</span></td>
+          <td style="color:#d0bcff;font-weight:700;font-family:var(--fh)">${s.xp.toLocaleString()}</td>
+          <td><span class="coin-tag">🪙 ${s.coins.toLocaleString()}</span></td>
+          <td style="color:#4edea3;font-weight:700">${s.attendance}%</td>
+          <td style="color:#ffb95f;font-weight:700">${s.quizAvg}%</td>
+          <td style="font-family:var(--fm);font-size:12px">${s.completedQuizzes.length}<span style="color:var(--text-muted)">/${DB.quizzes.length}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  ${_anlPagination(_anlPage, totalPages, filtered.length, start + 1, start + shown.length)}`;
+}
+
 window.anlSetMode = function(mode) {
   if (currentRole !== 'admin') return; // defense in depth — button itself is admin-only, see below
   _anlMode = (mode === 'rollup') ? 'rollup' : 'mine';
@@ -64,7 +156,6 @@ window.renderAnalytics = function() {
   const avgXP = total ? Math.round(DB.students.reduce((a, s) => a + s.xp, 0) / total) : 0;
   const totalCoins = DB.students.reduce((a, s) => a + s.coins, 0);
   const avgQuiz = total ? Math.round(DB.students.reduce((a, s) => a + s.quizAvg, 0) / total) : 0;
-  const sorted = [...DB.students].sort((a, b) => b.xp - a.xp);
   const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
   const dayVals = [420, 680, 520, 760, 890, 340, 430];
   const maxV = Math.max(...dayVals);
@@ -109,26 +200,12 @@ window.renderAnalytics = function() {
   <div class="section-header"><span class="material-symbols-outlined">table_chart</span><h2>Student Performance Matrix</h2>
     <button class="btn btn-primary btn-sm" onclick="openAwardPoints()" style="margin-left:auto">⚡ Award Points</button>
   </div>
-  <div class="glass-card" style="padding:0;overflow:hidden">
-    <table class="admin-table">
-      <thead><tr><th>#</th><th>Student</th><th>Level</th><th>XP</th><th>Coins</th><th>Attendance</th><th>Quiz Avg</th><th>Quests</th></tr></thead>
-      <tbody>
-        ${sorted.map((s, i) => `<tr>
-          <td style="font-family:var(--fm);font-size:10px;color:var(--text-muted)">${String(i + 1).padStart(2, '0')}</td>
-          <td><div style="display:flex;align-items:center;gap:10px">
-            <div style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:10px;background:${s.color + '22'};color:${s.color};border:1.5px solid ${s.color + '44'};flex-shrink:0">${s.init}</div>
-            <div><div style="font-weight:600;font-size:13px">${s.name}</div><div style="font-size:9px;color:var(--text-muted);letter-spacing:.04em">ID:${s.id.toUpperCase()}</div></div>
-          </div></td>
-          <td><span class="badge-pill bp-primary" style="font-size:10px">LV ${s.level}</span></td>
-          <td style="color:#d0bcff;font-weight:700;font-family:var(--fh)">${s.xp.toLocaleString()}</td>
-          <td><span class="coin-tag">🪙 ${s.coins.toLocaleString()}</span></td>
-          <td style="color:#4edea3;font-weight:700">${s.attendance}%</td>
-          <td style="color:#ffb95f;font-weight:700">${s.quizAvg}%</td>
-          <td style="font-family:var(--fm);font-size:12px">${s.completedQuizzes.length}<span style="color:var(--text-muted)">/${DB.quizzes.length}</span></td>
-        </tr>`).join('')}
-      </tbody>
-    </table>
-  </div>`;
+  <div style="margin-bottom:14px;max-width:280px">
+    <input type="text" placeholder="Search student name or ID…" value="${_esc(_anlSearch)}" oninput="anlSetSearch(this.value)">
+  </div>
+  <div id="anl-student-table"></div>`;
+
+  _anlRenderStudentTable();
 };
 
 // ── ADMIN-ONLY: SCHOOL-WIDE ROLLUP MODE ────────────────────────────────

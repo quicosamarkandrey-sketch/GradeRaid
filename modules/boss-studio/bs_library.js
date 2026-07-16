@@ -37,6 +37,8 @@ let _bsSearch  = '';
 let _bsFilter  = 'all';
 let _bsSort    = 'newest';
 let _bsView    = 'grid';
+let _bsPage    = 1;
+const BS_PAGE_SIZE = 20;
 let _bsPreview = null;
 let _bsDirty   = false;
 let _bsSearchDebounceTimer = null;
@@ -146,7 +148,12 @@ function _bsRenderLibraryBody() {
   if (total === 0) return sectionHeader + toolbar + `<div class="bs-empty" style="margin-top:20px"><div class="bs-empty-icon">🏰</div><div class="bs-empty-title">No Boss Profiles Yet</div><div class="bs-empty-sub">Create your first boss profile to begin building your visual library.</div><button class="btn btn-primary" onclick="bsOpenCreate()" style="font-family:var(--fh);font-weight:800"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle">add</span> Create First Boss</button></div>`;
   if (filtered.length === 0) return sectionHeader + toolbar + `<div class="bs-empty" style="margin-top:20px"><div class="bs-empty-icon">🔍</div><div class="bs-empty-title">No Results</div><div class="bs-empty-sub">No boss profiles match your search or filter.</div><button class="btn btn-ghost" onclick="window._bsSearchUpdate('');window._bsSetFilter('all')" style="font-family:var(--fh)">Clear Filters</button></div>`;
 
-  const cards = filtered.map(boss => {
+  const totalPages = Math.max(1, Math.ceil(filtered.length / BS_PAGE_SIZE));
+  if (_bsPage > totalPages) _bsPage = totalPages;
+  const pageStart = (_bsPage - 1) * BS_PAGE_SIZE;
+  const pageItems = filtered.slice(pageStart, pageStart + BS_PAGE_SIZE);
+
+  const cards = pageItems.map(boss => {
     const cardAccent = boss.visual?.cardAccent || '#d0bcff';
     const cardTheme  = boss.visual?.themeColor  || '#8b5cf6';
     const hasRage    = boss.rageArtwork?.value;
@@ -171,7 +178,8 @@ function _bsRenderLibraryBody() {
     </div>`;
   }).join('');
 
-  return sectionHeader + toolbar + `<div class="bs-library-grid ${_bsView === 'list' ? 'list-view' : ''}" style="margin-top:20px">${cards}</div>`;
+  return sectionHeader + toolbar + `<div class="bs-library-grid ${_bsView === 'list' ? 'list-view' : ''}" style="margin-top:20px">${cards}</div>`
+    + _bsPagination(_bsPage, totalPages, filtered.length, pageStart + 1, pageStart + pageItems.length);
 }
 
 function _bsRefreshLibrary() {
@@ -311,6 +319,7 @@ window._bsSearchUpdate = function (val) {
   clearTimeout(_bsSearchDebounceTimer);
   _bsSearchDebounceTimer = setTimeout(() => {
     _bsSearch = val;
+    _bsPage = 1;
     _bsRefreshLibrary();
     setTimeout(() => {
       const inp = document.getElementById('bs-search-input');
@@ -318,9 +327,40 @@ window._bsSearchUpdate = function (val) {
     }, 0);
   }, 120);
 };
-window._bsSetFilter = function (f)    { _bsFilter = f; _bsRefreshLibrary(); };
-window._bsSetSort   = function (s)    { _bsSort   = s; _bsRefreshLibrary(); };
+window._bsSetFilter = function (f)    { _bsFilter = f; _bsPage = 1; _bsRefreshLibrary(); };
+window._bsSetSort   = function (s)    { _bsSort   = s; _bsPage = 1; _bsRefreshLibrary(); };
 window._bsSetView   = function (v)    { _bsView   = v; _bsRefreshLibrary(); };
+
+window._bsGoToPage = function (page) {
+  _bsPage = Math.max(1, page | 0);
+  _bsRefreshLibrary();
+  const root = document.getElementById('bs-library-root');
+  if (root) root.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+window._bsPrevPage = function () { window._bsGoToPage(_bsPage - 1); };
+window._bsNextPage = function () { window._bsGoToPage(_bsPage + 1); };
+
+function _bsPagination(page, totalPages, totalCount, rangeStart, rangeEnd) {
+  if (totalPages <= 1) {
+    return `<div style="text-align:center;margin-top:14px;font-size:11px;color:var(--text-muted)">Showing all ${totalCount}</div>`;
+  }
+  const nums = new Set([1, totalPages, page, page - 1, page + 1, page - 2, page + 2]);
+  const pages = Array.from(nums).filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+  let btns = '';
+  let prevN = 0;
+  pages.forEach(n => {
+    if (n - prevN > 1) btns += `<span style="padding:0 6px;color:var(--text-muted);font-size:11px">…</span>`;
+    btns += `<button class="bs-view-btn ${n === page ? 'active' : ''}" style="width:auto;padding:0 10px" onclick="window._bsGoToPage(${n})">${n}</button>`;
+    prevN = n;
+  });
+  return `
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:20px">
+    <button class="bs-view-btn" style="width:auto;padding:0 10px" ${page <= 1 ? 'disabled' : ''} onclick="window._bsPrevPage()">← Prev</button>
+    ${btns}
+    <button class="bs-view-btn" style="width:auto;padding:0 10px" ${page >= totalPages ? 'disabled' : ''} onclick="window._bsNextPage()">Next →</button>
+  </div>
+  <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--text-muted)">Showing ${rangeStart}–${rangeEnd} of ${totalCount}</div>`;
+}
 
 // ── Duplicate / delete ─────────────────────────────────────────────────────────
 

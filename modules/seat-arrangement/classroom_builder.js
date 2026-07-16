@@ -539,7 +539,21 @@ window.renderClassroomBuilder = function () {
 
   const state    = AppStore.getState();
   const classIds = window.getActiveClassIds(state);
-  if (classIds.length && !classIds.includes(_cbClassId)) {
+  // BUGFIX (section reverting to raw id + wrong class after reload): if
+  // state.classSections hasn't finished loading yet at mount time (a real
+  // possibility now that it's fetched asynchronously right after
+  // login/session-restore — see auth.js), getActiveClassIds() silently
+  // falls back to a DIFFERENT, derived-from-students id list. Blindly
+  // reassigning _cbClassId here whenever it isn't in that transient list
+  // used to switch the teacher onto a different class's layout on every
+  // reload race — and since nothing re-ran this check once the real
+  // section list arrived, the wrong class (and raw-id labels) stuck
+  // permanently. Only correct the selection when we either have nothing
+  // selected yet, or we have AUTHORITATIVE section data (classSections
+  // actually loaded) confirming the previous class is genuinely gone
+  // (e.g. archived) — never on a merely-incomplete fallback list.
+  const _sectionsLoaded = Array.isArray(state.classSections) && state.classSections.length > 0;
+  if (classIds.length && (_cbClassId === 'default-class' || (_sectionsLoaded && !classIds.includes(_cbClassId)))) {
     _cbClassId = classIds[0];
   }
 
@@ -996,6 +1010,28 @@ function _cbSubscribeToStore() {
         seatCountEl.textContent = `${_cbLocalSeats.length} seat${_cbLocalSeats.length!==1?'s':''}`;
       }
       _cbMaybeAutoFixSeatOverlap();
+      return;
+    }
+
+    // BUGFIX (section reverting to raw id + wrong class after reload):
+    // class_sections data can finish loading AFTER this page already
+    // mounted (see auth.js's post-login/refresh refreshSectionData() call).
+    // Without this, a mount that raced ahead of that fetch stayed stuck
+    // showing raw ids and, worse, a class selection based on the transient
+    // fallback list forever. Re-render the toolbar once real data lands,
+    // and only NOW re-validate the selection against the authoritative list.
+    if (type && type.startsWith('sections:')) {
+      const freshState = AppStore.getState();
+      const freshClassIds = window.getActiveClassIds(freshState);
+      if (freshClassIds.length && !freshClassIds.includes(_cbClassId)) {
+        _cbClassId = freshClassIds[0];
+        _cbLoadState();
+      }
+      // _cbRenderShell() repaints the canvas/sidebar/legend itself at the
+      // end of its own body — no separate _cbRenderCanvas()/_cbRenderSidebar()
+      // calls needed here (same as _cbOnClassChange()'s existing pattern).
+      const page = document.getElementById('a-classroom');
+      if (page) _cbRenderShell(page, freshClassIds, freshState);
     }
   });
 }

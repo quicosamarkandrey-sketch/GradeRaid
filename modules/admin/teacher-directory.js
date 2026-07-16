@@ -43,6 +43,53 @@ let _teacherInvitesError = null;
 let _teacherInviteBusyToken = null; // token currently mid revoke, for button spinners
 let _teacherInviteGenerating = false;
 
+// Directory table — search + pagination (same house pattern as
+// registrations.js / quiz-builder.js). Note: adminCount / activeAdminCount /
+// activeStaffCount (used for disabling "last remaining admin" actions) are
+// always computed against the FULL unfiltered _teacherDirRows, never the
+// filtered/paged slice below — a search or page change must never change
+// which buttons are disabled.
+let _teacherDirSearch = '';
+let _teacherDirPage = 1;
+const TEACHER_DIR_PAGE_SIZE = 20;
+
+window.tdSetSearch = function (value) {
+  _teacherDirSearch = String(value || '');
+  _teacherDirPage = 1;
+  _teacherDirRenderTable();
+};
+
+window.tdGoToPage = function (page) {
+  _teacherDirPage = Math.max(1, page | 0);
+  _teacherDirRenderTable();
+  const list = document.getElementById('td-table');
+  if (list) list.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+window.tdPrevPage = function () { window.tdGoToPage(_teacherDirPage - 1); };
+window.tdNextPage = function () { window.tdGoToPage(_teacherDirPage + 1); };
+
+function _teacherDirPagination(page, totalPages, totalCount, rangeStart, rangeEnd) {
+  if (totalPages <= 1) {
+    return `<div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text-muted)">Showing all ${totalCount}</div>`;
+  }
+  const nums = new Set([1, totalPages, page, page - 1, page + 1, page - 2, page + 2]);
+  const pages = Array.from(nums).filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+  let btns = '';
+  let prevN = 0;
+  pages.forEach(n => {
+    if (n - prevN > 1) btns += `<span style="padding:0 6px;color:var(--text-muted);font-size:11px">…</span>`;
+    btns += `<button class="btn btn-ghost btn-sm" style="${n === page ? 'background:var(--primary);color:#fff;font-weight:800' : ''}" onclick="tdGoToPage(${n})">${n}</button>`;
+    prevN = n;
+  });
+  return `
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:14px">
+    <button class="btn btn-ghost btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="tdPrevPage()">← Prev</button>
+    ${btns}
+    <button class="btn btn-ghost btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="tdNextPage()">Next →</button>
+  </div>
+  <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--text-muted)">Showing ${rangeStart}–${rangeEnd} of ${totalCount}</div>`;
+}
+
 window.renderTeacherDirectory = async function () {
   const el = document.getElementById('a-teachers');
   if (!el) return;
@@ -105,6 +152,7 @@ function _teacherDirRenderShell(el) {
   ${_teacherInvitePanel()}
   ${_teacherDirBody()}
   `;
+  _teacherDirRenderTable();
 }
 
 const _TD_COLS = '1.3fr 90px 90px 1.1fr 80px 80px 1.3fr 100px 170px';
@@ -126,17 +174,43 @@ function _teacherDirBody() {
     return `<div class="glass-card" style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px">No teacher or admin accounts found.</div>`;
   }
 
+  return `
+  <div style="margin-bottom:14px;max-width:280px">
+    <input type="text" placeholder="Search name or email…" value="${_esc(_teacherDirSearch)}" oninput="tdSetSearch(this.value)">
+  </div>
+  <div id="td-table-wrap"></div>`;
+}
+
+/** Re-renders just the directory table (search/page changes skip the invites panel + search box repaint). */
+function _teacherDirRenderTable() {
+  const wrap = document.getElementById('td-table-wrap');
+  if (!wrap) return;
+  const rows = _teacherDirRows || [];
+
+  // Counts for disabled-state logic always reflect the FULL roster.
   const adminCount = rows.filter(r => r.role === 'admin').length;
   const activeAdminCount = rows.filter(r => r.role === 'admin' && r.isActive !== false).length;
   const activeStaffCount = rows.filter(r => r.isActive !== false).length;
 
-  return `
-  <div class="glass-card" style="padding:0;overflow:hidden">
+  const q = _teacherDirSearch.trim().toLowerCase();
+  const filtered = q
+    ? rows.filter(r => (r.displayName || '').toLowerCase().includes(q) || (r.email || '').toLowerCase().includes(q))
+    : rows;
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / TEACHER_DIR_PAGE_SIZE));
+  if (_teacherDirPage > totalPages) _teacherDirPage = totalPages;
+  const start = (_teacherDirPage - 1) * TEACHER_DIR_PAGE_SIZE;
+  const shown = filtered.slice(start, start + TEACHER_DIR_PAGE_SIZE);
+
+  wrap.innerHTML = `
+  <div id="td-table" class="glass-card" style="padding:0;overflow:hidden">
     <div style="display:grid;grid-template-columns:${_TD_COLS};gap:10px;align-items:center;padding:10px 16px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border2)">
       <span>Name</span><span>Role</span><span>Status</span><span>Email</span><span>Students</span><span>Content</span><span>Sections</span><span>Last Active</span><span></span>
     </div>
-    ${rows.map(r => _teacherDirRow(r, adminCount, activeAdminCount, activeStaffCount)).join('')}
-  </div>`;
+    ${filtered.length ? shown.map(r => _teacherDirRow(r, adminCount, activeAdminCount, activeStaffCount)).join('')
+      : `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">No teachers match your search.</div>`}
+  </div>
+  ${filtered.length ? _teacherDirPagination(_teacherDirPage, totalPages, filtered.length, start + 1, start + shown.length) : ''}`;
 }
 
 function _teacherDirRow(r, adminCount, activeAdminCount, activeStaffCount) {

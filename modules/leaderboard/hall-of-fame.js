@@ -423,6 +423,20 @@
   background:rgba(208,188,255,.1);color:var(--primary);border:1px solid rgba(208,188,255,.2);
 }
 
+.hol-pagination{
+  display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:16px;
+}
+.hol-page-btn{
+  padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--fb);
+  border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text-muted);cursor:pointer;
+  transition:all .15s;
+}
+.hol-page-btn:hover:not(:disabled){border-color:rgba(208,188,255,.3);color:var(--on-surface)}
+.hol-page-btn:disabled{opacity:.4;cursor:default}
+.hol-page-btn.active{background:rgba(208,188,255,.14);border-color:rgba(208,188,255,.35);color:var(--primary)}
+.hol-page-ellipsis{padding:0 4px;color:var(--text-muted);font-size:12px}
+.hol-page-range{text-align:center;margin-top:8px;font-size:11px;color:var(--text-muted)}
+
 .hol-row{
   display:flex;align-items:center;gap:12px;
   padding:11px 14px;border-radius:12px;
@@ -676,6 +690,44 @@
     { key: 'weekly',  label: 'Weekly'   },
     { key: 'daily',   label: 'Daily'    },
   ];
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Full-rankings-list pagination (rows beyond the top-3 podium)
+  // ─────────────────────────────────────────────────────────────────────────────
+  const HOL_PAGE_SIZE = 20;
+  let _holPage = 1;
+  let _holLastTabPeriodKey = '';
+
+  window.holGoToPage = function (page) {
+    _holPage = Math.max(1, page | 0);
+    window.renderLeaderboard(window._eqlActiveTab, window._eqlActivePeriod);
+    const list = document.getElementById(`hol-list-${window._eqlActiveTab || 'hall'}`);
+    if (list) list.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+  window.holPrevPage = function () { window.holGoToPage(_holPage - 1); };
+  window.holNextPage = function () { window.holGoToPage(_holPage + 1); };
+
+  function _holPagination(page, totalPages, totalCount, rangeStart, rangeEnd) {
+    if (totalPages <= 1) {
+      return `<div class="hol-page-range">Showing all ${totalCount}</div>`;
+    }
+    const nums = new Set([1, totalPages, page, page - 1, page + 1, page - 2, page + 2]);
+    const pages = Array.from(nums).filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+    let btns = '';
+    let prevN = 0;
+    pages.forEach(n => {
+      if (n - prevN > 1) btns += `<span class="hol-page-ellipsis">…</span>`;
+      btns += `<button class="hol-page-btn ${n === page ? 'active' : ''}" onclick="holGoToPage(${n})">${n}</button>`;
+      prevN = n;
+    });
+    return `
+    <div class="hol-pagination">
+      <button class="hol-page-btn" ${page <= 1 ? 'disabled' : ''} onclick="holPrevPage()">← Prev</button>
+      ${btns}
+      <button class="hol-page-btn" ${page >= totalPages ? 'disabled' : ''} onclick="holNextPage()">Next →</button>
+    </div>
+    <div class="hol-page-range">Showing ${rangeStart}–${rangeEnd} of ${totalCount}</div>`;
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Period → resetAt conversion (client-side, for display filtering)
@@ -1068,6 +1120,9 @@
     window._eqlActiveTab    = activeTab;
     window._eqlActivePeriod = activePeriod;
 
+    const tabPeriodKey = activeTab + '|' + activePeriod;
+    if (tabPeriodKey !== _holLastTabPeriodKey) { _holPage = 1; _holLastTabPeriodKey = tabPeriodKey; }
+
     const isStaffViewer = (typeof currentRole !== 'undefined') && (currentRole === 'admin' || currentRole === 'teacher');
     const cfg     = (DB.leaderboardConfig || {})[activeTab] || {};
     const enabled = cfg.enabled !== false;
@@ -1177,7 +1232,15 @@
       </div>
     </div>
     <div id="hol-list-${activeTab}">
-      ${entries.filter(e => e.rank > 3).map((e, i) => _holRenderRow(e, activeTab, meta, Math.min(i * 22, 200))).join('')}
+      ${(() => {
+        const rest = entries.filter(e => e.rank > 3);
+        const totalPages = Math.max(1, Math.ceil(rest.length / HOL_PAGE_SIZE));
+        if (_holPage > totalPages) _holPage = totalPages;
+        const start = (_holPage - 1) * HOL_PAGE_SIZE;
+        const shown = rest.slice(start, start + HOL_PAGE_SIZE);
+        return shown.map((e, i) => _holRenderRow(e, activeTab, meta, Math.min(i * 22, 200))).join('')
+          + _holPagination(_holPage, totalPages, rest.length, rest.length ? start + 1 : 0, start + shown.length);
+      })()}
     </div>`
     }`;
   };

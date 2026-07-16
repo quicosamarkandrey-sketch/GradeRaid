@@ -53,7 +53,9 @@ const DSMService = (function () {
 
   // The in-memory cache IS the object read()/write() actually operate on —
   // same role _cache plays in db-service.js.
-  let _cache = null; // { student: [...], admin: [...] } | null
+  // Phase 70: added a 'teacher' scope alongside 'student'/'admin' so the Nav
+  // Manager can configure the teacher sidebar independently of admin's.
+  let _cache = null; // { student: [...], teacher: [...], admin: [...] } | null
 
   function _canUseRemote() {
     return typeof DBService !== 'undefined'
@@ -85,6 +87,7 @@ const DSMService = (function () {
     try {
       const { error } = await DBService.rpc('save_dsm_settings', {
         p_student: _cache.student || [],
+        p_teacher: _cache.teacher || [],
         p_admin: _cache.admin || [],
       });
       if (error) {
@@ -116,8 +119,8 @@ const DSMService = (function () {
       try {
         const { data, error } = await DBService.rpc('get_dsm_settings', {});
         if (error) throw error;
-        if (data && (Array.isArray(data.student) || Array.isArray(data.admin))) {
-          _cache = { student: data.student || [], admin: data.admin || [] };
+        if (data && (Array.isArray(data.student) || Array.isArray(data.teacher) || Array.isArray(data.admin))) {
+          _cache = { student: data.student || [], teacher: data.teacher || [], admin: data.admin || [] };
           try { _localProvider.write(JSON.stringify(_cache)); } catch (e) { /* best-effort mirror */ }
         } else {
           // Nothing saved server-side yet (first boot after this

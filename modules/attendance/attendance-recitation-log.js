@@ -42,14 +42,15 @@
 //
 //  Exports: renderRecitationAttendanceLog, unmountRecitationAttendanceLog,
 //           talSetSection, talSetType, talSetRange, talSetSearch,
-//           talClearFilters, talShowMore, talExportCsv
+//           talClearFilters, talGoToPage, talPrevPage, talNextPage, talExportCsv
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let _talSection = 'all';   // 'all' | a classId | '__unassigned__'
 let _talType = 'all';      // 'all' | 'attendance' | 'recitation'
 let _talRange = 'all';     // 'all' | 'today' | '7' | '30'
 let _talSearch = '';       // student-name substring filter
-let _talVisibleCount = 150;
+let _talPage = 1;          // 1-indexed current page of the log table
+const _TAL_PAGE_SIZE = 20;
 let _talSearchDebounce = null;
 const _TAL_SUBSCRIBER_KEY = 'recitation-attendance-log';
 const _TAL_STATUS_COLORS = { 'Early': '#7fd8ff', 'On Time': '#4edea3', 'Late': '#ffd166', 'Absent': '#ffb4ab', 'Excused': '#c4b5fd' };
@@ -83,19 +84,19 @@ window.unmountRecitationAttendanceLog = function () {
 
 window.talSetSection = function (sectionId) {
   _talSection = sectionId || 'all';
-  _talVisibleCount = 150;
+  _talPage = 1;
   _talPaint();
 };
 
 window.talSetType = function (type) {
   _talType = type || 'all';
-  _talVisibleCount = 150;
+  _talPage = 1;
   _talPaint();
 };
 
 window.talSetRange = function (range) {
   _talRange = range || 'all';
-  _talVisibleCount = 150;
+  _talPage = 1;
   _talPaint();
 };
 
@@ -103,20 +104,30 @@ window.talSetSearch = function (value) {
   clearTimeout(_talSearchDebounce);
   _talSearchDebounce = setTimeout(() => {
     _talSearch = String(value || '').trim();
-    _talVisibleCount = 150;
+    _talPage = 1;
     _talPaint();
   }, 220);
 };
 
 window.talClearFilters = function () {
   _talSection = 'all'; _talType = 'all'; _talRange = 'all'; _talSearch = '';
-  _talVisibleCount = 150;
+  _talPage = 1;
   _talPaint();
 };
 
-window.talShowMore = function () {
-  _talVisibleCount += 150;
+window.talGoToPage = function (page) {
+  _talPage = Math.max(1, page | 0);
   _talPaint();
+  const table = document.getElementById('a-class-logs');
+  if (table) table.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+
+window.talPrevPage = function () {
+  window.talGoToPage(_talPage - 1);
+};
+
+window.talNextPage = function () {
+  window.talGoToPage(_talPage + 1);
 };
 
 window.talExportCsv = function () {
@@ -412,7 +423,10 @@ function _talTable(entries, state) {
   }
 
   const cols = '100px 80px 1.2fr 160px 110px 1.3fr';
-  const shown = entries.slice(0, _talVisibleCount);
+  const totalPages = Math.max(1, Math.ceil(entries.length / _TAL_PAGE_SIZE));
+  if (_talPage > totalPages) _talPage = totalPages; // filters just narrowed past the old page
+  const start = (_talPage - 1) * _TAL_PAGE_SIZE;
+  const shown = entries.slice(start, start + _TAL_PAGE_SIZE);
 
   return `
   <div class="section-header"><span class="material-symbols-outlined">receipt_long</span><h2>Log Entries</h2></div>
@@ -422,12 +436,33 @@ function _talTable(entries, state) {
     </div>
     ${shown.map(e => _talRow(e, state)).join('')}
   </div>
-  ${entries.length > shown.length ? `
-  <div style="text-align:center;margin-top:14px">
-    <button class="btn btn-ghost btn-sm" onclick="talShowMore()">Show more (${shown.length} of ${entries.length})</button>
-  </div>` : `
-  <div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text-muted)">Showing all ${entries.length} entries</div>
-  `}`;
+  ${_talPagination(_talPage, totalPages, entries.length, start + 1, start + shown.length)}`;
+}
+
+/** Shared Prev/page-number/Next control, reused by any log-style table on this page. */
+function _talPagination(page, totalPages, totalCount, rangeStart, rangeEnd) {
+  if (totalPages <= 1) {
+    return `<div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text-muted)">Showing all ${totalCount} entries</div>`;
+  }
+
+  // Compact page-number window (current ±2), always including first/last.
+  const nums = new Set([1, totalPages, page, page - 1, page + 1, page - 2, page + 2]);
+  const pages = Array.from(nums).filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+  let btns = '';
+  let prevN = 0;
+  pages.forEach(n => {
+    if (n - prevN > 1) btns += `<span style="padding:0 6px;color:var(--text-muted);font-size:11px">…</span>`;
+    btns += `<button class="btn btn-ghost btn-sm" style="${n === page ? 'background:var(--primary);color:#fff;font-weight:800' : ''}" onclick="talGoToPage(${n})">${n}</button>`;
+    prevN = n;
+  });
+
+  return `
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:14px">
+    <button class="btn btn-ghost btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="talPrevPage()">← Prev</button>
+    ${btns}
+    <button class="btn btn-ghost btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="talNextPage()">Next →</button>
+  </div>
+  <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--text-muted)">Showing ${rangeStart}–${rangeEnd} of ${totalCount} entries</div>`;
 }
 
 function _talRow(e, state) {

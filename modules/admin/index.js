@@ -43,7 +43,7 @@ const _ADMIN_EXPECTED = [
   'renderAdminRegistrations', 'regSetFilter', 'regAdminViewDetails',
   'regAdminApprove', 'regAdminRejectModal', 'regAdminConfirmReject',
   'showRegScreen', 'hideRegScreen', 'doRegister',
-  'renderNavManager', 'dsmGetStudentNav', 'dsmGetAdminNav',
+  'renderNavManager', 'dsmGetStudentNav', 'dsmGetTeacherNav', 'dsmGetAdminNav',
   'dsmSwitchTab', 'dsmToggle', 'dsmSetStatus', 'dsmSetField',
   'dsmExpandRow', 'dsmShowAll', 'dsmHideAll', 'dsmUnlockAll',
   'dsmApplyAndRefresh', 'dsmResetToDefaults',

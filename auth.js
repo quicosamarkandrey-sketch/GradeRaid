@@ -252,6 +252,26 @@ async function doLogin(){
     });
   }
 
+  // BUGFIX (section names showing as raw IDs): class_sections is fetched
+  // once by sections_index.js's _bootstrapSectionData(), triggered by
+  // AppStore.ready — which normally fires before the user has logged in.
+  // That unauthenticated fetch comes back empty under RLS, so
+  // state.classSections stayed [] for the rest of the session unless the
+  // user happened to visit Section Maker/Registrations (the only other
+  // callers of window.refreshSectionData()) first. Every screen that
+  // renders a section's display name (Live Monitor, Quiz Builder,
+  // Achievements, Titles, Campaign Map, Classroom Builder, My Section,
+  // Analytics, the kiosk) goes through getClassLabel(), which silently
+  // falls back to the raw id when classSections has no match — hence
+  // teachers/students sometimes seeing "Grade 10 – Rizal" and sometimes
+  // just seeing the section's UUID. Same fix as refreshClassroomData
+  // above: force a fresh, authenticated re-fetch right after login.
+  if (typeof window.refreshSectionData === 'function') {
+    window.refreshSectionData().catch(function (e) {
+      console.warn('[auth] post-login section data refresh failed:', e);
+    });
+  }
+
   bootApp();
 
   } finally {
@@ -346,6 +366,21 @@ async function restoreSession(){
     // DB was already hydrated correctly-scoped by initRemote() (it only
     // pulls when a saved session exists), so no extra refreshAfterAuthChange()
     // pull is needed here — just render. bootApp() hides #boot-loading itself.
+    //
+    // BUGFIX (section names showing as raw IDs on refresh): unlike DB,
+    // class_sections is NOT part of initRemote()'s pull — it's fetched
+    // separately by sections_index.js's _bootstrapSectionData(), fired once
+    // from AppStore.ready. On a hard refresh that fetch can race the
+    // Supabase client's own session restore and lose, leaving
+    // state.classSections empty and every getClassLabel() call falling back
+    // to the raw id. Force a fresh, now-authenticated re-fetch here too —
+    // same fix as doLogin() above.
+    if (typeof window.refreshSectionData === 'function') {
+      window.refreshSectionData().catch(function (e) {
+        console.warn('[auth] restoreSession section data refresh failed:', e);
+      });
+    }
+
     bootApp();
   } catch (e) {
     console.warn('[auth] restoreSession failed; leaving user on login screen:', e);

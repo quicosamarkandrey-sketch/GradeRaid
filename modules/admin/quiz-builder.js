@@ -6,6 +6,144 @@
 
 let draftQuiz = null;
 let draftQuizSections = []; // Phase 15 — selected class_ids for the "assign to section(s)" picker; kept separate from draftQuiz since it isn't a DB.quizzes field, it's persisted via set_quiz_sections() into quiz_sections
+let _qbSearch = '';
+let _qbPage = 1;
+const QB_PAGE_SIZE = 20;
+
+window.qbSetSearch = function (value) {
+  _qbSearch = String(value || '');
+  _qbPage = 1;
+  _qbRenderList();
+};
+
+window.qbGoToPage = function (page) {
+  _qbPage = Math.max(1, page | 0);
+  _qbRenderList();
+  const list = document.getElementById('qb-quiz-list');
+  if (list) list.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+window.qbPrevPage = function () { window.qbGoToPage(_qbPage - 1); };
+window.qbNextPage = function () { window.qbGoToPage(_qbPage + 1); };
+
+function _qbPagination(page, totalPages, totalCount, rangeStart, rangeEnd) {
+  if (totalPages <= 1) {
+    return `<div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text-muted)">Showing all ${totalCount}</div>`;
+  }
+  const nums = new Set([1, totalPages, page, page - 1, page + 1, page - 2, page + 2]);
+  const pages = Array.from(nums).filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+  let btns = '';
+  let prevN = 0;
+  pages.forEach(n => {
+    if (n - prevN > 1) btns += `<span style="padding:0 6px;color:var(--text-muted);font-size:11px">…</span>`;
+    btns += `<button class="btn btn-ghost btn-sm" style="${n === page ? 'background:var(--primary);color:#fff;font-weight:800' : ''}" onclick="qbGoToPage(${n})">${n}</button>`;
+    prevN = n;
+  });
+  return `
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:14px">
+    <button class="btn btn-ghost btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="qbPrevPage()">← Prev</button>
+    ${btns}
+    <button class="btn btn-ghost btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="qbNextPage()">Next →</button>
+  </div>
+  <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--text-muted)">Showing ${rangeStart}–${rangeEnd} of ${totalCount}</div>`;
+}
+
+function _qbQuizCard(q) {
+  const completions = DB.students.filter(s => s.completedQuizzes.includes(q.id)).length;
+  const assignedIds = (DB.quizSectionAssignments && DB.quizSectionAssignments[q.id]) || [];
+  const sectionsLabel = assignedIds.length
+    ? assignedIds.map(cid => (typeof getClassLabel === 'function' ? getClassLabel(cid) : cid)).join(', ')
+    : 'Unassigned';
+  // Phase 5 — scheduling badge (quest_board_report.md §18): shows the
+  // teacher at a glance whether a quest is waiting to start, actively
+  // running with a countdown, or already expired. eqQuizScheduleStatus()
+  // returns null for the pre-Phase-5 default (no schedule set), which
+  // renders nothing here — same "purely additive" posture as rarity/cadence.
+  const schedStatus = (typeof eqQuizScheduleStatus === 'function') ? eqQuizScheduleStatus(q) : null;
+  const schedBadge = schedStatus === 'upcoming' ? `<span class="badge-pill bp-gray">📅 Starts ${_esc(q.startDate)}</span>`
+    : schedStatus === 'expired' ? `<span class="badge-pill" style="background:rgba(255,180,171,.15);color:#ffb4ab">⌛ Expired ${_esc(q.endDate)}</span>`
+    : schedStatus === 'active' && q.endDate ? `<span class="badge-pill" style="background:rgba(255,185,95,.15);color:#ffb95f">⏳ Ends in ${eqDaysUntil(q.endDate)}d</span>`
+    : '';
+  return `<div class="glass-card">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="font-size:36px;width:52px;text-align:center">📝</div>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700;color:var(--on-surface)">${q.title}</div>
+        <div style="color:var(--text-muted);font-size:12px;margin-top:3px">${q.desc}</div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <span class="badge-pill bp-primary">+${q.xpReward} XP</span>
+          <span class="badge-pill bp-gold">+${q.coinReward} 🪙</span>
+          <span class="badge-pill bp-gray">${q.questions.length} questions</span>
+          <span class="badge-pill bp-gray">⏱ ${q.timeLimit} min</span>
+          <span class="badge-pill bp-green">${completions}/${DB.students.length} completed</span>
+          <span class="badge-pill ${assignedIds.length ? 'bp-primary' : 'bp-gray'}" title="${_esc(sectionsLabel)}">🏫 ${assignedIds.length ? sectionsLabel : 'Unassigned'}</span>
+          <span class="badge-pill" style="background:${(ACH_RARITY[eqQuizRarity(q)] || ACH_RARITY.Common).glow};color:${(ACH_RARITY[eqQuizRarity(q)] || ACH_RARITY.Common).color}">${eqQuizRarity(q)}</span>
+          ${eqQuizCadence(q) !== 'standing' ? `<span class="badge-pill bp-gray">${eqQuizCadence(q) === 'daily' ? '☀️ Daily pool' : '🗓️ Weekly pool'}</span>` : ''}
+          ${q.chainId ? `<span class="badge-pill" style="background:rgba(244,114,182,0.15);color:#f472b6">🔗 ${_esc(q.chainLabel || q.chainId)} · Part ${q.chainOrder || 1}</span>` : ''}
+          ${schedBadge}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button class="btn btn-ghost btn-sm" onclick="openQuizAnalytics('${q.id}')" title="Analytics">📊</button>
+        <button class="btn btn-ghost btn-sm" onclick="cloneQuiz('${q.id}')" title="Clone this quest">📋 Clone</button>
+        <button class="btn btn-ghost btn-sm" onclick="openEditQuiz('${q.id}')">✏️ Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteQuiz('${q.id}')">🗑</button>
+      </div>
+    </div>
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      ${q.questions.map((qq, i) => {
+        const qqType = eqQType(qq);
+        const typeTag = qqType === 'id' ? 'ID' : qqType === 'tf' ? 'T/F' : qqType === 'enum' ? 'ENUM' : qqType === 'match' ? 'MATCH' : 'MC';
+        const answerLabel = qqType === 'id' ? _esc(qq.answer || '')
+          : qqType === 'enum' ? (Array.isArray(qq.answers) ? qq.answers.map(_esc).join(', ') : '')
+          : qqType === 'match' ? (Array.isArray(qq.pairs) ? qq.pairs.map(p => `${_esc(p.left)}→${_esc(p.right)}`).join(', ') : '')
+          : (qq.opts && qq.opts[qq.answer] !== undefined ? qq.opts[qq.answer] : '');
+        return `<div style="font-size:12px;color:var(--text-muted);padding:3px 0"><span style="opacity:.55">[${typeTag}]</span> ${i + 1}. ${qq.q} <span style="color:#d0bcff">→ ${answerLabel}</span></div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+/** Re-renders just the quest list (search/page changes skip the full page repaint). */
+function _qbRenderList() {
+  const el = document.getElementById('qb-quiz-list');
+  if (!el) return;
+  const q = _qbSearch.trim().toLowerCase();
+  const filtered = q
+    ? DB.quizzes.filter(quiz => (quiz.title || '').toLowerCase().includes(q) || (quiz.desc || '').toLowerCase().includes(q))
+    : DB.quizzes;
+
+  if (!filtered.length) {
+    el.innerHTML = `<div style="text-align:center;padding:64px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;backdrop-filter:blur(12px)">
+        <div style="font-size:48px;margin-bottom:12px">📝</div>
+        <div style="font-family:var(--fh);font-size:18px;font-weight:800;margin-bottom:6px">${q ? 'No quests match your search' : 'No quests yet'}</div>
+        <div style="color:var(--text-muted);font-size:13px">${q ? 'Try a different search term.' : 'Create your first quest to get students earning XP!'}</div>
+      </div>`;
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / QB_PAGE_SIZE));
+  if (_qbPage > totalPages) _qbPage = totalPages;
+  const start = (_qbPage - 1) * QB_PAGE_SIZE;
+  const shown = filtered.slice(start, start + QB_PAGE_SIZE);
+
+  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:14px">${shown.map(_qbQuizCard).join('')}</div>
+  ${_qbPagination(_qbPage, totalPages, filtered.length, start + 1, start + shown.length)}`;
+}
+
+// ── RENDER ADMIN QUIZZES LIST ──────────────────────────
+window.renderAdminQuizzes = function() {
+  document.getElementById('a-quizzes').innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <div><div style="font-family:var(--fh);font-size:26px;font-weight:900">📝 Quest Builder</div>
+      <div style="color:var(--text-muted);font-size:13px;margin-top:4px">${DB.quizzes.length} quests published</div></div>
+    <button class="btn btn-primary" onclick="openQuestTemplateChooser()">＋ Create Quest</button>
+  </div>
+  <div style="margin-bottom:16px;max-width:280px">
+    <input type="text" placeholder="Search quests…" value="${_esc(_qbSearch)}" oninput="qbSetSearch(this.value)">
+  </div>
+  <div id="qb-quiz-list"></div>`;
+  _qbRenderList();
+};
 
 // ══════════════════════════════════════════════════════
 //  Phase 5 — Quest Templates (quest_board_report.md §17)
@@ -48,77 +186,6 @@ const QUEST_TEMPLATES = [
   },
 ];
 window.QUEST_TEMPLATES = QUEST_TEMPLATES;
-
-// ── RENDER ADMIN QUIZZES LIST ──────────────────────────
-window.renderAdminQuizzes = function() {
-  document.getElementById('a-quizzes').innerHTML = `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
-    <div><div style="font-family:var(--fh);font-size:26px;font-weight:900">📝 Quest Builder</div>
-      <div style="color:var(--text-muted);font-size:13px;margin-top:4px">${DB.quizzes.length} quests published</div></div>
-    <button class="btn btn-primary" onclick="openQuestTemplateChooser()">＋ Create Quest</button>
-  </div>
-  <div style="display:flex;flex-direction:column;gap:14px">
-    ${DB.quizzes.length ? DB.quizzes.map(q => {
-      const completions = DB.students.filter(s => s.completedQuizzes.includes(q.id)).length;
-      const assignedIds = (DB.quizSectionAssignments && DB.quizSectionAssignments[q.id]) || [];
-      const sectionsLabel = assignedIds.length
-        ? assignedIds.map(cid => (typeof getClassLabel === 'function' ? getClassLabel(cid) : cid)).join(', ')
-        : 'Unassigned';
-      // Phase 5 — scheduling badge (quest_board_report.md §18): shows the
-      // teacher at a glance whether a quest is waiting to start, actively
-      // running with a countdown, or already expired. eqQuizScheduleStatus()
-      // returns null for the pre-Phase-5 default (no schedule set), which
-      // renders nothing here — same "purely additive" posture as rarity/cadence.
-      const schedStatus = (typeof eqQuizScheduleStatus === 'function') ? eqQuizScheduleStatus(q) : null;
-      const schedBadge = schedStatus === 'upcoming' ? `<span class="badge-pill bp-gray">📅 Starts ${_esc(q.startDate)}</span>`
-        : schedStatus === 'expired' ? `<span class="badge-pill" style="background:rgba(255,180,171,.15);color:#ffb4ab">⌛ Expired ${_esc(q.endDate)}</span>`
-        : schedStatus === 'active' && q.endDate ? `<span class="badge-pill" style="background:rgba(255,185,95,.15);color:#ffb95f">⏳ Ends in ${eqDaysUntil(q.endDate)}d</span>`
-        : '';
-      return `<div class="glass-card">
-        <div style="display:flex;align-items:center;gap:16px">
-          <div style="font-size:36px;width:52px;text-align:center">📝</div>
-          <div style="flex:1">
-            <div style="font-size:15px;font-weight:700;color:var(--on-surface)">${q.title}</div>
-            <div style="color:var(--text-muted);font-size:12px;margin-top:3px">${q.desc}</div>
-            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-              <span class="badge-pill bp-primary">+${q.xpReward} XP</span>
-              <span class="badge-pill bp-gold">+${q.coinReward} 🪙</span>
-              <span class="badge-pill bp-gray">${q.questions.length} questions</span>
-              <span class="badge-pill bp-gray">⏱ ${q.timeLimit} min</span>
-              <span class="badge-pill bp-green">${completions}/${DB.students.length} completed</span>
-              <span class="badge-pill ${assignedIds.length ? 'bp-primary' : 'bp-gray'}" title="${_esc(sectionsLabel)}">🏫 ${assignedIds.length ? sectionsLabel : 'Unassigned'}</span>
-              <span class="badge-pill" style="background:${(ACH_RARITY[eqQuizRarity(q)] || ACH_RARITY.Common).glow};color:${(ACH_RARITY[eqQuizRarity(q)] || ACH_RARITY.Common).color}">${eqQuizRarity(q)}</span>
-              ${eqQuizCadence(q) !== 'standing' ? `<span class="badge-pill bp-gray">${eqQuizCadence(q) === 'daily' ? '☀️ Daily pool' : '🗓️ Weekly pool'}</span>` : ''}
-              ${q.chainId ? `<span class="badge-pill" style="background:rgba(244,114,182,0.15);color:#f472b6">🔗 ${_esc(q.chainLabel || q.chainId)} · Part ${q.chainOrder || 1}</span>` : ''}
-              ${schedBadge}
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;flex-shrink:0">
-            <button class="btn btn-ghost btn-sm" onclick="openQuizAnalytics('${q.id}')" title="Analytics">📊</button>
-            <button class="btn btn-ghost btn-sm" onclick="cloneQuiz('${q.id}')" title="Clone this quest">📋 Clone</button>
-            <button class="btn btn-ghost btn-sm" onclick="openEditQuiz('${q.id}')">✏️ Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteQuiz('${q.id}')">🗑</button>
-          </div>
-        </div>
-        <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-          ${q.questions.map((qq, i) => {
-            const qqType = eqQType(qq);
-            const typeTag = qqType === 'id' ? 'ID' : qqType === 'tf' ? 'T/F' : qqType === 'enum' ? 'ENUM' : qqType === 'match' ? 'MATCH' : 'MC';
-            const answerLabel = qqType === 'id' ? _esc(qq.answer || '')
-              : qqType === 'enum' ? (Array.isArray(qq.answers) ? qq.answers.map(_esc).join(', ') : '')
-              : qqType === 'match' ? (Array.isArray(qq.pairs) ? qq.pairs.map(p => `${_esc(p.left)}→${_esc(p.right)}`).join(', ') : '')
-              : (qq.opts && qq.opts[qq.answer] !== undefined ? qq.opts[qq.answer] : '');
-            return `<div style="font-size:12px;color:var(--text-muted);padding:3px 0"><span style="opacity:.55">[${typeTag}]</span> ${i + 1}. ${qq.q} <span style="color:#d0bcff">→ ${answerLabel}</span></div>`;
-          }).join('')}
-        </div>
-      </div>`;
-    }).join('') : `<div style="text-align:center;padding:64px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;backdrop-filter:blur(12px)">
-        <div style="font-size:48px;margin-bottom:12px">📝</div>
-        <div style="font-family:var(--fh);font-size:18px;font-weight:800;margin-bottom:6px">No quests yet</div>
-        <div style="color:var(--text-muted);font-size:13px">Create your first quest to get students earning XP!</div>
-      </div>`}
-  </div>`;
-};
 
 // ── OPEN QUIZ BUILDER MODAL ────────────────────────────
 // Phase 5 — `templateQuestions` (optional) prefills a brand-new draft's

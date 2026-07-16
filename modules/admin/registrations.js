@@ -488,6 +488,8 @@ window.regCheckStatusSubmit = async function() {
 
 let _regAdminFilter = 'pending';
 let _regAdminSearch = '';
+let _regAdminPage = 1;
+const REG_PAGE_SIZE = 20;
 
 // ── ADMIN-ONLY: teacher/adviser lookup for the cross-teacher queue ────────
 // (ISOLATION_ROLES_PLAN.md §11 "Cross-teacher registrations queue" — Chunk
@@ -582,7 +584,7 @@ window.renderAdminRegistrations = function() {
     <button class="reg-filter-btn ${_regAdminFilter === 'pending' ? 'active' : ''}" onclick="regSetFilter('pending')">⏳ Pending (${pending})</button>
     <button class="reg-filter-btn ${_regAdminFilter === 'approved' ? 'active' : ''}" onclick="regSetFilter('approved')">✓ Approved (${approved})</button>
     <button class="reg-filter-btn ${_regAdminFilter === 'rejected' ? 'active' : ''}" onclick="regSetFilter('rejected')">✕ Rejected (${rejected})</button>
-    <input class="reg-search-input" type="text" placeholder="Search name, username, or student ID…" value="${_regAdminSearch}" oninput="_regAdminSearch=this.value;_regRenderList()">
+    <input class="reg-search-input" type="text" placeholder="Search name, username, or student ID…" value="${_regAdminSearch}" oninput="_regAdminSearch=this.value;_regAdminPage=1;_regRenderList()">
   </div>
 
   <div id="reg-admin-list">${_regRenderListHTML()}</div>`;
@@ -590,6 +592,7 @@ window.renderAdminRegistrations = function() {
 
 window.regSetFilter = function(f) {
   _regAdminFilter = f;
+  _regAdminPage = 1;
   renderAdminRegistrations();
 };
 
@@ -597,6 +600,37 @@ window._regRenderList = function() {
   const el = document.getElementById('reg-admin-list');
   if (el) el.innerHTML = _regRenderListHTML();
 };
+
+window.regGoToPage = function (page) {
+  _regAdminPage = Math.max(1, page | 0);
+  window._regRenderList();
+  const list = document.getElementById('reg-admin-list');
+  if (list) list.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+window.regPrevPage = function () { window.regGoToPage(_regAdminPage - 1); };
+window.regNextPage = function () { window.regGoToPage(_regAdminPage + 1); };
+
+function _regPagination(page, totalPages, totalCount, rangeStart, rangeEnd) {
+  if (totalPages <= 1) {
+    return `<div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text-muted)">Showing all ${totalCount}</div>`;
+  }
+  const nums = new Set([1, totalPages, page, page - 1, page + 1, page - 2, page + 2]);
+  const pages = Array.from(nums).filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+  let btns = '';
+  let prevN = 0;
+  pages.forEach(n => {
+    if (n - prevN > 1) btns += `<span style="padding:0 6px;color:var(--text-muted);font-size:11px">…</span>`;
+    btns += `<button class="btn btn-ghost btn-sm" style="${n === page ? 'background:var(--primary);color:#fff;font-weight:800' : ''}" onclick="regGoToPage(${n})">${n}</button>`;
+    prevN = n;
+  });
+  return `
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:14px">
+    <button class="btn btn-ghost btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="regPrevPage()">← Prev</button>
+    ${btns}
+    <button class="btn btn-ghost btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="regNextPage()">Next →</button>
+  </div>
+  <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--text-muted)">Showing ${rangeStart}–${rangeEnd} of ${totalCount}</div>`;
+}
 
 function _regRenderListHTML() {
   DB = loadDB();
@@ -619,7 +653,12 @@ function _regRenderListHTML() {
       <div style="color:var(--text-muted);font-size:13px">${_regAdminFilter === 'pending' ? 'No pending requests — all caught up!' : 'Try a different filter or search term.'}</div>
     </div>`;
   }
-  return list.map(r => {
+  const totalPages = Math.max(1, Math.ceil(list.length / REG_PAGE_SIZE));
+  if (_regAdminPage > totalPages) _regAdminPage = totalPages;
+  const start = (_regAdminPage - 1) * REG_PAGE_SIZE;
+  const shown = list.slice(start, start + REG_PAGE_SIZE);
+
+  return shown.map(r => {
     const color = regPickColor(r.username);
     const initials = regMakeInitials(r.firstName, r.lastName);
     const statusPill = r.status === 'pending'
@@ -658,7 +697,7 @@ function _regRenderListHTML() {
         </div>
       </div>
     </div>`;
-  }).join('');
+  }).join('') + _regPagination(_regAdminPage, totalPages, list.length, start + 1, start + shown.length);
 }
 
 window.regAdminViewDetails = function(regId) {

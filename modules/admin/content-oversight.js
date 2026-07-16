@@ -37,6 +37,28 @@ let _coTab = 'achievements';
 let _coPickerLoading = false;
 let _coPickerError = null;
 let _coPickerRows = null;
+let _coPickerSearch = '';
+
+window._coSetPickerSearch = function (value) {
+  _coPickerSearch = String(value || '');
+  _coRedrawPickerList();
+};
+
+// Per-tab search — this screen drills into ONE teacher's content at a time
+// (bounded in practice, unlike a school-wide list), so a quick filter is
+// what actually helps here; full pagination isn't worth the added
+// complexity against the idx-based Edit/Delete handlers below. Search
+// state persists per tab so switching tabs and back doesn't lose it.
+let _coSearch = { achievements: '', titles: '', quizzes: '', campaignWorlds: '', shopProducts: '' };
+
+window._coSetSearch = function (tab, value) {
+  _coSearch[tab] = String(value || '');
+  const redraw = {
+    achievements: _coRedrawAchievements, titles: _coRedrawTitles, quizzes: _coRedrawQuizzes,
+    campaignWorlds: _coRedrawCampaignWorlds, shopProducts: _coRedrawShopProducts,
+  }[tab];
+  if (redraw) redraw();
+};
 
 const _CO_TABS = [
   { id: 'achievements',   label: 'Achievements',    icon: '🏅' },
@@ -122,8 +144,21 @@ async function _coRenderPicker(el) {
     body.innerHTML = `<div class="glass-card" style="padding:16px;color:#ff6b6b">⚠️ ${_coEsc(_coPickerError)}</div>`;
     return;
   }
-  const rows = _coPickerRows || [];
   body.innerHTML = `
+  <div style="margin-bottom:14px;max-width:280px">
+    <input type="text" placeholder="Search name or email…" value="${_coEscAttr(_coPickerSearch)}" oninput="_coSetPickerSearch(this.value)">
+  </div>
+  <div id="co-picker-list"></div>`;
+  _coRedrawPickerList();
+}
+
+function _coRedrawPickerList() {
+  const el = document.getElementById('co-picker-list');
+  if (!el) return;
+  const all = _coPickerRows || [];
+  const q = _coPickerSearch.trim().toLowerCase();
+  const rows = q ? all.filter(r => (r.displayName || '').toLowerCase().includes(q) || (r.email || '').toLowerCase().includes(q)) : all;
+  el.innerHTML = `
   <div class="glass-card" style="padding:0;overflow:hidden">
     <table class="admin-table">
       <thead><tr><th>Teacher</th><th>Role</th><th style="text-align:center">Content Items</th><th style="width:140px"></th></tr></thead>
@@ -137,7 +172,7 @@ async function _coRenderPicker(el) {
             <td><span class="btn btn-xs ${r.role === 'admin' ? 'btn-primary' : 'btn-ghost'}" style="pointer-events:none">${r.role === 'admin' ? 'Admin' : 'Teacher'}</span></td>
             <td style="text-align:center">${(r.achievementCount||0)+(r.titleCount||0)+(r.quizCount||0)+(r.campaignWorldCount||0)+(r.shopProductCount||0)}</td>
             <td><button class="btn btn-primary btn-sm" onclick="openContentOversightFor('${r.id}','${_coEsc(r.displayName || r.email || '')}')" style="width:100%">View Content</button></td>
-          </tr>`).join('') || `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">No teacher accounts yet.</td></tr>`}
+          </tr>`).join('') || `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">${q ? 'No teachers match your search.' : 'No teacher accounts yet.'}</td></tr>`}
       </tbody>
     </table>
   </div>`;
@@ -226,14 +261,27 @@ async function _coRefreshAndRender() {
 // ── Achievements ─────────────────────────────────────────────────────────
 
 function _coRenderAchievements(body) {
-  const rows = _coContent.achievements || [];
   body.innerHTML = `
-  ${_coEditMode ? `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-primary" onclick="_coOpenAchievementForm(-1)">＋ Add Achievement</button></div>` : ''}
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+    <input type="text" placeholder="Search achievements…" value="${_coEscAttr(_coSearch.achievements)}" oninput="_coSetSearch('achievements',this.value)" style="max-width:280px;flex:1">
+    ${_coEditMode ? `<button class="btn btn-primary" onclick="_coOpenAchievementForm(-1)">＋ Add Achievement</button>` : ''}
+  </div>
+  <div id="co-list-achievements"></div>`;
+  _coRedrawAchievements();
+}
+
+function _coRedrawAchievements() {
+  const el = document.getElementById('co-list-achievements');
+  if (!el) return;
+  const all = _coContent.achievements || [];
+  const q = _coSearch.achievements.trim().toLowerCase();
+  const rows = q ? all.filter(a => (a.name || '').toLowerCase().includes(q) || (a.category || '').toLowerCase().includes(q)) : all;
+  el.innerHTML = `
   <div class="glass-card" style="padding:0;overflow:hidden">
     <table class="admin-table">
       <thead><tr><th></th><th>Name</th><th>Category</th><th>Rarity</th><th>Trigger</th><th style="text-align:right">Reward</th>${_coEditMode ? '<th style="width:120px"></th>' : ''}</tr></thead>
       <tbody>
-        ${rows.map((a, i) => `
+        ${rows.map(a => { const i = all.indexOf(a); return `
           <tr>
             <td style="font-size:20px">${a.icon || '🏅'}</td>
             <td><strong>${_coEsc(a.name)}</strong><div style="font-size:11px;color:var(--text-muted)">${_coEsc(a.description || '')}</div></td>
@@ -245,7 +293,7 @@ function _coRenderAchievements(body) {
               <button class="btn btn-ghost btn-sm" onclick="_coOpenAchievementForm(${i})">Edit</button>
               <button class="btn btn-ghost btn-sm" onclick="_coDeleteAchievement(${i})">🗑️</button>
             </td>` : ''}
-          </tr>`).join('') || `<tr><td colspan="${_coEditMode ? 7 : 6}" style="text-align:center;color:var(--text-muted);padding:20px">No achievements yet.</td></tr>`}
+          </tr>`; }).join('') || `<tr><td colspan="${_coEditMode ? 7 : 6}" style="text-align:center;color:var(--text-muted);padding:20px">${q ? 'No achievements match your search.' : 'No achievements yet.'}</td></tr>`}
       </tbody>
     </table>
   </div>`;
@@ -316,14 +364,27 @@ window._coDeleteAchievement = async function (idx) {
 // ── Titles ────────────────────────────────────────────────────────────────
 
 function _coRenderTitles(body) {
-  const rows = _coContent.titles || [];
   body.innerHTML = `
-  ${_coEditMode ? `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-primary" onclick="_coOpenTitleForm(-1)">＋ Add Title</button></div>` : ''}
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+    <input type="text" placeholder="Search titles…" value="${_coEscAttr(_coSearch.titles)}" oninput="_coSetSearch('titles',this.value)" style="max-width:280px;flex:1">
+    ${_coEditMode ? `<button class="btn btn-primary" onclick="_coOpenTitleForm(-1)">＋ Add Title</button>` : ''}
+  </div>
+  <div id="co-list-titles"></div>`;
+  _coRedrawTitles();
+}
+
+function _coRedrawTitles() {
+  const el = document.getElementById('co-list-titles');
+  if (!el) return;
+  const all = _coContent.titles || [];
+  const q = _coSearch.titles.trim().toLowerCase();
+  const rows = q ? all.filter(t => (t.name || '').toLowerCase().includes(q)) : all;
+  el.innerHTML = `
   <div class="glass-card" style="padding:0;overflow:hidden">
     <table class="admin-table">
       <thead><tr><th></th><th>Name</th><th>Rarity</th>${_coEditMode ? '<th style="width:120px"></th>' : ''}</tr></thead>
       <tbody>
-        ${rows.map((t, i) => `
+        ${rows.map(t => { const i = all.indexOf(t); return `
           <tr>
             <td style="font-size:20px">${t.icon || '🎖️'}</td>
             <td><strong>${_coEsc(t.name)}</strong><div style="font-size:11px;color:var(--text-muted)">${_coEsc(t.description || '')}</div></td>
@@ -332,7 +393,7 @@ function _coRenderTitles(body) {
               <button class="btn btn-ghost btn-sm" onclick="_coOpenTitleForm(${i})">Edit</button>
               <button class="btn btn-ghost btn-sm" onclick="_coDeleteTitle(${i})">🗑️</button>
             </td>` : ''}
-          </tr>`).join('') || `<tr><td colspan="${_coEditMode ? 4 : 3}" style="text-align:center;color:var(--text-muted);padding:20px">No titles yet.</td></tr>`}
+          </tr>`; }).join('') || `<tr><td colspan="${_coEditMode ? 4 : 3}" style="text-align:center;color:var(--text-muted);padding:20px">${q ? 'No titles match your search.' : 'No titles yet.'}</td></tr>`}
       </tbody>
     </table>
   </div>`;
@@ -419,24 +480,37 @@ function _coQuizChainScheduleBadges(q) {
 }
 
 function _coRenderQuizzes(body) {
-  const rows = _coContent.quizzes || [];
   body.innerHTML = `
-  ${_coEditMode ? `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-primary" onclick="_coOpenQuizForm(-1)">＋ Add Quiz</button></div>` : ''}
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+    <input type="text" placeholder="Search quizzes…" value="${_coEscAttr(_coSearch.quizzes)}" oninput="_coSetSearch('quizzes',this.value)" style="max-width:280px;flex:1">
+    ${_coEditMode ? `<button class="btn btn-primary" onclick="_coOpenQuizForm(-1)">＋ Add Quiz</button>` : ''}
+  </div>
+  <div id="co-list-quizzes"></div>`;
+  _coRedrawQuizzes();
+}
+
+function _coRedrawQuizzes() {
+  const el = document.getElementById('co-list-quizzes');
+  if (!el) return;
+  const all = _coContent.quizzes || [];
+  const q = _coSearch.quizzes.trim().toLowerCase();
+  const rows = q ? all.filter(quiz => (quiz.title || '').toLowerCase().includes(q) || (quiz.description || '').toLowerCase().includes(q)) : all;
+  el.innerHTML = `
   <div class="glass-card" style="padding:0;overflow:hidden">
     <table class="admin-table">
       <thead><tr><th>Title</th><th>Questions</th><th>Chain / Schedule</th><th style="text-align:right">Reward</th>${_coEditMode ? '<th style="width:120px"></th>' : ''}</tr></thead>
       <tbody>
-        ${rows.map((q, i) => `
+        ${rows.map(quiz => { const i = all.indexOf(quiz); return `
           <tr>
-            <td><strong>${_coEsc(q.title)}</strong><div style="font-size:11px;color:var(--text-muted)">${_coEsc(q.description || '')}</div></td>
-            <td>${(q.questions || []).length}</td>
-            <td>${_coQuizChainScheduleBadges(q)}</td>
-            <td style="text-align:right;font-size:12px">${q.xpReward} XP / ${q.coinReward} 🪙</td>
+            <td><strong>${_coEsc(quiz.title)}</strong><div style="font-size:11px;color:var(--text-muted)">${_coEsc(quiz.description || '')}</div></td>
+            <td>${(quiz.questions || []).length}</td>
+            <td>${_coQuizChainScheduleBadges(quiz)}</td>
+            <td style="text-align:right;font-size:12px">${quiz.xpReward} XP / ${quiz.coinReward} 🪙</td>
             ${_coEditMode ? `<td>
               <button class="btn btn-ghost btn-sm" onclick="_coOpenQuizForm(${i})">Edit</button>
               <button class="btn btn-ghost btn-sm" onclick="_coDeleteQuiz(${i})">🗑️</button>
             </td>` : ''}
-          </tr>`).join('') || `<tr><td colspan="${_coEditMode ? 5 : 4}" style="text-align:center;color:var(--text-muted);padding:20px">No quizzes yet.</td></tr>`}
+          </tr>`; }).join('') || `<tr><td colspan="${_coEditMode ? 5 : 4}" style="text-align:center;color:var(--text-muted);padding:20px">${q ? 'No quizzes match your search.' : 'No quizzes yet.'}</td></tr>`}
       </tbody>
     </table>
   </div>`;
@@ -529,14 +603,27 @@ window._coDeleteQuiz = async function (idx) {
 // JSON textarea rather than reusing the full Stage Map Editor.
 
 function _coRenderCampaignWorlds(body) {
-  const rows = _coContent.campaignWorlds || [];
   body.innerHTML = `
-  ${_coEditMode ? `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-primary" onclick="_coOpenWorldForm(-1)">＋ Add World</button></div>` : ''}
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+    <input type="text" placeholder="Search campaign worlds…" value="${_coEscAttr(_coSearch.campaignWorlds)}" oninput="_coSetSearch('campaignWorlds',this.value)" style="max-width:280px;flex:1">
+    ${_coEditMode ? `<button class="btn btn-primary" onclick="_coOpenWorldForm(-1)">＋ Add World</button>` : ''}
+  </div>
+  <div id="co-list-campaignWorlds"></div>`;
+  _coRedrawCampaignWorlds();
+}
+
+function _coRedrawCampaignWorlds() {
+  const el = document.getElementById('co-list-campaignWorlds');
+  if (!el) return;
+  const all = _coContent.campaignWorlds || [];
+  const q = _coSearch.campaignWorlds.trim().toLowerCase();
+  const rows = q ? all.filter(w => (w.label || '').toLowerCase().includes(q)) : all;
+  el.innerHTML = `
   <div class="glass-card" style="padding:0;overflow:hidden">
     <table class="admin-table">
       <thead><tr><th></th><th>Label</th><th>Stages</th>${_coEditMode ? '<th style="width:120px"></th>' : ''}</tr></thead>
       <tbody>
-        ${rows.map((w, i) => `
+        ${rows.map(w => { const i = all.indexOf(w); return `
           <tr>
             <td style="font-size:20px">${w.icon || '🗺️'}</td>
             <td><strong>${_coEsc(w.label)}</strong><div style="font-size:11px;color:var(--text-muted)">${_coEsc(w.description || '')}</div></td>
@@ -545,7 +632,7 @@ function _coRenderCampaignWorlds(body) {
               <button class="btn btn-ghost btn-sm" onclick="_coOpenWorldForm(${i})">Edit</button>
               <button class="btn btn-ghost btn-sm" onclick="_coDeleteWorld(${i})">🗑️</button>
             </td>` : ''}
-          </tr>`).join('') || `<tr><td colspan="${_coEditMode ? 4 : 3}" style="text-align:center;color:var(--text-muted);padding:20px">No campaign worlds yet.</td></tr>`}
+          </tr>`; }).join('') || `<tr><td colspan="${_coEditMode ? 4 : 3}" style="text-align:center;color:var(--text-muted);padding:20px">${q ? 'No campaign worlds match your search.' : 'No campaign worlds yet.'}</td></tr>`}
       </tbody>
     </table>
   </div>`;
@@ -614,14 +701,27 @@ window._coDeleteWorld = async function (idx) {
 // ── Shop Items ────────────────────────────────────────────────────────────
 
 function _coRenderShopProducts(body) {
-  const rows = _coContent.shopProducts || [];
   body.innerHTML = `
-  ${_coEditMode ? `<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-primary" onclick="_coOpenShopForm(-1)">＋ Add Shop Item</button></div>` : ''}
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+    <input type="text" placeholder="Search shop items…" value="${_coEscAttr(_coSearch.shopProducts)}" oninput="_coSetSearch('shopProducts',this.value)" style="max-width:280px;flex:1">
+    ${_coEditMode ? `<button class="btn btn-primary" onclick="_coOpenShopForm(-1)">＋ Add Shop Item</button>` : ''}
+  </div>
+  <div id="co-list-shopProducts"></div>`;
+  _coRedrawShopProducts();
+}
+
+function _coRedrawShopProducts() {
+  const el = document.getElementById('co-list-shopProducts');
+  if (!el) return;
+  const all = _coContent.shopProducts || [];
+  const q = _coSearch.shopProducts.trim().toLowerCase();
+  const rows = q ? all.filter(p => (p.name || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q)) : all;
+  el.innerHTML = `
   <div class="glass-card" style="padding:0;overflow:hidden">
     <table class="admin-table">
       <thead><tr><th></th><th>Name</th><th>Category</th><th style="text-align:right">Cost</th>${_coEditMode ? '<th style="width:120px"></th>' : ''}</tr></thead>
       <tbody>
-        ${rows.map((p, i) => `
+        ${rows.map(p => { const i = all.indexOf(p); return `
           <tr>
             <td style="font-size:20px">${p.emoji || '🎁'}</td>
             <td><strong>${_coEsc(p.name)}</strong><div style="font-size:11px;color:var(--text-muted)">${_coEsc(p.description || '')}</div></td>
@@ -631,7 +731,7 @@ function _coRenderShopProducts(body) {
               <button class="btn btn-ghost btn-sm" onclick="_coOpenShopForm(${i})">Edit</button>
               <button class="btn btn-ghost btn-sm" onclick="_coDeleteShopItem(${i})">🗑️</button>
             </td>` : ''}
-          </tr>`).join('') || `<tr><td colspan="${_coEditMode ? 5 : 4}" style="text-align:center;color:var(--text-muted);padding:20px">No shop items yet.</td></tr>`}
+          </tr>`; }).join('') || `<tr><td colspan="${_coEditMode ? 5 : 4}" style="text-align:center;color:var(--text-muted);padding:20px">${q ? 'No shop items match your search.' : 'No shop items yet.'}</td></tr>`}
       </tbody>
     </table>
   </div>`;
