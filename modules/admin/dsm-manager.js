@@ -52,6 +52,7 @@ const DSM_ADMIN_DEFAULTS = [
   {id:'a-registrations', label:'Student Registrations', icon:'person_add',            order:14, visible:true, locked:false, disabled:false, status:'active', lockMsg:'', unlockReq:'', group:'Students'},
   {id:'a-mail',          label:'Mail System',           icon:'mail',                  order:15, visible:true, locked:false, disabled:false, status:'active', lockMsg:'', unlockReq:'', group:'Students'},
   {id:'a-analytics',     label:'Analytics',             icon:'insights',              order:16, visible:true, locked:false, disabled:false, status:'active', lockMsg:'', unlockReq:'', group:'Reporting'},
+  {id:'a-class-logs',    label:'Recitation & Attendance', icon:'history_edu',          order:16.5, visible:true, locked:false, disabled:false, status:'active', lockMsg:'', unlockReq:'', group:'Reporting'},
   {id:'a-leaderboard',   label:'Leaderboard Admin',     icon:'leaderboard',           order:17, visible:true, locked:false, disabled:false, status:'active', lockMsg:'', unlockReq:'', group:'Reporting'},
   {id:'a-nav-manager',   label:'Navigation Manager',    icon:'tune',                  order:18, visible:true, locked:false, disabled:false, status:'active', lockMsg:'', unlockReq:'', group:'System', adminOnly:true},
   {id:'a-teachers',      label:'Teacher Directory',     icon:'groups',                order:19, visible:true, locked:false, disabled:false, status:'active', lockMsg:'', unlockReq:'', group:'System', adminOnly:true},

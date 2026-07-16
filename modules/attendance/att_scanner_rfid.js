@@ -487,7 +487,7 @@ function _rfidProfileCardHtml(student, status, alreadyRecorded, fallbackName) {
           <div class="kiosk-identity-info">
             <div class="kiosk-profile-name">${_esc(name || 'Student')}</div>
             <div class="kiosk-name-accent"></div>
-            ${student ? `<div class="kiosk-profile-section">Section: ${_esc(student.classId)}</div>` : ''}
+            ${student ? `<div class="kiosk-profile-section">Section: ${_esc(typeof getClassLabel === 'function' ? getClassLabel(student.classId) : student.classId)}</div>` : ''}
             <div>
               <div class="kiosk-status-badge" style="background:${badgeColor}22;color:${badgeColor};border:2px solid ${badgeColor}55">
                 ${icons[status] || '✅'} ${_esc(status)}${alreadyRecorded ? ' · already logged today' : ''}

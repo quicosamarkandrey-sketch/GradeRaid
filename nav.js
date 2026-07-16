@@ -54,6 +54,7 @@ const NAV_ADMIN=[
   {id:'a-registrations',label:'Student Registrations',icon:'person_add'},
   {id:'a-mail',label:'Mail System',icon:'mail'},
   {id:'a-analytics',label:'Analytics',icon:'insights'},
+  {id:'a-class-logs',label:'Recitation & Attendance',icon:'history_edu'},
   {id:'a-nav-manager',label:'Navigation Manager',icon:'tune'},
   {id:'a-classroom',  label:'Seating Layout',    icon:'chair'},
   {id:'a-classroom-monitor', label:'Live Monitor', icon:'monitoring'},
@@ -150,6 +151,7 @@ function navTo(id){
   if(id!=='a-sections'&&typeof unmountSectionMaker==='function'){ unmountSectionMaker(); }
   if(id!=='a-enrollment'&&typeof unmountEnrollmentHub==='function'){ unmountEnrollmentHub(); }
   if(id!=='a-content-oversight'&&typeof unmountContentOversight==='function'){ unmountContentOversight(); }
+  if(id!=='a-class-logs'&&typeof unmountRecitationAttendanceLog==='function'){ unmountRecitationAttendanceLog(); }
   document.querySelectorAll('.nav-btn').forEach(b=>{
     b.classList.remove('active');
     b.style.background='none';b.style.color='var(--text-muted)';b.style.transform='none';
@@ -178,6 +180,7 @@ function navTo(id){
   else if(id==='a-pos')renderPOS();
   else if(id==='a-quizzes')renderAdminQuizzes();
   else if(id==='a-analytics')renderAnalytics();
+  else if(id==='a-class-logs')renderRecitationAttendanceLog();
   else if(id==='a-stagemap')renderAdminStageMap();
   else if(id==='a-bossevents')renderAdminBossEvents();
   else if(id==='a-achievements')renderAdminAchievements();
@@ -207,6 +210,7 @@ function navTo(id){
   else if(id==='a-audit-log') renderAuditLog();
   else if(id==='a-system-health') renderSystemHealth();
   showPage(id);
+  saveLastVisitedPage(id);
   // close sidebar on mobile
   if(window.innerWidth<=1024)document.getElementById('sidebar').classList.remove('open');
 }
@@ -214,5 +218,36 @@ function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const el=document.getElementById(id);
   if(el){el.classList.add('active');el.classList.add('fade-in');el.scrollTop=0;}
+}
+
+// ── "Resume where I left off" (reload persistence) ──────────────────────────
+// BUGFIX: a page reload used to always land back on the dashboard,
+// discarding whatever page the person was actually on — bootApp() (auth.js)
+// unconditionally called renderAdminDashboard()/showPage('a-dashboard') (or
+// the student equivalent) on every boot, with nothing recording where you
+// actually were. This persists the id every successful navTo() call lands
+// on, so bootApp() can send you back there instead. Scoped by role prefix
+// ('a-' vs 's-') in getLastVisitedPage() so a stale save from a different
+// account/role on the same browser is never blindly reused — navTo()'s own
+// ADMIN_ONLY_NAV_IDS guard above still applies on top of this regardless.
+//
+// NOTE: this is the *general* half of the reload fix. The more serious
+// half — a reload silently escaping Card Enrollment's Self-Service kiosk
+// Lock Mode onto the full admin/teacher dashboard — is handled separately
+// and with higher priority in bootApp(), via enrollment-hub.js's own
+// dedicated persisted flag (see _enrollHasPersistedLock()/
+// _enrollRestoreLockedKioskOnBoot()); that check runs BEFORE this one.
+const LAST_PAGE_KEY = 'eq_last_page';
+function saveLastVisitedPage(id) {
+  try { localStorage.setItem(LAST_PAGE_KEY, id); } catch (e) { /* storage unavailable — non-fatal, just won't persist */ }
+}
+function getLastVisitedPage(role) {
+  let id = null;
+  try { id = localStorage.getItem(LAST_PAGE_KEY); } catch (e) { return null; }
+  if (!id) return null;
+  const wantsAdminPrefix = (role === 'admin' || role === 'teacher');
+  if (wantsAdminPrefix && id.indexOf('a-') !== 0) return null;
+  if (!wantsAdminPrefix && id.indexOf('s-') !== 0) return null;
+  return id;
 }
 

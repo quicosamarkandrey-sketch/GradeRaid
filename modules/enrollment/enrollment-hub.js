@@ -60,6 +60,23 @@ let _enrollKioskLocked = false;
 let _enrollNavToPatched = false;
 let _enrollOrigNavTo = null;
 
+// SECURITY FIX: _enrollKioskLocked above only ever lived in memory, so a
+// browser refresh (or crash/close) reset it to false on the very next
+// page load — and since bootApp() always rendered the dashboard on boot
+// (see nav.js/auth.js), reloading was a one-tap way out of Lock Mode and
+// straight onto the full admin/teacher shell. This localStorage flag is
+// the persisted twin of _enrollKioskLocked: set the instant the lock
+// engages, cleared only by a verified admin-password unlock, and checked
+// by bootApp() BEFORE it ever renders the dashboard — see
+// _enrollHasPersistedLock() / _enrollRestoreLockedKioskOnBoot() below.
+const ENROLL_KIOSK_LOCK_KEY = 'eq_kiosk_locked';
+function _enrollPersistLock(locked) {
+  try {
+    if (locked) localStorage.setItem(ENROLL_KIOSK_LOCK_KEY, '1');
+    else localStorage.removeItem(ENROLL_KIOSK_LOCK_KEY);
+  } catch (e) { /* storage unavailable — lock still works this tab-session, just won't survive a reload */ }
+}
+
 /**
  * renderEnrollmentHub() → void  [window.renderEnrollmentHub]
  * Mounts the Hub into #a-enrollment.
@@ -114,9 +131,18 @@ window.unmountEnrollmentHub = function () {
   // lines, which the Lock Mode nav guard prevents for any id other than
   // 'a-enrollment' while locked (see _enrollPatchNavGuard()) — so in the
   // normal case this never fires while still locked. It's a second line of
-  // defense for anything that can bypass navTo entirely (a browser
-  // refresh, for instance): never leave the app shell hidden for whatever
-  // loads next. Same posture as live_monitor.js's unmountClassroomMonitor().
+  // defense for anything that can bypass navTo entirely, so the app shell
+  // never gets left hidden for whatever loads next. Same posture as
+  // live_monitor.js's unmountClassroomMonitor().
+  //
+  // Deliberately does NOT clear the PERSISTED lock (_enrollPersistLock) —
+  // a browser refresh is no longer one of the things this guards against
+  // (bootApp() checks _enrollHasPersistedLock() before this file's normal
+  // mount/unmount cycle ever runs — see auth.js), and if this in-memory-only
+  // reset ever does fire some other way, the safest behavior is for the
+  // NEXT reload to still come back locked, not to quietly stay unlocked.
+  // Only a verified admin password (_enrollUnlockKiosk()) clears the
+  // persisted flag.
   if (_enrollKioskLocked) {
     _enrollKioskLocked = false;
     document.body.classList.remove('enroll-kiosk-lock-mode');
@@ -228,17 +254,43 @@ function _enrollRenderAll() {
   if (!body) return;
   const state = AppStore.getState();
 
+  // BUGFIX: every text input on this page (kiosk search, kiosk password,
+  // teacher-mode roster search) calls _enrollRenderAll() on its own
+  // `oninput` — i.e. on every keystroke. The rebuild below always creates
+  // a brand-new <input> node (innerHTML replace), so simply calling
+  // .focus() on the new node (as this used to do for the kiosk fields)
+  // puts the caret back at position 0, not at the end of what's already
+  // typed. The NEXT keystroke then inserts BEFORE the existing text
+  // instead of after it — typing "maria" one letter at a time renders as
+  // "airam". Capturing which field had focus (by id) and exactly where
+  // its caret was *before* the rebuild, then restoring both afterward,
+  // fixes this for every input here, not just one field.
+  const active = document.activeElement;
+  const focusedId = (active && body.contains(active) && active.id) ? active.id : null;
+  const caretPos = (focusedId && typeof active.selectionStart === 'number') ? active.selectionStart : null;
+
   body.innerHTML = `
     ${_enrollKioskLocked ? _enrollRenderLockedBanner() : _enrollRenderToolbar(state)}
     ${_enrollMode === 'teacher' ? _enrollRenderTeacherGrid(state) : _enrollRenderKiosk(state)}
     ${_enrollKioskLocked ? _enrollRenderUnlockFab() : ''}
   `;
 
-  if (_enrollMode === 'kiosk' && _kioskStep === 'search') {
+  if (focusedId) {
+    // Something on this page was mid-edit — put it back exactly as it was.
+    const el = document.getElementById(focusedId);
+    if (el) {
+      el.focus();
+      if (caretPos !== null && typeof el.setSelectionRange === 'function') {
+        const pos = Math.min(caretPos, el.value.length);
+        try { el.setSelectionRange(pos, pos); } catch (e) {}
+      }
+    }
+  } else if (_enrollMode === 'kiosk' && _kioskStep === 'search') {
+    // Nothing was focused (e.g. just switched into kiosk mode) — same
+    // "focus the search box automatically" behavior as before.
     const el = document.getElementById('enroll-kiosk-search-input');
     if (el) el.focus();
-  }
-  if (_enrollMode === 'kiosk' && _kioskStep === 'password') {
+  } else if (_enrollMode === 'kiosk' && _kioskStep === 'password') {
     const el = document.getElementById('enroll-kiosk-password-input');
     if (el) el.focus();
   }
@@ -271,7 +323,7 @@ function _enrollRenderToolbar(state) {
   return `
     <div class="enroll-hub-toolbar">
       ${kioskHidesSearch ? '' : `
-        <input class="enroll-hub-search" placeholder="Search students…" value="${_esc(_enrollSearchQuery)}"
+        <input id="enroll-hub-search-input" class="enroll-hub-search" placeholder="Search students…" value="${_esc(_enrollSearchQuery)}"
                oninput="_enrollOnSearchInput(this.value)" />
         <select class="enroll-hub-section-select" onchange="_enrollOnSectionChange(this.value)">
           <option value="all" ${_enrollSectionFilter === 'all' ? 'selected' : ''}>All sections</option>
@@ -308,6 +360,7 @@ window._enrollOnSectionChange = function (val) { _enrollSectionFilter = val; _en
 window._enrollLockKiosk = function () {
   if (_enrollMode !== 'kiosk' || _enrollKioskLocked) return;
   _enrollKioskLocked = true;
+  _enrollPersistLock(true);
   document.body.classList.add('enroll-kiosk-lock-mode');
   _enrollPatchNavGuard();
   // Native "are you sure you want to leave" prompt on refresh/close/back —
@@ -416,10 +469,48 @@ async function _enrollVerifyAdminPassword(password) {
 
 function _enrollUnlockKiosk() {
   _enrollKioskLocked = false;
+  _enrollPersistLock(false);
   document.body.classList.remove('enroll-kiosk-lock-mode');
   window.onbeforeunload = null;
   _enrollRenderAll();
 }
+
+/**
+ * _enrollHasPersistedLock() → boolean  [window._enrollHasPersistedLock]
+ * Read-only check of the persisted flag — called from bootApp() (auth.js)
+ * on every boot/refresh, before anything else renders.
+ */
+window._enrollHasPersistedLock = function () {
+  try { return localStorage.getItem(ENROLL_KIOSK_LOCK_KEY) === '1'; } catch (e) { return false; }
+};
+
+/**
+ * _enrollRestoreLockedKioskOnBoot() → void  [window._enrollRestoreLockedKioskOnBoot]
+ * SECURITY FIX — called by bootApp() INSTEAD OF the normal dashboard render
+ * when _enrollHasPersistedLock() is true. Re-enters #a-enrollment in kiosk
+ * mode and re-applies every part of the lock (the fullscreen shell-hiding
+ * body class, the navTo() guard, and the beforeunload prompt) before the
+ * first frame ever paints — so a refresh while locked lands right back on
+ * the same locked kiosk screen instead of the admin/teacher dashboard.
+ * Mirrors _enrollLockKiosk() exactly, minus the toast (a silent restore,
+ * not a new lock action) and minus re-persisting (it's already persisted —
+ * that's how we got here).
+ */
+window._enrollRestoreLockedKioskOnBoot = function () {
+  _enrollMode = 'kiosk';
+  if (typeof navTo === 'function') navTo('a-enrollment');
+  else if (typeof renderEnrollmentHub === 'function') renderEnrollmentHub();
+
+  _enrollKioskLocked = true;
+  document.body.classList.add('enroll-kiosk-lock-mode');
+  _enrollPatchNavGuard();
+  window.onbeforeunload = function (e) {
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  };
+  _enrollRenderAll();
+};
 
 window._enrollSetMode = function (mode) {
   if (mode === _enrollMode) return;

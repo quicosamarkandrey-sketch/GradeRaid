@@ -382,6 +382,12 @@ async function doLogout(){
   if (typeof DBService !== 'undefined' && typeof DBService.remove === 'function') {
     try { DBService.remove(); } catch (e) { console.warn('[auth] local cache clear failed:', e); }
   }
+  // Same "don't leak the previous account's state into the next login on
+  // this browser" reasoning as DBService.remove() above — a stale "resume
+  // last page" or (far more importantly) a stale kiosk-lock flag has no
+  // business surviving past an explicit, authenticated logout.
+  try { localStorage.removeItem('eq_last_page'); } catch (e) {}
+  if (typeof _enrollPersistLock === 'function') { try { _enrollPersistLock(false); } catch (e) {} }
   currentUser=null;currentRole=null;
   // Reset combat state
   WBC.joined=false;WBC.bossIdx=-1;WBC.qIdx=0;WBC.answered=[];WBC.comboCount=0;
@@ -425,8 +431,34 @@ function bootApp(){
   // bootApp() itself runs from both call sites. Stopped in doLogout() above.
   if (typeof SystemHealthService !== 'undefined') SystemHealthService.startPresenceHeartbeat();
   if(typeof restoreSidebarState==='function')restoreSidebarState();
-  if(currentRole==='admin'||currentRole==='teacher'){renderAdminDashboard();showPage('a-dashboard');}
-  else{renderStudentDashboard();showPage('s-dashboard');}
+
+  // SECURITY FIX: a browser refresh used to always fall through to the
+  // dashboard branch below — which, for a device left in Card Enrollment's
+  // Self-Service kiosk Lock Mode, meant reloading was a one-tap escape
+  // hatch onto the full admin/teacher shell (sidebar, every other page,
+  // all reachable again). This persisted flag takes priority over
+  // everything else in this function: if it's set, re-enter the locked
+  // kiosk screen directly and skip the dashboard/last-page logic below
+  // entirely. See enrollment-hub.js's _enrollRestoreLockedKioskOnBoot().
+  const kioskLockedOnDisk = (currentRole==='admin'||currentRole==='teacher') &&
+    typeof _enrollHasPersistedLock==='function' && _enrollHasPersistedLock();
+
+  if (kioskLockedOnDisk && typeof _enrollRestoreLockedKioskOnBoot==='function') {
+    _enrollRestoreLockedKioskOnBoot();
+  } else {
+    // BUGFIX: a reload otherwise always discarded whatever page you were
+    // actually on and bounced you back to the dashboard. Resume the last
+    // page visited (persisted by navTo() — see nav.js) when there's a
+    // usable one for this session's role; fall back to the dashboard
+    // exactly as before when there isn't (fresh login, nothing saved yet,
+    // or the saved id belonged to a different role).
+    const lastPage = (typeof getLastVisitedPage === 'function') ? getLastVisitedPage(currentRole) : null;
+    const dashId = (currentRole==='admin'||currentRole==='teacher') ? 'a-dashboard' : 's-dashboard';
+    if (lastPage && lastPage !== dashId && typeof navTo === 'function') {
+      navTo(lastPage);
+    } else if(currentRole==='admin'||currentRole==='teacher'){renderAdminDashboard();showPage('a-dashboard');}
+    else{renderStudentDashboard();showPage('s-dashboard');}
+  }
   // Show stage map button for students
   const btn = document.getElementById('stage-map-btn');
   if(btn) btn.style.display = currentRole==='student' ? 'flex' : 'none';

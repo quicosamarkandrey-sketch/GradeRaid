@@ -1638,7 +1638,7 @@ window.renderStudentSeating = function () {
   page.innerHTML = `
     <div style="padding:24px">
       <div style="font-family:var(--fh);font-size:22px;font-weight:900;margin-bottom:4px">🪑 My Seat</div>
-      <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px">${_esc(layout.name)} — ${_esc(classId)}</div>
+      <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px">${_esc(layout.name)} — ${_esc(typeof getClassLabel === 'function' ? getClassLabel(classId, state) : classId)}</div>
 
       ${myVm ? `
         <div class="glass-card" style="display:inline-flex;align-items:center;gap:16px;padding:20px 24px;margin-bottom:24px">
