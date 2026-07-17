@@ -65,19 +65,7 @@
       <div class="login-logo-text">EDUQUEST</div>
       <div class="login-logo-sub">⚔️ Gamified Classroom Experience</div>
     </div>
-    <div class="role-grid">
-      <div class="role-btn active" id="role-student" onclick="selectRole('student')">
-        <div class="role-icon">🎓</div>
-        <div class="role-name">Student</div>
-        <div class="role-hint">Quest mode</div>
-      </div>
-      <div class="role-btn" id="role-admin" onclick="selectRole('admin')">
-        <div class="role-icon">🛡️</div>
-        <div class="role-name">Teacher</div>
-        <div class="role-hint">Full control</div>
-      </div>
-    </div>
-    <div class="login-demo" id="demo-creds">
+    <div class="login-demo" id="demo-creds" style="margin-top:4px">
       <div id="demo-text">
         <b style="color:#d0bcff">Log in with your email and password.</b><br>
         <span style="font-size:12px;color:var(--text-muted)">New student? Register below to request an account.</span>
@@ -99,7 +87,7 @@
     <div id="login-err" style="color:#ffb4ab;font-size:13px;margin-bottom:10px;display:none">❌ Incorrect email or password.</div>
     <div id="login-pending-err" style="color:#ffb95f;font-size:13px;margin-bottom:10px;display:none;background:rgba(255,185,95,.08);border:1px solid rgba(255,185,95,.25);padding:10px 14px;border-radius:10px">⏳ Your account is awaiting approval from your teacher.</div>
     <button id="login-submit-btn" class="btn btn-primary btn-block" style="padding:13px;font-size:15px;position:relative;overflow:hidden" onclick="doLogin()">
-      Enter Quest →
+      Log In →
     </button>
     <div style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">
       New student? <a style="color:var(--primary);font-weight:700;cursor:pointer;text-decoration:none" onclick="showRegScreen()">Create an account →</a>
@@ -190,9 +178,9 @@
     </div>
     <nav class="sidebar-nav" id="sidebar-nav"></nav>
     <div class="sidebar-bottom">
-      <button id="sidebar-logout-btn" class="sidebar-logout" onclick="doLogout()">
+      <button id="sidebar-logout-btn" class="sidebar-logout" onclick="doLogout()" title="Sign Out">
         <span class="material-symbols-outlined">logout</span>
-        Sign Out
+        <span class="sidebar-logout-label">Sign Out</span>
       </button>
     </div>
   </div>

@@ -19,7 +19,12 @@
 //
 //  STATE SHAPE (slices populated by db-service.js → AppStore):
 //    draft.rfidCards            [{ id, tagId, studentId, isActive, assignedAt, revokedAt }]
-//    draft.attendanceSchedules  [{ id, classId, openTime, startTime, lateCutoff, closeTime, active }]
+//    draft.attendanceSchedules  [{ id, classId, dayOfWeek, openTime, startTime, lateCutoff,
+//                                   closeTime, active }]
+//      dayOfWeek (Phase 54): 0 = default/whole-week row, 1..7 = ISO-weekday
+//      (Mon..Sun) override — up to 8 rows per classId now, not exactly 1.
+//      Use AttendanceService.getEffectiveSchedule(classId) to resolve
+//      "which one applies today" instead of a raw .find(classId===...).
 //    draft.attendanceLogs       [{ id, studentId, classId, logDate, status, scannedAt,
 //                                   entryMethod, rfidTag, recordedBy, notes }]
 //    draft.students[i].classId  (added in Phase 1; defaults to 'default-class')
@@ -143,18 +148,28 @@ window.AttendanceService = (function () {
   }
 
   /**
-   * upsertSchedule(classId, { openTime, startTime, lateCutoff, closeTime }) → Promise<{ok, error?, schedule?}>
+   * upsertSchedule(classId, { openTime, startTime, lateCutoff, closeTime }, dayOfWeek?, dayOff?) → Promise<{ok, error?, schedule?}>
    * Times are 'HH:MM' or 'HH:MM:SS' strings (Postgres `time` accepts both).
+   * dayOfWeek (Phase 54): 0 (default, applies every day unless overridden —
+   * this is also the implicit value when omitted, so every pre-Phase-54
+   * call site keeps writing the whole-week row exactly as before) or 1..7
+   * (ISO weekday override, 1=Monday..7=Sunday).
+   * dayOff (Phase 55): true marks that weekday as having NO class at all —
+   * only valid alongside a real dayOfWeek (1..7), never the default. Prefer
+   * setDayOff() below for that case; this still accepts it directly for
+   * symmetry with the RPC.
    */
-  async function upsertSchedule(classId, times) {
+  async function upsertSchedule(classId, times, dayOfWeek, dayOff) {
     const { openTime, startTime, lateCutoff, closeTime } = times || {};
+    const dow = (dayOfWeek === undefined || dayOfWeek === null) ? 0 : dayOfWeek;
+    const isDayOff = !!dayOff;
     if (!classId || !openTime || !startTime || !lateCutoff || !closeTime) {
       return { ok: false, error: 'classId, openTime, startTime, lateCutoff, and closeTime are all required.' };
     }
 
     const { data, error } = await DBService.rpc('upsert_attendance_schedule', {
       p_class_id: classId, p_open_time: openTime, p_start_time: startTime,
-      p_late_cutoff: lateCutoff, p_close_time: closeTime,
+      p_late_cutoff: lateCutoff, p_close_time: closeTime, p_day_of_week: dow, p_day_off: isDayOff,
     });
     if (error) {
       console.error('[AttendanceService] upsertSchedule failed:', error);
@@ -163,16 +178,86 @@ window.AttendanceService = (function () {
 
     AppStore.updateState(draft => {
       if (!Array.isArray(draft.attendanceSchedules)) draft.attendanceSchedules = [];
-      const idx = draft.attendanceSchedules.findIndex(s => s.classId === classId);
+      const idx = draft.attendanceSchedules.findIndex(s => s.classId === classId && (s.dayOfWeek || 0) === dow);
       const row = {
-        id: data.id, classId: data.class_id, openTime: data.open_time,
-        startTime: data.start_time, lateCutoff: data.late_cutoff,
+        id: data.id, classId: data.class_id, dayOfWeek: data.day_of_week ?? dow, dayOff: !!data.day_off,
+        openTime: data.open_time, startTime: data.start_time, lateCutoff: data.late_cutoff,
         closeTime: data.close_time, active: data.active,
       };
       if (idx >= 0) draft.attendanceSchedules[idx] = row; else draft.attendanceSchedules.push(row);
-    }, { type: 'attendance:schedule-updated', payload: { classId } });
+    }, { type: 'attendance:schedule-updated', payload: { classId, dayOfWeek: dow, dayOff: isDayOff } });
 
     return { ok: true, schedule: data };
+  }
+
+  /**
+   * setDayOff(classId, dayOfWeek) → Promise<{ok, error?, schedule?}>
+   * Marks one weekday (1..7) as "no class at all" — distinct from simply
+   * not overriding it (which inherits the default schedule instead). The
+   * stored times are a placeholder (00:00 all the way through); nothing
+   * reads them once dayOff is true.
+   */
+  async function setDayOff(classId, dayOfWeek) {
+    if (!dayOfWeek || dayOfWeek < 1 || dayOfWeek > 7) {
+      return { ok: false, error: 'dayOfWeek must be between 1 (Monday) and 7 (Sunday).' };
+    }
+    return upsertSchedule(classId, { openTime: '00:00', startTime: '00:00', lateCutoff: '00:00', closeTime: '00:00' }, dayOfWeek, true);
+  }
+
+  /**
+   * clearScheduleOverride(classId, dayOfWeek) → Promise<{ok, error?, removed?}>
+   * Deletes ONE day's override row (dayOfWeek 1..7 only — the default row
+   * at 0 isn't a valid target) so that day falls back to the default
+   * schedule again. Section Maker calls this when a teacher turns a day's
+   * "different schedule" toggle back off.
+   */
+  async function clearScheduleOverride(classId, dayOfWeek) {
+    if (!classId) return { ok: false, error: 'classId is required.' };
+    if (!dayOfWeek || dayOfWeek < 1 || dayOfWeek > 7) {
+      return { ok: false, error: 'dayOfWeek must be between 1 (Monday) and 7 (Sunday).' };
+    }
+
+    const { data, error } = await DBService.rpc('clear_attendance_schedule_override', {
+      p_class_id: classId, p_day_of_week: dayOfWeek,
+    });
+    if (error) {
+      console.error('[AttendanceService] clearScheduleOverride failed:', error);
+      return { ok: false, error: error.message || 'Could not clear that day\'s override.' };
+    }
+
+    AppStore.updateState(draft => {
+      draft.attendanceSchedules = (draft.attendanceSchedules || [])
+        .filter(s => !(s.classId === classId && (s.dayOfWeek || 0) === dayOfWeek));
+    }, { type: 'attendance:schedule-override-cleared', payload: { classId, dayOfWeek } });
+
+    return { ok: true, removed: !!data };
+  }
+
+  /**
+   * getEffectiveSchedule(classId, opts) → schedule row | null
+   * "Which window applies on this date" — that weekday's override row if
+   * one exists and is active, else the default (dayOfWeek 0) row. Client-
+   * side mirror of get_effective_attendance_schedule() (Phase 54) so the
+   * kiosk countdown / Command Center don't need a round trip just to answer
+   * a question the draft already has everything needed for.
+   * opts: { date? } — a JS Date, defaults to right now (Asia/Manila).
+   */
+  function getEffectiveSchedule(classId, opts) {
+    opts = opts || {};
+    if (!classId) return null;
+    const all = AppStore.getSlice(s => s.attendanceSchedules) || [];
+    const mine = all.filter(s => s.classId === classId && s.active !== false);
+    if (!mine.length) return null;
+
+    const d = opts.date || new Date();
+    // ISO weekday in Asia/Manila (1=Monday..7=Sunday), matching Postgres'
+    // extract(isodow from date) used server-side.
+    const manilaDowLabel = d.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', weekday: 'short' });
+    const isoDow = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }[manilaDowLabel] || 1;
+
+    const override = mine.find(s => (s.dayOfWeek || 0) === isoDow);
+    if (override) return override;
+    return mine.find(s => (s.dayOfWeek || 0) === 0) || null;
   }
 
   /**
@@ -351,6 +436,8 @@ window.AttendanceService = (function () {
     assignCard,
     assignStudentToClass,
     upsertSchedule,
+    clearScheduleOverride,
+    getEffectiveSchedule,
     processScan,
     overrideAttendance,
     closeAttendanceSession,

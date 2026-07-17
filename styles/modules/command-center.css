@@ -1,211 +1,153 @@
 /* ══════════════════════════════════════════════════════════════════════
    styles/modules/command-center.css
-   Admin/Teacher Dashboard ("Command Center") — redesign per
-   EduQuest-Redesign-Proposal.md §6.4.
+   Teacher Command Center — full redesign (replaces the previous
+   analytics-heavy Command Center stylesheet this file overwrites).
 
-   Structure this file supports (see modules/admin/command-center.js):
-     1. Hero band        — class health snapshot
-     2. Attention queue   — primary focal element, "today's to-do list"
-     3. Live classroom pulse — compact real-time strip
-     4. Trend & analytics preview — lightweight, not full Analytics page
-     5. Shortcuts row     — fast paths into daily tools
-
-   Reuses base.css tokens (--primary, --secondary, --tertiary, --fh/--fb/--fm,
-   .page-hero, .glass-card, .stat-grid) rather than inventing a parallel
-   system — per proposal §3.1 "two registers, one system".
+   Reuses base.css tokens ONLY (--primary, --secondary, --tertiary, --error,
+   --surface, --border, --text-muted, --on-surface, --fh/--fb/--fm) — no new
+   colors invented. Professional/utility register per the redesign brief:
+   hairline borders, restrained motion, no gamified vocabulary or RPG-style
+   ornamentation (that register stays on the student side only).
    ══════════════════════════════════════════════════════════════════════ */
 
-/* ── Staggered entrance (proposal §6.5: cards animate in, not all at once) ── */
-.cc-in{opacity:0;animation:ccFadeUp .5s ease forwards}
-.cc-in:nth-child(1){animation-delay:.02s}
-.cc-in:nth-child(2){animation-delay:.08s}
-.cc-in:nth-child(3){animation-delay:.14s}
-.cc-in:nth-child(4){animation-delay:.20s}
-.cc-in:nth-child(5){animation-delay:.26s}
-@keyframes ccFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.cc-blink{animation:ccBlink 1s steps(1) infinite}
+@keyframes ccBlink{50%{opacity:.25}}
 
-/* ── Live dot (Ambient tier — echoes the World Boss topbar widget's
-      "always-on aliveness" pattern, per proposal §2.2 point 7) ── */
-.cc-live-dot{
-  width:7px;height:7px;border-radius:50%;flex-shrink:0;
-  background:var(--secondary);box-shadow:0 0 8px rgba(78,222,163,.7);
-  animation:ccLiveDot 1.6s ease-in-out infinite;
-}
-.cc-live-dot.warn{background:var(--tertiary);box-shadow:0 0 8px rgba(255,185,95,.7)}
-.cc-live-dot.danger{background:#ff6b81;box-shadow:0 0 8px rgba(255,107,129,.7)}
-@keyframes ccLiveDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.65)}}
+.cc-live-dot-sm{width:5px;height:5px;border-radius:50%;background:var(--secondary);
+  box-shadow:0 0 0 3px rgba(78,222,163,.15);display:inline-block}
 
-/* ── Hero band (class health) ──────────────────────────────────────────
-   Calmer / more SaaS-analytics register than the student hero, per §6.4.1 */
-.cc-hero-health{display:flex;gap:28px;margin-top:22px;flex-wrap:wrap}
-.cc-health-metric{min-width:120px}
-.cc-health-metric .cc-hm-val{font-family:var(--fm);font-size:26px;font-weight:900;line-height:1}
-.cc-health-metric .cc-hm-lbl{font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-top:5px}
-.cc-health-bar{background:rgba(255,255,255,.06);border-radius:20px;height:4px;width:100%;max-width:140px;overflow:hidden;margin-top:8px}
-.cc-health-bar > div{height:100%;border-radius:20px;transition:width .6s}
+/* ── HERO ─────────────────────────────────────────────────────────────── */
+.cc-hero{display:grid;grid-template-columns:1.15fr .85fr;gap:24px;
+  padding-bottom:32px;margin-bottom:36px;border-bottom:1px solid var(--border)}
+.cc-eyebrow{font-family:var(--fm);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--text-muted);font-weight:600;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.cc-hero-greeting h1{font-family:var(--fh);font-weight:900;font-size:32px;letter-spacing:-.01em;
+  margin:0 0 6px;color:var(--on-surface)}
+.cc-date-row{display:flex;align-items:baseline;gap:14px;color:var(--text-muted);font-size:14px;flex-wrap:wrap}
+.cc-clock{font-family:var(--fm);font-size:15px;color:var(--on-surface);letter-spacing:.02em;
+  padding:3px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface)}
 
-/* ── Attention queue — the primary focal element ─────────────────────── */
-.cc-attention-card{
-  background:var(--surface,rgba(35,31,56,.75));border:1px solid var(--border);border-radius:16px;
-  overflow:hidden;backdrop-filter:blur(12px);
-}
-.cc-attention-empty{padding:34px 20px;text-align:center;color:var(--text-muted)}
-.cc-attention-empty .cc-ae-icon{font-size:34px;margin-bottom:8px}
-.cc-attention-list{display:flex;flex-direction:column}
-.cc-attention-item{
-  display:flex;align-items:center;gap:14px;padding:14px 18px;
-  border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;transition:background .18s;
-}
-.cc-attention-item:last-child{border-bottom:none}
-.cc-attention-item:hover{background:rgba(255,255,255,.04)}
-.cc-attention-bar{width:3px;align-self:stretch;border-radius:3px;flex-shrink:0}
-.cc-attention-bar.danger{background:#ff6b81}
-.cc-attention-bar.warn{background:var(--tertiary)}
-.cc-attention-bar.info{background:var(--primary)}
-.cc-attention-icon{
-  width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;
-  font-size:17px;flex-shrink:0;background:rgba(255,255,255,.05);
-}
-.cc-attention-body{flex:1;min-width:0}
-.cc-attention-title{font-family:var(--fh);font-size:13.5px;font-weight:800;color:var(--on-surface)}
-.cc-attention-sub{font-size:11.5px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cc-attention-count{
-  font-family:var(--fm);font-size:13px;font-weight:900;padding:3px 11px;border-radius:20px;flex-shrink:0;
-}
-.cc-attention-count.danger{background:rgba(255,107,129,.15);color:#ff6b81}
-.cc-attention-count.warn{background:rgba(255,185,95,.15);color:var(--tertiary)}
-.cc-attention-count.info{background:rgba(208,188,255,.15);color:var(--primary)}
+.cc-quote-panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:22px 24px;display:flex;flex-direction:column;justify-content:center;gap:8px;
+  position:relative;overflow:hidden;backdrop-filter:blur(12px)}
+.cc-quote-panel::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(135deg,rgba(208,188,255,.06),transparent 55%)}
+.cc-quote-eyebrow{font-family:var(--fm);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--primary);font-weight:700;position:relative;z-index:1}
+.cc-quote-text{font-family:var(--fh);font-size:16.5px;line-height:1.55;color:var(--on-surface);
+  font-weight:600;margin:0;position:relative;z-index:1}
 
-/* ── Live classroom pulse strip — fixed 5-per-row grid, no page stretch ── */
-.cc-pulse-strip{
-  display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;
-}
-/* Cards beyond the first 5 live inside this wrapper. display:contents lets
-   them slot into the same grid as their siblings instead of nesting a new
-   row; toggling .cc-hidden hides the whole batch at once. */
-.cc-pulse-extra-wrap{display:contents}
-.cc-pulse-extra-wrap.cc-hidden{display:none}
-.cc-pulse-card{
-  min-width:0;background:rgba(35,31,56,.75);
-  border:1px solid var(--border);border-radius:14px;padding:14px 16px;backdrop-filter:blur(10px);
-}
-.cc-pulse-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
-.cc-pulse-head-label{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cc-pulse-title{font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface);margin-bottom:6px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cc-pulse-hpbar{background:rgba(255,255,255,.08);border-radius:20px;height:6px;overflow:hidden;margin:6px 0}
-.cc-pulse-hpbar > div{height:100%;border-radius:20px;background:linear-gradient(90deg,#ec4899,#f472b6);
-  box-shadow:0 0 8px rgba(236,72,153,.5);transition:width .6s}
-.cc-pulse-meta{display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-muted);font-family:var(--fm);gap:6px}
-.cc-pulse-meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cc-pulse-event{display:flex;flex-direction:column;gap:2px}
-.cc-pulse-event-what{font-size:12px;color:var(--on-surface);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-.cc-pulse-event-delta{font-family:var(--fh);font-weight:900;font-size:13px}
+/* ── SECTION HEADS ────────────────────────────────────────────────────── */
+.cc-section-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px}
+.cc-section-head h2{font-family:var(--fh);font-size:15px;font-weight:800;margin:0;color:var(--on-surface)}
+.cc-sub{font-size:12.5px;color:var(--text-muted)}
 
-/* "See more" toggle for pulse cards beyond the first row */
-.cc-pulse-more-btn{
-  display:flex;align-items:center;gap:6px;margin:12px auto 26px;padding:8px 18px;
-  border-radius:20px;border:1px solid var(--border);background:rgba(35,31,56,.7);
-  color:var(--text-muted);font-family:var(--fm);font-size:12px;font-weight:700;
-  cursor:pointer;transition:all .2s;
-}
-.cc-pulse-more-btn:hover{border-color:rgba(208,188,255,.3);color:var(--on-surface);background:rgba(35,31,56,.9)}
-.cc-pulse-more-btn .material-symbols-outlined{font-size:18px;transition:transform .2s}
+.cc-empty-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:32px 20px;text-align:center}
 
-/* ── Trend & analytics preview ────────────────────────────────────────── */
-.cc-trend-row{display:flex;justify-content:space-between;margin-bottom:5px;font-size:11px}
-.cc-trend-row .cc-trend-label{color:var(--text-muted)}
-.cc-trend-row .cc-trend-val{font-weight:700}
-.cc-trend-track{background:rgba(255,255,255,.05);border-radius:20px;height:6px;overflow:hidden;margin-bottom:12px}
-.cc-trend-track > div{height:100%;border-radius:20px;transition:width .6s}
-.cc-mini-lb-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}
-.cc-mini-lb-row:last-child{border-bottom:none}
-.cc-mini-lb-rank{font-family:var(--fm);font-size:11px;color:var(--text-muted);width:16px;flex-shrink:0}
-.cc-mini-lb-av{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-  font-family:var(--fh);font-weight:900;font-size:9.5px;border:1.5px solid;flex-shrink:0}
-.cc-mini-lb-name{font-size:12.5px;font-weight:700;color:var(--on-surface);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cc-mini-lb-xp{font-family:var(--fh);font-size:12px;font-weight:800;color:var(--primary)}
+/* ── TIMELINE ─────────────────────────────────────────────────────────── */
+.cc-timeline{position:relative;padding-left:24px}
+.cc-timeline::before{content:'';position:absolute;left:5px;top:6px;bottom:6px;width:1px;
+  background:linear-gradient(var(--border2,rgba(255,255,255,.13)),var(--border) 85%,transparent)}
 
-/* ── Shortcuts row ─────────────────────────────────────────────────────── */
-.cc-shortcut-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(126px,1fr));gap:12px}
-.cc-shortcut-card{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
-  padding:18px 10px;text-align:center;background:rgba(35,31,56,.7);border:1px solid var(--border);
-  border-radius:14px;cursor:pointer;transition:all .2s;
-}
-.cc-shortcut-card:hover{transform:translateY(-2px);border-color:rgba(208,188,255,.3);
-  box-shadow:0 8px 20px rgba(0,0,0,.3);background:rgba(35,31,56,.9)}
-.cc-shortcut-icon{font-size:22px}
-.cc-shortcut-label{font-size:11.5px;font-weight:700;color:var(--on-surface)}
+.cc-tl-card{position:relative;margin-bottom:12px;border-radius:14px;
+  border:1px solid var(--border);background:var(--surface);transition:transform .15s ease}
+.cc-tl-card::before{content:'';position:absolute;left:-24px;top:22px;width:7px;height:7px;border-radius:50%;
+  background:var(--text-muted);box-shadow:0 0 0 4px var(--bg)}
 
-/* ── Hero band extras: 3rd accent blob + illustration + icon chips ────── */
-.cc-hero{padding:40px 44px 36px;min-height:220px}
-.page-hero-bg3{position:absolute;top:30%;right:18%;width:160px;height:160px;
-  background:radial-gradient(circle,rgba(255,185,95,0.10) 0%,transparent 70%);
-  border-radius:50%;pointer-events:none}
+.cc-tl-row-top{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;gap:16px}
+.cc-tl-title .cc-tl-name{font-family:var(--fh);font-weight:800;font-size:14.5px;color:var(--on-surface)}
+.cc-tl-title .cc-tl-time{font-family:var(--fm);font-size:11.5px;color:var(--text-muted);margin-top:2px}
+.cc-status-tag{font-family:var(--fm);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  padding:4px 9px;border-radius:6px;border:1px solid var(--border);color:var(--text-muted);font-weight:700}
 
-.cc-hero-illust{position:absolute;top:6px;right:8px;width:300px;height:220px;
-  opacity:.9;pointer-events:none;z-index:0}
-.cc-hi-orb{fill:var(--primary)}
-.cc-hi-o2{fill:var(--secondary)}
-.cc-hi-o3{fill:var(--tertiary)}
-.cc-hi-o4{fill:var(--secondary)}
-.cc-hi-o5{fill:var(--tertiary)}
-.cc-hi-link{stroke:rgba(208,188,255,.25);stroke-width:1;fill:none}
-.cc-hi-o1{animation:ccOrbFloat 4.5s ease-in-out infinite}
-.cc-hi-o2{animation:ccOrbFloat 5.5s ease-in-out infinite .4s}
-.cc-hi-o3{animation:ccOrbFloat 3.8s ease-in-out infinite .8s}
-.cc-hi-o4{animation:ccOrbFloat 5s ease-in-out infinite .2s}
-.cc-hi-o5{animation:ccOrbFloat 4.2s ease-in-out infinite .6s}
-@keyframes ccOrbFloat{0%,100%{transform:translateY(0);opacity:.9}50%{transform:translateY(-7px);opacity:.5}}
-.cc-hi-cap{fill:none;stroke:var(--primary);stroke-width:3;stroke-linejoin:round;stroke-linecap:round;
-  animation:ccCapFloat 4s ease-in-out infinite}
-.cc-hi-cap path:nth-child(3){stroke:var(--secondary)}
-.cc-hi-tassel-tip{fill:var(--tertiary);stroke:none}
-@keyframes ccCapFloat{0%,100%{transform:translate(110px,60px)}50%{transform:translate(110px,52px)}}
-.cc-hi-sparkle{stroke:var(--tertiary);stroke-width:2;stroke-linecap:round;transform-origin:center;
-  animation:ccSparkleTwinkle 2.4s ease-in-out infinite}
-.cc-hi-s1{transform:translate(255,66)}
-.cc-hi-s2{animation-delay:.6s}
-.cc-hi-s3{animation-delay:1.2s;stroke:var(--secondary)}
-@keyframes ccSparkleTwinkle{0%,100%{opacity:.25;transform:scale(.7)}50%{opacity:1;transform:scale(1.15)}}
+/* finished */
+.cc-tl-finished{opacity:.6;filter:saturate(.6)}
+.cc-tl-finished::before{background:var(--secondary)}
+.cc-tl-checks{display:flex;gap:16px;padding:0 18px 14px;font-size:12px;color:var(--text-muted);flex-wrap:wrap}
+.cc-tl-checks span{display:flex;align-items:center;gap:6px}
+.cc-tl-checks .material-symbols-outlined{font-size:15px;color:var(--secondary)}
+.cc-tl-checks .cc-tl-check-off .material-symbols-outlined{color:var(--text-muted)}
 
-.cc-health-metric{display:flex;flex-direction:column;align-items:flex-start}
-.cc-hm-icon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
-.cc-hm-icon .material-symbols-outlined{font-size:18px}
+/* locked (no schedule configured) */
+.cc-tl-locked{opacity:.55}
+.cc-tl-locked::before{background:var(--text-muted)}
 
-/* ── Attention icon: severity-tinted chip instead of flat grey ─────────── */
-.cc-attention-icon.danger{background:rgba(255,107,129,.14)}
-.cc-attention-icon.warn{background:rgba(255,185,95,.14)}
-.cc-attention-icon.info{background:rgba(208,188,255,.14)}
-.cc-pulse-badge{animation:ccLiveDot 2s ease-in-out infinite}
+/* day off (Phase 55 — this weekday explicitly has no class) */
+.cc-tl-dayoff{opacity:.7;border-style:dashed}
+.cc-tl-dayoff::before{background:#ff8a8a}
+.cc-tl-dayoff .cc-tl-time{color:#ff8a8a}
 
-/* ── Pulse card color variants — replaces the one-grey-card-for-everything
-      look with mood per event type ── */
-.cc-pulse-boss{background:linear-gradient(160deg,rgba(236,72,153,.14),rgba(35,31,56,.85));
-  border-color:rgba(236,72,153,.3);box-shadow:0 0 24px rgba(236,72,153,.08)}
-.cc-pulse-dim{opacity:.75}
-.cc-pulse-good{background:linear-gradient(160deg,rgba(78,222,163,.08),rgba(35,31,56,.75));border-color:rgba(78,222,163,.22)}
-.cc-pulse-bad{background:linear-gradient(160deg,rgba(255,107,129,.08),rgba(35,31,56,.75));border-color:rgba(255,107,129,.22)}
+/* upcoming */
+.cc-tl-upcoming-meta{padding:0 18px 14px;font-size:12.5px;color:var(--text-muted)}
 
-/* ── Empty states get a small illustration, not just an emoji ──────────── */
-.cc-empty-illust{width:100px;height:84px;margin:0 auto 6px}
-.cc-trend-empty{text-align:center;padding:22px 10px;color:var(--text-muted);display:flex;flex-direction:column;align-items:center;gap:10px}
-.cc-trend-empty .btn{margin-top:2px}
+/* ongoing — signature card: conic-gradient border sweeps as the period elapses */
+.cc-tl-ongoing{border-color:transparent;
+  background:linear-gradient(var(--surface),var(--surface)) padding-box,
+    conic-gradient(from -90deg,var(--primary) calc(var(--p,0)*360deg),rgba(208,188,255,.14) 0) border-box;
+  border:1px solid transparent;transform:scale(1.012);
+  box-shadow:0 0 0 1px rgba(208,188,255,.10),0 16px 36px -18px rgba(208,188,255,.35);
+  margin:16px 0 24px}
+.cc-tl-ongoing::before{background:var(--primary);box-shadow:0 0 0 4px var(--bg),0 0 0 7px rgba(208,188,255,.25)}
+.cc-live-tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--fm);font-size:10px;
+  letter-spacing:.06em;text-transform:uppercase;color:#1A1030;background:var(--primary);font-weight:800;
+  padding:4px 9px 4px 7px;border-radius:6px}
+.cc-pulse-dot{width:6px;height:6px;border-radius:50%;background:#1A1030;animation:ccPulseDot 1.4s ease-in-out infinite}
+@keyframes ccPulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
 
-/* ── Responsive (proposal §4.7 / §6.7) ───────────────────────────────── */
-@media(max-width:1439px){
-  .cc-layout{grid-template-columns:1fr !important}
-  .cc-pulse-strip{grid-template-columns:repeat(4,minmax(0,1fr))}
-}
-@media(max-width:1100px){
-  .cc-pulse-strip{grid-template-columns:repeat(3,minmax(0,1fr))}
-}
-@media(max-width:767px){
-  .cc-hero-health{gap:16px}
-  .cc-shortcut-grid{grid-template-columns:repeat(3,1fr)}
-  .cc-pulse-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
-@media(max-width:480px){
-  .cc-pulse-strip{grid-template-columns:1fr}
-}
+.cc-tl-body{padding:0 18px 18px}
+.cc-metric-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.cc-metric{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:9px;padding:9px 12px}
+.cc-metric-num{font-family:var(--fm);font-size:19px;font-weight:800}
+.cc-metric-lbl{font-size:11px;color:var(--text-muted);margin-top:2px}
+.cc-metric-present .cc-metric-num{color:var(--secondary)}
+.cc-metric-late .cc-metric-num{color:var(--tertiary)}
+.cc-metric-absent .cc-metric-num{color:var(--error)}
+
+.cc-coverage-label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted);margin-bottom:6px}
+.cc-mono{font-family:var(--fm)}
+.cc-progress-track{height:6px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden;border:1px solid var(--border)}
+.cc-progress-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--primary),#e8dcff);transition:width .6s}
+.cc-progress-fill-rec{background:linear-gradient(90deg,var(--secondary),#60a5fa)}
+
+.cc-countdown-row{display:flex;align-items:center;justify-content:space-between;margin-top:14px;
+  padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)}
+.cc-countdown-val{font-size:14.5px;font-weight:800;color:var(--primary)}
+
+/* ── QUICK ACTIONS ────────────────────────────────────────────────────── */
+.cc-actions-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+@media(max-width:900px){.cc-actions-row{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:520px){.cc-actions-row{grid-template-columns:repeat(2,1fr)}}
+
+.cc-action-card{--glow:var(--primary);position:relative;padding:18px 14px;border-radius:14px;
+  background:rgba(255,255,255,.03);backdrop-filter:blur(14px);border:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:flex-start;gap:12px;cursor:pointer;text-align:left;
+  color:inherit;font-family:inherit;transition:transform .15s cubic-bezier(.16,1,.3,1),
+    border-color .15s cubic-bezier(.16,1,.3,1),box-shadow .15s cubic-bezier(.16,1,.3,1)}
+.cc-action-card:hover{transform:translateY(-4px);border-color:var(--glow);
+  box-shadow:0 14px 28px -14px var(--glow),0 0 0 1px var(--glow)}
+.cc-action-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  background:color-mix(in srgb,var(--glow) 16%,transparent);border:1px solid color-mix(in srgb,var(--glow) 30%,transparent)}
+.cc-action-icon .material-symbols-outlined{color:var(--glow);font-size:19px}
+.cc-action-label{font-size:13px;font-weight:800;font-family:var(--fh);color:var(--on-surface)}
+.cc-action-sub{font-size:11px;color:var(--text-muted);margin-top:-6px}
+
+/* ── RECITATION PROGRESS PANEL ────────────────────────────────────────── */
+.cc-recitation-list{display:flex;flex-direction:column;gap:1px;background:var(--border);
+  border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.cc-rec-row{background:var(--surface);padding:15px 18px;display:grid;
+  grid-template-columns:1.2fr 1.6fr .7fr .7fr;gap:18px;align-items:center;transition:background .15s}
+.cc-rec-row:hover{background:rgba(255,255,255,.03)}
+@media(max-width:760px){.cc-rec-row{grid-template-columns:1fr;gap:10px}}
+
+.cc-rec-section{font-family:var(--fh);font-weight:800;font-size:13.5px;color:var(--on-surface)}
+.cc-rec-meta{font-size:11.5px;color:var(--text-muted);margin-top:2px}
+.cc-rec-bar-label{display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:6px}
+.cc-rec-remaining{font-family:var(--fm);font-size:18px;font-weight:800}
+.cc-rec-sublbl{display:block;font-family:var(--fb);font-size:10.5px;font-weight:400;color:var(--text-muted);margin-top:2px}
+.cc-rem-zero{color:var(--secondary)}
+.cc-rem-low{color:var(--tertiary)}
+.cc-rec-score{font-family:var(--fm);font-size:18px;font-weight:800;color:var(--on-surface)}
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media(max-width:820px){.cc-hero{grid-template-columns:1fr}}

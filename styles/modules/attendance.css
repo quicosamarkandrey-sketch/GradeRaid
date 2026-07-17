@@ -32,30 +32,46 @@
 
 /* ══════════════════════════════════════════════════════════════
    PHASE 4 — FULL-SCREEN ATTENDANCE KIOSK (Device 1)
-   Headless, distraction-free scan station. Activated by toggling
-   body.rfid-kiosk-mode (see att_scanner_rfid.js render/unmount) — this
-   hides the app shell (topbar + sidebar) ONLY while the kiosk page is
-   mounted, and is fully reverted on unmount so every other page in the
-   app is completely unaffected.
+   Headless, distraction-free scan station. Defaults to a normal
+   embedded page (sidebar + topbar visible) — body.rfid-kiosk-mode is
+   now an OPT-IN toggle (⛶ Fullscreen button, see
+   window._rfidToggleKioskMode() in att_scanner_rfid.js) rather than
+   applied automatically on mount, mirroring live_monitor.js's
+   lm-kiosk-mode pattern. Fully reverted on toggle-off or unmount so
+   no other page in the app is ever affected.
 ══════════════════════════════════════════════════════════════ */
 
-/* Strip the shell chrome — scoped to the body class so nothing else in
-   the app ever sees this rule. */
+/* Always edge-to-edge within #main-content, kiosk mode or not — same
+   convention as #a-classroom-monitor in live_monitor.js. */
+#a-scanner.page{padding:0!important;max-width:100%!important;overflow:hidden}
+
+/* Strip the shell chrome — ONLY once fullscreen is toggled on. Scoped to
+   the body class so nothing else in the app ever sees this rule. */
 body.rfid-kiosk-mode #topbar,
 body.rfid-kiosk-mode #sidebar{display:none!important}
 body.rfid-kiosk-mode #main-content{margin-left:0!important;padding-top:0!important}
 body.rfid-kiosk-mode #a-scanner.page{
-  padding:0!important;max-width:100%!important;margin:0!important;
+  position:fixed!important;inset:0!important;z-index:50;margin:0!important;
 }
+body.rfid-kiosk-mode .kiosk-page{height:100vh!important}
 
 .kiosk-page{
-  position:fixed;inset:0;z-index:5;
-  display:flex;flex-direction:column;height:100vh;overflow:hidden;
+  position:relative;
+  height:calc(100vh - 64px);
+  display:flex;flex-direction:column;overflow:hidden;
   background:
     radial-gradient(circle at 15% 10%, rgba(139,92,246,.08), transparent 55%),
     radial-gradient(circle at 85% 90%, rgba(78,222,163,.06), transparent 55%),
     var(--bg,#0f0e1a);
 }
+
+.kiosk-fullscreen-btn{
+  background:rgba(35,31,56,.75);border:1px solid var(--border);color:var(--text-muted);
+  border-radius:9px;padding:0 12px;height:30px;font-weight:800;font-size:11px;cursor:pointer;
+  transition:all .15s;display:flex;align-items:center;gap:5px;
+}
+.kiosk-fullscreen-btn:hover{color:var(--on-surface);border-color:var(--border2)}
+.kiosk-fullscreen-btn.active{color:#d0bcff;border-color:rgba(208,188,255,.4);background:rgba(139,92,246,.12)}
 
 /* Minimal top strip — just enough to operate the device, never a full
    admin header. Fades to near-invisible until hovered so it doesn't

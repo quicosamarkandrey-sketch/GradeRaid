@@ -26,10 +26,26 @@
   --glow-secondary:0 0 16px rgba(78,222,163,0.25);
   --glow-gold:0 0 16px rgba(255,185,95,0.25);
   --sidebar-w:256px;
+  --sidebar-w-collapsed:76px;
   --fh:'Nunito Sans',sans-serif;
   --fb:'Space Grotesk',sans-serif;
   --fm:'Orbitron',monospace;
 }
+
+/* ── SCROLLBARS (custom, hidden until hovered) ──
+   Applies to the whole page and any scrollable container (e.g. .sidebar-nav).
+   Firefox: scrollbar-color is transparent by default, colored on hover of
+   the scrolling element itself. Chrome/Safari/Edge: ::-webkit-scrollbar-thumb
+   is transparent by default, colored when the element (or the thumb itself)
+   is hovered. */
+*{scrollbar-width:thin;scrollbar-color:transparent transparent}
+*:hover{scrollbar-color:rgba(208,188,255,0.35) transparent}
+*::-webkit-scrollbar{width:8px;height:8px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{background:transparent;border-radius:20px}
+*:hover::-webkit-scrollbar-thumb{background:rgba(208,188,255,0.35)}
+*::-webkit-scrollbar-thumb:hover{background:rgba(208,188,255,0.6)}
+*::-webkit-scrollbar-corner{background:transparent}
 
 html,body{height:100%;-webkit-font-smoothing:antialiased}
 body{
@@ -126,12 +142,37 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
 #main-content{margin-left:var(--sidebar-w);padding-top:64px;min-height:100vh;position:relative;z-index:1;
   transition:margin-left .3s cubic-bezier(.4,0,.2,1)}
 
-/* ── SIDEBAR COLLAPSE (desktop push style) ──
+/* ── SIDEBAR COLLAPSE (desktop icon-only rail) ──
    #main-app.sidebar-collapsed is toggled by toggleSidebar() in topbar.js.
-   Scoped to >1024px so it never fights the mobile overlay drawer rules below. */
+   Scoped to >1024px so it never fights the mobile overlay drawer rules below.
+   Collapsed state narrows the sidebar to an icon rail instead of sliding it
+   fully off-screen — icons stay visible/clickable, only labels hide.
+   Note: setupSidebar() (nav.js) sets some of these same properties (gap,
+   padding, text-align) as inline styles on each .nav-btn, which otherwise
+   beat any external stylesheet rule — hence !important on those overrides. */
+#sidebar{transition:transform .3s cubic-bezier(.4,0,.2,1),width .3s cubic-bezier(.4,0,.2,1)}
 @media(min-width:1025px){
-  #main-app.sidebar-collapsed #sidebar{transform:translateX(-100%)}
-  #main-app.sidebar-collapsed #main-content{margin-left:0}
+  #main-app.sidebar-collapsed #sidebar{width:var(--sidebar-w-collapsed)}
+  #main-app.sidebar-collapsed #main-content{margin-left:var(--sidebar-w-collapsed)}
+
+  #main-app.sidebar-collapsed .sidebar-player{padding:20px 0 16px}
+  #main-app.sidebar-collapsed .sidebar-player-row{justify-content:center;margin-bottom:0}
+  #main-app.sidebar-collapsed .sidebar-player-row>div:not(.sidebar-avatar){display:none}
+  #main-app.sidebar-collapsed .xp-bar-wrap,
+  #main-app.sidebar-collapsed .xp-bar-labels{display:none}
+
+  #main-app.sidebar-collapsed .sidebar-nav{padding:8px 6px}
+  #main-app.sidebar-collapsed .sidebar-nav a,
+  #main-app.sidebar-collapsed .sidebar-nav button{
+    justify-content:center;padding:12px 0 !important;gap:0 !important;
+  }
+  #main-app.sidebar-collapsed .nav-label,
+  #main-app.sidebar-collapsed .nav-badge,
+  #main-app.sidebar-collapsed .nav-group-label{display:none}
+
+  #main-app.sidebar-collapsed .sidebar-bottom{padding:16px 8px}
+  #main-app.sidebar-collapsed .sidebar-logout{justify-content:center;gap:0}
+  #main-app.sidebar-collapsed .sidebar-logout-label{display:none}
 }
 .page{display:none;padding:32px;max-width:1200px;margin:0 auto}
 .page.active{display:block}
@@ -1400,15 +1441,6 @@ textarea{resize:vertical}
   background:linear-gradient(135deg,#d0bcff,#8b5cf6,#4edea3);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .login-logo-sub{color:var(--text-muted);font-size:13px;margin-top:8px;font-family:var(--fb)}
-.role-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:22px}
-.role-btn{padding:16px 12px;border-radius:14px;border:2px solid var(--border2);
-  background:rgba(255,255,255,.03);text-align:center;cursor:pointer;transition:all .22s}
-.role-btn:hover{border-color:rgba(208,188,255,0.4);background:rgba(208,188,255,0.06)}
-.role-btn.active{border-color:var(--primary-dark);background:rgba(139,92,246,.12);
-  box-shadow:0 0 0 1px rgba(208,188,255,.2)}
-.role-icon{font-size:28px;margin-bottom:7px}
-.role-name{font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface)}
-.role-hint{font-size:11px;color:var(--text-muted);margin-top:3px}
 .login-demo{background:rgba(208,188,255,.06);border:1px solid rgba(208,188,255,.14);
   border-radius:10px;padding:11px 14px;font-size:12px;color:var(--text-muted);margin-bottom:18px;line-height:1.8}
 .login-demo span{color:#d0bcff;font-weight:700}

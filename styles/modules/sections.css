@@ -59,6 +59,46 @@
 .bp-muted{background:rgba(240,238,255,.08);color:var(--text-muted);border:1px solid var(--border)}
 
 /* ══════════════════════════════════════════════════════════════
+   WEEKLY SCHEDULE EDITOR — Phase 54 (create/edit modal, per-day
+   attendance-schedule overrides below the whole-week default).
+══════════════════════════════════════════════════════════════ */
+.sec-sched-day-row{
+  background:rgba(255,255,255,.02);border:1px solid var(--border);
+  border-radius:10px;padding:10px 12px;transition:border-color .15s;
+}
+.sec-sched-day-row:has(.sec-sched-day-fields[style*="grid"]){border-color:rgba(208,188,255,.3)}
+.sec-sched-day-row-off{background:rgba(255,110,110,.06);border-color:rgba(255,110,110,.3)}
+
+.sec-sched-day-toprow{
+  display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:8px;
+}
+.sec-sched-day-toggle{
+  display:flex;align-items:center;gap:8px;cursor:pointer;
+  font-size:13px;font-weight:700;color:var(--on-surface);user-select:none;
+}
+.sec-sched-day-toggle input[type="checkbox"]:disabled{cursor:not-allowed;opacity:.4}
+.sec-sched-day-name{min-width:78px}
+.sec-sched-day-hint{
+  font-size:11px;font-weight:600;color:var(--text-muted);
+  font-style:italic;
+}
+.sec-sched-day-off-toggle{
+  font-size:12px;font-weight:700;color:#ff8a8a;
+}
+.sec-sched-day-off-note{
+  font-size:11px;color:#ff8a8a;font-style:italic;
+  margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,110,110,.3);
+}
+
+.sec-sched-day-fields{
+  grid-template-columns:repeat(4,1fr);gap:8px;
+  margin-top:10px;padding-top:10px;border-top:1px dashed var(--border2);
+}
+.sec-sched-day-fields .form-label{font-size:10px}
+.sec-sched-day-fields input[type="time"]{width:100%}
+
+/* ══════════════════════════════════════════════════════════════
    ROSTER VIEWER — Phase 49 ("👥 Roster" action, opens in the 'xl'
    modal so a full class fits comfortably as a photo grid.)
 ══════════════════════════════════════════════════════════════ */

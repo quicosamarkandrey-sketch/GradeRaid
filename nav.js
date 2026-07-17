@@ -97,16 +97,19 @@ function setupSidebar(){
     const cfg = t._cfg || {};
     const isGroup = t._group;
     if (isGroup) {
-      return `<div style="padding:8px 14px 4px;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:rgba(240,238,255,.3);margin-top:6px">${t.label}</div>`;
+      return `<div class="nav-group-label" style="padding:8px 14px 4px;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:rgba(240,238,255,.3);margin-top:6px">${t.label}</div>`;
     }
     // Status badge logic
     let badge = '';
-    if (cfg.status === 'coming_soon') badge = `<span style="margin-left:auto;font-size:8px;padding:2px 6px;background:rgba(255,185,95,.15);border:1px solid rgba(255,185,95,.3);color:#ffb95f;border-radius:6px;font-weight:800;letter-spacing:.04em">SOON</span>`;
-    else if (cfg.status === 'event_only') badge = `<span style="margin-left:auto;font-size:8px;padding:2px 6px;background:rgba(236,72,153,.15);border:1px solid rgba(236,72,153,.3);color:#EC4899;border-radius:6px;font-weight:800;letter-spacing:.04em">EVENT</span>`;
-    else if (cfg.locked) badge = `<span class="material-symbols-outlined" style="margin-left:auto;font-size:14px;color:rgba(240,238,255,.3)">lock</span>`;
-    return `<button class="nav-btn" id="nav-${t.id}" onclick="navTo('${t.id}')" ${(cfg.locked||cfg.status==='coming_soon'||cfg.disabled)?'disabled':''} style="${(cfg.locked||cfg.status==='coming_soon'||cfg.disabled)?'opacity:0.5;cursor:not-allowed;pointer-events:none':''}">${
+    if (cfg.status === 'coming_soon') badge = `<span class="nav-badge" style="margin-left:auto;font-size:8px;padding:2px 6px;background:rgba(255,185,95,.15);border:1px solid rgba(255,185,95,.3);color:#ffb95f;border-radius:6px;font-weight:800;letter-spacing:.04em">SOON</span>`;
+    else if (cfg.status === 'event_only') badge = `<span class="nav-badge" style="margin-left:auto;font-size:8px;padding:2px 6px;background:rgba(236,72,153,.15);border:1px solid rgba(236,72,153,.3);color:#EC4899;border-radius:6px;font-weight:800;letter-spacing:.04em">EVENT</span>`;
+    else if (cfg.locked) badge = `<span class="material-symbols-outlined nav-badge" style="margin-left:auto;font-size:14px;color:rgba(240,238,255,.3)">lock</span>`;
+    // title attr gives a native hover tooltip with the page name — needed once
+    // the collapsed icon-only rail (see #main-app.sidebar-collapsed in base.css)
+    // hides the .nav-label text.
+    return `<button class="nav-btn" id="nav-${t.id}" onclick="navTo('${t.id}')" title="${t.label}" ${(cfg.locked||cfg.status==='coming_soon'||cfg.disabled)?'disabled':''} style="${(cfg.locked||cfg.status==='coming_soon'||cfg.disabled)?'opacity:0.5;cursor:not-allowed;pointer-events:none':''}">${
       t.icon ? `<span class="material-symbols-outlined">${t.icon}</span>` : ''
-    }${t.label}${badge}</button>`;
+    }<span class="nav-label">${t.label}</span>${badge}</button>`;
   }).join('');
 
   document.querySelectorAll('.nav-btn').forEach(b=>{
@@ -160,6 +163,8 @@ function navTo(id){
   if(id!=='a-enrollment'&&typeof unmountEnrollmentHub==='function'){ unmountEnrollmentHub(); }
   if(id!=='a-content-oversight'&&typeof unmountContentOversight==='function'){ unmountContentOversight(); }
   if(id!=='a-class-logs'&&typeof unmountRecitationAttendanceLog==='function'){ unmountRecitationAttendanceLog(); }
+  // Stop the Command Center's 1s clock/countdown interval when leaving the dashboard
+  if(id!=='a-dashboard'&&typeof unmountCommandCenter==='function'){ unmountCommandCenter(); }
   document.querySelectorAll('.nav-btn').forEach(b=>{
     b.classList.remove('active');
     b.style.background='none';b.style.color='var(--text-muted)';b.style.transform='none';

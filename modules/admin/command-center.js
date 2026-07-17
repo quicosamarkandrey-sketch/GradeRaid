@@ -1,41 +1,139 @@
 // ══════════════════════════════════════════════════════════════════════════
 //  EduQuest — modules/admin/command-center.js
-//  Admin/Teacher "Command Center" dashboard (a-dashboard) redesign.
-//  See EduQuest-Redesign-Proposal.md §6.4 for the full spec this implements:
-//    1. Hero band                — class health snapshot
-//    2. Attention queue          — PRIMARY focal element, "what needs you today"
-//    3. Live classroom pulse     — compact real-time strip
-//    4. Trend & analytics preview — lightweight teaser, links out to full Analytics
-//    5. Shortcuts row            — fast paths into daily tools
+//  Teacher Command Center (a-dashboard) — full redesign per
+//  "Teacher Command Center" brief (replaces the previous analytics-heavy
+//  Command Center redesign: hero health snapshot / attention queue / live
+//  pulse / trends preview / shortcuts are all removed).
 //
-//  ROLE SCOPING: no manual filtering happens in this file. DB.students and
-//  DB.registrations already arrive pre-scoped per role from Supabase
-//  (profiles_select_scoped has no per-teacher filter for role='admin', but
-//  DOES filter for role='teacher' — see analytics.js header for the same
-//  note). So a teacher's DB.students/DB.registrations already contain only
-//  their own section; an admin's contain everyone. This file just presents
-//  whatever's in DB, with copy/framing that differs by currentRole.
+//  Sections (in order):
+//    1. Hero            — greeting, live clock, one motivational line
+//    2. Today's Schedule — per-section attendance-window timeline
+//    3. Quick Actions    — fixed 6-shortcut command bar
+//    4. Recitation Progress — students called vs. roster, per section
 //
-//  DATA GAPS (flagged per user request rather than faked):
-//    - No live "students online now" presence system exists yet, so the
-//      Live Pulse section shows the Recent Events feed + active World Boss
-//      state instead of a presence count. A real presence feature would need
-//      its own realtime channel — out of scope here.
-//    - No daily/historical snapshot table exists, so "trend" here means
-//      "current distribution" (point-category breakdown, top performers),
-//      not "change since yesterday". A real trend chart needs a daily
-//      rollup RPC (same shape as the sync-audit report's existing
-//      sync_student_derived_stats work) — flagging as a future Chunk.
+//  ROLE SCOPING: a teacher (currentRole==='teacher') only sees sections they
+//  advise (SectionService.listSections() filtered by adviserId). An admin
+//  sees every non-archived section school-wide, same "every section, every
+//  teacher" scope the previous dashboard used.
+//
+//  DATA GAPS (flagged per team convention — see the file this replaces —
+//  rather than faked):
+//    - No lesson/topic "discussion coverage" table exists anywhere in the
+//      schema. Rather than invent a number with nothing behind it, the
+//      ongoing card's coverage bar reuses the SAME "students called today
+//      ÷ roster size" figure that drives the Recitation Progress panel
+//      below — real data, just relabeled "Recitation coverage" instead of
+//      a fabricated lesson-coverage metric.
+//    - "Avg. Points" in the Recitation Progress panel is recitation_log's
+//      `pts` field (RecitationService), averaged per student called today —
+//      the app has no separate 1–10 rubric score, so this is the actual
+//      number the app tracks, not a re-derived proxy for something else.
+//    - Attendance "Present" bucket below folds together 'Present', 'Early',
+//      'On Time', and 'Excused' — the brief only asks for three buckets
+//      (Present/Late/Absent). Only 'Late' and 'Absent' are broken out.
 // ══════════════════════════════════════════════════════════════════════════
 
-// ── Category list — must match the <select id="aw-cat"> options in
-//    openAwardPoints() (student-manager.js) since that's the only place
-//    pointLog.what strings originate from for teacher-awarded points. ──
-const _CC_AWARD_CATEGORIES = ['Recitation', 'Attendance', 'Quiz Performance', 'Good Behavior', 'Project', 'Homework', 'Classroom Role', 'Custom'];
+// ── Time helpers — all comparisons happen in Asia/Manila local time (same
+//    timezone convention as isoDate() in utils.js), never the browser's own
+//    timezone, since attendance_schedules times are entered by PH-based
+//    staff and mean nothing without a fixed reference zone. ──
+function _ccNowHMS() {
+  return new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour12: false }); // "HH:MM:SS"
+}
+function _ccHmsToSec(hms) {
+  if (!hms) return null;
+  const parts = String(hms).split(':').map(n => parseInt(n, 10));
+  return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+}
+function _ccNowSec() { return _ccHmsToSec(_ccNowHMS()); }
+function _ccFmtClockLabel(hms) {
+  // 'HH:MM:SS' -> '8:05 AM'
+  const [h, m] = String(hms).split(':').map(n => parseInt(n, 10));
+  const ap = h >= 12 ? 'PM' : 'AM';
+  const h12 = (h % 12) || 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${ap}`;
+}
+function _ccFmtDuration(totalSec) {
+  totalSec = Math.max(0, Math.round(totalSec));
+  const h = Math.floor(totalSec / 3600), m = Math.floor((totalSec % 3600) / 60), s = totalSec % 60;
+  return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+// Manila calendar date, 'YYYY-MM-DD' — matches isoDate() in utils.js.
+function _ccTodayISO() {
+  return (typeof isoDate === 'function') ? isoDate() : new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+}
+function _ccIsToday(iso8601) {
+  if (!iso8601) return false;
+  const d = new Date(iso8601).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  return d === _ccTodayISO();
+}
 
-function _ccCategoryOf(what) {
-  const hit = _CC_AWARD_CATEGORIES.find(c => what.indexOf(c) === 0);
-  return hit || 'Other';
+// ── Motivational line — one per day, no reroll/mode controls (per sign-off).
+//    Static local pool, not a service call — there is no motivational-quote
+//    table in the schema, so this stays a plain client-side array rather
+//    than pretending to be backend content. ──
+const _CC_QUOTES = [
+  'Consistency compounds. A calm classroom is built one well-run period at a time.',
+  'Clear expectations remove more friction than any amount of enthusiasm.',
+  'The best lesson plan is the one you can adjust without losing the room.',
+  'Attendance is data. Attention is the thing you are actually measuring.',
+  'Small, repeated feedback moves a section further than one big correction.',
+  'A quiet transition between activities saves more time than a faster lecture.',
+  'Model the pace you want the room to keep.',
+];
+function _ccDayOfYear(d) {
+  const start = new Date(d.getFullYear(), 0, 0);
+  return Math.floor((d - start) / 86400000);
+}
+function _ccTodaysQuote() {
+  return _CC_QUOTES[_ccDayOfYear(new Date()) % _CC_QUOTES.length];
+}
+
+// ── Section scoping — mirrors getMySectionsLabel()'s ownership rule exactly. ──
+function _ccMySections(isAdmin) {
+  const all = (typeof SectionService !== 'undefined') ? SectionService.listSections({ includeArchived: false }) : [];
+  const uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : null;
+  const mine = isAdmin ? all : all.filter(s => uid && s.adviserId === uid);
+  return mine.slice().sort((a, b) => {
+    const schedA = _ccScheduleFor(a.id), schedB = _ccScheduleFor(b.id);
+    const tA = (schedA && !schedA.dayOff) ? _ccHmsToSec(schedA.startTime) : Infinity;
+    const tB = (schedB && !schedB.dayOff) ? _ccHmsToSec(schedB.startTime) : Infinity;
+    if (tA !== tB) return tA - tB;
+    return String(a.gradeLevel).localeCompare(String(b.gradeLevel), undefined, { numeric: true })
+      || String(a.sectionName).localeCompare(String(b.sectionName));
+  });
+}
+function _ccScheduleFor(classId) {
+  // Phase 54: a section can have per-weekday overrides now — resolve
+  // TODAY's actual window (see AttendanceService.getEffectiveSchedule)
+  // instead of grabbing whatever single row used to be the only one.
+  if (typeof AttendanceService !== 'undefined' && AttendanceService.getEffectiveSchedule) {
+    return AttendanceService.getEffectiveSchedule(classId);
+  }
+  return (DB.attendanceSchedules || []).find(s => s.classId === classId && (s.dayOfWeek || 0) === 0 && s.active !== false) || null;
+}
+function _ccSectionLabel(section) {
+  return `Grade ${section.gradeLevel} – ${section.sectionName}`;
+}
+function _ccRosterFor(classId) {
+  return (DB.students || []).filter(s => (s.classId || 'default-class') === classId);
+}
+function _ccRecitationCalledToday(classId) {
+  const entries = (DB.recitationLog || []).filter(r => r.classId === classId && _ccIsToday(r.createdAt));
+  const byStudent = {};
+  entries.forEach(r => { byStudent[r.studentId] = (byStudent[r.studentId] || 0) + (r.pts || 0); });
+  return byStudent; // { studentId: totalPtsToday }
+}
+function _ccAttendanceCountsToday(classId) {
+  const today = _ccTodayISO();
+  const logs = (DB.attendanceLogs || []).filter(l => l.classId === classId && l.logDate === today);
+  let present = 0, late = 0, absent = 0;
+  logs.forEach(l => {
+    if (l.status === 'Late') late++;
+    else if (l.status === 'Absent') absent++;
+    else present++; // Present / Early / On Time / Excused
+  });
+  return { present, late, absent, hasAny: logs.length > 0 };
 }
 
 window.renderAdminDashboard = function () {
@@ -43,336 +141,262 @@ window.renderAdminDashboard = function () {
   if (!el) return;
 
   const isAdmin = currentRole === 'admin';
-  const students = DB.students || [];
-  const total = students.length;
-  const avgAttendance = total ? Math.round(students.reduce((a, s) => a + (s.attendance || 0), 0) / total) : 0;
-  const avgQuiz = total ? Math.round(students.reduce((a, s) => a + (s.quizAvg || 0), 0) / total) : 0;
-  const avgXP = total ? Math.round(students.reduce((a, s) => a + (s.xp || 0), 0) / total) : 0;
-
-  const scopeLabel = typeof getMySectionsLabel === 'function' ? getMySectionsLabel() : 'All Sections';
-  const heroLabel = isAdmin ? '🏫 School-Wide Command Center' : '🛡️ Command Center';
-  const heroDesc = isAdmin ? 'Every section, every teacher' : 'Your classroom, live';
+  const sections = _ccMySections(isAdmin);
 
   el.innerHTML = `
-  ${_ccHeroHTML(heroLabel, heroDesc, scopeLabel, total, avgAttendance, avgQuiz, avgXP)}
-  <div class="cc-layout" style="display:grid;grid-template-columns:1.6fr 1fr;gap:22px;align-items:start">
-    <div>
-      ${_ccAttentionHTML(isAdmin)}
-      ${_ccPulseHTML()}
-      ${_ccTrendHTML(students)}
+  ${_ccHeroHTML()}
+  <div class="section">
+    <div class="cc-section-head">
+      <h2>Today's Schedule</h2>
+      <span class="cc-sub">${sections.length} section${sections.length === 1 ? '' : 's'} · updates live</span>
     </div>
-    ${_ccShortcutsHTML(isAdmin)}
+    ${_ccScheduleHTML(sections)}
+  </div>
+  <div class="section">
+    <div class="cc-section-head">
+      <h2>Quick Actions</h2>
+      <span class="cc-sub">Jump straight into a workflow</span>
+    </div>
+    ${_ccQuickActionsHTML()}
+  </div>
+  <div class="section">
+    <div class="cc-section-head">
+      <h2>Recitation Progress</h2>
+      <span class="cc-sub">Students called vs. class capacity</span>
+    </div>
+    ${_ccRecitationPanelHTML(sections)}
   </div>`;
+
+  _ccStartTicking();
 };
 
-// ── HERO ILLUSTRATION — small original line-art moment reserved for this
-//    hero surface only (proposal §4.6). A floating grad-cap + constellation
-//    of orbiting dots/sparkles, built from plain SVG shapes (no copyrighted
-//    art/characters), colored from the existing token palette so it reads
-//    as "part of EduQuest" rather than a bolted-on stock graphic. ──
-function _ccHeroIllustrationSVG() {
-  return `
-  <svg class="cc-hero-illust" viewBox="0 0 300 220" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-    <circle class="cc-hi-orb cc-hi-o1" cx="46" cy="34" r="3.4"/>
-    <circle class="cc-hi-orb cc-hi-o2" cx="230" cy="26" r="2.6"/>
-    <circle class="cc-hi-orb cc-hi-o3" cx="264" cy="118" r="2.2"/>
-    <circle class="cc-hi-orb cc-hi-o4" cx="26" cy="150" r="2.6"/>
-    <circle class="cc-hi-orb cc-hi-o5" cx="150" cy="18" r="2"/>
-    <path class="cc-hi-link" d="M46 34 L150 18 L230 26"/>
-    <path class="cc-hi-link" d="M26 150 L46 34"/>
-    <g class="cc-hi-cap" transform="translate(110,60)">
-      <path d="M50 0 L100 22 L50 44 L0 22 Z"/>
-      <path d="M50 44 L50 66"/>
-      <path d="M26 32 L26 54 C26 62 74 62 74 54 L74 32"/>
-      <circle class="cc-hi-tassel-tip" cx="96" cy="22" r="3.2"/>
-      <path d="M96 22 L96 60"/>
-    </g>
-    <g class="cc-hi-sparkle cc-hi-s1"><path d="M0 -9 L0 9 M-9 0 L9 0"/></g>
-    <g class="cc-hi-sparkle cc-hi-s2" transform="translate(205,150)"><path d="M0 -7 L0 7 M-7 0 L7 0"/></g>
-    <g class="cc-hi-sparkle cc-hi-s3" transform="translate(55,95)"><path d="M0 -6 L0 6 M-6 0 L6 0"/></g>
-  </svg>`;
+/**
+ * unmountCommandCenter() → void  [window.unmountCommandCenter]
+ * Stops the 1s clock/countdown interval. Same convention as
+ * unmountRfidScanner()/unmountClassroomMonitor() — called from nav.js's
+ * navTo() the moment the teacher leaves a-dashboard.
+ */
+let _ccTickInterval = null;
+function _ccStartTicking() {
+  if (_ccTickInterval) clearInterval(_ccTickInterval);
+  _ccTickInterval = setInterval(_ccTick, 1000);
+}
+window.unmountCommandCenter = function () {
+  if (_ccTickInterval) { clearInterval(_ccTickInterval); _ccTickInterval = null; }
+};
+
+function _ccTick() {
+  const clockEl = document.getElementById('cc-clock');
+  if (!clockEl) { window.unmountCommandCenter(); return; } // page navigated away without going through nav.js
+  const [hh, mm, ss] = _ccNowHMS().split(':');
+  clockEl.innerHTML = `${hh}<span class="cc-blink">:</span>${mm}<span class="cc-blink">:</span>${ss}`;
+
+  const hourNum = parseInt(hh, 10);
+  const greetWord = hourNum < 12 ? 'Good morning' : hourNum < 17 ? 'Good afternoon' : 'Good evening';
+  const greetEl = document.getElementById('cc-greeting');
+  if (greetEl) greetEl.textContent = `${greetWord}, ${currentUser ? currentUser.name : ''}!`;
+
+  document.querySelectorAll('[data-cc-countdown]').forEach(elm => {
+    const closeSec = parseInt(elm.dataset.ccCountdown, 10);
+    const remain = closeSec - _ccNowSec();
+    elm.textContent = remain > 0 ? _ccFmtDuration(remain) : 'Ending now';
+    const card = elm.closest('.cc-tl-card');
+    if (card && card.dataset.ccOpenSec) {
+      const openSec = parseInt(card.dataset.ccOpenSec, 10);
+      const frac = Math.min(1, Math.max(0, (_ccNowSec() - openSec) / (closeSec - openSec)));
+      card.style.setProperty('--p', frac.toFixed(3));
+    }
+  });
+  document.querySelectorAll('[data-cc-starts-in]').forEach(elm => {
+    const openSec = parseInt(elm.dataset.ccStartsIn, 10);
+    const remain = openSec - _ccNowSec();
+    elm.textContent = remain > 0 ? _ccFmtDuration(remain) : 'Now';
+  });
 }
 
-// ── 1. HERO BAND ────────────────────────────────────────────────────────────
-function _ccHeroHTML(label, desc, scopeLabel, total, avgAttendance, avgQuiz, avgXP) {
-  const attColor = avgAttendance >= 90 ? '#4edea3' : avgAttendance >= 75 ? '#ffb95f' : '#ff6b81';
-  const quizColor = avgQuiz >= 85 ? '#4edea3' : avgQuiz >= 70 ? '#ffb95f' : '#ff6b81';
+// ── 1. HERO ──────────────────────────────────────────────────────────────
+function _ccHeroHTML() {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' });
+  const dayStr = now.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Manila' }).toUpperCase();
   return `
-  <div class="page-hero cc-hero">
-    <div class="page-hero-bg"></div>
-    <div class="page-hero-bg2"></div>
-    <div class="page-hero-bg3"></div>
-    ${_ccHeroIllustrationSVG()}
-    <div style="position:relative;z-index:1">
-      <div class="page-hero-label">${label}</div>
-      <h1 style="font-family:var(--fh);font-size:32px;font-weight:900;color:var(--on-surface);margin-bottom:6px">Welcome, ${_esc(currentUser.name)}</h1>
-      <p style="font-size:14px;color:var(--text-muted)">${_esc(scopeLabel)} &nbsp;·&nbsp; ${desc}</p>
-      <div class="cc-hero-health">
-        <div class="cc-health-metric">
-          <div class="cc-hm-icon" style="background:rgba(208,188,255,.14);color:#d0bcff"><span class="material-symbols-outlined">groups</span></div>
-          <div class="cc-hm-val" style="color:#d0bcff">${total}</div>
-          <div class="cc-hm-lbl">Students</div>
-        </div>
-        <div class="cc-health-metric">
-          <div class="cc-hm-icon" style="background:${attColor}22;color:${attColor}"><span class="material-symbols-outlined">event_available</span></div>
-          <div class="cc-hm-val" style="color:${attColor}">${avgAttendance}%</div>
-          <div class="cc-hm-lbl">Avg Attendance</div>
-          <div class="cc-health-bar"><div style="width:${avgAttendance}%;background:${attColor}"></div></div>
-        </div>
-        <div class="cc-health-metric">
-          <div class="cc-hm-icon" style="background:${quizColor}22;color:${quizColor}"><span class="material-symbols-outlined">quiz</span></div>
-          <div class="cc-hm-val" style="color:${quizColor}">${avgQuiz}%</div>
-          <div class="cc-hm-lbl">Avg Quiz Score</div>
-          <div class="cc-health-bar"><div style="width:${avgQuiz}%;background:${quizColor}"></div></div>
-        </div>
-        <div class="cc-health-metric">
-          <div class="cc-hm-icon" style="background:rgba(255,185,95,.14);color:#ffb95f"><span class="material-symbols-outlined">bolt</span></div>
-          <div class="cc-hm-val" style="color:#ffb95f">${avgXP.toLocaleString()}</div>
-          <div class="cc-hm-lbl">Avg XP</div>
-        </div>
+  <div class="cc-hero">
+    <div class="cc-hero-greeting">
+      <div class="cc-eyebrow"><span class="cc-live-dot-sm"></span><span>${dayStr} · IN SESSION</span></div>
+      <h1 id="cc-greeting">Good morning, ${_esc(currentUser ? currentUser.name : '')}!</h1>
+      <div class="cc-date-row">
+        <span>${dateStr}</span>
+        <span class="cc-clock" id="cc-clock">00:00:00</span>
       </div>
     </div>
+    <div class="cc-quote-panel">
+      <div class="cc-quote-eyebrow">Motivation</div>
+      <p class="cc-quote-text">"${_esc(_ccTodaysQuote())}"</p>
+    </div>
   </div>`;
 }
 
-// ── 2. ATTENTION QUEUE (primary focal element) ──────────────────────────────
-function _ccBuildAttentionItems(isAdmin) {
-  const items = [];
-  const students = DB.students || [];
-
-  const pending = (DB.registrations || []).filter(r => r.status === 'pending');
-  if (pending.length) {
-    items.push({
-      severity: 'danger', icon: '📋',
-      title: `${pending.length} registration${pending.length > 1 ? 's' : ''} awaiting review`,
-      sub: pending.slice(0, 3).map(r => `${r.firstName} ${r.lastName}`).join(', ') + (pending.length > 3 ? `, +${pending.length - 3} more` : ''),
-      count: pending.length, action: () => navTo('a-registrations'),
-    });
+// ── 2. TODAY'S SCHEDULE ──────────────────────────────────────────────────
+function _ccScheduleHTML(sections) {
+  if (!sections.length) {
+    return `
+    <div class="cc-empty-card">
+      <span class="material-symbols-outlined" style="font-size:28px;color:var(--text-muted)">event_busy</span>
+      <div style="font-family:var(--fh);font-weight:800;margin:8px 0 4px">No sections yet</div>
+      <div style="color:var(--text-muted);font-size:13px">Create a section to see today's schedule here.</div>
+      <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="navTo('a-sections')">Go to Sections</button>
+    </div>`;
   }
 
-  const lowAttendance = students.filter(s => (s.attendance || 0) < 75).sort((a, b) => a.attendance - b.attendance);
-  if (lowAttendance.length) {
-    items.push({
-      severity: 'warn', icon: '📉',
-      title: `${lowAttendance.length} student${lowAttendance.length > 1 ? 's' : ''} with low attendance (<75%)`,
-      sub: lowAttendance.slice(0, 3).map(s => `${s.name} (${s.attendance}%)`).join(', ') + (lowAttendance.length > 3 ? `, +${lowAttendance.length - 3} more` : ''),
-      count: lowAttendance.length, action: () => navTo('a-analytics'),
-    });
-  }
+  const nowSec = _ccNowSec();
+  const cards = sections.map(sec => {
+    const sched = _ccScheduleFor(sec.id);
+    const label = _ccSectionLabel(sec);
 
-  const strugglingQuiz = students.filter(s => (s.quizAvg || 0) < 60 && (s.completedQuizzes || []).length > 0);
-  if (strugglingQuiz.length) {
-    items.push({
-      severity: 'warn', icon: '🧠',
-      title: `${strugglingQuiz.length} student${strugglingQuiz.length > 1 ? 's' : ''} averaging below 60% on quizzes`,
-      sub: strugglingQuiz.slice(0, 3).map(s => s.name).join(', ') + (strugglingQuiz.length > 3 ? `, +${strugglingQuiz.length - 3} more` : ''),
-      count: strugglingQuiz.length, action: () => navTo('a-analytics'),
-    });
-  }
-
-  const outOfStock = (DB.store || []).filter(i => i.stock === 0);
-  const lowStock = (DB.store || []).filter(i => i.stock > 0 && i.stock <= 3);
-  if (outOfStock.length) {
-    items.push({
-      severity: 'danger', icon: '📦',
-      title: `${outOfStock.length} Armory item${outOfStock.length > 1 ? 's' : ''} out of stock`,
-      sub: outOfStock.slice(0, 3).map(i => i.name).join(', ') + (outOfStock.length > 3 ? `, +${outOfStock.length - 3} more` : ''),
-      count: outOfStock.length, action: () => navTo('a-store'),
-    });
-  }
-  if (lowStock.length) {
-    items.push({
-      severity: 'info', icon: '📦',
-      title: `${lowStock.length} Armory item${lowStock.length > 1 ? 's' : ''} running low (≤3 left)`,
-      sub: lowStock.slice(0, 3).map(i => `${i.name} (${i.stock})`).join(', ') + (lowStock.length > 3 ? `, +${lowStock.length - 3} more` : ''),
-      count: lowStock.length, action: () => navTo('a-store'),
-    });
-  }
-
-  return items;
-}
-
-function _ccAttentionHTML(isAdmin) {
-  const items = _ccBuildAttentionItems(isAdmin);
-  const body = !items.length
-    ? `<div class="cc-attention-empty">
-        <svg class="cc-empty-illust" viewBox="0 0 120 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <circle cx="60" cy="46" r="34" fill="rgba(78,222,163,.1)"/>
-          <path d="M40 48 L54 62 L82 32" fill="none" stroke="var(--secondary)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <div style="font-family:var(--fh);font-weight:800;color:var(--on-surface);margin-bottom:4px;font-size:15px">All caught up!</div>
-        <div>Nothing needs your attention right now.</div>
-      </div>`
-    : `<div class="cc-attention-list">${items.map((it, i) => `
-      <div class="cc-attention-item cc-in" style="animation-delay:${i * 0.05}s" onclick="_ccAttentionClick(${i})">
-        <div class="cc-attention-bar ${it.severity}"></div>
-        <div class="cc-attention-icon ${it.severity}">${it.icon}</div>
-        <div class="cc-attention-body">
-          <div class="cc-attention-title">${_esc(it.title)}</div>
-          <div class="cc-attention-sub">${_esc(it.sub)}</div>
+    if (!sched) {
+      // No attendance window configured for this section at all — an honest
+      // "locked" state distinct from "scheduled but not open yet".
+      return `
+      <div class="cc-tl-card cc-tl-locked">
+        <div class="cc-tl-row-top">
+          <div class="cc-tl-title"><div class="cc-tl-name">${_esc(label)}</div><div class="cc-tl-time">No schedule set</div></div>
+          <span class="cc-status-tag">Locked</span>
         </div>
-        <div class="cc-attention-count ${it.severity}">${it.count}</div>
-      </div>`).join('')}</div>`;
+      </div>`;
+    }
 
-  window._ccAttentionItems = items;
+    if (sched.dayOff) {
+      // Phase 55 "no class this day" override — sched.openTime/closeTime
+      // are DB placeholders ('00:00'), never real times, so this must be
+      // caught before the timeline math below or the card renders as a
+      // bogus "Completed 12:00 AM – 12:00 AM" period.
+      return `
+      <div class="cc-tl-card cc-tl-dayoff">
+        <div class="cc-tl-row-top">
+          <div class="cc-tl-title"><div class="cc-tl-name">${_esc(label)}</div><div class="cc-tl-time">No class today</div></div>
+          <span class="cc-status-tag">Day off</span>
+        </div>
+      </div>`;
+    }
 
-  return `
-  <div class="section-header"><span class="material-symbols-outlined">notifications_active</span><h2>Needs Your Attention</h2>
-    ${items.length ? `<span class="badge-pill cc-pulse-badge" style="margin-left:auto;background:rgba(255,107,129,.15);color:#ff6b81">${items.reduce((a, i) => a + i.count, 0)} total</span>` : ''}
-  </div>
-  <div class="cc-attention-card" style="margin-bottom:26px">${body}</div>`;
-}
+    const openSec = _ccHmsToSec(sched.openTime), closeSec = _ccHmsToSec(sched.closeTime);
+    const roster = _ccRosterFor(sec.id);
+    const timeStr = `${_ccFmtClockLabel(sched.openTime)} – ${_ccFmtClockLabel(sched.closeTime)}`;
 
-window._ccAttentionClick = function (i) {
-  const it = (window._ccAttentionItems || [])[i];
-  if (it && typeof it.action === 'function') it.action();
-};
+    if (nowSec >= closeSec) {
+      const att = _ccAttendanceCountsToday(sec.id);
+      const calledToday = _ccRecitationCalledToday(sec.id);
+      const recTracked = Object.keys(calledToday).length > 0;
+      return `
+      <div class="cc-tl-card cc-tl-finished">
+        <div class="cc-tl-row-top">
+          <div class="cc-tl-title"><div class="cc-tl-name">${_esc(label)}</div><div class="cc-tl-time">${timeStr}</div></div>
+          <span class="cc-status-tag">Completed</span>
+        </div>
+        <div class="cc-tl-checks">
+          <span class="${att.hasAny ? '' : 'cc-tl-check-off'}"><span class="material-symbols-outlined">${att.hasAny ? 'check_circle' : 'radio_button_unchecked'}</span>Attendance ${att.hasAny ? 'logged' : 'not logged'}</span>
+          <span class="${recTracked ? '' : 'cc-tl-check-off'}"><span class="material-symbols-outlined">${recTracked ? 'check_circle' : 'radio_button_unchecked'}</span>Recitation ${recTracked ? 'tracked' : 'not tracked'}</span>
+        </div>
+      </div>`;
+    }
 
-// ── 3. LIVE CLASSROOM PULSE ──────────────────────────────────────────────────
-function _ccPulseHTML() {
-  const cards = [];
+    if (nowSec >= openSec) {
+      const att = _ccAttendanceCountsToday(sec.id);
+      const calledToday = _ccRecitationCalledToday(sec.id);
+      const calledCount = Object.keys(calledToday).length;
+      const coveragePct = roster.length ? Math.round((calledCount / roster.length) * 100) : 0;
+      return `
+      <div class="cc-tl-card cc-tl-ongoing" data-cc-open-sec="${openSec}" style="--p:0">
+        <div class="cc-tl-row-top">
+          <div class="cc-tl-title"><div class="cc-tl-name">${_esc(label)}</div><div class="cc-tl-time">${timeStr}</div></div>
+          <span class="cc-live-tag"><span class="cc-pulse-dot"></span>Live</span>
+        </div>
+        <div class="cc-tl-body">
+          <div class="cc-metric-row">
+            <div class="cc-metric cc-metric-present"><div class="cc-metric-num">${att.present}</div><div class="cc-metric-lbl">Present</div></div>
+            <div class="cc-metric cc-metric-late"><div class="cc-metric-num">${att.late}</div><div class="cc-metric-lbl">Late</div></div>
+            <div class="cc-metric cc-metric-absent"><div class="cc-metric-num">${att.absent}</div><div class="cc-metric-lbl">Absent</div></div>
+          </div>
+          <div class="cc-coverage-label"><span>Recitation coverage</span><span class="cc-mono">${coveragePct}%</span></div>
+          <div class="cc-progress-track"><div class="cc-progress-fill" style="width:${coveragePct}%"></div></div>
+          <div class="cc-countdown-row">
+            <span>Time remaining in period</span>
+            <span class="cc-mono cc-countdown-val" data-cc-countdown="${closeSec}">—</span>
+          </div>
+        </div>
+      </div>`;
+    }
 
-  const found = (typeof wbcGetActiveBoss === 'function') && wbcGetActiveBoss();
-  if (found) {
-    const boss = found.boss;
-    const maxHp = boss.maxHp || 1;
-    const curHp = boss.currentHp !== undefined ? boss.currentHp : maxHp;
-    const pct = Math.max(0, Math.min(100, Math.round(curHp / maxHp * 100)));
-    const parts = (typeof wbcGetParticipants === 'function') ? Object.keys(wbcGetParticipants(found.idx)).length : 0;
-    cards.push(`
-    <div class="cc-pulse-card cc-pulse-boss" onclick="navTo('a-bossevents')" style="cursor:pointer">
-      <div class="cc-pulse-head"><span class="cc-live-dot danger"></span><span class="cc-pulse-head-label">Boss Event Live</span></div>
-      <div class="cc-pulse-title">${boss.image || '💀'} ${_esc(boss.name)}</div>
-      <div class="cc-pulse-hpbar"><div style="width:${pct}%"></div></div>
-      <div class="cc-pulse-meta"><span>${curHp.toLocaleString()} / ${maxHp.toLocaleString()} HP</span><span>${parts} joined</span></div>
-    </div>`);
-  } else {
-    cards.push(`
-    <div class="cc-pulse-card cc-pulse-dim" onclick="navTo('a-boss-studio')" style="cursor:pointer">
-      <div class="cc-pulse-head"><span class="cc-live-dot" style="background:var(--text-muted);box-shadow:none;animation:none"></span><span class="cc-pulse-head-label">World Boss</span></div>
-      <div class="cc-pulse-title" style="color:var(--text-muted)">No active event</div>
-      <div class="cc-pulse-meta"><span>Start one from Boss Studio</span></div>
-    </div>`);
-  }
-
-  const recent = (DB.pointLog || []).slice(0, 6);
-  recent.forEach(e => {
-    const studentName = (DB.students || []).find(s => s.id === e.studentId)?.name || e.studentId;
-    const good = e.pts > 0;
-    cards.push(`
-    <div class="cc-pulse-card ${good ? 'cc-pulse-good' : 'cc-pulse-bad'}">
-      <div class="cc-pulse-head"><span class="cc-live-dot ${good ? '' : 'warn'}"></span><span class="cc-pulse-head-label">${_esc(e.when)}</span></div>
-      <div class="cc-pulse-event">
-        <div class="cc-pulse-event-delta" style="color:${good ? '#4edea3' : '#ff6b81'}">${good ? '+' : ''}${e.pts} pts</div>
-        <div class="cc-pulse-event-what">${_esc(studentName)} · ${_esc(e.what)}</div>
+    // Upcoming — schedule exists, hasn't opened yet.
+    return `
+    <div class="cc-tl-card cc-tl-upcoming">
+      <div class="cc-tl-row-top">
+        <div class="cc-tl-title"><div class="cc-tl-name">${_esc(label)}</div><div class="cc-tl-time">${timeStr}</div></div>
+        <span class="cc-status-tag">Scheduled</span>
       </div>
-    </div>`);
-  });
+      <div class="cc-tl-upcoming-meta">Opens in <span class="cc-mono" data-cc-starts-in="${openSec}">—</span></div>
+    </div>`;
+  }).join('');
 
-  const VISIBLE = 5;
-  const firstCards = cards.slice(0, VISIBLE);
-  const restCards  = cards.slice(VISIBLE);
-
-  const restHTML = restCards.length
-    ? `<div class="cc-pulse-extra-wrap cc-hidden" id="cc-pulse-extra">${restCards.join('')}</div>`
-    : '';
-
-  const toggleHTML = restCards.length
-    ? `<button class="cc-pulse-more-btn" id="cc-pulse-more-btn" data-more-count="${restCards.length}" onclick="_ccTogglePulseMore()">
-        <span class="material-symbols-outlined" id="cc-pulse-more-icon">expand_more</span>
-        <span id="cc-pulse-more-label">See ${restCards.length} more</span>
-      </button>`
-    : '';
-
-  return `
-  <div class="section-header"><span class="material-symbols-outlined">bolt</span><h2>Live Classroom Pulse</h2></div>
-  <div class="cc-pulse-strip" id="cc-pulse-strip">${firstCards.join('')}${restHTML}</div>
-  ${toggleHTML}
-  <div style="margin-bottom:${restCards.length ? 0 : 26}px"></div>`;
+  return `<div class="cc-timeline">${cards}</div>`;
 }
 
-window._ccTogglePulseMore = function () {
-  const extra = document.getElementById('cc-pulse-extra');
-  const btn   = document.getElementById('cc-pulse-more-btn');
-  const label = document.getElementById('cc-pulse-more-label');
-  const icon  = document.getElementById('cc-pulse-more-icon');
-  if (!extra || !btn) return;
-  const nowHidden = extra.classList.toggle('cc-hidden');
-  if (label) label.textContent = nowHidden ? `See ${btn.dataset.moreCount} more` : 'Show less';
-  if (icon)  icon.textContent  = nowHidden ? 'expand_more' : 'expand_less';
-};
-
-// ── 4. TREND & ANALYTICS PREVIEW ─────────────────────────────────────────────
-function _ccTrendHTML(students) {
-  const catTotals = {};
-  (DB.pointLog || []).forEach(e => {
-    if (e.pts <= 0) return;
-    const cat = _ccCategoryOf(e.what);
-    catTotals[cat] = (catTotals[cat] || 0) + e.pts;
-  });
-  const catColors = { Recitation: '#8b5cf6', Attendance: '#4edea3', 'Quiz Performance': '#ffb95f', 'Good Behavior': '#60a5fa', Project: '#f97316', Homework: '#d0bcff', 'Classroom Role': '#f472b6', Custom: '#a78bfa', Other: '#94a3b8' };
-  const catEntries = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 6);
-  const catMax = catEntries.length ? catEntries[0][1] : 1;
-
-  const top5 = [...students].sort((a, b) => b.xp - a.xp).slice(0, 5);
-  const podiumColors = ['#ffb95f', '#cbc3d7', '#cd7f32'];
-
-  return `
-  <div class="section-header"><span class="material-symbols-outlined">insights</span><h2>Trends</h2>
-    <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="navTo('a-analytics')">Full Analytics →</button>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:8px">
-    <div class="glass-card cc-in" style="animation-delay:.05s">
-      <h3>Points by Category</h3>
-      ${catEntries.length ? catEntries.map(([cat, pts]) => `
-      <div class="cc-trend-row"><span class="cc-trend-label">${_esc(cat)}</span><span class="cc-trend-val" style="color:${catColors[cat] || '#94a3b8'}">${pts.toLocaleString()}</span></div>
-      <div class="cc-trend-track"><div style="width:${Math.round(pts / catMax * 100)}%;background:${catColors[cat] || '#94a3b8'}"></div></div>`).join('')
-        : `<div class="cc-trend-empty">
-             <span class="material-symbols-outlined" style="font-size:26px;color:var(--primary)">auto_awesome</span>
-             <div>No points awarded yet.</div>
-             <button class="btn btn-primary btn-sm" onclick="openAwardPoints()">⚡ Award your first points</button>
-           </div>`}
-    </div>
-    <div class="glass-card cc-in" style="animation-delay:.1s">
-      <h3>Top Performers</h3>
-      ${top5.length ? top5.map((s, i) => `
-      <div class="cc-mini-lb-row">
-        <div class="cc-mini-lb-rank" style="${i < 3 ? `color:${podiumColors[i]};font-weight:900` : ''}">${i < 3 ? ['🥇','🥈','🥉'][i] : i + 1}</div>
-        <div class="cc-mini-lb-av" style="background:${s.color}22;color:${s.color};border-color:${s.color}55">${s.init}</div>
-        <div class="cc-mini-lb-name">${_esc(s.name)}</div>
-        <div class="cc-mini-lb-xp">${s.xp.toLocaleString()} XP</div>
-      </div>`).join('') : `<div style="color:var(--text-muted);font-size:13px;padding:12px 0">No students yet.</div>`}
-    </div>
-  </div>`;
-}
-
-// ── 5. SHORTCUTS ROW ─────────────────────────────────────────────────────────
-function _ccShortcutsHTML(isAdmin) {
-  const shortcuts = [
-    { icon: '⚡', label: 'Award Points', action: `openAwardPoints()`, c: '#ffb95f' },
-    { icon: '📡', label: 'Scanner', action: `navTo('a-scanner')`, c: '#4edea3' },
-    { icon: '🏪', label: 'Armory', action: `navTo('a-store')`, c: '#f97316' },
-    { icon: '📝', label: 'Quest Builder', action: `navTo('a-quizzes')`, c: '#8b5cf6' },
-    { icon: '📊', label: 'Analytics', action: `navTo('a-analytics')`, c: '#60a5fa' },
-    { icon: '📋', label: 'Registrations', action: `navTo('a-registrations')`, c: '#f472b6' },
+// ── 3. QUICK ACTIONS ─────────────────────────────────────────────────────
+function _ccQuickActionsHTML() {
+  const actions = [
+    { icon: 'qr_code_scanner',   label: 'Scanner',             sub: 'Hardware scan console', glow: 'var(--secondary)',   go: `navTo('a-scanner')` },
+    { icon: 'record_voice_over', label: 'Recitation',          sub: 'Randomizer drawer',     glow: 'var(--primary)',     go: `navTo('a-classroom-monitor')` },
+    { icon: 'grid_view',         label: 'Seating Arrangement', sub: 'Layout map grid',       glow: '#22d3ee',            go: `navTo('a-classroom')` },
+    { icon: 'military_tech',     label: 'Hall of Fame',        sub: 'Section honors ledger', glow: 'var(--tertiary)',    go: `navTo('a-hall-of-fame')` },
+    { icon: 'add_task',          label: 'Quest Builder',       sub: 'Assignment architect',  glow: '#8b5cf6',            go: `navTo('a-quizzes')` },
+    { icon: 'monitoring',        label: 'Deep Analytics',      sub: 'Historic logs',         glow: 'var(--error)',       go: `navTo('a-analytics')` },
   ];
-  if (isAdmin) {
-    shortcuts.push(
-      { icon: '🧑‍🏫', label: 'Teachers', action: `navTo('a-teachers')`, c: '#4ade80' },
-      { icon: '🏫', label: 'Sections', action: `navTo('a-sections')`, c: '#22d3ee' },
-    );
-  }
-
   return `
-  <div>
-    <div class="section-header"><span class="material-symbols-outlined">rocket_launch</span><h2>Quick Actions</h2></div>
-    <div class="cc-shortcut-grid">
-      ${shortcuts.map((s, i) => `<div class="cc-shortcut-card cc-in" style="animation-delay:${i * 0.04}s" onclick="${s.action}">
-        <div class="cc-shortcut-icon" style="background:${s.c}1f;color:${s.c};box-shadow:0 0 0 1px ${s.c}33">${s.icon}</div>
-        <div class="cc-shortcut-label">${s.label}</div>
-      </div>`).join('')}
-    </div>
+  <div class="cc-actions-row">
+    ${actions.map(a => `
+    <button class="cc-action-card" style="--glow:${a.glow}" onclick="${a.go}">
+      <div class="cc-action-icon"><span class="material-symbols-outlined">${a.icon}</span></div>
+      <div>
+        <div class="cc-action-label">${a.label}</div>
+        <div class="cc-action-sub">${a.sub}</div>
+      </div>
+    </button>`).join('')}
   </div>`;
 }
 
-console.log('[EduQuest] Admin Command Center loaded.');
+// ── 4. RECITATION PROGRESS PANEL ─────────────────────────────────────────
+function _ccRecitationPanelHTML(sections) {
+  if (!sections.length) {
+    return `<div class="cc-empty-card"><div style="color:var(--text-muted);font-size:13px">No sections to show yet.</div></div>`;
+  }
+  const rows = sections.map(sec => {
+    const roster = _ccRosterFor(sec.id);
+    const total = roster.length;
+    const calledToday = _ccRecitationCalledToday(sec.id);
+    const calledIds = Object.keys(calledToday);
+    const called = calledIds.length;
+    const remaining = Math.max(0, total - called);
+    const totalPts = calledIds.reduce((a, id) => a + calledToday[id], 0);
+    const avgPts = called ? (totalPts / called) : 0;
+    const pct = total ? Math.round((called / total) * 100) : 0;
+    const remClass = remaining === 0 && total > 0 ? 'cc-rem-zero' : remaining > 0 && remaining <= Math.max(3, Math.round(total * 0.25)) ? 'cc-rem-low' : '';
+
+    return `
+    <div class="cc-rec-row">
+      <div class="cc-rec-name">
+        <div class="cc-rec-section">${_esc(_ccSectionLabel(sec))}</div>
+        <div class="cc-rec-meta">${total} student${total === 1 ? '' : 's'}</div>
+      </div>
+      <div class="cc-rec-progress">
+        <div class="cc-rec-bar-label"><span>Called vs. capacity</span><span class="cc-mono">${called} / ${total}</span></div>
+        <div class="cc-progress-track"><div class="cc-progress-fill cc-progress-fill-rec" style="width:${pct}%"></div></div>
+      </div>
+      <div class="cc-rec-remaining ${remClass}">${remaining}<span class="cc-rec-sublbl">Remaining</span></div>
+      <div class="cc-rec-score">${avgPts.toFixed(1)}<span class="cc-rec-sublbl">Avg. Points</span></div>
+    </div>`;
+  }).join('');
+
+  return `<div class="cc-recitation-list">${rows}</div>`;
+}
+
+console.log('[EduQuest] Teacher Command Center loaded.');

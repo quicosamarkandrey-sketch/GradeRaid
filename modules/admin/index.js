@@ -57,6 +57,7 @@ const _ADMIN_EXPECTED = [
   'renderContentOversight', 'openContentOversightFor', 'unmountContentOversight',
   'renderAuditLog', 'auditLogSetTeacherFilter', 'auditLogSetActionFilter',
   'auditLogSetTableFilter', 'auditLogLoadMore',
+  'unmountCommandCenter',
 ];
 
 const _adminMissing = _ADMIN_EXPECTED.filter(fn => typeof window[fn] !== 'function');

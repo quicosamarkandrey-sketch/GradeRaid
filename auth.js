@@ -21,17 +21,12 @@
 //   in Phase 5 (Replace Monkey-Patches).
 // ─────────────────────────────────────────────────────────────────────────────
 
+// selectRole() is kept as a harmless no-op for backward compatibility — the
+// login screen no longer has separate Student/Teacher buttons (removed per
+// design update: login is now a single normal form, role is resolved from
+// profiles.role after auth, same as it already was under the hood).
 function selectRole(role){
   selectedLoginRole=role;
-  document.getElementById('role-student').classList.toggle('active',role==='student');
-  document.getElementById('role-admin').classList.toggle('active',role==='admin');
-  // AUTH MIGRATION: this used to show hardcoded demo username/password pairs
-  // (e.g. admin/admin123, jose/pass123). Those accounts no longer exist as
-  // such — login is now real email+password via Supabase Auth — so this
-  // just shows a role-appropriate hint instead of fake credentials.
-  const demo=document.getElementById('demo-text');
-  if(role==='admin'){demo.innerHTML='<b style="color:#ffb4ab">Teacher login</b><br><span style="font-size:12px;color:var(--text-muted)">Use your teacher email and password.</span>';}
-  else{demo.innerHTML='<b style="color:#d0bcff">Student login</b><br><span style="font-size:12px;color:var(--text-muted)">Use the email and password from your registration.</span>';}
 }
 // doLogin() is now ASYNC — it calls Supabase Auth over the network instead of
 // checking DB.students/DB.admin locally. Callers (the login button's onclick)

@@ -596,8 +596,16 @@ const DBService = (function () {
   }
 
   function _deriveAttendanceSchedules(attendanceSchedulesData) {
+    // Phase 54: dayOfWeek 0 = default/whole-week row, 1..7 = Mon..Sun
+    // override (ISO weekday) — a class_id can now have up to 8 rows
+    // instead of exactly 1. Fall back to 0 for any pre-migration row that
+    // somehow arrives without it.
+    // Phase 55: dayOff true on an override row means "no class at all that
+    // day" — its openTime/startTime/etc are a placeholder, never meant to
+    // be shown or scanned against.
     return (attendanceSchedulesData || []).map(s => ({
-      id: s.id, classId: s.class_id, openTime: s.open_time, startTime: s.start_time,
+      id: s.id, classId: s.class_id, dayOfWeek: s.day_of_week ?? 0, dayOff: !!s.day_off,
+      openTime: s.open_time, startTime: s.start_time,
       lateCutoff: s.late_cutoff, closeTime: s.close_time, active: s.active,
     }));
   }

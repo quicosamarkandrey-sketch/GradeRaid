@@ -67,6 +67,12 @@ let _rfidAssignTargetStudentId = null;
 let _rfidSelectedClassId = 'default-class';
 let _rfidClockInterval = null;
 let _rfidScheduleTimerInterval = null;
+// Fullscreen/kiosk toggle (opt-in) — same pattern live_monitor.js uses for
+// its own lm-kiosk-mode: defaults to a normal embedded page (sidebar +
+// topbar visible) and only fills the screen once the teacher explicitly
+// clicks the ⛶ Fullscreen button. Forced back to false on unmount so a
+// left-open kiosk session never leaks into the next page.
+let _rfidKioskMode = false;
 
 /**
  * renderRfidScanner() → void  [window.renderRfidScanner]
@@ -77,10 +83,12 @@ window.renderRfidScanner = function () {
   _rfidScannerMounted = true;
   _rfidSelectedClassId = _rfidSelectedClassId || 'default-class';
 
-  // Headless kiosk: hide the app shell (topbar + sidebar) while this page
-  // is mounted. Scoped entirely to this body class — unmountRfidScanner()
-  // removes it, so every other page is completely unaffected.
-  document.body.classList.add('rfid-kiosk-mode');
+  // Headless kiosk mode is now OPT-IN — see window._rfidToggleKioskMode()
+  // below. Every mount starts embedded (sidebar + topbar visible); the
+  // teacher explicitly clicks ⛶ Fullscreen to fill the screen for
+  // scanning/projecting, same as live_monitor.js's lm-kiosk-mode.
+  _rfidKioskMode = false;
+  document.body.classList.remove('rfid-kiosk-mode');
 
   // Phase 4: read from Section Maker's canonical list (shows every section,
   // not just ones with an already-enrolled student) — falls back to the old
@@ -101,14 +109,20 @@ window.renderRfidScanner = function () {
         <select id="rfid-class-select" class="kiosk-class-select" onchange="_rfidOnClassChange(this.value)">
           ${classIds.map(c => `<option value="${_esc(c)}" ${c === _rfidSelectedClassId ? 'selected' : ''}>${_esc(_rfidClassOptionLabel(c, state))}</option>`).join('')}
         </select>
+        <button class="kiosk-fullscreen-btn${_rfidKioskMode ? ' active' : ''}" id="rfid-fullscreen-btn"
+          onclick="_rfidToggleKioskMode()"
+          title="${_rfidKioskMode ? 'Exit fullscreen' : 'Fill the screen for scanning/kiosk display'}">
+          ${_rfidKioskMode ? '⤢ Exit' : '⛶ Fullscreen'}
+        </button>
         <button class="kiosk-icon-btn" title="Settings — schedule, assign card, close session" onclick="_rfidOpenSettings()">⚙️</button>
-        <!-- BUGFIX (report §4): the kiosk intentionally hides the whole app
-             shell (topbar + sidebar) so students scanning cards don't see
-             admin nav, but nothing was left in its place to get back out —
-             the only way out was the browser Back button. This calls the
-             same navTo() every other nav link uses, which already tears
-             down kiosk mode via unmountRfidScanner() in nav.js. -->
-        <button class="kiosk-icon-btn" title="Exit kiosk — back to admin dashboard" onclick="navTo('a-dashboard')">⏻</button>
+        <!-- BUGFIX (report §4): true fullscreen hides the whole app shell
+             (topbar + sidebar) so students scanning cards don't see admin
+             nav, but nothing was left in its place to get back out — the
+             only way out was the browser Back button. This calls the same
+             navTo() every other nav link uses, which already tears down
+             kiosk mode via unmountRfidScanner() in nav.js. Only shown while
+             actually fullscreen — the sidebar already covers this otherwise. -->
+        ${_rfidKioskMode ? `<button class="kiosk-icon-btn" id="rfid-exit-kiosk-btn" title="Exit kiosk — back to admin dashboard" onclick="navTo('a-dashboard')">⏻</button>` : ''}
       </div>
 
       <div class="kiosk-columns">
@@ -184,8 +198,45 @@ window.unmountRfidScanner = function () {
   if (_rfidClockInterval) { clearInterval(_rfidClockInterval); _rfidClockInterval = null; }
   if (_rfidScheduleTimerInterval) { clearInterval(_rfidScheduleTimerInterval); _rfidScheduleTimerInterval = null; }
   clearTimeout(window._rfidSpotlightResetTimer);
+  _rfidKioskMode = false;
   document.body.classList.remove('rfid-kiosk-mode');
   AppStore.unsubscribe('rfid-scanner');
+};
+
+/**
+ * _rfidToggleKioskMode() → void  [window._rfidToggleKioskMode]
+ * Flips the scanner between its default embedded view (sidebar + topbar
+ * visible) and true fullscreen (both hidden, page fills the viewport) —
+ * same body-class mechanism live_monitor.js uses for its own Fullscreen
+ * button. Only the topstrip needs to change (button label/state, plus the
+ * ⏻ exit-to-dashboard button appearing/disappearing) — everything else
+ * (capture input, clock, activity feed, AppStore subscription) is
+ * untouched, so scanning isn't interrupted by toggling this mid-session.
+ */
+window._rfidToggleKioskMode = function () {
+  _rfidKioskMode = !_rfidKioskMode;
+  document.body.classList.toggle('rfid-kiosk-mode', _rfidKioskMode);
+
+  const btn = document.getElementById('rfid-fullscreen-btn');
+  if (btn) {
+    btn.classList.toggle('active', _rfidKioskMode);
+    btn.title = _rfidKioskMode ? 'Exit fullscreen' : 'Fill the screen for scanning/kiosk display';
+    btn.textContent = _rfidKioskMode ? '⤢ Exit' : '⛶ Fullscreen';
+  }
+
+  const topstrip = document.querySelector('.kiosk-topstrip');
+  let exitBtn = document.getElementById('rfid-exit-kiosk-btn');
+  if (_rfidKioskMode && !exitBtn && topstrip) {
+    exitBtn = document.createElement('button');
+    exitBtn.id = 'rfid-exit-kiosk-btn';
+    exitBtn.className = 'kiosk-icon-btn';
+    exitBtn.title = 'Exit kiosk — back to admin dashboard';
+    exitBtn.textContent = '⏻';
+    exitBtn.onclick = function () { navTo('a-dashboard'); };
+    topstrip.appendChild(exitBtn);
+  } else if (!_rfidKioskMode && exitBtn) {
+    exitBtn.remove();
+  }
 };
 
 // ── Capture plumbing ────────────────────────────────────────────────────────
@@ -219,7 +270,12 @@ function _rfidStartClock() {
 //                                        marks remaining students Absent)
 //   after closeTime   → "Session closed"
 function _rfidScheduleFor(classId) {
-  const sched = AppStore.getSlice(s => (s.attendanceSchedules || []).find(x => x.classId === classId));
+  // Phase 54: a section can have a whole-week default PLUS per-day
+  // overrides — resolve TODAY's actual window instead of grabbing whatever
+  // single row used to be the only one.
+  const sched = (typeof AttendanceService !== 'undefined' && AttendanceService.getEffectiveSchedule)
+    ? AttendanceService.getEffectiveSchedule(classId)
+    : AppStore.getSlice(s => (s.attendanceSchedules || []).find(x => x.classId === classId && (x.dayOfWeek || 0) === 0));
   return sched || { openTime: '07:00', startTime: '07:30', lateCutoff: '07:45', closeTime: '08:30' };
 }
 
@@ -733,10 +789,11 @@ window._rfidOpenSettings = function () {
     </div>
 
     <div style="margin-bottom:20px">
-      <label class="form-label">⏰ Schedule — ${_esc(window.getClassLabel ? window.getClassLabel(_rfidSelectedClassId, AppStore.getState()) : _rfidSelectedClassId)}</label>
+      <label class="form-label">⏰ Default Schedule — ${_esc(window.getClassLabel ? window.getClassLabel(_rfidSelectedClassId, AppStore.getState()) : _rfidSelectedClassId)}</label>
       <div style="margin-top:8px">${_rfidRenderScheduleForm()}</div>
       <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
-        Manage sections, grades, and advisers in
+        This is the whole-week default. Per-day overrides (e.g. a shorter Friday) and
+        every other section setting live in
         <a style="color:var(--primary);font-weight:700;cursor:pointer;text-decoration:none" onclick="closeModalForce();navTo('a-sections')">Section Maker →</a>
       </div>
     </div>
@@ -749,7 +806,11 @@ window._rfidOpenSettings = function () {
 };
 
 function _rfidRenderScheduleForm() {
-  const sched = AppStore.getSlice(s => (s.attendanceSchedules || []).find(x => x.classId === _rfidSelectedClassId));
+  // Phase 54: this quick-edit form only ever touches the DEFAULT (day 0)
+  // row — explicitly filtered now that a class_id can have up to 8 rows
+  // (1 default + 7 day overrides). Editing a specific day's override is a
+  // Section Maker action, not a kiosk one.
+  const sched = AppStore.getSlice(s => (s.attendanceSchedules || []).find(x => x.classId === _rfidSelectedClassId && (x.dayOfWeek || 0) === 0));
   const v = sched || { openTime: '07:00', startTime: '07:30', lateCutoff: '07:45', closeTime: '08:30' };
   return `
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-items:end">
@@ -768,7 +829,7 @@ window._rfidSaveSchedule = async function () {
     lateCutoff: document.getElementById('rfid-sched-late').value,
     closeTime: document.getElementById('rfid-sched-close').value,
   };
-  const result = await AttendanceService.upsertSchedule(_rfidSelectedClassId, times);
+  const result = await AttendanceService.upsertSchedule(_rfidSelectedClassId, times, 0);
   if (!result.ok) { toast(result.error || 'Could not save schedule.', '#ffb4ab'); return; }
   toast('⏰ Schedule saved', '#4edea3');
 };

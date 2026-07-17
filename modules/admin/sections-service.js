@@ -43,14 +43,25 @@ window.SectionService = (function () {
 
   /**
    * createSection(gradeLevel, sectionName, opts) → Promise<{ok, error?, section?}>
-   * opts: { adviserId?, schedule? }
+   * opts: { adviserId?, schedule?, dayOverrides? }
    * opts.schedule (optional; BUGFIX report §3): { openTime, startTime,
    * lateCutoff, closeTime } — 'HH:MM' or 'HH:MM:SS' strings. When provided,
-   * create_class_section() creates the attendance_schedules row in the same
-   * transaction, so the section can take attendance the moment it's
-   * created instead of needing a second trip to the kiosk's settings
-   * screen. Omit it to create a schedule-less section exactly as before
-   * (still editable later via AttendanceService.upsertSchedule()).
+   * create_class_section() creates the DEFAULT (dayOfWeek 0) attendance_schedules
+   * row in the same transaction, so the section can take attendance the
+   * moment it's created instead of needing a second trip to the kiosk's
+   * settings screen. Omit it to create a schedule-less section exactly as
+   * before (still editable later via AttendanceService.upsertSchedule()).
+   * opts.dayOverrides (Phase 54, optional): [{ dayOfWeek, openTime,
+   * startTime, lateCutoff, closeTime, dayOff? }, ...] — per-weekday
+   * exceptions to the default above (e.g. a shorter Friday). dayOff: true
+   * (Phase 55) marks that weekday as having no class at all instead of
+   * custom times — openTime/startTime/lateCutoff/closeTime are still
+   * required (sent as '00:00' placeholders) but are ignored server-side
+   * once dayOff is set. Only meaningful alongside opts.schedule, since a
+   * section needs a section id before any override row can reference it:
+   * each is applied as its own upsert_attendance_schedule call right after
+   * create_class_section() returns, sequentially so a failure partway
+   * through still leaves earlier days saved.
    */
   async function createSection(gradeLevel, sectionName, opts) {
     opts = opts || {};
@@ -61,6 +72,7 @@ window.SectionService = (function () {
 
     const sched = opts.schedule || {};
     const hasSchedule = !!(sched.openTime && sched.startTime && sched.lateCutoff && sched.closeTime);
+    const dayOverrides = hasSchedule ? (opts.dayOverrides || []) : []; // no default = no overrides to hang off it
 
     const rpcParams = {
       p_grade_level: grade, p_section_name: name, p_adviser_id: opts.adviserId || null,
@@ -79,23 +91,61 @@ window.SectionService = (function () {
     }
 
     const row = _rowFromRpcResult(data);
+
+    // Day overrides need the section id create_class_section() just
+    // returned, so they're applied as follow-up calls to the same RPC
+    // Section Maker's edit modal uses (upsert_attendance_schedule) —
+    // sequential, not parallel, so a mid-week failure doesn't race with
+    // its neighbors and is easy to reason about in the returned errors list.
+    const dayOverrideErrors = [];
+    for (const ov of dayOverrides) {
+      const { error: ovError } = await DBService.rpc('upsert_attendance_schedule', {
+        p_class_id: row.id, p_open_time: ov.openTime, p_start_time: ov.startTime,
+        p_late_cutoff: ov.lateCutoff, p_close_time: ov.closeTime, p_day_of_week: ov.dayOfWeek,
+        p_day_off: !!ov.dayOff,
+      });
+      if (ovError) {
+        console.error('[SectionService] createSection day-override failed:', ov.dayOfWeek, ovError);
+        dayOverrideErrors.push(ov.dayOfWeek);
+      }
+    }
+
     AppStore.updateState(draft => {
       _upsertIntoDraft(draft, row);
-      // The RPC also wrote attendance_schedules server-side when a schedule
-      // was supplied — mirror it into the draft so the kiosk/Live Monitor
-      // don't need a realtime round-trip to see the new section is usable.
+      // The RPC also wrote the default attendance_schedules row server-side
+      // when a schedule was supplied — mirror it into the draft so the
+      // kiosk/Live Monitor don't need a realtime round-trip to see the new
+      // section is usable.
+      if (!Array.isArray(draft.attendanceSchedules)) draft.attendanceSchedules = [];
       if (hasSchedule) {
-        if (!Array.isArray(draft.attendanceSchedules)) draft.attendanceSchedules = [];
-        const idx = draft.attendanceSchedules.findIndex(s => s.classId === row.id);
+        const idx = draft.attendanceSchedules.findIndex(s => s.classId === row.id && (s.dayOfWeek || 0) === 0);
         const schedRow = {
-          id: null, classId: row.id, openTime: sched.openTime, startTime: sched.startTime,
+          id: null, classId: row.id, dayOfWeek: 0, openTime: sched.openTime, startTime: sched.startTime,
           lateCutoff: sched.lateCutoff, closeTime: sched.closeTime, active: true,
         };
         if (idx >= 0) draft.attendanceSchedules[idx] = schedRow;
         else draft.attendanceSchedules.push(schedRow);
       }
-    }, { type: 'sections:created', payload: { sectionId: row.id, scheduled: hasSchedule } });
+      // Mirror whichever day overrides actually succeeded above.
+      dayOverrides
+        .filter(ov => !dayOverrideErrors.includes(ov.dayOfWeek))
+        .forEach(ov => {
+          const idx = draft.attendanceSchedules.findIndex(s => s.classId === row.id && (s.dayOfWeek || 0) === ov.dayOfWeek);
+          const schedRow = {
+            id: null, classId: row.id, dayOfWeek: ov.dayOfWeek, dayOff: !!ov.dayOff, openTime: ov.openTime, startTime: ov.startTime,
+            lateCutoff: ov.lateCutoff, closeTime: ov.closeTime, active: true,
+          };
+          if (idx >= 0) draft.attendanceSchedules[idx] = schedRow;
+          else draft.attendanceSchedules.push(schedRow);
+        });
+    }, { type: 'sections:created', payload: { sectionId: row.id, scheduled: hasSchedule, dayOverrideCount: dayOverrides.length - dayOverrideErrors.length } });
 
+    if (dayOverrideErrors.length) {
+      return {
+        ok: true, section: row,
+        error: `Section created, but ${dayOverrideErrors.length} day override${dayOverrideErrors.length === 1 ? '' : 's'} failed to save — edit the section to retry.`,
+      };
+    }
     return { ok: true, section: row };
   }
 
