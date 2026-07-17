@@ -251,6 +251,47 @@ window.RecitationService = (function () {
     return counts;
   }
 
+  // Shared by getTodayTotalForStudent() below — same "what day is it in the
+  // classroom" convention used server-side (attendance-service.js's RPCs
+  // resolve 'today' in Asia/Manila too), so a recitation logged at 11:58pm
+  // and one at 12:02am aren't silently split across two different "days"
+  // just because the browser/device clock is in another timezone.
+  function _isTodayManila(createdAtISO) {
+    if (!createdAtISO) return false;
+    const fmt = { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' };
+    const todayLabel = new Date().toLocaleDateString('en-CA', fmt);
+    const entryLabel = new Date(createdAtISO).toLocaleDateString('en-CA', fmt);
+    return todayLabel === entryLabel;
+  }
+
+  /**
+   * getTodayTotalForStudent(studentId) → number
+   * Every point the student has earned today across ALL classes/sessions —
+   * not scoped to the currently-open class or the active session window.
+   * Backs the Winner Spotlight popup's "Today" stat.
+   */
+  function getTodayTotalForStudent(studentId) {
+    if (!studentId) return 0;
+    const state = AppStore.getState();
+    return (state.recitationLog || [])
+      .filter(r => r.studentId === studentId && _isTodayManila(r.createdAt))
+      .reduce((sum, r) => sum + (r.pts || 0), 0);
+  }
+
+  /**
+   * getAllTimeTotalForStudent(studentId) → number
+   * Every recitation point the student has ever earned, full stop. Backs
+   * the Winner Spotlight popup's big highlighted "Overall Recitation
+   * Points" stat.
+   */
+  function getAllTimeTotalForStudent(studentId) {
+    if (!studentId) return 0;
+    const state = AppStore.getState();
+    return (state.recitationLog || [])
+      .filter(r => r.studentId === studentId)
+      .reduce((sum, r) => sum + (r.pts || 0), 0);
+  }
+
   return {
     SCAN_COOLDOWN_MS,
     canScanTag,
@@ -259,6 +300,8 @@ window.RecitationService = (function () {
     undoRecitation,
     getSessionEntries,
     getSessionCounts,
+    getTodayTotalForStudent,
+    getAllTimeTotalForStudent,
   };
 }());
 

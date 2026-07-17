@@ -37,6 +37,7 @@ let _enrollHubMounted = false;
 let _enrollMode = 'teacher';          // 'teacher' | 'kiosk'
 let _enrollSearchQuery = '';
 let _enrollSectionFilter = 'all';
+let _enrollCardFilter = 'all';       // 'all' | 'unassigned' | 'assigned'
 let _enrollActiveTarget = null;       // studentId currently "awaiting hardware input" (teacher mode)
 let _enrollFocusInterval = null;
 let _enrollInactivityTimer = null;
@@ -158,7 +159,7 @@ function _enrollStartCapture() {
   if (!input) return;
 
   input.value = '';
-  input.focus();
+  input.focus({ preventScroll: true });
 
   if (_enrollFocusInterval) clearInterval(_enrollFocusInterval);
   _enrollFocusInterval = setInterval(function () {
@@ -167,7 +168,13 @@ function _enrollStartCapture() {
     const isRealInput = active && active !== input &&
       (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA');
     if (!isRealInput && document.getElementById('enroll-capture-input')) {
-      document.getElementById('enroll-capture-input').focus();
+      // BUGFIX (scroll-jump report): this hidden input is position:absolute
+      // near the top of the page's normal flow, so a plain .focus() call
+      // makes the browser scroll it into view — every 600ms, forever,
+      // yanking a teacher back to the top mid-scroll while assigning cards
+      // to students further down the roster. preventScroll keeps the focus
+      // (still needed to capture the next scan) without moving the viewport.
+      document.getElementById('enroll-capture-input').focus({ preventScroll: true });
     }
   }, 600);
 
@@ -330,6 +337,11 @@ function _enrollRenderToolbar(state) {
           ${sections.map(function (s) {
             return `<option value="${_esc(s.id)}" ${s.id === _enrollSectionFilter ? 'selected' : ''}>${_esc(s.gradeLevel)} - ${_esc(s.sectionName)}</option>`;
           }).join('')}
+        </select>
+        <select class="enroll-hub-section-select" onchange="_enrollOnCardFilterChange(this.value)">
+          <option value="all" ${_enrollCardFilter === 'all' ? 'selected' : ''}>All cards</option>
+          <option value="unassigned" ${_enrollCardFilter === 'unassigned' ? 'selected' : ''}>Unassigned</option>
+          <option value="assigned" ${_enrollCardFilter === 'assigned' ? 'selected' : ''}>Assigned</option>
         </select>`}
       <div class="enroll-hub-mode-switch">
         <button class="enroll-hub-mode-btn ${_enrollMode === 'teacher' ? 'active' : ''}" onclick="_enrollSetMode('teacher')">👩‍🏫 Teacher-Guided</button>
@@ -341,6 +353,7 @@ function _enrollRenderToolbar(state) {
 
 window._enrollOnSearchInput = function (val) { _enrollSearchQuery = val; _enrollRenderAll(); };
 window._enrollOnSectionChange = function (val) { _enrollSectionFilter = val; _enrollRenderAll(); };
+window._enrollOnCardFilterChange = function (val) { _enrollCardFilter = val; _enrollRenderAll(); };
 
 // ── Kiosk Lock Mode (Pending Fixes Report §4) ───────────────────────────────
 //
@@ -541,6 +554,11 @@ function _enrollFilterStudents(state) {
   return (state.students || []).filter(function (s) {
     if (_enrollSectionFilter !== 'all' && s.classId !== _enrollSectionFilter) return false;
     if (q && (s.name || '').toLowerCase().indexOf(q) === -1) return false;
+    if (_enrollCardFilter !== 'all') {
+      const hasCard = !!EnrollmentService.getActiveCardForStudent(s.id, state);
+      if (_enrollCardFilter === 'unassigned' && hasCard) return false;
+      if (_enrollCardFilter === 'assigned' && !hasCard) return false;
+    }
     return true;
   });
 }
@@ -583,7 +601,7 @@ window._enrollStartTarget = function (studentId) {
   _enrollActiveTarget = studentId;
   _enrollRenderAll();
   const input = document.getElementById('enroll-capture-input');
-  if (input) input.focus();
+  if (input) input.focus({ preventScroll: true });
 };
 
 window._enrollCancelTarget = function () {
@@ -697,7 +715,7 @@ window._kioskSubmitPassword = async function () {
     _kioskStartIdleTimer();
     _enrollRenderAll();
     const capInput = document.getElementById('enroll-capture-input');
-    if (capInput) capInput.focus();
+    if (capInput) capInput.focus({ preventScroll: true });
     return;
   }
 

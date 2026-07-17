@@ -151,6 +151,35 @@
   50%{transform:translate(-50%,-50%) scale(1.15)}
 }
 
+/* Confirmation beat — the cycle has landed but the profile hasn't opened
+   yet. A tighter, faster double-ring pulse (distinct from flash-winner's
+   single slow pulse) reads as "verifying" rather than "done", so the
+   reveal a moment later still feels like a payoff. */
+.lm-seat.flash-confirm{
+  animation:lm-confirm-pulse .45s ease-in-out 2;
+  border-color:#4edea3!important;
+  box-shadow:0 0 0 6px rgba(78,222,163,.35),0 0 34px rgba(78,222,163,.65)!important;
+  z-index:8;
+}
+@keyframes lm-confirm-pulse{
+  0%,100%{transform:translate(-50%,-50%) scale(1.06)}
+  50%{transform:translate(-50%,-50%) scale(1.22)}
+}
+.lm-confirm-label{
+  position:absolute;left:50%;bottom:100%;transform:translate(-50%,4px);
+  margin-bottom:6px;white-space:nowrap;font-family:var(--fh);font-weight:900;
+  font-size:15px;color:#4edea3;background:rgba(10,14,12,.88);
+  padding:5px 14px;border-radius:20px;border:2px solid #4edea3;
+  box-shadow:0 4px 16px rgba(78,222,163,.5);z-index:9;
+  animation:lm-confirm-label-in .9s ease forwards;
+}
+@keyframes lm-confirm-label-in{
+  0%{opacity:0;transform:translate(-50%,14px) scale(.85)}
+  15%{opacity:1;transform:translate(-50%,4px) scale(1)}
+  80%{opacity:1}
+  100%{opacity:0;transform:translate(-50%,-2px) scale(1)}
+}
+
 .lm-strategy-select{min-width:172px}
 .lm-target-hint{
   font-size:11px;font-weight:700;color:#d0bcff;display:flex;align-items:center;gap:5px;
@@ -198,19 +227,42 @@
 .lm-feed-empty{color:var(--text-muted);font-size:12px;text-align:center;padding:24px 0}
 
 /* ── Winner Spotlight Popup (rendered into the app's shared #modal-content) ── */
-.lm-spotlight{text-align:center;padding:8px}
+.lm-spotlight{text-align:center;padding:10px;animation:lm-spotlight-in .4s ease}
+@keyframes lm-spotlight-in{
+  0%{opacity:0;transform:scale(.9) translateY(10px)}
+  100%{opacity:1;transform:scale(1) translateY(0)}
+}
 .lm-spotlight-avatar{
-  width:88px;height:88px;border-radius:50%;margin:0 auto 14px;
+  width:132px;height:132px;border-radius:50%;margin:0 auto 12px;
   display:flex;align-items:center;justify-content:center;
-  font-family:var(--fh);font-weight:900;font-size:32px;
+  font-family:var(--fh);font-weight:900;font-size:46px;
   position:relative;overflow:hidden;
 }
 .lm-spotlight-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}
-.lm-spotlight-name{font-family:var(--fh);font-size:22px;font-weight:900;margin-bottom:4px}
-.lm-spotlight-tier{font-size:13px;color:var(--text-muted);margin-bottom:18px}
-.lm-spotlight-stats{display:flex;justify-content:center;gap:24px;margin-bottom:22px}
-.lm-spotlight-stat-num{font-family:var(--fh);font-size:20px;font-weight:900}
-.lm-spotlight-stat-label{font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase}
+.lm-spotlight-title-slot{display:flex;justify-content:center;margin-bottom:10px}
+.lm-spotlight-name{font-family:var(--fh);font-size:28px;font-weight:900;margin-bottom:4px}
+.lm-spotlight-tier{font-size:14px;color:var(--text-muted);margin-bottom:16px;font-weight:700}
+
+/* The big highlighted "Overall Recitation Points" headline — the single
+   number a teacher should be able to read from across the room. */
+.lm-spotlight-headline{
+  margin:0 auto 18px;padding:14px 20px;border-radius:18px;max-width:320px;
+  background:linear-gradient(160deg,var(--hl,#8b5cf6)29,rgba(20,18,32,.6));
+  border:2px solid var(--hl,#8b5cf6);
+  box-shadow:0 0 28px color-mix(in srgb, var(--hl,#8b5cf6) 45%, transparent);
+}
+.lm-spotlight-headline-num{
+  font-family:var(--fh);font-size:56px;font-weight:900;line-height:1;
+  color:var(--hl,#8b5cf6);text-shadow:0 0 22px color-mix(in srgb, var(--hl,#8b5cf6) 70%, transparent);
+}
+.lm-spotlight-headline-label{
+  font-size:12px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--text-muted);margin-top:4px;
+}
+
+.lm-spotlight-stats{display:flex;justify-content:center;gap:22px;margin-bottom:22px;flex-wrap:wrap}
+.lm-spotlight-stat-num{font-family:var(--fh);font-size:24px;font-weight:900}
+.lm-spotlight-stat-label{font-size:10.5px;color:var(--text-muted);font-weight:700;text-transform:uppercase}
 .lm-spotlight-actions{display:flex;gap:10px;justify-content:center}
 
 /* ── Phase 3: Recitation Command Center ─────────────────────────────────── */
@@ -230,30 +282,33 @@
 /* Task 1 — Live Counter Badge: top-right corner of the seat card, only
    rendered at all when isRecitationMode is true (see _lmRenderCanvas). */
 .lm-recitation-badge{
-  position:absolute;top:-7px;right:-7px;min-width:20px;height:20px;padding:0 5px;
-  border-radius:10px;background:linear-gradient(135deg,#ffd166,#ff9f5f);color:#1a1625;
-  font-family:var(--fh);font-size:11px;font-weight:900;display:flex;align-items:center;
-  justify-content:center;box-shadow:0 2px 8px rgba(255,209,102,.55);
-  border:2px solid rgba(20,18,32,.9);z-index:5;line-height:1;
+  position:absolute;top:-16px;right:-16px;min-width:38px;height:38px;padding:0 8px;
+  border-radius:19px;background:linear-gradient(135deg,#ffd166,#ff9f5f);color:#1a1625;
+  font-family:var(--fh);font-size:20px;font-weight:900;display:flex;align-items:center;
+  justify-content:center;box-shadow:0 3px 14px rgba(255,209,102,.7);
+  border:3px solid rgba(20,18,32,.9);z-index:5;line-height:1;
 }
 .lm-recitation-badge.bump{animation:lm-badge-bump .35s ease}
 @keyframes lm-badge-bump{
-  0%{transform:scale(1)} 45%{transform:scale(1.4)} 100%{transform:scale(1)}
+  0%{transform:scale(1)} 45%{transform:scale(1.5)} 100%{transform:scale(1)}
 }
 
 /* Task 4 — Floating +1 (or +N for manual awards). Spawned as a child of the
    seat element and removed after the animation completes — see
    _lmSpawnFloatingPoint(). */
 .lm-float-point{
-  position:absolute;left:50%;top:6px;transform:translate(-50%,0);
-  font-family:var(--fh);font-weight:900;font-size:16px;color:#ffd166;
-  pointer-events:none;z-index:6;text-shadow:0 2px 6px rgba(0,0,0,.55);
-  animation:floating-point-up 1.5s ease-out forwards;
+  position:absolute;left:50%;top:0;transform:translate(-50%,0);
+  font-family:var(--fh);font-weight:900;font-size:44px;color:#ffd166;
+  -webkit-text-stroke:1.5px rgba(26,22,37,.9);
+  pointer-events:none;z-index:6;
+  text-shadow:0 0 10px rgba(255,209,102,.9),0 0 22px rgba(255,209,102,.6),0 3px 8px rgba(0,0,0,.6);
+  animation:floating-point-up 1.7s cubic-bezier(.2,.8,.3,1) forwards;
 }
 @keyframes floating-point-up{
-  0%   {opacity:0;   transform:translate(-50%,0)    scale(.8)}
-  15%  {opacity:1;   transform:translate(-50%,-10px) scale(1.1)}
-  100% {opacity:0;   transform:translate(-50%,-52px) scale(1)}
+  0%   {opacity:0;   transform:translate(-50%,0)     scale(.4)}
+  12%  {opacity:1;   transform:translate(-50%,-14px) scale(1.5)}
+  25%  {              transform:translate(-50%,-22px) scale(1.2)}
+  100% {opacity:0;   transform:translate(-50%,-110px) scale(1.3)}
 }
 
 /* Task 3 — Sidebar Command Center */
@@ -1242,14 +1297,31 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     document.querySelectorAll('.lm-seat.flash-cycle').forEach(el => el.classList.remove('flash-cycle'));
   }
 
+  const LM_CONFIRM_PAUSE_MS = 900; // beat between "cycle stopped here" and "yes, really, this one"
+
   function _lmLandOnWinner(winnerVm) {
     const el = document.querySelector(`.lm-seat[data-seat-id="${winnerVm.seatId}"]`);
     if (el) {
-      el.classList.add('flash-winner');
-      setTimeout(() => el.classList.remove('flash-winner'), 2300);
       el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      // Confirmation beat: pulse the landed-on seat and label it before
+      // opening the profile, so the roll reads as "verified" rather than
+      // an instant, possibly-missed cut to the popup.
+      el.classList.add('flash-confirm');
+      const label = document.createElement('div');
+      label.className = 'lm-confirm-label';
+      label.textContent = '✓ Confirming…';
+      el.appendChild(label);
+      setTimeout(() => label.remove(), 900);
     }
-    _lmShowSpotlight(winnerVm);
+
+    setTimeout(() => {
+      if (el) {
+        el.classList.remove('flash-confirm');
+        el.classList.add('flash-winner');
+        setTimeout(() => el.classList.remove('flash-winner'), 2300);
+      }
+      _lmShowSpotlight(winnerVm);
+    }, LM_CONFIRM_PAUSE_MS);
   }
 
   function _lmShowSpotlight(winnerVm) {
@@ -1261,21 +1333,50 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     }
 
     const color = student.color || '#8b5cf6';
-    const xpIntoLevel = (student.xp || 0) % 1000; // mirrors utils.js's XP_PER_LEVEL=1000 convention
+
+    // Equipped title, rendered with the same badge renderer the kiosk/
+    // sidebar/leaderboard use — reuses tsGetEquippedTitle()/tsBuildBadgeHTML()
+    // from modules/titles/ rather than re-deriving title styling here.
+    const equippedTitle = typeof tsGetEquippedTitle === 'function' ? tsGetEquippedTitle(student.id) : null;
+    const titleHtml = (equippedTitle && typeof tsBuildBadgeHTML === 'function')
+      ? `<div class="lm-spotlight-title-slot">${tsBuildBadgeHTML(equippedTitle, { small: true, noParticles: true })}</div>`
+      : '';
+
+    // Points stats. Overall is the big highlighted headline (visible from
+    // across the room); Today and This Session are supporting context.
+    const overallPts = (typeof RecitationService.getAllTimeTotalForStudent === 'function')
+      ? RecitationService.getAllTimeTotalForStudent(student.id) : 0;
+    const todayPts = (typeof RecitationService.getTodayTotalForStudent === 'function')
+      ? RecitationService.getTodayTotalForStudent(student.id) : 0;
+    const sessionPts = (_lmRecitationMode && _lmSessionStartAt)
+      ? (RecitationService.getSessionCounts(_lmClassId, _lmSessionStartAt)[student.id] || 0)
+      : null;
 
     showModal(`
-      <div class="lm-spotlight">
+      <div class="lm-spotlight" style="--hl:${color}">
         <div class="lm-spotlight-avatar" style="background:${color}22;border:3px solid ${color};color:${color}">
           ${student.profilePic ? `<img src="${_esc(student.profilePic)}" alt="" onerror="this.remove()">` : ''}
           ${_esc(student.init || (student.name||'?')[0])}
         </div>
+        ${titleHtml}
         <div class="lm-spotlight-name">${_esc(student.name || student.displayName || 'Student')}</div>
         <div class="lm-spotlight-tier">${_esc(student.tier || 'Novice')} · LV ${student.level || 0}</div>
+
+        <div class="lm-spotlight-headline">
+          <div class="lm-spotlight-headline-num">${overallPts}</div>
+          <div class="lm-spotlight-headline-label">⭐ Overall Recitation Points</div>
+        </div>
+
         <div class="lm-spotlight-stats">
           <div>
-            <div class="lm-spotlight-stat-num" style="color:${color}">${xpIntoLevel}<span style="font-size:11px;color:var(--text-muted)">/1000</span></div>
-            <div class="lm-spotlight-stat-label">XP this level</div>
+            <div class="lm-spotlight-stat-num" style="color:#4edea3">${todayPts}</div>
+            <div class="lm-spotlight-stat-label">Today</div>
           </div>
+          ${sessionPts !== null ? `
+          <div>
+            <div class="lm-spotlight-stat-num" style="color:#ffd166">${sessionPts}</div>
+            <div class="lm-spotlight-stat-label">This Session</div>
+          </div>` : ''}
           <div>
             <div class="lm-spotlight-stat-num">${student.coins || 0}</div>
             <div class="lm-spotlight-stat-label">Coins</div>
@@ -1285,6 +1386,7 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
             <div class="lm-spotlight-stat-label">Status</div>
           </div>
         </div>
+
         <div class="lm-spotlight-actions">
           <button class="btn btn-ghost btn-sm" onclick="closeModalForce()">Close</button>
           <button class="btn btn-primary btn-sm" onclick="closeModalForce(); window._lmStartColdCall();">🎲 Roll Again</button>
