@@ -126,6 +126,7 @@ window.unmountEnrollmentHub = function () {
   _enrollHubMounted = false;
   if (_enrollFocusInterval) { clearInterval(_enrollFocusInterval); _enrollFocusInterval = null; }
   if (_enrollInactivityTimer) { clearTimeout(_enrollInactivityTimer); _enrollInactivityTimer = null; }
+  if (_enrollDocKeyGuard) { document.removeEventListener('keydown', _enrollDocKeyGuard, true); _enrollDocKeyGuard = null; }
   _kioskClearIdleTimer();
   if (_kioskSuccessTimeout) { clearTimeout(_kioskSuccessTimeout); _kioskSuccessTimeout = null; }
   // Safety net: this only runs when navTo() actually reaches its teardown
@@ -154,11 +155,33 @@ window.unmountEnrollmentHub = function () {
 
 // ── Capture plumbing (mirrors att_scanner_rfid.js's _rfidStartCapture) ──────
 
+// Keys whose DEFAULT action moves focus or scrolls the page — but only when
+// focus ISN'T on an editable text field (Home/End/Space normally move the
+// text caret instead when focus is inside an <input>; Tab's default action
+// is always "move focus to the next tabbable element", editable or not). A
+// USB-HID RFID/NFC reader's wedge protocol can include keys like these
+// alongside the tag data (e.g. some models are configured to send Tab as
+// their terminator instead of Enter) — and if one of those keys' default
+// action fires, focus can jump to something near the top of the page
+// (a sidebar link, a header button), and the browser scrolls it into view.
+// This is what was still causing the scroll-jump even with every .focus()
+// call in this file already using preventScroll.
+const ENROLL_SCROLL_KEYS = new Set(['Home', 'End', 'PageUp', 'PageDown', ' ', 'Spacebar',
+  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab']);
+let _enrollDocKeyGuard = null;
+let _enrollScanBuffer = '';
+
+function _enrollIsRealVisibleInput(el) {
+  return !!el && el.id !== 'enroll-capture-input' &&
+    (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA');
+}
+
 function _enrollStartCapture() {
   const input = document.getElementById('enroll-capture-input');
   if (!input) return;
 
   input.value = '';
+  _enrollScanBuffer = '';
   input.focus({ preventScroll: true });
 
   if (_enrollFocusInterval) clearInterval(_enrollFocusInterval);
@@ -178,23 +201,53 @@ function _enrollStartCapture() {
     }
   }, 600);
 
+  // BUGFIX (scroll-jump, round 2): rather than reading input.value (which
+  // depends on the browser's own native text-insertion behavior for every
+  // key we DON'T happen to preventDefault — an unwinnable guessing game
+  // against whatever a given reader model's wedge protocol sends), we build
+  // the scanned string ourselves from single-character keys and swallow the
+  // native effect of every key that reaches this input, unconditionally.
+  // Nothing this hidden input receives should ever be allowed to do
+  // anything but feed the scan buffer — so nothing it receives can scroll
+  // or refocus the page either.
   input.addEventListener('keydown', function (e) {
+    e.preventDefault();
     if (e.key === 'Enter') {
-      e.preventDefault();
-      _enrollFinalizeScan(input.value);
+      _enrollFinalizeScan(_enrollScanBuffer);
       return;
+    }
+    if (e.key.length === 1) {
+      _enrollScanBuffer += e.key;
+      input.value = _enrollScanBuffer; // kept in sync for any legacy reads
     }
     if (_enrollInactivityTimer) clearTimeout(_enrollInactivityTimer);
     _enrollInactivityTimer = setTimeout(function () {
-      if (input.value) _enrollFinalizeScan(input.value);
+      if (_enrollScanBuffer) _enrollFinalizeScan(_enrollScanBuffer);
     }, 120);
   });
+
+  // Document-level backstop (capturing phase, so it runs before the page
+  // can act on the key): covers the case where a reader keystroke lands
+  // outside the capture input entirely — e.g. focus was on <body> or a
+  // just-clicked button for the one keystroke before the input above
+  // re-claims focus. Real visible fields (search bar, section/card
+  // filters, kiosk password) are explicitly exempted so normal typing and
+  // keyboard navigation in those still work.
+  if (!_enrollDocKeyGuard) {
+    _enrollDocKeyGuard = function (e) {
+      if (!_enrollHubMounted) return;
+      if (_enrollIsRealVisibleInput(e.target)) return;
+      if (ENROLL_SCROLL_KEYS.has(e.key)) e.preventDefault();
+    };
+    document.addEventListener('keydown', _enrollDocKeyGuard, true);
+  }
 }
 
 function _enrollFinalizeScan(rawValue) {
   const input = document.getElementById('enroll-capture-input');
   const tagId = String(rawValue || '').trim();
   if (input) input.value = '';
+  _enrollScanBuffer = '';
   if (_enrollInactivityTimer) { clearTimeout(_enrollInactivityTimer); _enrollInactivityTimer = null; }
   if (!tagId) return;
 
