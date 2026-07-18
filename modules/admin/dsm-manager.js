@@ -33,6 +33,15 @@ const DSM_STUDENT_DEFAULTS = [
   {id:'s-badges',      label:'Achievements',  icon:'workspace_premium',     order:9,  visible:true, locked:false, disabled:false, status:'active',     lockMsg:'Complete registration to unlock',     unlockReq:'Complete registration', group:'Community'},
   {id:'s-mail',        label:'Mail',          icon:'mail',                  order:10, visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:'Community'},
   {id:'s-attendance',  label:'My Progress',   icon:'calendar_month',        order:11, visible:true, locked:false, disabled:false, status:'active',     lockMsg:'',                                    unlockReq:'',                 group:''},
+  // Not a sidebar page — the floating "Quest Map" button pinned to the
+  // bottom-right of the student shell (index.html #stage-map-btn, shown/
+  // hidden in auth.js bootApp()). Flagged `widget:true` so _dsmBuildNav()
+  // skips it when building the actual sidebar list (it has no page to
+  // navTo() into), while it still gets a normal row + Visible/Hidden
+  // toggle in Nav Manager > Student Nav like any other entry, and still
+  // participates in load/save/merge/reconcile exactly like the rest of
+  // DSM_STUDENT_DEFAULTS. See dsmIsWidgetVisible() below.
+  {id:'s-stagemap-btn', label:'Quest Map (Floating Button)', icon:'map', order:12, visible:true, locked:false, disabled:false, status:'active', lockMsg:'', unlockReq:'', group:'', widget:true},
 ];
 
 const DSM_ADMIN_DEFAULTS = [
@@ -192,6 +201,54 @@ function _dsmFindItem(tab, id) {
 // order, with `_group` marker rows inserted whenever the group
 // changes, and per-item `_cfg` (status/locked/disabled) for badges.
 
+// Groups a nav list into ordered blocks: named-group blocks (one per
+// distinct `group` value, all members together) and ungrouped items as
+// their own singleton blocks — shared by _dsmBuildNav() (sidebar render)
+// and the "Manage Groups" panel (dsmMoveGroup/_dsmGroupManagerHTML) so
+// both agree on exactly the same block order. Operates on whatever list
+// you pass in — pass the full unfiltered tab list for management (so a
+// temporarily-hidden group can still be reordered/renamed), or a
+// visibility-filtered list for the actual sidebar.
+//
+// A group's block position is anchored to the LOWEST `order` value among
+// its own members — editing one member's `order` only reshuffles it
+// within the block (or moves the anchor if it becomes the new lowest),
+// it can never split the block or bleed into a neighboring group's range.
+// Group names are admin-typed free text (unlike the slug-like `id`s used
+// in every other onclick call in this file), so a name containing an
+// apostrophe would otherwise break out of the single-quoted JS string
+// literal inside onclick="...". _esc() only handles HTML-attribute
+// escaping (", <, >) — this handles the JS-string-literal escaping on top
+// of it for the handful of spots that embed a group name in onclick.
+function _dsmJsAttr(s) {
+  return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function _dsmComputeBlocks(list) {
+  const groupAnchor = new Map(); // group name -> lowest order among its members
+  list.forEach(it => {
+    const g = it.group || '';
+    if (!g) return;
+    const cur = groupAnchor.has(g) ? groupAnchor.get(g) : Infinity;
+    groupAnchor.set(g, Math.min(cur, it.order ?? 0));
+  });
+
+  const blocksByKey = new Map(); // group name ('' key = per-item singleton) -> block
+  list.forEach(it => {
+    const g = it.group || '';
+    const key = g || ('__single__' + it.id);
+    if (!blocksByKey.has(key)) {
+      blocksByKey.set(key, { name: g, order: g ? groupAnchor.get(g) : (it.order ?? 0), items: [] });
+    }
+    blocksByKey.get(key).items.push(it);
+  });
+
+  const blocks = [...blocksByKey.values()];
+  blocks.forEach(b => b.items.sort((a, b2) => (a.order ?? 0) - (b2.order ?? 0)));
+  blocks.sort((a, b) => a.order - b.order);
+  return blocks; // [{ name: '' | groupName, order, items: [...] }]
+}
+
 function _dsmBuildNav(list, isRealAdmin) {
   // ISOLATION_ROLES_PLAN.md §10/§11: adminOnly rows never reach anything
   // but the real admin's own sidebar, no matter what a saved DSM row says
@@ -200,24 +257,25 @@ function _dsmBuildNav(list, isRealAdmin) {
   // DSM_TEACHER_DEFAULTS / _dsmReconcileWithNav's teacher-specific source),
   // so this filter is now just a defensive floor on the admin list itself —
   // it's not what separates teacher from admin anymore.
-  const items = [...list]
+  const visible = [...list]
     .filter(it => it.visible !== false)
     .filter(it => !it.adminOnly || isRealAdmin)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    // widget rows (e.g. s-stagemap-btn) aren't sidebar pages — they have no
+    // showPage()/navTo() target, so they never belong in the rendered nav
+    // list. Their `visible` flag is read separately via
+    // dsmIsWidgetVisible() by whatever renders that widget.
+    .filter(it => !it.widget);
 
   const out = [];
-  let lastGroup = null;
-  items.forEach(it => {
-    const group = it.group || '';
-    if (group && group !== lastGroup) {
-      out.push({ id: '_grp_' + group, label: group, _group: true });
-    }
-    lastGroup = group;
-    out.push({
-      id: it.id,
-      label: it.label,
-      icon: it.icon,
-      _cfg: { status: it.status, locked: !!it.locked, disabled: !!it.disabled },
+  _dsmComputeBlocks(visible).forEach(block => {
+    if (block.name) out.push({ id: '_grp_' + block.name, label: block.name, _group: true });
+    block.items.forEach(it => {
+      out.push({
+        id: it.id,
+        label: it.label,
+        icon: it.icon,
+        _cfg: { status: it.status, locked: !!it.locked, disabled: !!it.disabled },
+      });
     });
   });
   return out;
@@ -242,6 +300,37 @@ window.dsmGetAdminNav = function () {
 window.dsmGetTeacherNav = function () {
   _dsmEnsureLoaded();
   return _dsmBuildNav(_dsmState.teacher, /* isRealAdmin */ false);
+};
+
+// Visibility check for non-sidebar "widget" rows (currently just
+// s-stagemap-btn, the floating Quest Map button). Falls back to visible=true
+// if DSM hasn't loaded yet or the row doesn't exist, so a missing/older
+// persisted list never accidentally hides the widget for everyone.
+window.dsmIsWidgetVisible = function (id, scope) {
+  _dsmEnsureLoaded();
+  const list = _dsmState[scope || 'student'] || [];
+  const it = list.find(x => x.id === id);
+  return it ? it.visible !== false : true;
+};
+
+// Full config for a non-sidebar "widget" row — used by callers that need
+// more than just the visible flag (e.g. the floating Quest Map button also
+// respecting Locked/Coming Soon/Disabled from Nav Manager, same as a normal
+// sidebar tab does). Returns a safe all-open default if DSM hasn't loaded
+// or the row doesn't exist, so a missing/older persisted list never
+// accidentally locks the widget out for everyone.
+window.dsmGetWidgetConfig = function (id, scope) {
+  _dsmEnsureLoaded();
+  const list = _dsmState[scope || 'student'] || [];
+  const it = list.find(x => x.id === id);
+  if (!it) return { visible: true, locked: false, disabled: false, status: 'active', lockMsg: '' };
+  return {
+    visible: it.visible !== false,
+    locked: !!it.locked,
+    disabled: !!it.disabled,
+    status: it.status || 'active',
+    lockMsg: it.lockMsg || '',
+  };
 };
 
 // ── UI: NAVIGATION MANAGER PAGE ────────────────────────
@@ -273,6 +362,15 @@ window.renderNavManager = function () {
     <button class="btn btn-success btn-sm" onclick="dsmApplyAndRefresh()">✅ Apply &amp; Refresh</button>
   </div>
 
+  <div class="glass-card" style="padding:16px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span class="material-symbols-outlined" style="font-size:18px;color:var(--text-muted)">folder_managed</span>
+      <h3 style="font-family:var(--fh);font-size:14px;font-weight:800;margin:0">Manage Groups</h3>
+      <span style="font-size:11px;color:var(--text-muted)">— rename a group or move it earlier/later; assign a tab to a group from its row below</span>
+    </div>
+    ${_dsmGroupManagerHTML(_dsmActiveTab)}
+  </div>
+
   <div style="margin-bottom:12px;max-width:280px">
     <input type="text" placeholder="Search tabs by name, id, or group…" value="${_esc(_dsmSearch)}" oninput="dsmSetSearch(this.value)">
   </div>
@@ -285,6 +383,35 @@ window.renderNavManager = function () {
   </div>
   `;
 };
+
+// Renders the group list for the current tab in display order (same
+// ordering _dsmBuildNav() uses for the real sidebar), each with a member
+// count, a rename button, and up/down controls to move the whole block.
+function _dsmGroupManagerHTML(tab) {
+  const list = _dsmState[tab] || [];
+  const groupBlocks = _dsmComputeBlocks(list).filter(b => b.name);
+  if (!groupBlocks.length) {
+    return `<div style="font-size:12px;color:var(--text-muted)">No groups yet — open a tab's row below and assign it to a group.</div>`;
+  }
+  return `<div style="display:flex;flex-direction:column;gap:6px">
+    ${groupBlocks.map((b, i) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03);border-radius:8px">
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <button class="btn btn-ghost btn-xs" style="padding:2px 6px" title="Move up" ${i === 0 ? 'disabled' : ''} onclick="dsmMoveGroup('${tab}','${_dsmJsAttr(b.name)}',-1)">
+          <span class="material-symbols-outlined" style="font-size:14px">keyboard_arrow_up</span>
+        </button>
+        <button class="btn btn-ghost btn-xs" style="padding:2px 6px" title="Move down" ${i === groupBlocks.length - 1 ? 'disabled' : ''} onclick="dsmMoveGroup('${tab}','${_dsmJsAttr(b.name)}',1)">
+          <span class="material-symbols-outlined" style="font-size:14px">keyboard_arrow_down</span>
+        </button>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700">${_esc(b.name)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${b.items.length} tab${b.items.length === 1 ? '' : 's'} · ${b.items.map(it => _esc(it.label)).join(', ')}</div>
+      </div>
+      <button class="btn btn-ghost btn-xs" onclick="dsmRenameGroup('${tab}','${_dsmJsAttr(b.name)}')">✏️ Rename</button>
+    </div>`).join('')}
+  </div>`;
+}
 
 function _dsmRenderRows() {
   const tab = _dsmActiveTab;
@@ -305,6 +432,7 @@ function _dsmRenderRows() {
     { v: 'coming_soon', l: 'Coming Soon' },
     { v: 'event_only', l: 'Event Only' },
   ];
+  const allGroupNames = [...new Set((_dsmState[tab] || []).map(x => x.group || '').filter(Boolean))].sort();
 
   return list.map(it => {
     const expanded = !!_dsmExpanded[it.id];
@@ -338,9 +466,12 @@ function _dsmRenderRows() {
             onchange="dsmSetField('${tab}','${it.id}','icon',this.value)">
         </div>
         <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Sidebar Group Heading</label>
-          <input type="text" value="${_esc(it.group || '')}" placeholder="e.g. Tools" style="width:100%"
-            onchange="dsmSetField('${tab}','${it.id}','group',this.value)">
+          <label class="form-label">Sidebar Group</label>
+          <select style="width:100%" onchange="dsmAssignGroup('${tab}','${it.id}',this.value)">
+            <option value="" ${!it.group ? 'selected' : ''}>— No group —</option>
+            ${allGroupNames.map(g => `<option value="${_esc(g)}" ${it.group === g ? 'selected' : ''}>${_esc(g)}</option>`).join('')}
+            <option value="__new__">+ New group…</option>
+          </select>
         </div>
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Lock Message</label>
@@ -406,6 +537,63 @@ window.dsmSetField = function (tab, id, field, value) {
 
 window.dsmExpandRow = function (tab, id) {
   _dsmExpanded[id] = !_dsmExpanded[id];
+  renderNavManager();
+};
+
+// ── GROUP MANAGEMENT ────────────────────────────────────
+// Lets an admin decide which named group each tab belongs to (via a
+// dropdown of the groups already in use, instead of freeform typing that
+// invited typos like "Tool" vs "Tools"), rename a group everywhere it's
+// used in one go, or move a whole group block earlier/later relative to
+// its neighbors — separate from a single item's own position within its
+// group (still set via the Order column).
+
+window.dsmAssignGroup = function (tab, id, value) {
+  const item = _dsmFindItem(tab, id);
+  if (!item) return;
+  if (value === '__new__') {
+    const name = prompt('New group name:', '');
+    if (!name || !name.trim()) { renderNavManager(); return; } // cancelled/empty — reset the select back to its current value
+    item.group = name.trim();
+  } else {
+    item.group = value; // '' = no group
+  }
+  _dsmDirty = true;
+  renderNavManager();
+};
+
+window.dsmRenameGroup = function (tab, oldName) {
+  const newName = prompt('Rename group "' + oldName + '" to:', oldName);
+  if (newName === null) return; // cancelled
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === oldName) return;
+  _dsmEnsureLoaded();
+  (_dsmState[tab] || []).forEach(it => {
+    if ((it.group || '') === oldName) it.group = trimmed;
+  });
+  _dsmDirty = true;
+  renderNavManager();
+};
+
+// Swaps the whole named-group block with its immediate neighbor (dir: -1
+// up, +1 down) in the tab's current display order, then renumbers every
+// item's `order` sequentially block-by-block so the new arrangement holds
+// regardless of whatever numbers were in play before — no manual
+// order-juggling needed to move a whole group.
+window.dsmMoveGroup = function (tab, groupName, dir) {
+  _dsmEnsureLoaded();
+  const list = _dsmState[tab] || [];
+  const blocks = _dsmComputeBlocks(list);
+  const idx = blocks.findIndex(b => b.name === groupName);
+  if (idx === -1) return;
+  const target = idx + dir;
+  if (target < 0 || target >= blocks.length) return;
+  const tmp = blocks[idx];
+  blocks[idx] = blocks[target];
+  blocks[target] = tmp;
+  let n = 1;
+  blocks.forEach(b => { b.items.forEach(it => { it.order = n++; }); });
+  _dsmDirty = true;
   renderNavManager();
 };
 

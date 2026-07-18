@@ -489,9 +489,27 @@ function bootApp(){
     } else if(currentRole==='admin'||currentRole==='teacher'){renderAdminDashboard();showPage('a-dashboard');}
     else{renderStudentDashboard();showPage('s-dashboard');}
   }
-  // Show stage map button for students
+  // Show stage map button for students — unless an admin has hidden,
+  // locked, disabled, or "coming soon"-ed it via Navigation Manager >
+  // Student Nav (DSM_STUDENT_DEFAULTS' s-stagemap-btn widget row; see
+  // dsm-manager.js's dsmGetWidgetConfig()).
   const btn = document.getElementById('stage-map-btn');
-  if(btn) btn.style.display = currentRole==='student' ? 'flex' : 'none';
+  if(btn){
+    const cfg = (typeof dsmGetWidgetConfig==='function')
+      ? dsmGetWidgetConfig('s-stagemap-btn')
+      : { visible:true, locked:false, disabled:false, status:'active', lockMsg:'' };
+    const gated = cfg.locked || cfg.disabled || cfg.status==='coming_soon';
+    if(currentRole==='student' && cfg.visible){
+      btn.style.display = 'flex';
+      btn.disabled = gated;
+      btn.style.opacity = gated ? '0.5' : '';
+      btn.style.pointerEvents = gated ? 'none' : '';
+      btn.style.cursor = gated ? 'not-allowed' : '';
+      btn.title = gated ? (cfg.lockMsg || (cfg.status==='coming_soon' ? 'Coming Soon' : 'Locked')) : 'Quest Map';
+    } else {
+      btn.style.display = 'none';
+    }
+  }
   // Show notif dot if student has active stage
   if(currentRole==='student'){
     const prog = getStageProgress(currentUser);

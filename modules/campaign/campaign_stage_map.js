@@ -13,7 +13,21 @@ let activeWorld  = 0;
 window.openStageMap = function () {
   const overlay = document.getElementById('stage-map-overlay');
   if (!overlay) return;
-  
+
+  // Respect Nav Manager's lock/disable/coming-soon state for the floating
+  // Quest Map widget (auth.js's bootApp() already hides/dims the button
+  // itself, but this also covers programmatic calls — e.g. campaign_engine.js
+  // auto-reopening the map after a student exits or finishes a stage).
+  if (typeof dsmGetWidgetConfig === 'function') {
+    const cfg = dsmGetWidgetConfig('s-stagemap-btn');
+    if (!cfg.visible || cfg.locked || cfg.disabled || cfg.status === 'coming_soon') {
+      if (typeof toast === 'function') {
+        toast(cfg.lockMsg || (cfg.status === 'coming_soon' ? '🔒 Quest Map coming soon' : '🔒 Quest Map is locked'), '#ffb95f');
+      }
+      return;
+    }
+  }
+
   overlay.classList.add('open'); // The CSS transition handles the rest
   stageMapOpen = true;
   
