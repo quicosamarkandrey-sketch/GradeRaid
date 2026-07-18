@@ -136,9 +136,11 @@ function _ccAttendanceCountsToday(classId) {
   return { present, late, absent, hasAny: logs.length > 0 };
 }
 
+let _ccMounted = false;
 window.renderAdminDashboard = function () {
   const el = document.getElementById('a-dashboard');
   if (!el) return;
+  _ccMounted = true;
 
   const isAdmin = currentRole === 'admin';
   const sections = _ccMySections(isAdmin);
@@ -170,6 +172,25 @@ window.renderAdminDashboard = function () {
   _ccStartTicking();
 };
 
+// BUGFIX (dashboard shows "No sections yet" on first login until you nav
+// away and back): _ccMySections() reads AppStore.classSections
+// synchronously, but that slice is filled in by a SEPARATE, unawaited fetch
+// (sections_index.js's _bootstrapSectionData(), kicked off from auth.js
+// right before bootApp() renders this dashboard). So the very first paint
+// almost always runs before that fetch resolves and shows the empty state.
+// Every other module that depends on live section data (Section Maker,
+// Classroom Builder, Live Monitor, Enrollment Hub, etc.) subscribes to
+// AppStore and repaints itself when the data lands — this dashboard was the
+// one screen that didn't, so it just sat frozen on the stale first render.
+// Subscribing here and re-running renderAdminDashboard() on the
+// 'sections:bootstrapped' event (and other state updates) fixes that.
+AppStore.subscribe('command-center', function (state, event) {
+  if (!_ccMounted) return;
+  if (!event || event.type === 'state:updated' || event.type.indexOf('sections:') === 0 || event.type === 'state:remote-sync') {
+    window.renderAdminDashboard();
+  }
+});
+
 /**
  * unmountCommandCenter() → void  [window.unmountCommandCenter]
  * Stops the 1s clock/countdown interval. Same convention as
@@ -183,6 +204,7 @@ function _ccStartTicking() {
 }
 window.unmountCommandCenter = function () {
   if (_ccTickInterval) { clearInterval(_ccTickInterval); _ccTickInterval = null; }
+  _ccMounted = false; // gates the module-level AppStore subscriber above — see its comment
 };
 
 function _ccTick() {
