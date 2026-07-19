@@ -67,6 +67,16 @@ let _rfidAssignTargetStudentId = null;
 let _rfidSelectedClassId = 'default-class';
 let _rfidClockInterval = null;
 let _rfidScheduleTimerInterval = null;
+// Phone-as-NFC-reader (Web NFC / NDEFReader) — an additive second capture
+// source that sits next to the USB-HID keyboard-emulator capture below.
+// Both feed the exact same _rfidFinalizeScan(tagId) pipeline, so nothing
+// about AttendanceService, the spotlight, or the activity log needs to
+// know or care which physical reader produced the tag ID. Android Chrome
+// only (see _rfidWebNfcSupported()) — the toggle button simply doesn't
+// render on browsers/devices without NDEFReader, so the USB flow is
+// completely unaffected everywhere else.
+let _rfidWebNfcActive = false;
+let _rfidWebNfcAbortController = null;
 // Fullscreen/kiosk toggle (opt-in) — same pattern live_monitor.js uses for
 // its own lm-kiosk-mode: defaults to a normal embedded page (sidebar +
 // topbar visible) and only fills the screen once the teacher explicitly
@@ -115,6 +125,12 @@ window.renderRfidScanner = function () {
           ${_rfidKioskMode ? '⤢ Exit' : '⛶ Fullscreen'}
         </button>
         <button class="kiosk-icon-btn" title="Settings — schedule, assign card, close session" onclick="_rfidOpenSettings()">⚙️</button>
+        ${_rfidWebNfcSupported() ? `
+        <button class="kiosk-icon-btn${_rfidWebNfcActive ? ' active' : ''}" id="rfid-webnfc-btn"
+          title="${_rfidWebNfcActive ? 'Stop using this phone as an NFC reader' : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone'}"
+          onclick="_rfidToggleWebNfc()">
+          ${_rfidWebNfcActive ? '📱 NFC On' : '📱 Use Phone as Reader'}
+        </button>` : ''}
         <!-- BUGFIX (report §4): true fullscreen hides the whole app shell
              (topbar + sidebar) so students scanning cards don't see admin
              nav, but nothing was left in its place to get back out — the
@@ -197,6 +213,8 @@ window.unmountRfidScanner = function () {
   if (_rfidInactivityTimer) { clearTimeout(_rfidInactivityTimer); _rfidInactivityTimer = null; }
   if (_rfidClockInterval) { clearInterval(_rfidClockInterval); _rfidClockInterval = null; }
   if (_rfidScheduleTimerInterval) { clearInterval(_rfidScheduleTimerInterval); _rfidScheduleTimerInterval = null; }
+  if (_rfidWebNfcAbortController) { _rfidWebNfcAbortController.abort(); _rfidWebNfcAbortController = null; }
+  _rfidWebNfcActive = false;
   clearTimeout(window._rfidSpotlightResetTimer);
   _rfidKioskMode = false;
   document.body.classList.remove('rfid-kiosk-mode');
@@ -369,6 +387,81 @@ function _rfidStartCapture() {
       if (input.value) _rfidFinalizeScan(input.value);
     }, 120);
   });
+}
+
+// ── Phone-as-NFC-reader (Web NFC) ───────────────────────────────────────────
+// Entirely additive to the USB-HID capture above: it never touches
+// _rfidScanBuffer, the hidden #rfid-capture-input, or the focus-stealing
+// interval. It only ever calls the same _rfidFinalizeScan(tagId) that the
+// keyboard-emulator path calls, so AttendanceService.processScan() and
+// everything downstream (spotlight, activity log, realtime) is identical
+// no matter which physical reader produced the tag.
+
+function _rfidWebNfcSupported() {
+  return typeof window !== 'undefined' && 'NDEFReader' in window;
+}
+
+window._rfidToggleWebNfc = function () {
+  if (_rfidWebNfcActive) {
+    _rfidStopWebNfcCapture();
+  } else {
+    _rfidStartWebNfcCapture();
+  }
+};
+
+async function _rfidStartWebNfcCapture() {
+  if (!_rfidWebNfcSupported()) return;
+  try {
+    _rfidWebNfcAbortController = new AbortController();
+    const ndef = new NDEFReader();
+    // Must be called from a user gesture (the button's onclick) — this is
+    // a browser security requirement, not something we can work around.
+    await ndef.scan({ signal: _rfidWebNfcAbortController.signal });
+
+    _rfidWebNfcActive = true;
+    _rfidRefreshWebNfcButton();
+    toast('📱 Phone NFC reader armed — hold cards to the back of the phone', '#4edea3');
+
+    ndef.onreading = (event) => {
+      if (!_rfidScannerMounted) return;
+      // event.serialNumber is the tag/card UID (e.g. "04:a2:3f:9c:1b:80"),
+      // the phone's equivalent of what the USB reader types as tagId.
+      // NOTE: this UID format won't match a card already assigned via the
+      // USB reader unless that same physical card is re-assigned through
+      // Assign Card mode using the phone. Assign each card once with
+      // whichever reader will be scanning it day-to-day.
+      const tagId = event.serialNumber;
+      if (tagId) _rfidFinalizeScan(tagId);
+    };
+
+    ndef.onreadingerror = () => {
+      toast('⚠️ Could not read that tag — try again', '#ffd166');
+    };
+  } catch (err) {
+    _rfidWebNfcActive = false;
+    _rfidWebNfcAbortController = null;
+    _rfidRefreshWebNfcButton();
+    toast('Could not start phone NFC: ' + (err && err.message ? err.message : err), '#ffb4ab');
+  }
+}
+
+function _rfidStopWebNfcCapture() {
+  if (_rfidWebNfcAbortController) {
+    _rfidWebNfcAbortController.abort();
+    _rfidWebNfcAbortController = null;
+  }
+  _rfidWebNfcActive = false;
+  _rfidRefreshWebNfcButton();
+}
+
+function _rfidRefreshWebNfcButton() {
+  const btn = document.getElementById('rfid-webnfc-btn');
+  if (!btn) return;
+  btn.classList.toggle('active', _rfidWebNfcActive);
+  btn.textContent = _rfidWebNfcActive ? '📱 NFC On' : '📱 Use Phone as Reader';
+  btn.title = _rfidWebNfcActive
+    ? 'Stop using this phone as an NFC reader'
+    : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone';
 }
 
 function _rfidFinalizeScan(rawValue) {
