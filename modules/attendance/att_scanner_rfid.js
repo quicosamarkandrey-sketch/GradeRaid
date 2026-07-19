@@ -449,11 +449,10 @@ async function _rfidStartWebNfcCapture() {
     ndef.onreading = (event) => {
       if (!_rfidScannerMounted) return;
       // event.serialNumber is the tag/card UID (e.g. "04:a2:3f:9c:1b:80"),
-      // the phone's equivalent of what the USB reader types as tagId.
-      // NOTE: this UID format won't match a card already assigned via the
-      // USB reader unless that same physical card is re-assigned through
-      // Assign Card mode using the phone. Assign each card once with
-      // whichever reader will be scanning it day-to-day.
+      // in the phone's native hex format — different on the wire from what
+      // the USB reader types, but _rfidFinalizeScan() normalizes both into
+      // one canonical id (see _rfidNormalizeTagId() above), so a card
+      // assigned via either reader is recognized by both.
       const tagId = event.serialNumber;
       if (tagId) _rfidFinalizeScan(tagId);
     };
@@ -488,9 +487,49 @@ function _rfidRefreshWebNfcButton() {
     : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone';
 }
 
+/**
+ * _rfidNormalizeTagId(raw) → string
+ * Makes a phone (Web NFC) scan and a USB (keyboard-wedge) scan of the SAME
+ * physical card produce the SAME tag_id, so either reader can be assigned
+ * once and then used interchangeably for that card.
+ *
+ * Confirmed against this project's actual USB reader with a real card:
+ *   phone (Web NFC serialNumber): "27:21:7c:33"   (hex, card's native byte order)
+ *   USB reader (keyboard-wedge):  "0863772967"    (decimal, REVERSED byte
+ *                                                   order, zero-padded to
+ *                                                   10 digits)
+ *   27:21:7c:33 reversed -> 33:7c:21:27 -> hex 337C2127 -> decimal 863772967
+ *   -> zero-padded -> 0863772967  ✓ matches exactly.
+ *
+ * The USB decimal format is treated as canonical (not the phone's hex)
+ * because every card assigned before this fix is already stored that way —
+ * so this needs no data migration, and only phone reads get converted.
+ * A plain digit string (already-USB-format input) is untouched and passes
+ * straight through, so the existing USB-only flow is byte-for-byte
+ * unaffected. Only 4-byte UIDs (colon/dash-separated hex, exactly 4 bytes —
+ * the common MIFARE Classic case, and the one verified above) get the
+ * fixed 10-digit zero-pad; longer UIDs are still converted to decimal but
+ * not force-padded, since there's no confirmed USB sample for that case.
+ */
+function _rfidNormalizeTagId(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (/^[0-9a-fA-F]{2}([:\-][0-9a-fA-F]{2})+$/.test(s)) {
+    const hexBytes = s.split(/[:\-]/);
+    const reversedHex = hexBytes.slice().reverse().join('');
+    try {
+      const asDecimal = BigInt('0x' + reversedHex).toString();
+      return hexBytes.length === 4 ? asDecimal.padStart(10, '0') : asDecimal;
+    } catch (e) {
+      return s.replace(/[:\-]/g, '').toUpperCase(); // fallback if BigInt parsing ever fails
+    }
+  }
+  return s; // already USB/decimal format (or an unrecognized shape) — unchanged
+}
+
 function _rfidFinalizeScan(rawValue) {
   const input = document.getElementById('rfid-capture-input');
-  const tagId = String(rawValue || '').trim();
+  const tagId = _rfidNormalizeTagId(rawValue);
   if (input) input.value = '';
   if (_rfidInactivityTimer) { clearTimeout(_rfidInactivityTimer); _rfidInactivityTimer = null; }
   if (!tagId) return;
