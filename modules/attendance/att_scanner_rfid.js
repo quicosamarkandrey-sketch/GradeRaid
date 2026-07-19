@@ -113,6 +113,7 @@ window.renderRfidScanner = function () {
       <input id="rfid-capture-input" autocomplete="off" inputmode="none"
              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" />
 
+      <div class="kiosk-status-eyebrow" id="kiosk-status-eyebrow"></div>
       <div class="kiosk-clock-corner" id="kiosk-clock-corner"></div>
 
       <div class="kiosk-topstrip">
@@ -156,6 +157,7 @@ window.renderRfidScanner = function () {
 
   _rfidRenderSpotlight('idle');
   _rfidRenderActivity();
+  _rfidUpdateStatusEyebrow();
   _rfidStartCapture();
   _rfidStartClock();
   _rfidStartScheduleTimer();
@@ -168,9 +170,29 @@ window.renderRfidScanner = function () {
     if (!event || event.type === 'state:updated' || event.type.indexOf('attendance:') === 0 || event.type === 'state:remote-sync') {
       _rfidRenderActivity();
       _rfidRefreshClassSelectCounts();
+      _rfidUpdateStatusEyebrow();
     }
   });
 };
+
+/**
+ * _rfidUpdateStatusEyebrow() → void
+ * Fills the top-left "Section A · Scanning" status tag (design v2) — reads
+ * the same class label + schedule-state helpers the rest of this page
+ * already uses (getClassLabel, AttendanceService.getEffectiveSchedule via
+ * _rfidScheduleFor), so this is purely a display of existing state, not a
+ * new data source. Session state maps to: Scanning (open), Late window
+ * (past lateCutoff, before close), or Closed (past close/no schedule).
+ */
+function _rfidUpdateStatusEyebrow() {
+  const el = document.getElementById('kiosk-status-eyebrow');
+  if (!el) return;
+  const state = (typeof AppStore !== 'undefined') ? AppStore.getState() : {};
+  const label = window.getClassLabel ? window.getClassLabel(_rfidSelectedClassId, state) : _rfidSelectedClassId;
+  const info = _rfidNextScheduleMilestone(_rfidSelectedClassId);
+  const statusText = info.tone === 'closed' ? 'Closed' : info.tone === 'late' ? 'Late window' : 'Scanning';
+  el.innerHTML = `<span class="dot"></span><span>${_esc(label)} · ${_esc(statusText)}</span>`;
+}
 
 /**
  * _rfidClassOptionLabel(classId, state) → string  (Investigation Report §4)
@@ -268,7 +290,8 @@ function _rfidTickClock() {
   const now = new Date();
   const time = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
   const date = now.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' });
-  el.innerHTML = `<div class="kiosk-clock-time">${_esc(time)}</div><div class="kiosk-clock-date">${_esc(date)}</div>`;
+  const blinkTime = _esc(time).replace(':', '<span class="kiosk-clock-blink">:</span>');
+  el.innerHTML = `<div class="kiosk-clock-time">${blinkTime}</div><div class="kiosk-clock-date">${_esc(date)}</div>`;
 }
 
 function _rfidStartClock() {
@@ -328,6 +351,7 @@ function _rfidFormatCountdown(ms) {
 }
 
 function _rfidTickScheduleTimer() {
+  _rfidUpdateStatusEyebrow();
   const el = document.getElementById('kiosk-schedule-timer');
   if (!el) return;
   const info = _rfidNextScheduleMilestone(_rfidSelectedClassId);
@@ -497,7 +521,10 @@ async function _rfidHandleAttendanceScan(tagId) {
       not_open:      'Attendance has not opened yet.',
       wrong_section: result.message || 'This student is enrolled in a different section and cannot be scanned here.',
     };
-    _rfidRenderSpotlight('error', { message: messages[result.error] || result.message || 'Scan failed.' });
+    _rfidRenderSpotlight('error', {
+      message: messages[result.error] || result.message || 'Scan failed.',
+      rawTag: result.error === 'unknown_card' ? tagId : null,
+    });
     return;
   }
 
@@ -521,11 +548,11 @@ async function _rfidHandleAssignScan(tagId) {
   _rfidRenderSpotlight('loading', { text: 'Assigning card…' });
   const result = await AttendanceService.assignCard(_rfidAssignTargetStudentId, tagId);
   if (!result.ok) {
-    _rfidRenderSpotlight('message', { icon: '❌', text: result.error || 'Could not assign card.', color: '#ffb4ab' });
+    _rfidRenderSpotlight('message', { icon: '❌', text: result.error || 'Could not assign card.', color: '#ffb4ab', rawTag: tagId });
     return;
   }
   const student = AppStore.getStudent(_rfidAssignTargetStudentId);
-  _rfidRenderSpotlight('message', { icon: '🪪', text: `Card assigned to ${student ? student.name : _rfidAssignTargetStudentId}.`, color: '#4edea3' });
+  _rfidRenderSpotlight('message', { icon: '🪪', text: `Card assigned to ${student ? student.name : _rfidAssignTargetStudentId}.`, color: '#4edea3', rawTag: tagId });
 }
 
 // ── Student Spotlight (Task 1, left column — 80%) ───────────────────────────
@@ -710,8 +737,9 @@ function _rfidRenderSpotlight(mode, data) {
       <div class="kiosk-spotlight-idle">
         <div class="kiosk-spotlight-idle-icon">${_esc(data.icon || 'ℹ️')}</div>
         <div class="kiosk-spotlight-idle-text" style="color:${data.color || 'inherit'}">${_esc(data.text || '')}</div>
+        ${data.rawTag ? `<div class="kiosk-spotlight-raw-tag">Raw ID read: <code>${_esc(data.rawTag)}</code></div>` : ''}
       </div>`;
-    window._rfidSpotlightResetTimer = setTimeout(function () { _rfidRenderSpotlight('idle'); }, 2600);
+    window._rfidSpotlightResetTimer = setTimeout(function () { _rfidRenderSpotlight('idle'); }, 5200);
     return;
   }
   if (mode === 'error') {
@@ -719,6 +747,7 @@ function _rfidRenderSpotlight(mode, data) {
       <div class="kiosk-spotlight-error">
         <div class="kiosk-spotlight-error-icon">🚫</div>
         <div class="kiosk-spotlight-error-text">${_esc(data.message || 'Scan failed.')}</div>
+        ${data.rawTag ? `<div class="kiosk-spotlight-raw-tag">Raw ID read: <code>${_esc(data.rawTag)}</code></div>` : ''}
       </div>`;
     window._rfidSpotlightResetTimer = setTimeout(function () { _rfidRenderSpotlight('idle'); }, 3200);
     return;
