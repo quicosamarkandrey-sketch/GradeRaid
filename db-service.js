@@ -1709,6 +1709,13 @@ const DBService = (function () {
   // DBService.onSignal('boss-summon', cb) — see migration-strategy.md for
   // the two call sites (summon-notify.js) that need this one-line swap.
   let _signalChannel = null;
+  // BUGFIX (orders/inventory/quiz_history RLS errors on logout): this used
+  // to be entirely un-tracked — client.channel('eduquest-table-sync') was
+  // built and .subscribe()'d inline below with its return value discarded,
+  // so there was no reference anywhere to ever unsubscribe it. It stayed
+  // live for the whole tab lifetime, including through and after logout.
+  // See teardownRealtime() below for why that matters.
+  let _tableSyncChannel = null;
   const _signalSubscribers = {};
 
   function _setupRealtimeSignals(client) {
@@ -1740,7 +1747,7 @@ const DBService = (function () {
     // correctness anymore — RLS is the actual boundary. Left as a follow-up
     // rather than rewritten in this pass, since it touches _cache merge
     // logic other modules depend on.
-    client
+    _tableSyncChannel = client
       .channel('eduquest-table-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => _schedulePullRefresh('profiles'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'boss_events' }, () => _schedulePullRefresh('boss_events'))
@@ -2109,6 +2116,59 @@ const DBService = (function () {
         console.warn('[DBService] localStorage mirror write failed (quota?):', e);
       }
       if (_getClient()) _queueUpload();
+    },
+
+    /**
+     * teardownRealtime() → void
+     * BUGFIX (orders/inventory/quiz_history 42501 on logout, surviving even
+     * flushPendingUpload()): _setupRealtimeSignals() opens two channels —
+     * 'eduquest-signals' (_signalChannel) and 'eduquest-table-sync'
+     * (_tableSyncChannel) — that live for the whole tab session and were
+     * NEVER unsubscribed anywhere, including on logout. A postgres_changes
+     * event on any watched table (orders/inventory/quiz_history included)
+     * calls _schedulePullRefresh(), which — once its 400ms debounce fires —
+     * calls syncFromLegacy(), which ends in _persist() -> DBService.write()
+     * -> _queueUpload(), queuing a NEW push. If that happens after
+     * doLogout()'s one-time flushPendingUpload() already ran, the new push
+     * is invisible to it and fires later, post-signOut(), 42501-ing exactly
+     * like the original race. Call this — BEFORE flushing/signing out — so
+     * nothing can re-dirty state through this path during that window.
+     * Safe to call even if no channel was ever set up (e.g. offline mode).
+     */
+    teardownRealtime: function () {
+      const client = _getClient();
+      if (client) {
+        try { if (_signalChannel) client.removeChannel(_signalChannel); } catch (e) { console.warn('[DBService] teardownRealtime: removeChannel(_signalChannel) failed:', e); }
+        try { if (_tableSyncChannel) client.removeChannel(_tableSyncChannel); } catch (e) { console.warn('[DBService] teardownRealtime: removeChannel(_tableSyncChannel) failed:', e); }
+      }
+      _signalChannel = null;
+      _tableSyncChannel = null;
+      _meta.signalChannelReady = false;
+      if (_pullRefreshTimer) { clearTimeout(_pullRefreshTimer); _pullRefreshTimer = null; }
+      _pendingRefreshTables = new Set();
+    },
+
+    /**
+     * flushPendingUpload() → Promise<void>
+     * BUGFIX (42501 RLS errors on logout, e.g. orders/quizzes/campaign_worlds/
+     * inventory/point_log/quiz_history/redemptions): _queueUpload()'s 400ms
+     * debounce means a state change made in the moments right before logout
+     * can still be sitting in the timer queue when doLogout() calls
+     * client.auth.signOut(). The timer keeps running during that await; if
+     * it fires (or a push is already mid-flight) around the same moment the
+     * session gets revoked, the upsert calls land with no valid auth.uid()
+     * and every ownership-scoped RLS policy correctly rejects them.
+     *
+     * Call this — and await it — BEFORE signOut(), so any pending push
+     * either completes (or fails loudly) while the session is still valid,
+     * instead of racing teardown. No-op if nothing is queued.
+     */
+    flushPendingUpload: async function () {
+      if (_uploadTimer) {
+        clearTimeout(_uploadTimer);
+        _uploadTimer = null;
+        await _flushUpload(_sessionEpoch);
+      }
     },
 
     /**

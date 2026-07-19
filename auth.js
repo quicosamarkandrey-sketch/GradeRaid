@@ -398,6 +398,46 @@ async function doLogout(){
   // next one signed into this browser — logs in and out again.
   if (typeof eqButtonLoading === 'function') eqButtonLoading(logoutBtn, true, { label: 'Signing out…' });
   try {
+  // BUGFIX (42501 RLS errors — "new row violates row-level security policy"
+  // — for orders/inventory/quiz_history/etc. surviving even the flush
+  // below): the boss-combat refresh loop, minion spawn loop, presence
+  // heartbeat, quiz timer, and the Supabase realtime channels can all
+  // independently dirty AppStore state (a boss-combat tick can log a quiz
+  // answer or loot drop; a realtime event on orders/inventory/quiz_history
+  // re-triggers a pull-then-push cycle — see DBService.teardownRealtime()).
+  // These used to be stopped only at the very END of doLogout(), AFTER
+  // signOut() had already run — so any one of them ticking during the
+  // flush below could queue a brand-new upload the flush never sees, which
+  // then fires post-signOut and 42501s. Stopping every one of them FIRST,
+  // before flushing anything, closes that gap instead of just narrowing it.
+  WBC.joined=false;WBC.bossIdx=-1;WBC.qIdx=0;WBC.answered=[];WBC.comboCount=0;
+  WBC.battleStartTime=0;WBC.cooldownActive=false;
+  if(WBC.refreshInterval){clearInterval(WBC.refreshInterval);WBC.refreshInterval=null;}
+  if(WBC.cooldownTimeout){clearTimeout(WBC.cooldownTimeout);WBC.cooldownTimeout=null;}
+  // Stop minion timers
+  wbmStopSpawnLoop();
+  // System Health presence heartbeat (ADMIN_SYSTEM_HEALTH.md Phase 2):
+  // paired with the startPresenceHeartbeat() call in bootApp() below, same
+  // start/stop lifecycle pairing as WBC.refreshInterval just above.
+  if (typeof SystemHealthService !== 'undefined') SystemHealthService.stopPresenceHeartbeat();
+  if (typeof shStopCountsRefresh === 'function') shStopCountsRefresh();
+  if(quizTimer)clearInterval(quizTimer);
+  if (typeof DBService !== 'undefined' && typeof DBService.teardownRealtime === 'function') {
+    DBService.teardownRealtime();
+  }
+
+  // Now that nothing can re-dirty state, flush whatever's already pending
+  // — a change made just before clicking Logout can still be sitting in
+  // AppStore's 300ms persist debounce and/or DBService's 400ms upload
+  // debounce. Flushing here, BEFORE signOut(), guarantees any pending
+  // write reaches the server (or fails loudly) while the session is still
+  // valid, instead of racing teardown. No-op if nothing was pending.
+  if (typeof AppStore !== 'undefined' && typeof AppStore.flushNow === 'function') {
+    AppStore.flushNow(); // synchronous: flushes the 300ms persist debounce, which itself queues a fresh upload if the state was dirty
+  }
+  if (typeof DBService !== 'undefined' && typeof DBService.flushPendingUpload === 'function') {
+    await DBService.flushPendingUpload(); // flushes that upload (whether just (re)queued above, or already pending) before we tear the session down
+  }
   const client = (typeof DBService !== 'undefined') ? DBService.getAuthClient() : null;
   if (client) { try { await client.auth.signOut(); } catch (e) { console.warn('[auth] signOut failed:', e); } }
   // BUGFIX: without this, switching accounts on the same browser (e.g.
@@ -419,23 +459,10 @@ async function doLogout(){
   try { localStorage.removeItem('eq_last_page'); } catch (e) {}
   if (typeof _enrollPersistLock === 'function') { try { _enrollPersistLock(false); } catch (e) {} }
   currentUser=null;currentRole=null;
-  // Reset combat state
-  WBC.joined=false;WBC.bossIdx=-1;WBC.qIdx=0;WBC.answered=[];WBC.comboCount=0;
-  WBC.battleStartTime=0;WBC.cooldownActive=false;
-  if(WBC.refreshInterval){clearInterval(WBC.refreshInterval);WBC.refreshInterval=null;}
-  if(WBC.cooldownTimeout){clearTimeout(WBC.cooldownTimeout);WBC.cooldownTimeout=null;}
-  // Stop minion timers
-  wbmStopSpawnLoop();
-  // System Health presence heartbeat (ADMIN_SYSTEM_HEALTH.md Phase 2):
-  // paired with the startPresenceHeartbeat() call in bootApp() below, same
-  // start/stop lifecycle pairing as WBC.refreshInterval just above.
-  if (typeof SystemHealthService !== 'undefined') SystemHealthService.stopPresenceHeartbeat();
-  if (typeof shStopCountsRefresh === 'function') shStopCountsRefresh();
   document.getElementById('main-app').style.display='none';
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('login-user').value='';document.getElementById('login-pass').value='';
   document.getElementById('login-err').style.display='none';
-  if(quizTimer)clearInterval(quizTimer);
   document.getElementById('stage-map-btn').style.display='none';
   activeWorld=0;
   } finally {

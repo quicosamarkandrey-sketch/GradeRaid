@@ -257,7 +257,55 @@ window.AppStore = (function () {
 
     if (!db || typeof db !== 'object') return;
 
-    _state = _deepClone(db);
+    // BUGFIX (classSections wipe on refresh): this used to be a wholesale
+    // `_state = _deepClone(db)` replacement. `db` here is always the ~27-
+    // table LEGACY blob (students, quizzes, bossEvents, etc.) coming from
+    // db-service.js. Some slices of _state — currently just `classSections`
+    // (see sections_index.js, "class_sections has no legacy shape") — are
+    // AppStore-only and deliberately never written into that legacy blob.
+    // A full replacement therefore silently deleted those slices every time
+    // ANY legacy sync ran (state:remote-sync, state:auth-change-sync,
+    // saveDB(), realtime refreshes, "load more" pulls — every call site
+    // that hands us a legacy blob), not just once at boot.
+    //
+    // Fix: start from a clone of the incoming legacy blob (so every legacy
+    // key is still fully replaced/refreshed, which is correct — legacy data
+    // SHOULD reflect exactly what the server just sent), then carry forward
+    // any key that currently exists on _state but has no counterpart in
+    // `db` at all. This is intentionally generic (keyed off "not present in
+    // db", not a hardcoded "classSections" check) so any future AppStore-
+    // only slice is protected the same way without another bug hunt.
+    //
+    // Note on account switching (state:auth-change-sync, fired from
+    // DBService.refreshAfterAuthChange()): this path also goes through
+    // here, so in principle a previous account's classSections could be
+    // carried forward for a moment. In practice this is harmless — doLogin()
+    // (auth.js) calls refreshAfterAuthChange() and then immediately, still
+    // awaited before bootApp() ever renders, calls window.refreshSectionData()
+    // again, which fully overwrites classSections with the new account's
+    // real data. Nothing user-visible ever sees the stale value. Logout
+    // (doLogout()) doesn't go through syncFromLegacy at all — it uses
+    // DBService.remove() — so it's unaffected either way. Please don't
+    // "fix" this back to a wipe without re-reading this comment.
+    var merged = _deepClone(db);
+    if (_state && typeof _state === 'object') {
+      Object.keys(_state).forEach(function (key) {
+        if (!Object.prototype.hasOwnProperty.call(db, key)) {
+          merged[key] = _deepClone(_state[key]);
+        }
+      });
+    }
+
+    // Dev-time regression guard: if we ever had a non-empty classSections
+    // and it's about to go missing from the merged result, something above
+    // regressed (e.g. someone reintroduced a full-replacement path). Loud
+    // in the console, no perf cost, no behavior change.
+    if (_state && Array.isArray(_state.classSections) && _state.classSections.length &&
+        !Object.prototype.hasOwnProperty.call(merged, 'classSections')) {
+      console.error('[AppStore] syncFromLegacy: classSections would be wiped by this sync — regression in the AppStore-only-slice preservation logic. Investigate before this ships.');
+    }
+
+    _state = merged;
     // Also mirror into window.DB so that window.DB-reading code stays consistent.
     window.DB = _deepClone(_state);
     _persist();
