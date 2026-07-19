@@ -79,6 +79,19 @@
   let _lmScanInactivityTimer = null;
   const LM_SCAN_INACTIVITY_MS = 120;        // mirrors att_scanner_rfid.js's reader-without-Enter fallback
 
+  // Phone-as-NFC-reader (Web NFC / NDEFReader) — same additive second capture
+  // source as the attendance kiosk (att_scanner_rfid.js): sits next to
+  // Scanner B's document-level keydown listener above and feeds the exact
+  // same RecitationService.processScannerTap(tagId, classId) call, so
+  // nothing about the sidebar feed, badges, or +1 floats needs to know or
+  // care which physical reader produced the tag ID. Android Chrome only
+  // (see _lmWebNfcSupported()) — the toggle button simply doesn't render on
+  // browsers/devices without NDEFReader, so Scanner B's USB flow is
+  // completely unaffected everywhere else. Only active while a recitation
+  // session is running — torn down on session stop and on unmount.
+  let _lmWebNfcActive = false;
+  let _lmWebNfcAbortController = null;
+
   // Manual Award Panel state
   let _lmAwardSearch    = '';
   let _lmAwardStudentId = null;
@@ -587,6 +600,12 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
             ${coldCallDisabled ? 'disabled' : ''}>
             🎯 Pick Random Student
           </button>
+          ${_lmWebNfcSupported() ? `
+          <button class="lm-fullscreen-btn${_lmWebNfcActive ? ' active' : ''}" id="lm-webnfc-btn"
+            title="${_lmWebNfcActive ? 'Stop using this phone as an NFC reader' : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone'}"
+            onclick="window._lmToggleWebNfc()">
+            ${_lmWebNfcActive ? '📱 NFC On' : '📱 Use Phone as Reader'}
+          </button>` : ''}
           ` : ''}
           <button class="lm-recitation-toggle${_lmRecitationMode ? ' active' : ''}" id="lm-recitation-toggle"
             onclick="window._lmToggleRecitationMode()">
@@ -1133,6 +1152,7 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     if (!_lmRecitationMode) return; // safe no-op — lets unmount call this unconditionally
     _lmRecitationMode = false;
     _lmStopScannerBListener();
+    _lmStopWebNfcCapture(); // safe no-op if the phone reader was never armed
     _lmSessionStartAt = null;
     _lmRecitationSeenIds.clear();
     // STRICT HIDE (Task 2): Cold Call is exclusively a State B feature — reset
@@ -1188,8 +1208,8 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     _lmScanBuffer = '';
   }
 
-  async function _lmFinalizeScan() {
-    const tagId = _lmScanBuffer.trim();
+  async function _lmFinalizeScan(directTagId) {
+    const tagId = (directTagId !== undefined ? String(directTagId || '') : _lmScanBuffer).trim();
     _lmScanBuffer = '';
     clearTimeout(_lmScanInactivityTimer);
     if (!tagId) return;
@@ -1206,6 +1226,107 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     // Success path: AppStore.updateState() inside processScannerTap() fired
     // 'recitation:point-logged' — the subscription repaints the canvas
     // badge/sidebar feed and plays the +1 float. No extra work needed here.
+  }
+
+  // ── Phone-as-NFC-reader (Web NFC) — Scanner B's second capture source ──────
+  // Entirely additive to the document-level keydown listener above: it never
+  // touches _lmScanBuffer or the keydown handler. It only ever calls the same
+  // _lmFinalizeScan(tagId) that the keyboard-emulator path calls (via its
+  // buffer), so RecitationService.processScannerTap() and everything
+  // downstream (badges, sidebar feed, +1 floats, realtime) is identical no
+  // matter which physical reader produced the tag.
+
+  function _lmWebNfcSupported() {
+    return typeof window !== 'undefined' && 'NDEFReader' in window;
+  }
+
+  window._lmToggleWebNfc = function () {
+    if (_lmWebNfcActive) {
+      _lmStopWebNfcCapture();
+    } else {
+      _lmStartWebNfcCapture();
+    }
+  };
+
+  async function _lmStartWebNfcCapture() {
+    if (!_lmWebNfcSupported()) return;
+    try {
+      _lmWebNfcAbortController = new AbortController();
+      const ndef = new NDEFReader();
+      // Must be called from a user gesture (the button's onclick) — this is
+      // a browser security requirement, not something we can work around.
+      await ndef.scan({ signal: _lmWebNfcAbortController.signal });
+
+      _lmWebNfcActive = true;
+      _lmRefreshWebNfcButton();
+      toast('📱 Phone NFC reader armed — hold cards to the back of the phone', '#4edea3');
+
+      ndef.onreading = (event) => {
+        if (!_lmRecitationMode) return;
+        // event.serialNumber is the tag/card UID in the phone's native hex
+        // format — different on the wire from what the USB reader types,
+        // so it's normalized into the same canonical id the attendance
+        // kiosk uses (see _lmNormalizeTagId()) before it ever reaches
+        // RecitationService, which matches against rfidCards.tagId as
+        // stored by the USB flow.
+        const tagId = _lmNormalizeTagId(event.serialNumber);
+        if (tagId) _lmFinalizeScan(tagId);
+      };
+
+      ndef.onreadingerror = () => {
+        toast('⚠️ Could not read that tag — try again', '#ffb95f');
+      };
+    } catch (err) {
+      _lmWebNfcActive = false;
+      _lmWebNfcAbortController = null;
+      _lmRefreshWebNfcButton();
+      toast('Could not start phone NFC: ' + (err && err.message ? err.message : err), '#ffb95f');
+    }
+  }
+
+  function _lmStopWebNfcCapture() {
+    if (_lmWebNfcAbortController) {
+      _lmWebNfcAbortController.abort();
+      _lmWebNfcAbortController = null;
+    }
+    _lmWebNfcActive = false;
+    _lmRefreshWebNfcButton();
+  }
+
+  function _lmRefreshWebNfcButton() {
+    const btn = document.getElementById('lm-webnfc-btn');
+    if (!btn) return;
+    btn.classList.toggle('active', _lmWebNfcActive);
+    btn.textContent = _lmWebNfcActive ? '📱 NFC On' : '📱 Use Phone as Reader';
+    btn.title = _lmWebNfcActive
+      ? 'Stop using this phone as an NFC reader'
+      : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone';
+  }
+
+  /**
+   * _lmNormalizeTagId(raw) → string
+   * Same conversion as att_scanner_rfid.js's _rfidNormalizeTagId() — makes a
+   * phone (Web NFC) scan and a USB (keyboard-wedge) scan of the SAME
+   * physical card produce the SAME tag_id, so a card assigned once via
+   * either reader is recognized by both, on both the attendance kiosk and
+   * this recitation scanner. Kept as its own copy (rather than importing
+   * the attendance module's private function) since att_scanner_rfid.js
+   * doesn't expose it on window.
+   */
+  function _lmNormalizeTagId(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    if (/^[0-9a-fA-F]{2}([:\-][0-9a-fA-F]{2})+$/.test(s)) {
+      const hexBytes = s.split(/[:\-]/);
+      const reversedHex = hexBytes.slice().reverse().join('');
+      try {
+        const asDecimal = BigInt('0x' + reversedHex).toString();
+        return hexBytes.length === 4 ? asDecimal.padStart(10, '0') : asDecimal;
+      } catch (e) {
+        return s.replace(/[:\-]/g, '').toUpperCase(); // fallback if BigInt parsing ever fails
+      }
+    }
+    return s; // already USB/decimal format (or an unrecognized shape) — unchanged
   }
 
   // ── Cold Call: random present/late student selector ─────────────────────────
