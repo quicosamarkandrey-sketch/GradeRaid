@@ -1124,12 +1124,22 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
   }
 
   // ── Recitation session lifecycle + Scanner B ────────────────────────────────
+  // Cross-device sync: _lmRecitationMode is local-only state (no DB row for
+  // "session active") — a real-time broadcast on DBService's existing signal
+  // channel (the same one used for boss-summon-style ephemeral events) is
+  // what lets pressing "Start Recitation Session" on one device (e.g. the
+  // teacher's phone, walking the room with the phone-NFC reader) also start
+  // it on another device that has this same page open (e.g. the classroom
+  // presentation screen), instead of each device's toggle being silently
+  // local. See _lmHandleRemoteRecitationSignal() below for the receiving end.
 
   window._lmToggleRecitationMode = function () {
     if (_lmRecitationMode) {
       _lmStopRecitationSession();
+      _lmBroadcastRecitationSignal(false);
     } else {
       _lmStartRecitationSession();
+      _lmBroadcastRecitationSignal(true);
     }
     const page = document.getElementById('a-classroom-monitor');
     const state = AppStore.getState();
@@ -1137,9 +1147,22 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     _lmRender(page, classIds, state);
   };
 
-  function _lmStartRecitationSession() {
+  function _lmBroadcastRecitationSignal(active) {
+    if (window.DBService && typeof window.DBService.sendSignal === 'function') {
+      window.DBService.sendSignal('recitation-session', {
+        classId: _lmClassId,
+        active: active,
+        sessionStartAt: _lmSessionStartAt,
+      });
+    }
+  }
+
+  function _lmStartRecitationSession(sharedSessionStartAt) {
     _lmRecitationMode    = true;
-    _lmSessionStartAt    = new Date().toISOString();
+    // A remote start signal carries the ORIGINATING device's timestamp, so
+    // every device's "Session Active — started at ..." label agrees, instead
+    // of each device stamping its own arrival time as "the start".
+    _lmSessionStartAt    = sharedSessionStartAt || new Date().toISOString();
     _lmRecitationSeenIds = new Set();
     _lmAwardStudentId    = null;
     _lmAwardSearch       = '';
@@ -1162,6 +1185,43 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     _lmStrategy = 'pure_random';
     _lmTargetedSeatIds.clear();
     _lmOverrideExpanded = false; // collapse the override panel back down for next time
+  }
+
+  // ── Cross-device recitation-session sync — receiving end ───────────────────
+  // Registered ONCE at file-load time (not per mount) since DBService.onSignal
+  // has no unsubscribe — a per-mount registration would stack duplicate
+  // handlers across repeated navTo() visits to this page. Only acts if THIS
+  // device currently has the Live Monitor screen open and active; a device
+  // sitting on some other page ignores the signal entirely (nothing to
+  // update on screen, and no point spinning up Scanner B for a page that
+  // isn't showing). Supabase Broadcast doesn't echo a message back to its
+  // own sender by default, so the device that pressed the button never
+  // re-processes its own signal here.
+  function _lmHandleRemoteRecitationSignal(payload) {
+    if (!payload) return;
+    const page = document.getElementById('a-classroom-monitor');
+    if (!_lmMounted || !page || !page.classList.contains('active')) return;
+
+    // Follow the class the signal is scoped to — the whole point is that
+    // the presentation screen shows whichever class the teacher is
+    // physically walking around scanning right now.
+    if (payload.classId && payload.classId !== _lmClassId) {
+      _lmClassId = payload.classId;
+    }
+
+    if (payload.active) {
+      if (!_lmRecitationMode) _lmStartRecitationSession(payload.sessionStartAt);
+    } else if (_lmRecitationMode) {
+      _lmStopRecitationSession();
+    }
+
+    const state = AppStore.getState();
+    const classIds = window.getActiveClassIds(state);
+    _lmRender(page, classIds, state);
+  }
+
+  if (window.DBService && typeof window.DBService.onSignal === 'function') {
+    window.DBService.onSignal('recitation-session', _lmHandleRemoteRecitationSignal);
   }
 
   // Task 2/4 — Scanner B: a single document-level keydown listener, alive
