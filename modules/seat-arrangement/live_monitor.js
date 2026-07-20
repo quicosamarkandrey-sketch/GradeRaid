@@ -566,10 +566,10 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
       <div class="lm-page">
         <div class="lm-toolbar">
           <span class="lm-toolbar-title">📡 Live Classroom Monitor</span>
-          <select class="cb-class-select" onchange="window._lmOnClassChange(this.value)">${
+          <select class="cb-class-select" id="lm-class-select" name="lm-class-select" onchange="window._lmOnClassChange(this.value)">${
             classIds.map(c => `<option value="${_esc(c)}"${c===_lmClassId?' selected':''}>${_esc(window.getClassLabel ? window.getClassLabel(c, state) : c)}</option>`).join('')
           }</select>
-          <select class="cb-layout-select" onchange="window._lmOnLayoutChange(this.value)">${
+          <select class="cb-layout-select" id="lm-layout-select" name="lm-layout-select" onchange="window._lmOnLayoutChange(this.value)">${
             layouts.length
               ? layouts.map(l => `<option value="${_esc(l.id)}"${l.id===_lmLayoutId?' selected':''}>${_esc(l.name)}</option>`).join('')
               : `<option value="">— No layout for this class —</option>`
