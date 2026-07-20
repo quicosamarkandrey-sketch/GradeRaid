@@ -78,6 +78,14 @@
   let _lmScanBuffer          = '';
   let _lmScanInactivityTimer = null;
   const LM_SCAN_INACTIVITY_MS = 120;        // mirrors att_scanner_rfid.js's reader-without-Enter fallback
+  // Phase 72 — phone-as-NFC-reader for recitation (mirrors
+  // att_scanner_rfid.js's identically-named Web NFC feature for attendance).
+  // Independent on/off from the keyboard-wedge listener above: Scanner B
+  // (keydown) is for a USB/BT HID dongle plugged into the computer that's
+  // presenting on the TV, while this is for a *phone* using its own NFC
+  // radio to roam the room — the actual point of Phase 71's session sync.
+  let _lmWebNfcActive           = false;
+  let _lmWebNfcAbortController  = null;
 
   // Manual Award Panel state
   let _lmAwardSearch    = '';
@@ -601,6 +609,13 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
             onclick="window._lmToggleRecitationMode()">
             ${_lmRecitationMode ? '🎤 Recitation Active' : '🎤 Start Recitation Session'}
           </button>
+          ${_lmRecitationMode && _lmWebNfcSupported() ? `
+          <button class="lm-recitation-toggle${_lmWebNfcActive ? ' active' : ''}" id="lm-webnfc-toggle"
+            title="${_lmWebNfcActive ? 'Stop using this phone as an NFC reader' : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone'}"
+            onclick="window._lmToggleWebNfc()">
+            ${_lmWebNfcActive ? '📱 NFC On — Roaming' : '📱 Use This Phone as Reader'}
+          </button>
+          ` : ''}
         </div>
 
         <div class="lm-workspace">
@@ -1179,6 +1194,7 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     if (!_lmRecitationMode) return; // safe no-op — lets unmount call this unconditionally
     _lmRecitationMode = false;
     _lmStopScannerBListener();
+    _lmStopWebNfcCapture(); // Phase 72 — don't leave the phone's NFC radio armed after the session ends
     _lmSessionStartAt = null;
     _lmRecitationSeenIds.clear();
     // STRICT HIDE (Task 2): Cold Call is exclusively a State B feature — reset
@@ -1234,12 +1250,8 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     _lmScanBuffer = '';
   }
 
-  async function _lmFinalizeScan() {
-    const tagId = _lmScanBuffer.trim();
-    _lmScanBuffer = '';
-    clearTimeout(_lmScanInactivityTimer);
+  async function _lmSubmitScan(tagId) {
     if (!tagId) return;
-
     const result = await RecitationService.processScannerTap(tagId, _lmClassId);
     if (!result.ok) {
       if (result.cooldown) {
@@ -1252,6 +1264,88 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     // Success path: AppStore.updateState() inside processScannerTap() fired
     // 'recitation:point-logged' — the subscription repaints the canvas
     // badge/sidebar feed and plays the +1 float. No extra work needed here.
+  }
+
+  async function _lmFinalizeScan() {
+    const tagId = _lmScanBuffer.trim();
+    _lmScanBuffer = '';
+    clearTimeout(_lmScanInactivityTimer);
+    await _lmSubmitScan(tagId);
+  }
+
+  // ── Phone-as-NFC-reader (Web NFC) ─────────────────────────────────────────
+  // Entirely additive to the keyboard-wedge listener above, same posture as
+  // att_scanner_rfid.js's identically-named feature: it never touches
+  // _lmScanBuffer or the keydown handler, it only ever calls the same
+  // _lmSubmitScan(tagId) the keyboard path calls, so everything downstream
+  // (RecitationService, AppStore, the realtime echo to other devices) is
+  // identical no matter which physical reader produced the tag. tagId is
+  // normalized via att_scanner_rfid.js's _rfidNormalizeTagId() (global,
+  // loaded on every page — see that file's header comment for why phone
+  // Web NFC reads and USB keyboard-wedge reads of the SAME card need
+  // normalizing into one canonical id before either can look up a student).
+
+  function _lmWebNfcSupported() {
+    return typeof window !== 'undefined' && 'NDEFReader' in window;
+  }
+
+  window._lmToggleWebNfc = function () {
+    if (_lmWebNfcActive) {
+      _lmStopWebNfcCapture();
+    } else {
+      _lmStartWebNfcCapture();
+    }
+  };
+
+  async function _lmStartWebNfcCapture() {
+    if (!_lmWebNfcSupported()) return;
+    try {
+      _lmWebNfcAbortController = new AbortController();
+      const ndef = new NDEFReader();
+      // Must be called from a user gesture (the button's onclick) — this is
+      // a browser security requirement, not something we can work around.
+      await ndef.scan({ signal: _lmWebNfcAbortController.signal });
+
+      _lmWebNfcActive = true;
+      _lmRefreshWebNfcButton();
+      toast('📱 Phone NFC reader armed — hold cards to the back of the phone', '#4edea3');
+
+      ndef.onreading = (event) => {
+        if (!_lmRecitationMode) return;
+        const rawTagId = event.serialNumber;
+        if (!rawTagId) return;
+        const tagId = (typeof _rfidNormalizeTagId === 'function') ? _rfidNormalizeTagId(rawTagId) : rawTagId;
+        _lmSubmitScan(tagId);
+      };
+
+      ndef.onreadingerror = () => {
+        toast('⚠️ Could not read that tag — try again', '#ffd166');
+      };
+    } catch (err) {
+      _lmWebNfcActive = false;
+      _lmWebNfcAbortController = null;
+      _lmRefreshWebNfcButton();
+      toast('Could not start phone NFC: ' + (err && err.message ? err.message : err), '#ffb4ab');
+    }
+  }
+
+  function _lmStopWebNfcCapture() {
+    if (_lmWebNfcAbortController) {
+      _lmWebNfcAbortController.abort();
+      _lmWebNfcAbortController = null;
+    }
+    _lmWebNfcActive = false;
+    _lmRefreshWebNfcButton();
+  }
+
+  function _lmRefreshWebNfcButton() {
+    const btn = document.getElementById('lm-webnfc-toggle');
+    if (!btn) return;
+    btn.classList.toggle('active', _lmWebNfcActive);
+    btn.textContent = _lmWebNfcActive ? '📱 NFC On — Roaming' : '📱 Use This Phone as Reader';
+    btn.title = _lmWebNfcActive
+      ? 'Stop using this phone as an NFC reader'
+      : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone';
   }
 
   // ── Cold Call: random present/late student selector ─────────────────────────
