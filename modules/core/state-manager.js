@@ -308,7 +308,27 @@ window.AppStore = (function () {
     _state = merged;
     // Also mirror into window.DB so that window.DB-reading code stays consistent.
     window.DB = _deepClone(_state);
-    _persist();
+
+    // BUGFIX (inventory/quiz_history 42501 storm): 'state:remote-sync' and
+    // 'state:auth-change-sync' both mean this DB blob just came FROM
+    // Supabase (see db-service.js's own syncFromLegacy call sites — every
+    // one of them is a post-pull hydration, never a local mutation).
+    // _persist() -> DBService.write() would immediately re-push that same
+    // data straight back, which is a pure echo — and once a realtime
+    // postgres_changes event lands for ANY watched table, that echo can
+    // restart the exact same pull -> sync -> push cycle indefinitely (see
+    // mirrorLocalOnly()'s header comment in db-service.js for the full
+    // trace). Any other evtType (e.g. the boot-time post-migration sync in
+    // index.html, which may have genuinely mutated the DB shape) still
+    // needs the real push, so this only special-cases the two remote-
+    // sourced event types.
+    if (evtType === 'state:remote-sync' || evtType === 'state:auth-change-sync') {
+      if (typeof DBService !== 'undefined' && typeof DBService.mirrorLocalOnly === 'function') {
+        DBService.mirrorLocalOnly(_state);
+      }
+    } else {
+      _persist();
+    }
     _notify({ type: evtType || 'state:legacy-sync', payload: null });
   }
 
