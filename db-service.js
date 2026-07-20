@@ -2150,6 +2150,40 @@ const DBService = (function () {
     },
 
     /**
+     * mirrorLocalOnly(db) → void
+     * BUGFIX (inventory/quiz_history 42501 storm once realtime actually
+     * delivers events): write(db) always queues a push back to Supabase.
+     * That's correct for a genuine LOCAL mutation, but state-manager.js's
+     * syncFromLegacy() also calls into the write path for data that just
+     * arrived FROM Supabase (state:remote-sync / state:auth-change-sync —
+     * see db-service.js's own syncFromLegacy call sites). Pushing that
+     * straight back is a pure echo: it re-upserts every table in the full
+     * cache, including inventory/quiz_history rows for every student in
+     * the system, not just this session's own section (those two tables
+     * never got the per-class_id filtering the profiles upsert above has).
+     * Most of that gets rejected by RLS (42501), and any row that DOES
+     * belong to this session fires its own postgres_changes event,
+     * re-triggering the same pull -> sync -> push cycle indefinitely.
+     * This existed as long as the write path did, but stayed silent until
+     * realtime was actually delivering events (it wasn't, until the
+     * supabase_realtime publication got repaired). Use this instead of
+     * write() for any sync whose data source IS Supabase — update the
+     * local cache/mirror so the UI stays current, but never re-push
+     * something that already reflects the server.
+     */
+    mirrorLocalOnly: function (db) {
+      _meta.saveCount++;
+      _meta.lastSaveAt = new Date().toISOString();
+      _cache = db;
+      try {
+        _localStorageProvider.write(JSON.stringify(db));
+      } catch (e) {
+        console.warn('[DBService] localStorage mirror write failed (quota?):', e);
+      }
+      // Deliberately no _queueUpload() call — see header comment above.
+    },
+
+    /**
      * teardownRealtime() → void
      * BUGFIX (orders/inventory/quiz_history 42501 on logout, surviving even
      * flushPendingUpload()): _setupRealtimeSignals() opens two channels —
