@@ -93,6 +93,10 @@ const DEFAULT_DB = {
   },
   attendanceSessions:[],
   recitationLog:[],
+  // Phase 71 — cross-device "Start Recitation Session" sync. Offline/no
+  // Supabase fallback shape only; when Supabase is configured this is
+  // always synced from the recitation_sessions table (see db-service.js).
+  recitationSessions:[],
   mail:[], // Phase 15 — synced via mail_messages when Supabase is configured
   // Phase 67 — student notification bell. Rows are synthesized client-side
   // by notification-service.js from DB.pointLog / DB.orders (never written

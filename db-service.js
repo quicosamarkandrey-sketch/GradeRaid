@@ -588,6 +588,18 @@ const DBService = (function () {
     }));
   }
 
+  // Phase 71 — cross-device "Start Recitation Session" sync. Read-only
+  // passthrough, same posture as recitationLog above: all writes to this
+  // table go through start_recitation_session()/stop_recitation_session()
+  // (SECURITY DEFINER RPCs, see recitation-service.js), never through the
+  // bulk push path.
+  function _deriveRecitationSessions(recitationSessionsData) {
+    return (recitationSessionsData || []).map(s => ({
+      id: s.id, classId: s.class_id, startedBy: s.started_by,
+      startedAt: s.started_at, endedAt: s.ended_at || null, isActive: !!s.is_active,
+    }));
+  }
+
   function _deriveRfidCards(rfidCardsData) {
     return (rfidCardsData || []).map(c => ({
       id: c.id, tagId: c.tag_id, studentId: c.student_id,
@@ -646,7 +658,8 @@ const DBService = (function () {
            registrations, pointLog, redemptions, recitationLog,
            rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
            achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
-           orders, inventoryRows, campaignStageSections, quizHistoryRows, notifications, studentSkillRows] =
+           orders, inventoryRows, campaignStageSections, quizHistoryRows, notifications, studentSkillRows,
+           recitationSessions] =
       await Promise.all([
         client.from('profiles').select('*'),
         client.from('boss_events').select('*'),
@@ -679,13 +692,15 @@ const DBService = (function () {
         client.from('quiz_history').select('*').order('completed_at', { ascending: false }).limit(_HISTORY_LIMITS.quiz_history), // Phase 57 — was local-only; see phase57_quiz_history_sync.sql
         client.from('notifications').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.notifications), // Phase 67 — student notification bell; see phase67_notifications.sql
         client.from('student_skills').select('*'), // Phase 7 (Campaign Redesign) — see phase68_campaign_student_skills.sql
+        client.from('recitation_sessions').select('*'), // Phase 71 — cross-device "Start Recitation Session" sync; see phase71_recitation_session_sync.sql
       ]);
 
     for (const r of [profiles, bossEvents, bossParticipants, lootClaims, achievements, userAchievements,
                       registrations, pointLog, redemptions, recitationLog,
                       rfidCards, attendanceSchedules, attendanceLogs, shopProducts, mailMessages, quizSections,
                       achievementSections, titles, titleUnlocks, quizzes, titleSections, campaignWorlds,
-                      orders, inventoryRows, campaignStageSections, quizHistoryRows, notifications, studentSkillRows]) {
+                      orders, inventoryRows, campaignStageSections, quizHistoryRows, notifications, studentSkillRows,
+                      recitationSessions]) {
       if (r.error) throw r.error;
     }
 
@@ -746,6 +761,10 @@ const DBService = (function () {
       // pointLog above.
       notifications: _deriveNotifications(notifications.data),
       recitationLog: _deriveRecitationLog(recitationLog.data),
+      // Phase 71 — cross-device "Start Recitation Session" sync. Read-only
+      // passthrough; writes go exclusively through start_recitation_session()/
+      // stop_recitation_session() (recitation-service.js).
+      recitationSessions: _deriveRecitationSessions(recitationSessions.data),
       // ── Phase 1 RFID/Attendance — READ-ONLY slices ──────────────────────
       // Every write to these three comes from AttendanceService via
       // DBService.rpc(), never from this bulk-pull/push path — see
@@ -805,6 +824,7 @@ const DBService = (function () {
     quiz_history: 'quizHistory',
     notifications: 'notifications',
     student_skills: 'studentSkills',
+    recitation_sessions: 'recitationSessions', // Phase 71
   };
 
   const _REFRESH_GROUPS = {
@@ -972,6 +992,11 @@ const DBService = (function () {
     studentSkills: {
       fetch: async (client) => ({ studentSkills: await client.from('student_skills').select('*') }),
       apply: (raw) => ({ studentSkills: _deriveStudentSkills(raw.studentSkills.data) }),
+    },
+    // Phase 71 — cross-device "Start Recitation Session" sync.
+    recitationSessions: {
+      fetch: async (client) => ({ recitationSessions: await client.from('recitation_sessions').select('*') }),
+      apply: (raw) => ({ recitationSessions: _deriveRecitationSessions(raw.recitationSessions.data) }),
     },
   };
 
@@ -1788,6 +1813,12 @@ const DBService = (function () {
       // (campaign_engine.js's adjust_student_skill_count() calls) now live-
       // reaches the same student's other open tabs/devices too.
       .on('postgres_changes', { event: '*', schema: 'public', table: 'student_skills' }, () => _schedulePullRefresh('student_skills'))
+      // Phase 71 — cross-device "Start Recitation Session" sync. This is the
+      // whole point of the feature: a start/stop on one device now reaches
+      // every other device's Live Monitor via the same pull-refresh path
+      // everything else here already uses, instead of staying stuck in that
+      // one tab's local _lmSessionStartAt variable.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recitation_sessions' }, () => _schedulePullRefresh('recitation_sessions'))
       .subscribe();
   }
 

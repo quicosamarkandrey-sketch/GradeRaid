@@ -292,6 +292,95 @@ window.RecitationService = (function () {
       .reduce((sum, r) => sum + (r.pts || 0), 0);
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // Phase 71 — cross-device "Start Recitation Session" sync
+  //
+  // Same optimistic-update rhythm as manualAward()/undoRecitation() above:
+  // call the RPC, await it, apply its authoritative result into AppStore
+  // ourselves the instant it resolves. The realtime echo (db-service.js's
+  // recitation_sessions postgres_changes listener) is what lets any OTHER
+  // device pick this up — see live_monitor.js's store subscriber, which
+  // auto-enters/exits recitation mode when getActiveSession() changes for
+  // the class it currently has open.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  function _upsertSessionIntoDraft(draft, row) {
+    if (!row) return null;
+    if (!Array.isArray(draft.recitationSessions)) draft.recitationSessions = [];
+    const mapped = {
+      id:        row.id,
+      classId:   row.class_id ?? row.classId,
+      startedBy: row.started_by ?? row.startedBy ?? null,
+      startedAt: row.started_at ?? row.startedAt,
+      endedAt:   row.ended_at ?? row.endedAt ?? null,
+      isActive:  !!(row.is_active ?? row.isActive),
+    };
+    const idx = draft.recitationSessions.findIndex(s => s.id === mapped.id);
+    if (idx >= 0) draft.recitationSessions[idx] = mapped;
+    else draft.recitationSessions.unshift(mapped);
+    return mapped;
+  }
+
+  /**
+   * startSession(classId) → Promise<{ok, error?, session?}>
+   * Idempotent server-side (see start_recitation_session() in
+   * phase71_recitation_session_sync.sql) — if another device already
+   * started a session for this class, this returns THAT session instead of
+   * creating a second one, so every device converges on the same start time.
+   */
+  async function startSession(classId) {
+    if (!classId) return { ok: false, error: 'A class is required.' };
+
+    const { data, error } = await DBService.rpc('start_recitation_session', { p_class_id: classId });
+    if (error) {
+      console.error('[RecitationService] startSession failed:', error);
+      return { ok: false, error: error.message || 'Could not start the recitation session.' };
+    }
+
+    let mapped = null;
+    AppStore.updateState(draft => {
+      mapped = _upsertSessionIntoDraft(draft, data);
+    }, { type: 'recitation:session-started', payload: { classId } });
+
+    return { ok: true, session: mapped };
+  }
+
+  /**
+   * stopSession(classId) → Promise<{ok, error?}>
+   * No-ops cleanly (ok:true, no error) if nothing was active — e.g. two
+   * devices both pressed "Stop" moments apart.
+   */
+  async function stopSession(classId) {
+    if (!classId) return { ok: false, error: 'A class is required.' };
+
+    const { data, error } = await DBService.rpc('stop_recitation_session', { p_class_id: classId });
+    if (error) {
+      console.error('[RecitationService] stopSession failed:', error);
+      return { ok: false, error: error.message || 'Could not stop the recitation session.' };
+    }
+
+    AppStore.updateState(draft => {
+      _upsertSessionIntoDraft(draft, data);
+    }, { type: 'recitation:session-stopped', payload: { classId } });
+
+    return { ok: true };
+  }
+
+  /**
+   * getActiveSession(classId) → { id, classId, startedBy, startedAt,
+   *   endedAt, isActive } | null
+   * The authoritative "is a recitation session currently active for this
+   * class, and since when" — synced across every device via
+   * db-service.js's recitation_sessions realtime subscription. This is what
+   * live_monitor.js checks (on mount AND on every store update) to decide
+   * whether to auto-enter/exit recitation mode.
+   */
+  function getActiveSession(classId) {
+    if (!classId) return null;
+    const state = AppStore.getState();
+    return (state.recitationSessions || []).find(s => s.classId === classId && s.isActive) || null;
+  }
+
   return {
     SCAN_COOLDOWN_MS,
     canScanTag,
@@ -302,6 +391,9 @@ window.RecitationService = (function () {
     getSessionCounts,
     getTodayTotalForStudent,
     getAllTimeTotalForStudent,
+    startSession,
+    stopSession,
+    getActiveSession,
   };
 }());
 

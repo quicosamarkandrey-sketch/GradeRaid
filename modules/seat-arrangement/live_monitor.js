@@ -444,6 +444,11 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
       _lmLayoutId = layoutsForClass[0] ? layoutsForClass[0].id : null;
     }
 
+    // Phase 71 — pick up a recitation session already running on another
+    // device (e.g. the phone started it before this computer's Live
+    // Monitor was even opened) before the very first paint.
+    _lmReconcileSessionState();
+
     _lmRender(page, classIds, state);
     _lmSubscribeToStore();
 
@@ -506,6 +511,10 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
         type === 'state:legacy-sync' ||
         (type && type.startsWith('recitation:'))
       ) {
+        // Phase 71 — pick up a session started/stopped on another device
+        // before repainting, so this paint already reflects the right mode
+        // instead of flickering into it on the next event.
+        _lmReconcileSessionState();
         const page = document.getElementById('a-classroom-monitor');
         if (page && page.classList.contains('active')) {
           const classIds = window.getActiveClassIds(state);
@@ -640,6 +649,9 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
   window._lmOnClassChange = function (classId) {
     _lmClassId = classId;
     _lmTargetedSeatIds.clear();
+    // Phase 71 — the class just switched, so re-check whether ITS session
+    // (not the previous class's) is active anywhere.
+    _lmReconcileSessionState();
     const state = AppStore.getState();
     const layoutsForClass = (state.classroomLayouts || []).filter(l => l.classId === classId);
     _lmLayoutId = layoutsForClass[0] ? layoutsForClass[0].id : null;
@@ -1106,11 +1118,45 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
 
   // ── Recitation session lifecycle + Scanner B ────────────────────────────────
 
-  window._lmToggleRecitationMode = function () {
+  // Phase 71 — cross-device "Start Recitation Session" sync. Compares this
+  // tab's local recitation-mode flag against the authoritative
+  // RecitationService.getActiveSession() (synced from Supabase's
+  // recitation_sessions table — see db-service.js/recitation-service.js)
+  // and auto-enters/exits recitation mode to match. Called on mount (picks
+  // up a session that was already running before this device opened Live
+  // Monitor) and on every relevant store update (picks up a session
+  // started/stopped from ANOTHER device while this one is already open).
+  // _lmStartRecitationSession()/_lmStopRecitationSession() are pure local
+  // UI state — neither calls AppStore.updateState() — so this never
+  // re-enters itself through the subscriber it's called from.
+  function _lmReconcileSessionState() {
+    if (!_lmClassId || typeof RecitationService === 'undefined') return;
+    const active = RecitationService.getActiveSession(_lmClassId);
+    if (active && !_lmRecitationMode) {
+      // Join using the OTHER device's authoritative start time, not a fresh
+      // timestamp of our own, so both devices score the exact same window.
+      _lmStartRecitationSession(active.startedAt);
+    } else if (!active && _lmRecitationMode) {
+      _lmStopRecitationSession();
+    }
+  }
+
+  window._lmToggleRecitationMode = async function () {
     if (_lmRecitationMode) {
+      // Confirm before stopping — this now ends the session on every
+      // device it's synced to (Phase 71), not just this tab, so an
+      // accidental click has a bigger blast radius than it used to.
+      if (!confirm('End this recitation session? This will end it on every device it\'s synced to.')) return;
+      const result = await RecitationService.stopSession(_lmClassId);
+      if (!result.ok) { toast('⚠️ ' + result.error, '#ffb95f'); return; }
       _lmStopRecitationSession();
     } else {
-      _lmStartRecitationSession();
+      const result = await RecitationService.startSession(_lmClassId);
+      if (!result.ok) { toast('⚠️ ' + result.error, '#ffb95f'); return; }
+      // result.session.startedAt is authoritative — idempotent server-side,
+      // so if another device juuust started this same session, we join
+      // THEIRS instead of stamping our own new start time.
+      _lmStartRecitationSession(result.session ? result.session.startedAt : null);
     }
     const page = document.getElementById('a-classroom-monitor');
     const state = AppStore.getState();
@@ -1118,9 +1164,9 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     _lmRender(page, classIds, state);
   };
 
-  function _lmStartRecitationSession() {
+  function _lmStartRecitationSession(startedAtISO) {
     _lmRecitationMode    = true;
-    _lmSessionStartAt    = new Date().toISOString();
+    _lmSessionStartAt    = startedAtISO || new Date().toISOString();
     _lmRecitationSeenIds = new Set();
     _lmAwardStudentId    = null;
     _lmAwardSearch       = '';
