@@ -663,7 +663,7 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
   <div class="showcase-header">
     <span class="showcase-crown">👑</span>
     <div class="showcase-title-text">ACADEMIC SHOWCASE</div>
-    <div class="showcase-sub" style="position:relative;z-index:1">${st.name} · ${st.tier} · Level ${st.level}</div>
+    <div class="showcase-sub" style="position:relative;z-index:1">${_esc(st.name)} · ${st.tier} · Level ${st.level}</div>
   </div>
 
   <div class="section-header">
@@ -676,11 +676,11 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
       <div class="share-student-row">
         <div style="width:96px;height:96px;border-radius:50%;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:32px;font-weight:900;background:${st.color + '33'};color:${st.color};border:3px solid ${st.color + '55'};box-shadow:0 0 30px ${st.color + '33'}">${
           st.profilePic
-            ? `<img src="${st.profilePic}" alt="${st.init}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.remove()">`
-            : st.init
+            ? `<img src="${_esc(st.profilePic)}" alt="${_esc(st.init)}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.remove()">`
+            : _esc(st.init)
         }</div>
         <div>
-          <div style="font-family:var(--fh);font-size:22px;font-weight:900;color:var(--on-surface)">${st.name}</div>
+          <div style="font-family:var(--fh);font-size:22px;font-weight:900;color:var(--on-surface)">${_esc(st.name)}</div>
           <div style="font-size:13px;color:var(--text-muted)">${st.tier} · Level ${st.level} · Rank #${myRank}</div>
         </div>
       </div>

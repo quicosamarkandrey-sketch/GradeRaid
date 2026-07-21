@@ -396,7 +396,7 @@ window.achAdminDoGrant = function () {
     // Phase 17: admin grants unlock+claim in one step, unlike auto-unlock.
     syncAchievementUnlockToServer(sid, achId, xpGrant, coinGrant, true, student.classId || 'default-class');
     saveDB(); closeModalForce();
-    toast(`✅ Granted "${ach.name}" to ${student.name}! +${xpGrant} XP, +${coinGrant} 🪙`);
+    toast(`✅ Granted "${_esc(ach.name)}" to ${_esc(student.name)}! +${xpGrant} XP, +${coinGrant} 🪙`);
   } else {
     if (!alreadyUnlocked) { if (errEl) { errEl.textContent = '❌ Student does not have this achievement.'; errEl.style.display = 'block'; } return; }
     const unlock = DB.achievementUnlocks[sid].find(u => u.achId === achId);
@@ -408,7 +408,7 @@ window.achAdminDoGrant = function () {
     DB.achievementUnlocks[sid] = (DB.achievementUnlocks[sid] || []).filter(u => u.achId !== achId);
     syncAchievementRevokeToServer(sid, achId);
     saveDB(); closeModalForce();
-    toast(`🗑 Revoked "${ach.name}" from ${student.name}.`, '#ff8080');
+    toast(`🗑 Revoked "${_esc(ach.name)}" from ${_esc(student.name)}.`, '#ff8080');
   }
   renderAdminAchievements();
 };

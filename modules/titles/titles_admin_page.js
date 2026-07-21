@@ -306,12 +306,12 @@ window.tsAdminGrantConfirm = function () {
     if (tsIsUnlocked(sid, tid)) { if (errEl) { errEl.textContent = '❌ Student already has this title.'; errEl.style.display = 'block'; } return; }
     tsUnlockTitleForStudent(sid, tid, true);
     closeModalForce();
-    toast(`✅ Granted "${title.name}" to ${student.name}!`);
+    toast(`✅ Granted "${_esc(title.name)}" to ${_esc(student.name)}!`);
   } else {
     if (!tsIsUnlocked(sid, tid)) { if (errEl) { errEl.textContent = '❌ Student does not have this title.'; errEl.style.display = 'block'; } return; }
     tsAdminRevokeTitle(sid, tid);
     closeModalForce();
-    toast(`🗑 Revoked "${title.name}" from ${student.name}.`, '#ff8080');
+    toast(`🗑 Revoked "${_esc(title.name)}" from ${_esc(student.name)}.`, '#ff8080');
   }
   renderAdminTitles();
 };

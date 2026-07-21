@@ -84,9 +84,9 @@ function wblRenderPodium(sorted) {
       <div class="wbl-podium-slot rank${rank}">
         <div class="wbl-podium-avatar" style="border-color:${p.studentColor};background:${p.studentColor}22;color:${p.studentColor}">
           <div class="wbl-medal">${medals[i]}</div>
-          ${p.studentInit}
+          ${_esc(p.studentInit)}
         </div>
-        <div class="wbl-podium-name">${p.studentName}</div>
+        <div class="wbl-podium-name">${_esc(p.studentName)}</div>
         ${titleBadgeHTML}
         <div class="wbl-podium-stat" style="color:${p.studentColor}">${(p.totalDamage || 0).toLocaleString()}</div>
         <div class="wbl-podium-block">#${rank}</div>
@@ -109,9 +109,9 @@ function wblRenderRow(p, rank, statValue, statLabel, statColor) {
   } catch (e) {}
   return `<div class="wbl-row ${rankClass} ${isMe ? 'me' : ''}">
     <div class="wbl-rank-badge ${rankBadgeClass}">${rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank}</div>
-    <div class="wbl-participant-av" style="border:2px solid ${p.studentColor}55;background:${p.studentColor}22;color:${p.studentColor}">${p.studentInit}</div>
+    <div class="wbl-participant-av" style="border:2px solid ${p.studentColor}55;background:${p.studentColor}22;color:${p.studentColor}">${_esc(p.studentInit)}</div>
     <div class="wbl-info">
-      <div class="wbl-info-name">${p.studentName}${isMe ? '<span style="font-size:9px;color:#EC4899;font-family:var(--fm)">YOU</span>' : ''}</div>
+      <div class="wbl-info-name">${_esc(p.studentName)}${isMe ? '<span style="font-size:9px;color:#EC4899;font-family:var(--fm)">YOU</span>' : ''}</div>
       ${titleBadgeHTML}
       <div class="wbl-info-sub">✅ ${p.correctAnswers || 0} correct · 💥 ${p.critHits || 0} crits · 👿 ${p.minionsDefeated || 0} minions · ⏱ ${wblFmtTime(p.participationSec)}</div>
     </div>

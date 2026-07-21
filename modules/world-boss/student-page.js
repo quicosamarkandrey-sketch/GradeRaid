@@ -214,9 +214,9 @@ function _renderStudentWorldBossCore() {
               ? Math.round(p.correctAnswers / (p.correctAnswers + p.wrongAnswers) * 100) : 0;
             return `<div class="wb-dmg-rank ${isMe ? 'me' : ''}">
               <div class="wb-dmg-rank-num">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1)}</div>
-              <div class="wb-participant-av" style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:12px;border:2px solid ${p.studentColor + '55'};background:${p.studentColor + '22'};color:${p.studentColor};flex-shrink:0">${p.studentInit}</div>
+              <div class="wb-participant-av" style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:12px;border:2px solid ${p.studentColor + '55'};background:${p.studentColor + '22'};color:${p.studentColor};flex-shrink:0">${_esc(p.studentInit)}</div>
               <div class="wb-dmg-rank-info">
-                <div class="wb-dmg-rank-name">${p.studentName}${isMe ? ' <span style="font-size:9px;color:#EC4899;font-family:var(--fm)">YOU</span>' : ''}</div>
+                <div class="wb-dmg-rank-name">${_esc(p.studentName)}${isMe ? ' <span style="font-size:9px;color:#EC4899;font-family:var(--fm)">YOU</span>' : ''}</div>
                 <div class="wb-dmg-rank-sub">✅ ${p.correctAnswers} correct · ❌ ${p.wrongAnswers} wrong · ${acc}% acc</div>
               </div>
               <div class="wb-dmg-rank-val">${p.totalDamage.toLocaleString()} DMG</div>
@@ -466,9 +466,9 @@ function _wbcUpdateDmgList(bossIdx) {
       ? Math.round(p.correctAnswers / (p.correctAnswers + p.wrongAnswers) * 100) : 0;
     return `<div class="wb-dmg-rank ${isMe ? 'me' : ''}">
       <div class="wb-dmg-rank-num">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1)}</div>
-      <div class="wb-participant-av" style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:12px;border:2px solid ${p.studentColor + '55'};background:${p.studentColor + '22'};color:${p.studentColor};flex-shrink:0">${p.studentInit}</div>
+      <div class="wb-participant-av" style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:12px;border:2px solid ${p.studentColor + '55'};background:${p.studentColor + '22'};color:${p.studentColor};flex-shrink:0">${_esc(p.studentInit)}</div>
       <div class="wb-dmg-rank-info">
-        <div class="wb-dmg-rank-name">${p.studentName}${isMe ? ' <span style="font-size:9px;color:#EC4899;font-family:var(--fm)">YOU</span>' : ''}</div>
+        <div class="wb-dmg-rank-name">${_esc(p.studentName)}${isMe ? ' <span style="font-size:9px;color:#EC4899;font-family:var(--fm)">YOU</span>' : ''}</div>
         <div class="wb-dmg-rank-sub">✅ ${p.correctAnswers} correct · ❌ ${p.wrongAnswers} wrong · ${acc}% acc</div>
       </div>
       <div class="wb-dmg-rank-val">${p.totalDamage.toLocaleString()} DMG</div>

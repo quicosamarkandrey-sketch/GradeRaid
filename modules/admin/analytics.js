@@ -115,8 +115,8 @@ function _anlRenderStudentTable() {
         ${shown.map((s, i) => `<tr>
           <td style="font-family:var(--fm);font-size:10px;color:var(--text-muted)">${String(start + i + 1).padStart(2, '0')}</td>
           <td><div style="display:flex;align-items:center;gap:10px">
-            <div style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:10px;background:${s.color + '22'};color:${s.color};border:1.5px solid ${s.color + '44'};flex-shrink:0">${s.init}</div>
-            <div><div style="font-weight:600;font-size:13px">${s.name}</div><div style="font-size:9px;color:var(--text-muted);letter-spacing:.04em">ID:${s.id.toUpperCase()}</div></div>
+            <div style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:10px;background:${s.color + '22'};color:${s.color};border:1.5px solid ${s.color + '44'};flex-shrink:0">${_esc(s.init)}</div>
+            <div><div style="font-weight:600;font-size:13px">${_esc(s.name)}</div><div style="font-size:9px;color:var(--text-muted);letter-spacing:.04em">ID:${s.id.toUpperCase()}</div></div>
           </div></td>
           <td><span class="badge-pill bp-primary" style="font-size:10px">LV ${s.level}</span></td>
           <td style="color:#d0bcff;font-weight:700;font-family:var(--fh)">${s.xp.toLocaleString()}</td>
@@ -315,7 +315,7 @@ function _anlRollupBodyHTML(teachers) {
         ${topPerformers.map((s, i) => `<tr>
           <td style="font-family:var(--fm);font-size:10px;color:var(--text-muted)">${String(i + 1).padStart(2, '0')}</td>
           <td><div style="display:flex;align-items:center;gap:10px">
-            <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:10px;background:${s.color + '22'};color:${s.color};border:1.5px solid ${s.color + '44'};flex-shrink:0">${s.init}</div>
+            <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:10px;background:${s.color + '22'};color:${s.color};border:1.5px solid ${s.color + '44'};flex-shrink:0">${_esc(s.init)}</div>
             <div style="font-weight:600;font-size:13px">${_esc(s.name)}</div>
           </div></td>
           <td style="font-size:12px;color:var(--text-muted)">${_esc(typeof getClassLabel === 'function' ? getClassLabel(s.classId) : (s.classId || '—'))}</td>

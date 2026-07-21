@@ -323,7 +323,7 @@ window.posExecuteClaim = function (orderId) {
   order.claimedBy = DB.admin?.name || 'Teacher';
   saveDB();
   closeModalForce();
-  toast(`✅ ${order.emoji} "${order.itemName}" claimed by ${order.studentName}!`, '#4edea3');
+  toast(`✅ ${order.emoji} "${_esc(order.itemName)}" claimed by ${_esc(order.studentName)}!`, '#4edea3');
   const input = document.getElementById('pos-code-input');
   if (input) input.value = '';
   const resultEl = document.getElementById('pos-lookup-result');
@@ -839,7 +839,7 @@ async function _posPayAttemptCharge(studentId, method) {
   saveDB();
   _posPayBusy = false;
 
-  toast(`✅ ${chargeable.toLocaleString()} 🪙 charged to ${student.name}`, '#4edea3');
+  toast(`✅ ${chargeable.toLocaleString()} 🪙 charged to ${_esc(student.name)}`, '#4edea3');
   succeeded.forEach(({ e }) => delete _posPayCart[e.item.id]);
   _posPayManualStudentId = null;
   _posPayRenderGrid();

@@ -833,10 +833,10 @@
     // a photo that hasn't failed yet.
     const portraitHtml = s.profilePic
       ? `<div class="hol-portrait" style="background:${color}22;border-color:${color}55;">
-           <img src="${s.profilePic}" alt="${s.name}" onerror="this.parentElement.style.color='${color}';this.parentElement.innerHTML='<span class=&quot;hol-portrait-init&quot;>${s.init}</span>'">
+           <img src="${_esc(s.profilePic)}" alt="${_esc(s.name)}" onerror="this.parentElement.style.color='${color}';this.parentElement.innerHTML='<span class=&quot;hol-portrait-init&quot;>${_esc(s.init)}</span>'">
          </div>`
       : `<div class="hol-portrait" style="background:${color}22;color:${color};border-color:${color}55;">
-           <span class="hol-portrait-init">${s.init}</span>
+           <span class="hol-portrait-init">${_esc(s.init)}</span>
          </div>`;
 
     // Rank1 gets the full 6-particle ember plume (it's the centerpiece);
@@ -895,14 +895,14 @@
       ? `<div class="hol-card-title">${tsBuildBadgeHTML(titleObj, { noParticles: true })}</div>`
       : (title ? `<div class="hol-card-title" style="--hol-title-color:${color}88">${title}</div>` : '');
 
-    return `<div class="hol-card rank${rankNum}" title="${displayName}" style="">
+    return `<div class="hol-card rank${rankNum}" title="${_esc(displayName)}" style="">
       ${embersHtml}
       <div class="hol-portrait-wrap">
         ${portraitHtml}
         ${crownHtml}
         ${rankBadgeHtml}
       </div>
-      <div class="hol-card-name">${firstName}</div>
+      <div class="hol-card-name">${_esc(firstName)}</div>
       <div class="hol-card-score" style="color:${meta.color}">${entry.scoreLabel}</div>
       <div class="hol-card-score-lbl">${catKey === 'boss' ? 'damage' : catKey === 'recitation' ? 'points' : catKey === 'hall' ? 'experience' : 'score'}</div>
       ${titleDisplayHTML}
@@ -955,7 +955,7 @@
       ${(myEntry && !isInPodium) ? `<div class="hol-my-rank-bar">
         <div>
           <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Your Standing</div>
-          <div style="font-size:13px;font-weight:700;color:var(--on-surface)">${myName}</div>
+          <div style="font-size:13px;font-weight:700;color:var(--on-surface)">${_esc(myName)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:16px">
           <div style="text-align:right">
@@ -1020,9 +1020,9 @@
     // a broken image URL swaps in the initials at load-failure time.
     const avHtml = s.profilePic
       ? `<div class="hol-row-av" style="border-color:${color}44;background:${color}11;">
-           <img src="${s.profilePic}" alt="${s.name}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.style.background='${color}22';this.parentElement.style.color='${color}';this.parentElement.textContent='${s.init}'">
+           <img src="${_esc(s.profilePic)}" alt="${_esc(s.name)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.style.background='${color}22';this.parentElement.style.color='${color}';this.parentElement.textContent='${_esc(s.init)}'">
          </div>`
-      : `<div class="hol-row-av" style="border-color:${color}44;background:${color}22;color:${color};">${s.init}</div>`;
+      : `<div class="hol-row-av" style="border-color:${color}44;background:${color}22;color:${color};">${_esc(s.init)}</div>`;
 
     let sub = '';
     switch (catKey) {
@@ -1057,7 +1057,7 @@
       ${avHtml}
       <div class="hol-row-info">
         <div class="hol-row-name">
-          ${s.displayName || s.name}
+          ${_esc(s.displayName || s.name)}
           ${isMe ? '<span class="hol-row-badge-you">You</span>' : ''}
         </div>
         ${titleLineHTML}
@@ -1243,14 +1243,6 @@
       })()}
     </div>`
     }`;
-  };
-
-  // Keep old helper aliases alive so any external calls don't break
-  window._eqlBuildStudentTabBar = function (activeTab) {
-    return _holBuildNavBars(activeTab, window._eqlActivePeriod || 'all');
-  };
-  window._eqlRenderRow = function (entry, categoryKey, meta) {
-    return _holRenderRow(entry, categoryKey, meta, 0);
   };
 
   console.log('[HOL] hall-of-fame.js loaded. renderLeaderboard patched with HOL stage.');

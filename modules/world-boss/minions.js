@@ -593,7 +593,6 @@ window.wbmOpenMinionSettings = function (bossIdx) {
   const boss = DB.bossEvents[bossIdx];
   if (!boss) return;
   const s = wbmSettings(boss);
-  window._wbmEditingBossIdx = bossIdx;
   window._wbmDraftMinionQs = JSON.parse(JSON.stringify(s.questions || []));
 
   showModal(`

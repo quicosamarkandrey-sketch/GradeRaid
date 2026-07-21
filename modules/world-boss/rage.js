@@ -235,7 +235,6 @@ window.wbrageOpenConfig = function (bossIdx) {
   DB = loadDB();
   const boss = DB.bossEvents[bossIdx]; if (!boss) return;
   const cfg  = wbrageSettings(boss);
-  window._wbrageDraft = JSON.parse(JSON.stringify(cfg));
   showModal(`<div>
     <div class="modal-h2" style="margin-bottom:14px">🔥 Rage Mode — ${_esc(boss.name)}</div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">

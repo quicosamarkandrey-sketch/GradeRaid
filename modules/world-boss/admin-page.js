@@ -291,7 +291,6 @@ window.wbcOpenQuestionEditor = function (bossIdx) {
   if (!boss) return;
   const qs = boss.bossQuestions || [];
   const allQuizzes = DB.quizzes || [];
-  window._wbcEditingBossIdx   = bossIdx;
   window._wbcDraftQuestions   = JSON.parse(JSON.stringify(qs));
   showModal(`
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">

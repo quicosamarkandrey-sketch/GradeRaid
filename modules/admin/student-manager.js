@@ -13,7 +13,7 @@
 
 // ── AWARD POINTS ───────────────────────────────────────
 window.openAwardPoints = function() {
-  const studentOpts = DB.students.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  const studentOpts = DB.students.map(s => `<option value="${s.id}">${_esc(s.name)}</option>`).join('');
   showModal(`<div class="modal-h2">⚡ Award Points</div>
     <div class="form-group"><label class="form-label">Student</label>
       <select id="aw-student" style="width:100%"><option value="all">🌟 Entire Class</option>${studentOpts}</select></div>

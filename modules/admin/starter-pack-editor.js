@@ -125,7 +125,6 @@ function _spRenderAchievements(body) {
 
 window._spOpenAchievementForm = function (idx) {
   const d = idx >= 0 ? _spPack.achievements[idx] : { id: 'starter-ach-' + uid(), name: '', description: '', icon: '🏅', category: 'General', rarity: 'Common', xpReward: 30, coinReward: 15, triggerType: 'manual', triggerValue: 1, active: true };
-  window._spEditIdx = idx;
   window._spEditBaseId = d.id;
   showModal(`
     <div style="font-family:var(--fh);font-size:18px;font-weight:800;margin-bottom:16px">${idx >= 0 ? 'Edit' : 'Add'} Achievement</div>
