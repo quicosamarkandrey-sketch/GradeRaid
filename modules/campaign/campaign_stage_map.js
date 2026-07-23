@@ -69,7 +69,7 @@ function _fillStageMapHeader() {
     av.textContent = '🛡';
     if (nameEl) nameEl.textContent = currentUser?.name || 'Admin';
     if (tierEl) tierEl.textContent = 'ADMIN // OVERVIEW';
-    const total = (DB.stageMap || []).reduce((a, w) => a + w.stages.length, 0);
+    const total = (AppStore.getSlice(s => s.stageMap) || []).reduce((a, w) => a + w.stages.length, 0);
     if (doneEl) doneEl.textContent = total + ' TOTAL';
     if (bar)    bar.style.width    = '100%';
   }
@@ -78,12 +78,11 @@ function _fillStageMapHeader() {
 // ── World tabs ────────────────────────────────────────────────────────────────
 
 window.renderWorldTabs = function () {
-  DB = loadDB();
   const tabs   = document.getElementById('world-tabs-sm');
   if (!tabs) return;
   // Phase 53: section-scoped for students — see getVisibleCampaignWorlds()
   // in campaign_engine.js.
-  const worlds = (typeof getVisibleCampaignWorlds === 'function') ? getVisibleCampaignWorlds() : (DB.stageMap || []);
+  const worlds = (typeof getVisibleCampaignWorlds === 'function') ? getVisibleCampaignWorlds() : (AppStore.getSlice(s => s.stageMap) || []);
   tabs.innerHTML = worlds.map((w, i) =>
     `<button class="world-tab ${i === activeWorld ? 'active' : ''}"
       onclick="switchWorld(${i})"
@@ -102,10 +101,9 @@ window.switchWorld = function (idx) {
 // ── Stage grid renderer ───────────────────────────────────────────────────────
 
 window.renderStageMap = function (worldIdx) {
-  DB = loadDB();
   // Phase 53: section-scoped for students — see getVisibleCampaignWorlds()
   // in campaign_engine.js.
-  const worlds = (typeof getVisibleCampaignWorlds === 'function') ? getVisibleCampaignWorlds() : (DB.stageMap || []);
+  const worlds = (typeof getVisibleCampaignWorlds === 'function') ? getVisibleCampaignWorlds() : (AppStore.getSlice(s => s.stageMap) || []);
   const body   = document.getElementById('smap-body');
   if (!body) return;
   if (!worlds.length) {

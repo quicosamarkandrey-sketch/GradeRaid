@@ -171,9 +171,18 @@ window.eqTimeAgo = function (iso) {
   // two surfaces stay visually consistent without repeating the same wording.
   window.eqClassifyActivity = _classifyPointLog;
 
-  function _existingSourceIds(sid) {
+  // [Phase 3 migration] reads go through AppStore.getSlice() instead of the
+  // live `DB` global — see modules/core/state-manager.js. getSlice() clones
+  // only the requested sub-tree, so what these functions get back is always
+  // a snapshot, never a reference into AppStore's internal _state. That's
+  // deliberate: it's what forces every write in this file to go back through
+  // AppStore.updateState() instead of mutating a found object in place (the
+  // old DB.notifications.find() pattern used to work only because DB was a
+  // live shared reference — see markRead/markAllRead/openRow below for
+  // where that mattered).
+  function _existingSourceIds(sid, notifications) {
     const set = new Set();
-    (DB.notifications || []).forEach(n => { if (n.studentId === sid && n.sourceId) set.add(n.sourceId); });
+    (notifications || []).forEach(n => { if (n.studentId === sid && n.sourceId) set.add(n.sourceId); });
     return set;
   }
 
@@ -181,18 +190,18 @@ window.eqTimeAgo = function (iso) {
   // Returns the array of genuinely-new (non-bootstrap) notifications created
   // this call, so refresh() knows whether a toast is warranted.
   function synthesize() {
-    if (currentRole !== 'student' || !currentUser || !DB) return [];
-    if (!DB.notifications) DB.notifications = [];
+    if (currentRole !== 'student' || !currentUser || typeof AppStore === 'undefined') return [];
     const sid = currentUser.id;
 
     let isBootstrap = false;
     const bootKey = NOTIF_BOOT_KEY_PREFIX + sid;
     try { isBootstrap = !localStorage.getItem(bootKey); } catch (e) { /* storage unavailable — treat as non-bootstrap, safest default */ }
 
-    const existing = _existingSourceIds(sid);
+    const notifications = AppStore.getSlice(s => s.notifications) || [];
+    const existing = _existingSourceIds(sid, notifications);
     const created = [];
 
-    let plRows = (DB.pointLog || []).filter(p => p.studentId === sid && p.id && !existing.has(p.id));
+    let plRows = (AppStore.getSlice(s => s.pointLog) || []).filter(p => p.studentId === sid && p.id && !existing.has(p.id));
     if (isBootstrap) plRows = plRows.slice(0, BOOT_POINTLOG_CAP);
     plRows.forEach(p => {
       const c = _classifyPointLog(p);
@@ -204,7 +213,7 @@ window.eqTimeAgo = function (iso) {
       });
     });
 
-    let ordRows = (DB.orders || []).filter(o => o.studentId === sid && o.orderId && !existing.has(o.orderId));
+    let ordRows = (AppStore.getSlice(s => s.orders) || []).filter(o => o.studentId === sid && o.orderId && !existing.has(o.orderId));
     if (isBootstrap) ordRows = ordRows.slice(0, BOOT_ORDERS_CAP);
     ordRows.forEach(o => {
       created.push({
@@ -220,10 +229,12 @@ window.eqTimeAgo = function (iso) {
     });
 
     if (created.length) {
-      DB.notifications = created.concat(DB.notifications)
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice(0, LOCAL_NOTIF_CAP);
-      saveDB();
+      AppStore.updateState(draft => {
+        if (!Array.isArray(draft.notifications)) draft.notifications = [];
+        draft.notifications = created.concat(draft.notifications)
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+          .slice(0, LOCAL_NOTIF_CAP);
+      }, { type: 'notifications:synthesized', payload: { studentId: sid, count: created.length } });
     }
     if (isBootstrap) {
       try { localStorage.setItem(bootKey, '1'); } catch (e) { /* non-fatal — worst case, re-backfills (still capped) next load */ }
@@ -234,7 +245,7 @@ window.eqTimeAgo = function (iso) {
 
   function _myNotifs() {
     if (currentRole !== 'student' || !currentUser) return [];
-    return (DB.notifications || [])
+    return (AppStore.getSlice(s => s.notifications) || [])
       .filter(n => n.studentId === currentUser.id)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }
@@ -329,16 +340,30 @@ window.eqTimeAgo = function (iso) {
     },
 
     markRead: function (id) {
-      const n = (DB.notifications || []).find(x => x.id === id);
-      if (n && !n.read) { n.read = true; saveDB(); }
+      // Look up first (read-only, cloned) so we only pay for an updateState
+      // call — and its persist + subscriber notify — when something is
+      // actually changing, same as the old "if (n && !n.read)" gate.
+      const existing = (AppStore.getSlice(s => s.notifications) || []).find(x => x.id === id);
+      if (existing && !existing.read) {
+        AppStore.updateState(draft => {
+          const n = (draft.notifications || []).find(x => x.id === id);
+          if (n) n.read = true;
+        }, { type: 'notifications:read', payload: { id } });
+      }
       _renderBadge();
       if (_panelOpen) _renderPanel();
     },
 
     markAllRead: function () {
-      let changed = false;
-      _myNotifs().forEach(n => { if (!n.read) { n.read = true; changed = true; } });
-      if (changed) saveDB();
+      const sid = currentUser && currentUser.id;
+      const hasUnread = _myNotifs().some(n => !n.read);
+      if (hasUnread) {
+        AppStore.updateState(draft => {
+          (draft.notifications || [])
+            .filter(n => n.studentId === sid)
+            .forEach(n => { n.read = true; });
+        }, { type: 'notifications:all-read', payload: { studentId: sid } });
+      }
       _renderBadge();
       if (_panelOpen) _renderPanel();
     },
@@ -346,11 +371,18 @@ window.eqTimeAgo = function (iso) {
     // Click on a row: mark read, close the panel, and navigate to wherever
     // that notification is about (Quest Board, Armory Inventory, etc).
     openRow: function (id) {
-      const n = (DB.notifications || []).find(x => x.id === id);
+      const n = (AppStore.getSlice(s => s.notifications) || []).find(x => x.id === id);
       if (!n) return;
-      if (!n.read) { n.read = true; saveDB(); }
+      if (!n.read) {
+        AppStore.updateState(draft => {
+          const target = (draft.notifications || []).find(x => x.id === id);
+          if (target) target.read = true;
+        }, { type: 'notifications:read', payload: { id } });
+      }
       this.close();
       _renderBadge();
+      // n.action came from the pre-update snapshot, but action is never
+      // mutated by the read-flag update above, so it's still accurate.
       if (n.action && typeof navTo === 'function') navTo(n.action);
     },
   };

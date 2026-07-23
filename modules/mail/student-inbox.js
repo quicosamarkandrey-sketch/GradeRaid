@@ -11,7 +11,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // ── Student Mail Page ──
 window.renderStudentMail = function(){
-  DB = loadDB();
   const sid = currentUser.id;
   const msgs = mailGetForStudent(sid);
   const unread = msgs.filter(m=>!mailIsRead(m,sid)).length;
@@ -81,9 +80,8 @@ window.renderStudentMail = function(){
 };
 
 window.mailOpenDetail = function(mailId){
-  DB = loadDB();
   const sid = currentUser.id;
-  const m = (DB.mail||[]).find(x=>x.id===mailId);
+  const m = (AppStore.getSlice(s => s.mail) || []).find(x=>x.id===mailId);
   if(!m) {
     console.error('[Mail] Mail not found:', mailId);
     return;
@@ -95,8 +93,8 @@ window.mailOpenDetail = function(mailId){
   mailMarkRead(mailId, sid);
   mailUpdateSidebarBadge();
 
-  // Reload mail object to get fresh state
-  const freshM = (loadDB().mail||[]).find(x=>x.id===mailId);
+  // Reload mail object to get fresh state (mailMarkRead's readBy flip above)
+  const freshM = (AppStore.getSlice(s => s.mail) || []).find(x=>x.id===mailId);
   const isRead = mailIsRead(freshM||m, sid);
   const isClaimed = mailIsClaimed(freshM||m, sid);
   const timeStr = new Date((freshM||m).sentAt).toLocaleString('en-PH',{month:'long',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
@@ -192,8 +190,6 @@ window.mailDoClaimRewards = function(mailId){
     rewards: rewards||[],
     onClose: ()=>{ 
       console.log('[Mail] Reward presentation closed, refreshing mail view');
-      // Force reload the DB and refresh mail list
-      DB = loadDB();
       renderStudentMail();
     }
   });

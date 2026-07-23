@@ -95,7 +95,7 @@ window._bsDateLabel = function (ts) {
 // ── Library body renderer (refreshable) ───────────────────────────────────────
 
 function _bsRenderLibraryBody() {
-  const library = DB.bossLibrary || [];
+  const library = AppStore.getSlice(s => s.bossLibrary) || [];
   const total   = library.length;
 
   let filtered = library.filter(b => {
@@ -191,8 +191,7 @@ function _bsRefreshLibrary() {
 // ── Boss Studio tab renderer ───────────────────────────────────────────────────
 
 function _bsRenderBossTab() {
-  bsLoad();
-  const all = DB.bossLibrary || [];
+  const all = AppStore.getSlice(s => s.bossLibrary) || [];
   const themed = all.filter(b => b.visual?.themeColor && b.visual.themeColor !== BS_DEFAULT_THEME).length;
   const hasArt = all.filter(b => b.artwork?.value).length;
   const hasRage = all.filter(b => b.rageArtwork?.value).length;
@@ -249,8 +248,8 @@ window.renderBossStudio = function () {
   const alTab = typeof window._alRenderTabBody === 'function' ? window._alRenderTabBody() : '<div style="color:var(--text-muted);padding:40px">Animation library loading...</div>';
   page.innerHTML = `<div class="page" style="padding:32px;max-width:1200px;margin:0 auto;display:block">
     <div class="bs-tabs">
-      <button class="bs-tab ${_bsTab==='bosses'?'active':''}" onclick="window._bsSetTab('bosses')"><span class="material-symbols-outlined">library_books</span>Boss Library<span class="badge-pill">${(DB.bossLibrary||[]).length}</span></button>
-      <button class="bs-tab ${_bsTab==='animations'?'active':''}" onclick="window._bsSetTab('animations')"><span class="material-symbols-outlined">animation</span>Animation Library<span class="badge-pill">${(DB.animationLibrary||[]).length}</span></button>
+      <button class="bs-tab ${_bsTab==='bosses'?'active':''}" onclick="window._bsSetTab('bosses')"><span class="material-symbols-outlined">library_books</span>Boss Library<span class="badge-pill">${(AppStore.getSlice(s => s.bossLibrary)||[]).length}</span></button>
+      <button class="bs-tab ${_bsTab==='animations'?'active':''}" onclick="window._bsSetTab('animations')"><span class="material-symbols-outlined">animation</span>Animation Library<span class="badge-pill">${(AppStore.getSlice(s => s.animationLibrary)||[]).length}</span></button>
     </div>
     <div id="bs-tab-root">${_bsTab === 'animations' ? alTab : _bsRenderBossTab()}</div>
   </div>`;
@@ -419,7 +418,7 @@ window._bsExportSingle = function (id) {
 
 window._bsExportAll = function () {
   bsLoad();
-  const json = JSON.stringify({ bossStudioExport: true, version: BS_SCHEMA_VERSION, profiles: DB.bossLibrary || [] }, null, 2);
+  const json = JSON.stringify({ bossStudioExport: true, version: BS_SCHEMA_VERSION, profiles: AppStore.getSlice(s => s.bossLibrary) || [] }, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const a    = document.createElement('a');
   a.href     = URL.createObjectURL(blob);

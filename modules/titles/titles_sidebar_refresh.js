@@ -7,28 +7,28 @@
 // ── Core helpers ──────────────────────────────────────────────────────────────
 
 window.tsGetEquippedTitle = function (sid) {
-  const tid = (DB.equippedTitles || {})[sid];
+  const tid = (AppStore.getSlice(s => s.equippedTitles) || {})[sid];
   if (!tid) return null;
-  return (DB.titles || []).find(t => t.id === tid && t.active) || null;
+  return (AppStore.getSlice(s => s.titles) || []).find(t => t.id === tid && t.active) || null;
 };
 
 window.tsGetUnlockedTitles = function (sid) {
-  const ids = new Set((DB.titleUnlocks || {})[sid] || []);
-  return (DB.titles || []).filter(t => ids.has(t.id));
+  const ids = new Set((AppStore.getSlice(s => s.titleUnlocks) || {})[sid] || []);
+  return (AppStore.getSlice(s => s.titles) || []).filter(t => ids.has(t.id));
 };
 
 window.tsIsUnlocked = function (sid, tid) {
-  return ((DB.titleUnlocks || {})[sid] || []).includes(tid);
+  return ((AppStore.getSlice(s => s.titleUnlocks) || {})[sid] || []).includes(tid);
 };
 
 // ── Equip / Unlock ────────────────────────────────────────────────────────────
 
 window.tsEquipTitle = function (sid, tid) {
-  DB = loadDB();
-  if (!DB.equippedTitles) DB.equippedTitles = {};
   if (tid && !tsIsUnlocked(sid, tid)) { toast('❌ Title not unlocked yet.', '#ffb4ab'); return; }
-  DB.equippedTitles[sid] = tid || null;
-  saveDB();
+  AppStore.updateState(draft => {
+    if (!draft.equippedTitles) draft.equippedTitles = {};
+    draft.equippedTitles[sid] = tid || null;
+  }, { type: 'titles:equipped', payload: { sid, tid: tid || null } });
   // Phase 18: sync the equipped title server-side too, fire-and-forget.
   syncEquippedTitleToServer(sid, tid || null);
   if (currentUser && currentUser.id === sid) {
@@ -43,24 +43,27 @@ window.tsEquipTitle = function (sid, tid) {
 
 /**
  * tsUnlockTitleForStudent(sid, tid, silent) → boolean
- * Adds tid to DB.titleUnlocks[sid]. Returns false if already unlocked.
+ * Adds tid to the AppStore titleUnlocks slice for sid. Returns false if already unlocked.
  * If !silent: calls tsShowTitleUnlockPopup().
  * If currentUser.id === sid: refreshes renderTitlesPage, sidebar, profile, renderBadges.
  */
 window.tsUnlockTitleForStudent = function (sid, tid, silent) {
-  DB = loadDB();
-  if (!DB.titleUnlocks)      DB.titleUnlocks = {};
-  if (!DB.titleUnlocks[sid]) DB.titleUnlocks[sid] = [];
-  if (DB.titleUnlocks[sid].includes(tid)) return false;
-  DB.titleUnlocks[sid].push(tid);
-  saveDB();
+  const already = (AppStore.getSlice(s => s.titleUnlocks) || {})[sid] || [];
+  if (already.includes(tid)) return false;
+
+  AppStore.updateState(draft => {
+    if (!draft.titleUnlocks)      draft.titleUnlocks = {};
+    if (!draft.titleUnlocks[sid]) draft.titleUnlocks[sid] = [];
+    draft.titleUnlocks[sid].push(tid);
+  }, { type: 'titles:unlocked', payload: { sid, tid } });
+
   // Phase 18: sync the unlock server-side too, fire-and-forget. Covers all
   // three real call sites (achievement-linked auto-unlock in this file,
   // admin grant in titles_admin_page.js, mail reward claim in
   // mail-engine.js) since they all funnel through this one function.
-  const _stu = (DB.students || []).find(s => String(s.id) === String(sid));
+  const _stu = (AppStore.getSlice(s => s.students) || []).find(s => String(s.id) === String(sid));
   syncTitleUnlockToServer(sid, tid, _stu ? _stu.classId : null);
-  const t = (DB.titles || []).find(x => x.id === tid);
+  const t = (AppStore.getSlice(s => s.titles) || []).find(x => x.id === tid);
   if (!silent && t) tsShowTitleUnlockPopup(t);
   if (currentUser && String(currentUser.id) === String(sid)) {
     if (typeof renderTitlesPage === 'function') renderTitlesPage();
@@ -112,7 +115,6 @@ window.tsRefreshSidebarTitle = function () {
     if (stale) stale.remove();
     return;
   }
-  DB = loadDB();
   const eq   = tsGetEquippedTitle(currentUser.id);
   let el     = document.getElementById('ts-sidebar-title');
   const cont = document.querySelector('.sidebar-player');
@@ -140,7 +142,6 @@ window.tsRefreshProfileTitle = function () {
     if (stale) stale.remove();
     return;
   }
-  DB = loadDB();
   const existing = document.getElementById('ts-dash-title');
   if (existing) existing.remove();
   const eq = tsGetEquippedTitle(currentUser.id);
@@ -182,8 +183,8 @@ window.tsOpenTitlesFromProfile = function () {
   window.achCheckAndAward = function (studentId, suppressPopup) {
     if (typeof _orig === 'function') _orig(studentId, suppressPopup);
     if (!studentId) return;
-    const unlockedAchIds = new Set(((DB.achievementUnlocks || {})[studentId] || []).map(u => u.achId));
-    (DB.titles || []).forEach(t => {
+    const unlockedAchIds = new Set(((AppStore.getSlice(s => s.achievementUnlocks) || {})[studentId] || []).map(u => u.achId));
+    (AppStore.getSlice(s => s.titles) || []).forEach(t => {
       if (!t.active || !t.achievementId) return;
       if (tsIsUnlocked(studentId, t.id)) return;
       if (unlockedAchIds.has(t.achievementId)) tsUnlockTitleForStudent(studentId, t.id, suppressPopup);
@@ -225,15 +226,27 @@ window.tsOpenTitlesFromProfile = function () {
   };
 })();
 
-// bootApp → DB migration + initial sidebar/profile refresh on login
+// bootApp → AppStore migration guard + initial sidebar/profile refresh on login
+// [Phase 3 migration note] This duplicates the same titles/titleUnlocks/
+// equippedTitles initialization as titles_index.js's own AppStore.ready.then()
+// block — a pre-existing redundancy predating this migration (both guarded
+// by an existence check, so harmless either way). Same "flagged, not fixed"
+// treatment as the identical duplication found in modules/boss-studio/
+// (bs_index.js vs bs_storage.js) — this is Phase 1 (dead/duplicate code)
+// territory, not this phase's scope.
 ;(function () {
   const _orig = window.bootApp;
   window.bootApp = function () {
     if (typeof _orig === 'function') _orig();
-    DB = loadDB();
-    if (!DB.titles)         DB.titles         = [];
-    if (!DB.titleUnlocks)   DB.titleUnlocks   = {};
-    if (!DB.equippedTitles) DB.equippedTitles = {};
+    const current = AppStore.getSlice(s => ({ titles: s.titles, titleUnlocks: s.titleUnlocks, equippedTitles: s.equippedTitles }));
+    const missing = ['titles', 'titleUnlocks', 'equippedTitles'].filter(k => !current || !current[k]);
+    if (missing.length) {
+      AppStore.updateState(draft => {
+        if (!draft.titles)         draft.titles         = [];
+        if (!draft.titleUnlocks)   draft.titleUnlocks   = {};
+        if (!draft.equippedTitles) draft.equippedTitles = {};
+      }, { type: 'titles:libraries-initialized', payload: { keys: missing } });
+    }
     if (currentRole === 'student' && currentUser) {
       try { achCheckAndAward(currentUser.id, true); } catch (e) {}
     }

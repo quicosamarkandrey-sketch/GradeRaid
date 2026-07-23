@@ -763,9 +763,9 @@
     if (equipped) return equipped.name;
 
     // 1. Check unlocked achievement names for category-appropriate titles
-    const unlocks = (DB.achievementUnlocks || {})[student.id] || [];
+    const unlocks = (AppStore.getSlice(s => s.achievementUnlocks) || {})[student.id] || [];
     if (unlocks.length > 0) {
-      const achList = (DB.achievements || []);
+      const achList = (AppStore.getSlice(s => s.achievements) || []);
       const rarityOrder = ['Mythic', 'Legendary', 'Epic', 'Rare', 'Uncommon', 'Common'];
       for (const rarity of rarityOrder) {
         const ach = achList.find(a => a.rarity === rarity && unlocks.some(u => u.achId === a.id));
@@ -1124,7 +1124,8 @@
     if (tabPeriodKey !== _holLastTabPeriodKey) { _holPage = 1; _holLastTabPeriodKey = tabPeriodKey; }
 
     const isStaffViewer = (typeof currentRole !== 'undefined') && (currentRole === 'admin' || currentRole === 'teacher');
-    const cfg     = (DB.leaderboardConfig || {})[activeTab] || {};
+    const leaderboardConfig = AppStore.getSlice(s => s.leaderboardConfig) || {};
+    const cfg     = leaderboardConfig[activeTab] || {};
     const enabled = cfg.enabled !== false;
     const meta    = HOL_CAT[activeTab] || HOL_CAT.overall;
 
@@ -1134,7 +1135,20 @@
     // Build entries with period filter applied
     let entries = [];
     if (enabled) {
-      entries = DB.students.map(student => {
+      const allStudents = AppStore.getSlice(s => s.students) || [];
+      // Shared across the whole roster below — same rationale as
+      // eqlBuildCategory's cache in eql-engine.js: without this,
+      // eqlComputeRecitation/Boss/Academic/Overall would each clone
+      // recitationLog/bossEvents/bossParticipants/pointLog/students once
+      // per student instead of once per render.
+      const cache = {
+        recitationLog: AppStore.getSlice(s => s.recitationLog) || [],
+        bossEvents: AppStore.getSlice(s => s.bossEvents) || [],
+        bossParticipants: AppStore.getSlice(s => s.bossParticipants) || {},
+        pointLog: AppStore.getSlice(s => s.pointLog) || [],
+        students: allStudents,
+      };
+      entries = allStudents.map(student => {
         let stats, score, scoreLabel;
         switch (activeTab) {
           case 'hall': {
@@ -1146,25 +1160,25 @@
             break;
           }
           case 'recitation': {
-            stats      = eqlComputeRecitation(student.id, periodResetAt);
+            stats      = eqlComputeRecitation(student.id, periodResetAt, cache);
             score      = stats.totalPts;
             scoreLabel = score.toLocaleString() + ' pts';
             break;
           }
           case 'boss': {
-            stats      = eqlComputeBoss(student.id, periodResetAt);
+            stats      = eqlComputeBoss(student.id, periodResetAt, cache);
             score      = stats.totalDamage;
             scoreLabel = score.toLocaleString() + ' DMG';
             break;
           }
           case 'academic': {
-            stats      = eqlComputeAcademic(student.id, periodResetAt);
+            stats      = eqlComputeAcademic(student.id, periodResetAt, cache);
             score      = stats.academicXP + stats.perfectScores * 200 + stats.questCompletions * 50;
             scoreLabel = score.toLocaleString() + ' pts';
             break;
           }
           default: {
-            stats      = eqlComputeOverall(student.id, periodResetAt);
+            stats      = eqlComputeOverall(student.id, periodResetAt, cache);
             score      = stats.score;
             scoreLabel = score.toLocaleString() + ' pts';
             break;

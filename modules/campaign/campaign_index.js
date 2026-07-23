@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //  EduQuest — modules/campaign/index.js
-//  CSS injection + DB migration + load-order guard for the campaign module.
+//  CSS injection + AppStore migration + load-order guard for the campaign module.
 //
 //  Required load order:
 //    1. engine.js           — camp state, launchCampaignStage, combat loop, victory/defeat
@@ -88,16 +88,19 @@
   document.head.appendChild(style);
 })();
 
-// ── DB migration guard ────────────────────────────────────────────────────────
+// ── AppStore migration guard ──────────────────────────────────────────────────
 // [SUPABASE MIGRATION] Deferred until AppStore.ready resolves — see the
 // matching note in modules/shop/shop_pos_terminal.js for why this can no
 // longer run synchronously at parse time.
 AppStore.ready.then(function campaignMigrateDB() {
-  DB = loadDB();
-  let dirty = false;
-  if (!DB.stageMap)      { DB.stageMap      = []; dirty = true; }
-  if (!DB.stageProgress) { DB.stageProgress = {}; dirty = true; }
-  if (dirty) saveDB();
+  const current = AppStore.getSlice(s => ({ stageMap: s.stageMap, stageProgress: s.stageProgress }));
+  const missing = ['stageMap', 'stageProgress'].filter(k => !current || !current[k]);
+  if (!missing.length) return; // already fully set up — nothing to do
+
+  AppStore.updateState(draft => {
+    if (!draft.stageMap)      draft.stageMap      = [];
+    if (!draft.stageProgress) draft.stageProgress = {};
+  }, { type: 'campaign:libraries-initialized', payload: { keys: missing } });
 });
 
 // ── Load-order verification ───────────────────────────────────────────────────

@@ -491,8 +491,7 @@ const BHS = {
  * Operators of the world-boss module register window._bveOnPick before calling.
  */
 window.bveLinkBossProfile = function (bossEventId) {
-  bsLoad();
-  const profiles = DB.bossLibrary || [];
+  const profiles = AppStore.getSlice(s => s.bossLibrary) || [];
   let search = '';
 
   function renderPicker() {
@@ -594,7 +593,7 @@ function bveGetArtSrc(profile, slot){
       }
       if(val.startsWith('__BSIMG__')){
         try {
-          const imgStore = (typeof DB !== 'undefined' && DB.bossImages)||{};
+          const imgStore = (typeof AppStore !== 'undefined' && AppStore.getSlice(s => s.bossImages)) || {};
           const resolved = imgStore[val];
           if(resolved) return {type:'img', value: resolved};
         } catch(e){}

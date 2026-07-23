@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //  EduQuest — modules/titles/index.js
-//  Full titles CSS injection + DB migration + load-order guard.
+//  Full titles CSS injection + AppStore migration + load-order guard.
 //
 //  Required load order:
 //    1. badge-renderer.js  — tsBuildBadgeHTML, registries, tsDefaultTitle
@@ -175,17 +175,20 @@
   document.head.appendChild(style);
 })();
 
-// ── DB migration guard ────────────────────────────────────────────────────────
+// ── AppStore migration guard ──────────────────────────────────────────────────
 // [SUPABASE MIGRATION] Deferred until AppStore.ready resolves — see the
 // matching note in modules/shop/shop_pos_terminal.js for why this can no
 // longer run synchronously at parse time.
 AppStore.ready.then(function titlesMigrateDB() {
-  DB = loadDB();
-  let dirty = false;
-  if (!DB.titles)         { DB.titles         = []; dirty = true; }
-  if (!DB.titleUnlocks)   { DB.titleUnlocks   = {}; dirty = true; }
-  if (!DB.equippedTitles) { DB.equippedTitles = {}; dirty = true; }
-  if (dirty) saveDB();
+  const current = AppStore.getSlice(s => ({ titles: s.titles, titleUnlocks: s.titleUnlocks, equippedTitles: s.equippedTitles }));
+  const missing = ['titles', 'titleUnlocks', 'equippedTitles'].filter(k => !current || !current[k]);
+  if (!missing.length) return; // already fully set up — nothing to do
+
+  AppStore.updateState(draft => {
+    if (!draft.titles)         draft.titles         = [];
+    if (!draft.titleUnlocks)   draft.titleUnlocks   = {};
+    if (!draft.equippedTitles) draft.equippedTitles = {};
+  }, { type: 'titles:libraries-initialized', payload: { keys: missing } });
 });
 
 // ── Load-order verification ───────────────────────────────────────────────────

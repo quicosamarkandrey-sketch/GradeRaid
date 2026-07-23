@@ -13,13 +13,13 @@
  * Contains two tabs: Titles Library | Statistics.
  */
 window.renderAdminTitles = function () {
-  DB = loadDB();
-  const titles = DB.titles || [];
+  const titles = AppStore.getSlice(s => s.titles) || [];
   const dest   = document.getElementById('a-titles') || document.getElementById('a-achievements');
   if (!dest) return;
 
-  const totalUnlocks = Object.values(DB.titleUnlocks || {}).reduce((s, arr) => s + arr.length, 0);
-  const equipped     = Object.keys(DB.equippedTitles || {}).filter(sid => DB.equippedTitles[sid]).length;
+  const totalUnlocks = Object.values(AppStore.getSlice(s => s.titleUnlocks) || {}).reduce((s, arr) => s + arr.length, 0);
+  const equippedTitles = AppStore.getSlice(s => s.equippedTitles) || {};
+  const equipped     = Object.keys(equippedTitles).filter(sid => equippedTitles[sid]).length;
 
   dest.innerHTML = `
   <div class="page-hero"><div class="page-hero-bg"></div>
@@ -62,15 +62,20 @@ function _buildAdminTitlesList(titles) {
     </div>`;
   }
 
+  const titleUnlocks = AppStore.getSlice(s => s.titleUnlocks) || {};
+  const equippedTitles = AppStore.getSlice(s => s.equippedTitles) || {};
+  const achievements = AppStore.getSlice(s => s.achievements) || [];
+  const titleSectionAssignments = AppStore.getSlice(s => s.titleSectionAssignments) || {};
+
   return `<div class="ts-admin-cards-grid">
     ${titles.map(t => {
-      const unlockCount  = ((DB.titleUnlocks || {}) ? Object.values(DB.titleUnlocks).filter(arr => arr.includes(t.id)).length : 0);
-      const equippedBy   = Object.entries(DB.equippedTitles || {}).filter(([, tid]) => tid === t.id).length;
-      const linkedAch    = t.achievementId ? (DB.achievements || []).find(a => a.id === t.achievementId) : null;
+      const unlockCount  = Object.values(titleUnlocks).filter(arr => arr.includes(t.id)).length;
+      const equippedBy   = Object.entries(equippedTitles).filter(([, tid]) => tid === t.id).length;
+      const linkedAch    = t.achievementId ? achievements.find(a => a.id === t.achievementId) : null;
       // Phase 21: surface section-scoping the same way ach_admin_page.js's
       // list rows do. Not shown for achievement-linked titles — those
       // inherit the linked achievement's own section scoping instead.
-      const assignedIds   = (DB.titleSectionAssignments && DB.titleSectionAssignments[t.id]) || [];
+      const assignedIds   = titleSectionAssignments[t.id] || [];
       const sectionsLabel = assignedIds.length
         ? assignedIds.map(cid => (typeof getClassLabel === 'function' ? getClassLabel(cid) : cid)).join(', ')
         : 'All sections';
@@ -109,11 +114,13 @@ function _buildAdminTitleStats(titles) {
   const shapeBuckets  = {};
   titles.forEach(t => { const s = t.frameShape || 'classic'; shapeBuckets[s] = (shapeBuckets[s] || 0) + 1; });
 
+  const titleUnlocks = AppStore.getSlice(s => s.titleUnlocks) || {};
+  const equippedTitles = AppStore.getSlice(s => s.equippedTitles) || {};
   const topUnlocked = titles
-    .map(t => ({ t, count: Object.values(DB.titleUnlocks || {}).filter(arr => arr.includes(t.id)).length }))
+    .map(t => ({ t, count: Object.values(titleUnlocks).filter(arr => arr.includes(t.id)).length }))
     .sort((a, b) => b.count - a.count).slice(0, 6);
   const topEquipped = titles
-    .map(t => ({ t, count: Object.entries(DB.equippedTitles || {}).filter(([, tid]) => tid === t.id).length }))
+    .map(t => ({ t, count: Object.entries(equippedTitles).filter(([, tid]) => tid === t.id).length }))
     .sort((a, b) => b.count - a.count).slice(0, 6);
 
   return `
@@ -166,28 +173,34 @@ window.tsAdminTabSwitch = function (tab) {
  * Partial re-render — replaces just #tsadm-panel-library content.
  */
 window._tsRefreshAdminTitlesPanel = function () {
-  DB = loadDB();
   const panel = document.getElementById('tsadm-panel-library');
-  if (panel) panel.innerHTML = _buildAdminTitlesList(DB.titles || []);
+  if (panel) panel.innerHTML = _buildAdminTitlesList(AppStore.getSlice(s => s.titles) || []);
 };
 
 // ── Delete / Toggle / Duplicate ───────────────────────────────────────────────
 
 window.tsAdminDelete = async function (titleId) {
-  DB = loadDB();
-  const t = (DB.titles || []).find(x => x.id === titleId);
+  const t = (AppStore.getSlice(s => s.titles) || []).find(x => x.id === titleId);
   if (!t || !confirm(`Delete title "${t.name}"? This will remove all unlocks and unequip from all students.`)) return;
-  DB.titles = (DB.titles || []).filter(x => x.id !== titleId);
-  // Remove unlocks
-  const affectedSids = Object.keys(DB.titleUnlocks || {}).filter(sid => (DB.titleUnlocks[sid] || []).includes(titleId));
-  affectedSids.forEach(sid => {
-    DB.titleUnlocks[sid] = (DB.titleUnlocks[sid] || []).filter(id => id !== titleId);
-  });
-  // Unequip
-  Object.keys(DB.equippedTitles || {}).forEach(sid => {
-    if (DB.equippedTitles[sid] === titleId) DB.equippedTitles[sid] = null;
-  });
-  saveDB();
+
+  AppStore.updateState(draft => {
+    draft.titles = (draft.titles || []).filter(x => x.id !== titleId);
+    // Remove unlocks
+    if (draft.titleUnlocks) {
+      Object.keys(draft.titleUnlocks).forEach(sid => {
+        if ((draft.titleUnlocks[sid] || []).includes(titleId)) {
+          draft.titleUnlocks[sid] = draft.titleUnlocks[sid].filter(id => id !== titleId);
+        }
+      });
+    }
+    // Unequip
+    if (draft.equippedTitles) {
+      Object.keys(draft.equippedTitles).forEach(sid => {
+        if (draft.equippedTitles[sid] === titleId) draft.equippedTitles[sid] = null;
+      });
+    }
+  }, { type: 'titles:title-deleted', payload: { id: titleId } });
+
   toast('🗑 Title deleted.', '#ff8080');
   renderAdminTitles();
   // Phase 23: the `titles` row itself is now actually deleted server-side
@@ -204,23 +217,28 @@ window.tsAdminDelete = async function (titleId) {
 };
 
 window.tsAdminToggle = function (tid) {
-  DB = loadDB();
-  const idx = (DB.titles || []).findIndex(t => t.id === tid);
-  if (idx < 0) return;
-  DB.titles[idx].active = !DB.titles[idx].active;
-  saveDB();
-  toast(DB.titles[idx].active ? '✅ Title enabled.' : '⏸ Title disabled.');
+  const existing = (AppStore.getSlice(s => s.titles) || []).find(t => t.id === tid);
+  if (!existing) return;
+  let newActive = null;
+  AppStore.updateState(draft => {
+    const idx = (draft.titles || []).findIndex(t => t.id === tid);
+    if (idx < 0) return;
+    draft.titles[idx].active = !draft.titles[idx].active;
+    newActive = draft.titles[idx].active;
+  }, { type: 'titles:toggled', payload: { id: tid } });
+  toast(newActive ? '✅ Title enabled.' : '⏸ Title disabled.');
   _tsRefreshAdminTitlesPanel();
 };
 
 window.tsAdminDuplicate = function (tid) {
-  DB = loadDB();
-  const orig = (DB.titles || []).find(t => t.id === tid);
+  const orig = (AppStore.getSlice(s => s.titles) || []).find(t => t.id === tid);
   if (!orig) return;
   // Phase 32: carry the original's owner forward (falls back to the
   // current caller for any pre-migration row that somehow lacks one yet).
-  DB.titles.push({ ...orig, id: uid(), ownerTeacherId: orig.ownerTeacherId || currentUser.id, name: orig.name + ' (Copy)', createdAt: new Date().toISOString() });
-  saveDB();
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.titles)) draft.titles = [];
+    draft.titles.push({ ...orig, id: uid(), ownerTeacherId: orig.ownerTeacherId || currentUser.id, name: orig.name + ' (Copy)', createdAt: new Date().toISOString() });
+  }, { type: 'titles:duplicated', payload: { sourceId: tid } });
   toast('⧉ Title duplicated!');
   _tsRefreshAdminTitlesPanel();
 };
@@ -228,11 +246,11 @@ window.tsAdminDuplicate = function (tid) {
 // ── Grant / Revoke modal ──────────────────────────────────────────────────────
 
 window.tsAdminGrantModal = function () {
-  DB = loadDB();
-  const titles = DB.titles || [];
+  const titles = AppStore.getSlice(s => s.titles) || [];
   if (!titles.length) { toast('❌ Create titles first.', '#ffb4ab'); return; }
 
-  const studentOpts = DB.students.map(s => `<option value="${s.id}">${_esc(s.name)}</option>`).join('');
+  const students = AppStore.getSlice(s => s.students) || [];
+  const studentOpts = students.map(s => `<option value="${s.id}">${_esc(s.name)}</option>`).join('');
   const titleOpts   = titles.map(t => `<option value="${t.id}">${t.icon || '👑'} ${_esc(t.name)}</option>`).join('');
 
   showModal(`
@@ -269,9 +287,8 @@ window.tsAdminGrantRefreshStudentTitles = function () {
   const box = document.getElementById('tsg-student-titles');
   const lst = document.getElementById('tsg-student-titles-list');
   if (!sid || !box || !lst) return;
-  DB = loadDB();
   const unlocked   = tsGetUnlockedTitles(sid);
-  const equippedId = (DB.equippedTitles || {})[sid];
+  const equippedId = (AppStore.getSlice(s => s.equippedTitles) || {})[sid];
   box.style.display = 'block';
   if (!unlocked.length) {
     lst.innerHTML = '<span style="color:var(--text-muted);font-size:12px">No titles unlocked yet</span>';
@@ -297,9 +314,8 @@ window.tsAdminGrantConfirm = function () {
   if (!tid) { if (errEl) { errEl.textContent = 'Please select a title.';   errEl.style.display = 'block'; } return; }
   if (errEl) errEl.style.display = 'none';
 
-  DB = loadDB();
-  const student = DB.students.find(s => s.id === sid);
-  const title   = (DB.titles || []).find(t => t.id === tid);
+  const student = (AppStore.getSlice(s => s.students) || []).find(s => s.id === sid);
+  const title   = (AppStore.getSlice(s => s.titles) || []).find(t => t.id === tid);
   if (!student || !title) return;
 
   if (action === 'grant') {
@@ -317,11 +333,11 @@ window.tsAdminGrantConfirm = function () {
 };
 
 window.tsAdminRevokeTitle = function (sid, tid) {
-  DB = loadDB();
-  if (!DB.titleUnlocks) DB.titleUnlocks = {};
-  DB.titleUnlocks[sid] = (DB.titleUnlocks[sid] || []).filter(id => id !== tid);
-  if ((DB.equippedTitles || {})[sid] === tid) DB.equippedTitles[sid] = null;
-  saveDB();
+  AppStore.updateState(draft => {
+    if (!draft.titleUnlocks) draft.titleUnlocks = {};
+    draft.titleUnlocks[sid] = (draft.titleUnlocks[sid] || []).filter(id => id !== tid);
+    if (draft.equippedTitles && draft.equippedTitles[sid] === tid) draft.equippedTitles[sid] = null;
+  }, { type: 'titles:revoked', payload: { sid, tid } });
   // Phase 18: revoke_title_from_student() also clears equipped_title_id
   // server-side if it matched, mirroring the local unequip line above.
   syncTitleRevokeToServer(sid, tid);

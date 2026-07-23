@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Phase 53 — selected class_ids for the "assign to section(s)" picker on a
-// world; kept separate from _worldDraft since it isn't a DB.stageMap field,
+// world; kept separate from _worldDraft since it isn't a stageMap field,
 // it's persisted via set_campaign_world_sections() into
 // campaign_stage_sections. Mirrors draftQuizSections in quiz-builder.js.
 let draftWorldSections = [];
@@ -13,8 +13,8 @@ let draftWorldSections = [];
 // ── Main renderer ─────────────────────────────────────────────────────────────
 
 window.renderAdminStageMap = function () {
-  DB = loadDB();
-  const worlds = DB.stageMap || [];
+  const worlds = AppStore.getSlice(s => s.stageMap) || [];
+  const campaignSectionAssignments = AppStore.getSlice(s => s.campaignSectionAssignments) || {};
   const total  = worlds.reduce((a, w) => a + w.stages.length, 0);
 
   document.getElementById('a-stagemap').innerHTML = `
@@ -41,7 +41,7 @@ window.renderAdminStageMap = function () {
       // Phase 53 — "assign to section(s)" status, same opt-in-scoping
       // semantics as quiz-builder.js's sectionsLabel: empty = every section
       // this teacher advises can see it.
-      const assignedIds = (DB.campaignSectionAssignments && DB.campaignSectionAssignments[w.id]) || [];
+      const assignedIds = (campaignSectionAssignments && campaignSectionAssignments[w.id]) || [];
       const sectionsLabel = assignedIds.length
         ? assignedIds.map(cid => (typeof getClassLabel === 'function' ? getClassLabel(cid) : cid)).join(', ')
         : 'All my sections';
@@ -110,7 +110,7 @@ window.adminPreviewMap = function () { openStageMap(); };
 window.adminAddWorld = function () {
   // Phase 32: new worlds get ownerTeacherId stamped here; editing an
   // existing world (adminEditWorld, just below) carries its owner forward
-  // automatically via the JSON clone of DB.stageMap[wi], which already has
+  // automatically via the JSON clone of the stageMap slice, which already has
   // it from the Supabase pull mapping in db-service.js.
   window._worldDraft = { id: 'w_' + uid(), ownerTeacherId: currentUser.id, label: 'New World', icon: '🌍', color: '#8b5cf6', desc: 'A new world awaits.', stages: [] };
   draftWorldSections = []; // Phase 53 — brand-new world has no stages yet, so nothing to assign until it's saved once
@@ -118,8 +118,10 @@ window.adminAddWorld = function () {
 };
 
 window.adminEditWorld = function (wi) {
-  window._worldDraft = JSON.parse(JSON.stringify(DB.stageMap[wi]));
-  draftWorldSections = ((DB.campaignSectionAssignments && DB.campaignSectionAssignments[window._worldDraft.id]) || []).slice(); // Phase 53
+  const worlds = AppStore.getSlice(s => s.stageMap) || [];
+  window._worldDraft = JSON.parse(JSON.stringify(worlds[wi]));
+  const campaignSectionAssignments = AppStore.getSlice(s => s.campaignSectionAssignments) || {};
+  draftWorldSections = ((campaignSectionAssignments && campaignSectionAssignments[window._worldDraft.id]) || []).slice(); // Phase 53
   showModal(_worldModalHTML(false, wi), 'md');
 };
 
@@ -172,9 +174,11 @@ window.adminSaveNewWorld = function () {
   d.icon  = document.getElementById('wf-icon').value.trim()  || '🌍';
   d.color = document.getElementById('wf-col').value.trim()   || '#8b5cf6';
   d.desc  = document.getElementById('wf-desc').value.trim();
-  DB = loadDB();
-  if (!DB.stageMap) DB.stageMap = [];
-  DB.stageMap.push(d); saveDB(); closeModalForce(); renderAdminStageMap();
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.stageMap)) draft.stageMap = [];
+    draft.stageMap.push(d);
+  }, { type: 'campaign:world-created', payload: { id: d.id } });
+  closeModalForce(); renderAdminStageMap();
   toast('✅ World "' + d.label + '" created!');
 };
 
@@ -184,15 +188,17 @@ window.adminSaveEditWorld = async function (wi) {
   d.icon  = document.getElementById('wf-icon').value.trim()  || d.icon;
   d.color = document.getElementById('wf-col').value.trim()   || d.color;
   d.desc  = document.getElementById('wf-desc').value.trim();
-  DB = loadDB();
-  DB.stageMap[wi] = { ...DB.stageMap[wi], ...d };
-  saveDB(); closeModalForce(); renderAdminStageMap(); toast('✅ World updated!');
+  AppStore.updateState(draft => {
+    if (!draft.stageMap || !draft.stageMap[wi]) return;
+    draft.stageMap[wi] = { ...draft.stageMap[wi], ...d };
+  }, { type: 'campaign:world-updated', payload: { id: d.id } });
+  closeModalForce(); renderAdminStageMap(); toast('✅ World updated!');
 
   // Phase 53 — persist the section assignment. Fire-and-forget like every
   // other section picker in this app (quiz-builder.js/ach_admin_page.js):
   // optimistic local update already happened via renderAdminStageMap()'s
-  // read of DB.campaignSectionAssignments below, the RPC just makes it
-  // stick server-side and cross-device.
+  // read of the campaignSectionAssignments slice below, the RPC just makes
+  // it stick server-side and cross-device.
   if (typeof DBService !== 'undefined' && DBService.rpc) {
     const sectionIds = draftWorldSections.slice();
     const { error } = await DBService.rpc('set_campaign_world_sections', { p_world_id: d.id, p_class_ids: sectionIds });
@@ -200,18 +206,31 @@ window.adminSaveEditWorld = async function (wi) {
       console.warn('[CampaignMapEditor] set_campaign_world_sections failed:', error);
       toast('⚠️ World saved, but section assignment failed to sync', '#ffb95f');
     } else {
-      if (!DB.campaignSectionAssignments) DB.campaignSectionAssignments = {};
-      DB.campaignSectionAssignments[d.id] = sectionIds; // optimistic — next realtime pull confirms it
+      // [Phase 3 migration bugfix] The pre-migration version mutated
+      // DB.campaignSectionAssignments directly here but never called
+      // saveDB() afterward — and renderAdminStageMap(), called two lines
+      // down, reloads from persisted storage as its very first action. The
+      // optimistic local update was silently discarded the instant this
+      // RPC succeeded, even though the server-side assignment had already
+      // gone through. Same bug shape as mailAdminSend()'s edit branch —
+      // see the modules/mail/ entry in this log.
+      AppStore.updateState(draft => {
+        if (!draft.campaignSectionAssignments) draft.campaignSectionAssignments = {};
+        draft.campaignSectionAssignments[d.id] = sectionIds; // optimistic — next realtime pull confirms it
+      }, { type: 'campaign:world-sections-set', payload: { id: d.id, sectionIds } });
       renderAdminStageMap();
     }
   }
 };
 
 window.adminDeleteWorld = async function (wi) {
-  DB = loadDB();
-  if (!confirm('Delete world "' + DB.stageMap[wi].label + '" and ALL its stages?')) return;
-  const world = DB.stageMap[wi];
-  DB.stageMap.splice(wi, 1); saveDB(); renderAdminStageMap(); toast('🗑️ World deleted');
+  const worlds = AppStore.getSlice(s => s.stageMap) || [];
+  if (!confirm('Delete world "' + worlds[wi].label + '" and ALL its stages?')) return;
+  const world = worlds[wi];
+  AppStore.updateState(draft => {
+    draft.stageMap.splice(wi, 1);
+  }, { type: 'campaign:world-deleted', payload: { id: world.id } });
+  renderAdminStageMap(); toast('🗑️ World deleted');
   // Phase 28: delete_campaign_world() closes the gap this comment used to
   // flag — the bulk push is upsert-only and never deletes server rows,
   // so without this the world would silently reappear for everyone on
@@ -243,8 +262,8 @@ window.adminAddStage = function (wi) {
 };
 
 window.adminEditStage = function (wi, si) {
-  DB = loadDB();
-  window._stageDraft   = JSON.parse(JSON.stringify(DB.stageMap[wi].stages[si]));
+  const worlds = AppStore.getSlice(s => s.stageMap) || [];
+  window._stageDraft   = JSON.parse(JSON.stringify(worlds[wi].stages[si]));
   window._stageDraftWi = wi; window._stageDraftSi = si;
   showModal(_stageModalHTML(), 'lg');
 };
@@ -823,26 +842,36 @@ window.adminSaveStage = function () {
   d.xp     = parseInt(document.getElementById('sf-xp')?.value)      || 100;
   d.coins  = parseInt(document.getElementById('sf-coins')?.value)   || 50;
   d.icon   = document.getElementById('sf-icon-val')?.value.trim()   || '⭐';
-  DB = loadDB();
   const wi = window._stageDraftWi; const si = window._stageDraftSi;
-  if (!DB.stageMap[wi]) return;
-  if (si === null) DB.stageMap[wi].stages.push(d);
-  else             DB.stageMap[wi].stages[si] = d;
-  saveDB(); closeModalForce(); renderAdminStageMap();
+  const worldExists = !!(AppStore.getSlice(s => s.stageMap) || [])[wi];
+  if (!worldExists) return;
+  AppStore.updateState(draft => {
+    if (!draft.stageMap || !draft.stageMap[wi]) return;
+    if (si === null) draft.stageMap[wi].stages.push(d);
+    else             draft.stageMap[wi].stages[si] = d;
+  }, { type: 'campaign:stage-saved', payload: { worldIndex: wi, stageIndex: si } });
+  closeModalForce(); renderAdminStageMap();
   toast('✅ Stage "' + d.title + '" ' + (si === null ? 'added' : 'updated') + '!');
 };
 
 window.adminDeleteStage = function (wi, si) {
-  DB = loadDB();
-  if (!confirm('Delete "' + DB.stageMap[wi].stages[si].title + '"?')) return;
-  DB.stageMap[wi].stages.splice(si, 1); saveDB(); renderAdminStageMap(); toast('🗑️ Stage deleted');
+  const worlds = AppStore.getSlice(s => s.stageMap) || [];
+  if (!confirm('Delete "' + worlds[wi].stages[si].title + '"?')) return;
+  AppStore.updateState(draft => {
+    draft.stageMap[wi].stages.splice(si, 1);
+  }, { type: 'campaign:stage-deleted', payload: { worldIndex: wi, stageIndex: si } });
+  renderAdminStageMap(); toast('🗑️ Stage deleted');
 };
 
 window.adminMoveStage = function (wi, si, dir) {
-  DB = loadDB();
-  const arr = DB.stageMap[wi].stages; const ni = si + dir;
+  const worlds = AppStore.getSlice(s => s.stageMap) || [];
+  const arr = worlds[wi].stages; const ni = si + dir;
   if (ni < 0 || ni >= arr.length) return;
-  [arr[si], arr[ni]] = [arr[ni], arr[si]]; saveDB(); renderAdminStageMap();
+  AppStore.updateState(draft => {
+    const a = draft.stageMap[wi].stages;
+    [a[si], a[ni]] = [a[ni], a[si]];
+  }, { type: 'campaign:stage-reordered', payload: { worldIndex: wi, from: si, to: ni } });
+  renderAdminStageMap();
 };
 
 // Inline editor helpers

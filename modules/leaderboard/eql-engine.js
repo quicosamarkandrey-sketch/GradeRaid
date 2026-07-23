@@ -2,7 +2,7 @@
    modules/leaderboard/eql-engine.js
    EduQuest Leaderboard (EQL) — Pure Score Computation Layer
 
-   Depends on globals: DB, saveDB()
+   Depends on globals: AppStore (modules/core/state-manager.js)
    Exports via window.EQL  (object)
    Private functions stay file-scoped (no window.* needed —
    they are only called from within this IIFE and from
@@ -20,33 +20,45 @@
   'use strict';
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 0. DB MIGRATION — ensure leaderboard config exists in localStorage DB
+  // 0. CONFIG MIGRATION — ensure leaderboard config exists in AppStore
   // [SUPABASE MIGRATION] Deferred until AppStore.ready resolves — see the
   // matching note in modules/shop/shop_pos_terminal.js for why this can no
   // longer run synchronously at parse time.
+  //
+  // [Phase 3 migration] Also fixes a latent bug in the pre-migration version:
+  // the non-destructive per-key backfill loop mutated `DB.leaderboardConfig`
+  // directly but never called saveDB() afterward, so a backfilled key (e.g.
+  // a new category added after a device already had a leaderboardConfig on
+  // disk) would silently vanish on next reload. Both branches below now go
+  // through AppStore.updateState(), which always persists.
   // ─────────────────────────────────────────────────────────────────────────────
   AppStore.ready.then(function eqlMigrate() {
-    if (!DB.leaderboardConfig) {
-      DB.leaderboardConfig = {
-        recitation: { enabled: true,  resetAt: null, label: 'Recitation',  icon: '🎤', color: '#4edea3' },
-        boss:       { enabled: true,  resetAt: null, label: 'Boss Raider', icon: '⚔️',  color: '#EC4899' },
-        academic:   { enabled: true,  resetAt: null, label: 'Academic',    icon: '📚', color: '#d0bcff' },
-        overall:    { enabled: true,  resetAt: null, label: 'Overall',     icon: '🏆', color: '#ffb95f' },
-      };
-      saveDB();
-    }
-    // Back-fill any missing keys non-destructively
-    const defaults = { enabled: true, resetAt: null };
-    ['recitation', 'boss', 'academic', 'overall'].forEach(k => {
-      if (!DB.leaderboardConfig[k]) DB.leaderboardConfig[k] = Object.assign({}, defaults);
-    });
+    const labels = {
+      recitation: { label: 'Recitation',  icon: '🎤', color: '#4edea3' },
+      boss:       { label: 'Boss Raider', icon: '⚔️',  color: '#EC4899' },
+      academic:   { label: 'Academic',    icon: '📚', color: '#d0bcff' },
+      overall:    { label: 'Overall',     icon: '🏆', color: '#ffb95f' },
+    };
+    const current    = AppStore.getSlice(s => s.leaderboardConfig) || null;
+    const needsInit  = !current;
+    const missingKeys = Object.keys(labels).filter(k => !(current && current[k]));
+    if (!needsInit && missingKeys.length === 0) return; // already fully set up — nothing to do
+
+    AppStore.updateState(draft => {
+      if (!draft.leaderboardConfig) draft.leaderboardConfig = {};
+      Object.keys(labels).forEach(k => {
+        if (!draft.leaderboardConfig[k]) {
+          draft.leaderboardConfig[k] = Object.assign({ enabled: true, resetAt: null }, labels[k]);
+        }
+      });
+    }, { type: needsInit ? 'leaderboard:config-initialized' : 'leaderboard:config-backfilled', payload: { keys: needsInit ? Object.keys(labels) : missingKeys } });
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 1. RECITATION STATS  (from DB.recitationLog)
+  // 1. RECITATION STATS  (from the recitationLog slice)
   //    Returns: { totalPts, sessionCount, streak, wins, qrCount }
   // ─────────────────────────────────────────────────────────────────────────────
-  window.eqlComputeRecitation = function eqlComputeRecitation(sid, resetAt) {
+  window.eqlComputeRecitation = function eqlComputeRecitation(sid, resetAt, cache) {
     // BUGFIX: this used to filter/group by `r.when`, a cosmetic display
     // string ("Just now", "2 hours ago") that is NOT a parseable date —
     // `new Date(r.when)` is Invalid Date, and Invalid Date comparisons are
@@ -56,7 +68,15 @@
     // bogus "day". `createdAt` is the table's real timestamp column (always
     // populated — see phase3_recitation_command_center.sql) and is what
     // this should have used from the start.
-    const log = (DB.recitationLog || []).filter(r => {
+    //
+    // `cache` (optional): a bundle of pre-fetched AppStore slices, passed by
+    // callers that invoke this once per roster row (eqlBuildCategory below,
+    // hall-of-fame.js's renderLeaderboard) so the whole roster shares one
+    // AppStore.getSlice() clone of recitationLog instead of cloning it once
+    // per student. Falls back to a fresh getSlice() call when omitted, so
+    // every pre-existing 2-arg call site (progress.js, utils.js) is unaffected.
+    const recitationLog = (cache && cache.recitationLog) || AppStore.getSlice(s => s.recitationLog) || [];
+    const log = recitationLog.filter(r => {
       if (r.studentId !== sid) return false;
       if (resetAt) { try { return new Date(r.createdAt || 0) >= new Date(resetAt); } catch (e) {} }
       return true;
@@ -93,19 +113,22 @@
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 2. BOSS STATS  (from DB.bossParticipants, DB.bossEvents)
+  // 2. BOSS STATS  (from the bossParticipants/bossEvents slices)
   //    Returns: { totalDamage, participationCount, victories, mvpCount,
   //               totalCrits, totalMinionsKilled, totalCorrect }
   // ─────────────────────────────────────────────────────────────────────────────
-  window.eqlComputeBoss = function eqlComputeBoss(sid, resetAt) {
+  window.eqlComputeBoss = function eqlComputeBoss(sid, resetAt, cache) {
     let totalDamage = 0, participationCount = 0, victories = 0, mvpCount = 0;
     let totalCrits = 0, totalMinionsKilled = 0, totalCorrect = 0;
 
-    (DB.bossEvents || []).forEach((boss, bi) => {
+    const bossEvents = (cache && cache.bossEvents) || AppStore.getSlice(s => s.bossEvents) || [];
+    const bossParticipants = (cache && cache.bossParticipants) || AppStore.getSlice(s => s.bossParticipants) || {};
+
+    bossEvents.forEach((boss, bi) => {
       // Apply period reset filter by boss startTime
       if (resetAt) { try { if (new Date(boss.startedAt || boss.createdAt || 0) < new Date(resetAt)) return; } catch (e) {} }
 
-      const roster = (DB.bossParticipants || {})[bi] || {};
+      const roster = bossParticipants[bi] || {};
       const rec = roster[sid];
       if (!rec) return; // student didn't participate in this boss
 
@@ -134,20 +157,22 @@
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 3. ACADEMIC STATS  (from DB.pointLog, student.completedQuizzes, DB.quizzes)
+  // 3. ACADEMIC STATS  (from the pointLog slice, student.completedQuizzes, and the quizzes slice)
   //    Returns: { academicXP, quizCount, perfectScores, bestScore, avgScore,
   //               questCompletions, perfectStreak }
   // ─────────────────────────────────────────────────────────────────────────────
-  window.eqlComputeAcademic = function eqlComputeAcademic(sid, resetAt) {
+  window.eqlComputeAcademic = function eqlComputeAcademic(sid, resetAt, cache) {
     // Filter point log entries that are quest/quiz related
-    const questLog = (DB.pointLog || []).filter(e => {
+    const pointLog = (cache && cache.pointLog) || AppStore.getSlice(s => s.pointLog) || [];
+    const questLog = pointLog.filter(e => {
       if (e.studentId !== sid) return false;
       if (!e.what || !e.what.startsWith('Quest:')) return false;
       if (resetAt) { try { return new Date(e.when || 0) >= new Date(resetAt); } catch (e2) {} }
       return true;
     });
 
-    const student    = DB.students.find(s => s.id === sid);
+    const students   = (cache && cache.students) || AppStore.getSlice(s => s.students) || [];
+    const student    = students.find(s => s.id === sid);
     const academicXP = questLog.reduce((a, e) => a + Math.abs(e.pts || 0), 0);
     const quizCount  = questLog.length;
 
@@ -179,11 +204,12 @@
   //    Weighted blend across all three pillars.
   //    Weights are calibrated so no single activity dominates.
   // ─────────────────────────────────────────────────────────────────────────────
-  window.eqlComputeOverall = function eqlComputeOverall(sid, resetAt) {
-    const R = eqlComputeRecitation(sid, resetAt);
-    const B = eqlComputeBoss(sid, resetAt);
-    const A = eqlComputeAcademic(sid, resetAt);
-    const student = DB.students.find(s => s.id === sid);
+  window.eqlComputeOverall = function eqlComputeOverall(sid, resetAt, cache) {
+    const R = eqlComputeRecitation(sid, resetAt, cache);
+    const B = eqlComputeBoss(sid, resetAt, cache);
+    const A = eqlComputeAcademic(sid, resetAt, cache);
+    const students = (cache && cache.students) || AppStore.getSlice(s => s.students) || [];
+    const student = students.find(s => s.id === sid);
 
     // Base XP component (core progression)
     const baseXP = student ? (student.xp || 0) : 0;
@@ -224,41 +250,55 @@
   //    Shape: [{ rank, student, stats, score, scoreLabel }]
   // ─────────────────────────────────────────────────────────────────────────────
   window.eqlBuildCategory = function eqlBuildCategory(key) {
-    const cfg     = (DB.leaderboardConfig || {})[key] || {};
+    const leaderboardConfig = AppStore.getSlice(s => s.leaderboardConfig) || {};
+    const cfg     = leaderboardConfig[key] || {};
     const resetAt = cfg.resetAt || null;
 
     // Phase 14: leaderboard is per-section, not school-wide — otherwise
     // every teacher's students get ranked against every other section's,
     // which is exactly the "shouldn't be global" behavior flagged in review.
     const activeClassId = window.ActiveSection ? window.ActiveSection.get() : null;
+    const allStudents = AppStore.getSlice(s => s.students) || [];
     const scopedStudents = activeClassId
-      ? DB.students.filter(s => s.classId === activeClassId)
-      : DB.students; // no active section selected yet (e.g. first load) — fall back to unscoped rather than showing an empty board
+      ? allStudents.filter(s => s.classId === activeClassId)
+      : allStudents; // no active section selected yet (e.g. first load) — fall back to unscoped rather than showing an empty board
+
+    // One shared bundle of AppStore reads for the whole roster this call,
+    // instead of eqlComputeRecitation/Boss/Academic each independently
+    // cloning recitationLog/bossEvents/bossParticipants/pointLog/students
+    // via AppStore.getSlice() once per student below.
+    const cache = {
+      recitationLog: AppStore.getSlice(s => s.recitationLog) || [],
+      bossEvents: AppStore.getSlice(s => s.bossEvents) || [],
+      bossParticipants: AppStore.getSlice(s => s.bossParticipants) || {},
+      pointLog: AppStore.getSlice(s => s.pointLog) || [],
+      students: allStudents,
+    };
 
     const entries = scopedStudents.map(student => {
       let stats, score, scoreLabel;
       switch (key) {
         case 'recitation': {
-          stats      = eqlComputeRecitation(student.id, resetAt);
+          stats      = eqlComputeRecitation(student.id, resetAt, cache);
           score      = stats.totalPts;
           scoreLabel = score.toLocaleString() + ' pts';
           break;
         }
         case 'boss': {
-          stats      = eqlComputeBoss(student.id, resetAt);
+          stats      = eqlComputeBoss(student.id, resetAt, cache);
           score      = stats.totalDamage;
           scoreLabel = score.toLocaleString() + ' DMG';
           break;
         }
         case 'academic': {
-          stats      = eqlComputeAcademic(student.id, resetAt);
+          stats      = eqlComputeAcademic(student.id, resetAt, cache);
           score      = stats.academicXP + stats.perfectScores * 200 + stats.questCompletions * 50;
           scoreLabel = score.toLocaleString() + ' pts';
           break;
         }
         case 'overall':
         default: {
-          stats      = eqlComputeOverall(student.id, resetAt);
+          stats      = eqlComputeOverall(student.id, resetAt, cache);
           score      = stats.score;
           scoreLabel = score.toLocaleString() + ' pts';
           break;
@@ -295,7 +335,7 @@
     /**
      * Get config for all leaderboard categories.
      */
-    getConfig() { return DB.leaderboardConfig || {}; },
+    getConfig() { return AppStore.getSlice(s => s.leaderboardConfig) || {}; },
 
     /**
      * Enable or disable a leaderboard category.
@@ -303,10 +343,13 @@
      * @param {boolean} enabled
      */
     setEnabled(key, enabled) {
-      if (!DB.leaderboardConfig) return;
-      if (!DB.leaderboardConfig[key]) return;
-      DB.leaderboardConfig[key].enabled = !!enabled;
-      saveDB();
+      const cfg = AppStore.getSlice(s => s.leaderboardConfig) || {};
+      if (!cfg[key]) return;
+      AppStore.updateState(draft => {
+        if (draft.leaderboardConfig && draft.leaderboardConfig[key]) {
+          draft.leaderboardConfig[key].enabled = !!enabled;
+        }
+      }, { type: 'leaderboard:category-toggled', payload: { key, enabled: !!enabled } });
     },
 
     /**
@@ -315,10 +358,13 @@
      * @param {string} key
      */
     resetPeriod(key) {
-      if (!DB.leaderboardConfig) return;
-      if (!DB.leaderboardConfig[key]) return;
-      DB.leaderboardConfig[key].resetAt = new Date().toISOString();
-      saveDB();
+      const cfg = AppStore.getSlice(s => s.leaderboardConfig) || {};
+      if (!cfg[key]) return;
+      AppStore.updateState(draft => {
+        if (draft.leaderboardConfig && draft.leaderboardConfig[key]) {
+          draft.leaderboardConfig[key].resetAt = new Date().toISOString();
+        }
+      }, { type: 'leaderboard:period-reset', payload: { key } });
     },
 
     /**
@@ -326,10 +372,13 @@
      * @param {string} key
      */
     clearReset(key) {
-      if (!DB.leaderboardConfig) return;
-      if (!DB.leaderboardConfig[key]) return;
-      DB.leaderboardConfig[key].resetAt = null;
-      saveDB();
+      const cfg = AppStore.getSlice(s => s.leaderboardConfig) || {};
+      if (!cfg[key]) return;
+      AppStore.updateState(draft => {
+        if (draft.leaderboardConfig && draft.leaderboardConfig[key]) {
+          draft.leaderboardConfig[key].resetAt = null;
+        }
+      }, { type: 'leaderboard:period-reset-cleared', payload: { key } });
     },
 
     /**
@@ -338,9 +387,10 @@
     getStats() {
       const keys  = ['recitation', 'boss', 'academic', 'overall'];
       const stats = {};
+      const leaderboardConfig = AppStore.getSlice(s => s.leaderboardConfig) || {};
       keys.forEach(k => {
         const entries = eqlBuildCategory(k);
-        const cfg     = (DB.leaderboardConfig || {})[k] || {};
+        const cfg     = leaderboardConfig[k] || {};
         stats[k] = {
           enabled:          cfg.enabled !== false,
           resetAt:          cfg.resetAt || null,

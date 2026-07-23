@@ -9,7 +9,8 @@
      4. index.js (this file) — sanity checks + console banner
 
    All four files must be loaded AFTER:
-     • core/db.js          (DB, saveDB)
+     • core/state-manager.js (AppStore) — Phase 3 migration moved all four
+       files in this barrel off the legacy DB/saveDB() globals onto AppStore
      • core/state.js       (currentUser)
      • shared/dom.js       (showModal, closeModal, toast)
      • nav.js              (NAV_ADMIN, navTo, setupSidebar)

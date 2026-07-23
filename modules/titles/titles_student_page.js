@@ -9,7 +9,7 @@
 
 function _getTitleReqText(t) {
   if (!t.achievementId) return 'Granted by teacher';
-  const a = (DB.achievements || []).find(x => x.id === t.achievementId);
+  const a = (AppStore.getSlice(s => s.achievements) || []).find(x => x.id === t.achievementId);
   return a ? `Earn: ${a.name}` : 'Complete a special achievement';
 }
 
@@ -20,7 +20,7 @@ function _getTitleReqText(t) {
 function _tsTitleVisibleToStudent(t, st, unlockedIds) {
   if (t.achievementId) return true; // inherits the linked achievement's own scoping
   if (unlockedIds.has(t.id)) return true; // already-earned titles never disappear
-  const assigned = (DB.titleSectionAssignments || {})[t.id];
+  const assigned = (AppStore.getSlice(s => s.titleSectionAssignments) || {})[t.id];
   const myClassId = st.classId || 'default-class';
   return !assigned || assigned.length === 0 || assigned.includes(myClassId);
 }
@@ -88,7 +88,6 @@ function _buildStudentTitlesHTML(st, allTitles, unlocked, equippedId) {
  */
 window.renderTitlesPage = function () {
   if (!currentUser) return;
-  DB = loadDB();
   const st          = currentUser;
   const unlocked    = tsGetUnlockedTitles(st.id);
   // Phase 21 (closing the deferred gap noted in ach_admin_page.js/
@@ -96,8 +95,8 @@ window.renderTitlesPage = function () {
   // achievements' inMySection filter in ach_student_page.js — see
   // _tsTitleVisibleToStudent above for the full reasoning.
   const unlockedIds = new Set(unlocked.map(t => t.id));
-  const allTitles   = (DB.titles || []).filter(t => t.active && _tsTitleVisibleToStudent(t, st, unlockedIds));
-  const equippedId  = (DB.equippedTitles || {})[st.id];
+  const allTitles   = (AppStore.getSlice(s => s.titles) || []).filter(t => t.active && _tsTitleVisibleToStudent(t, st, unlockedIds));
+  const equippedId  = (AppStore.getSlice(s => s.equippedTitles) || {})[st.id];
   const el          = document.getElementById('s-badges');
   if (!el) return;
 
@@ -109,7 +108,7 @@ window.renderTitlesPage = function () {
     ? rawBadgesHTML
     : `<div style="padding:32px 20px;border:1px dashed rgba(255,255,255,.08);border-radius:16px;color:var(--text-muted);font-size:13px;text-align:center">No badges available yet. Complete some activities to unlock rewards.</div>`;
 
-  const unlockCount = ((DB.achievementUnlocks || {})[st.id] || []).length;
+  const unlockCount = ((AppStore.getSlice(s => s.achievementUnlocks) || {})[st.id] || []).length;
 
   el.innerHTML = `
   <div class="page-hero" style="margin-bottom:24px"><div class="page-hero-bg"></div>
@@ -160,14 +159,13 @@ window.tsStudentUnequip = function () {
  * Updates count on the tab button and re-renders sidebar/profile/leaderboard.
  */
 window._tsRefreshStudentTitlesPanel = function () {
-  DB = loadDB();
   if (!currentUser) return;
   const st         = currentUser;
   const unlocked   = tsGetUnlockedTitles(st.id);
   // Phase 21 — keep this in sync with renderTitlesPage's filter above.
   const unlockedIds = new Set(unlocked.map(t => t.id));
-  const allTitles  = (DB.titles || []).filter(t => t.active && _tsTitleVisibleToStudent(t, st, unlockedIds));
-  const equippedId = (DB.equippedTitles || {})[st.id];
+  const allTitles  = (AppStore.getSlice(s => s.titles) || []).filter(t => t.active && _tsTitleVisibleToStudent(t, st, unlockedIds));
+  const equippedId = (AppStore.getSlice(s => s.equippedTitles) || {})[st.id];
 
   const tabBtn = document.getElementById('tab-titles-btn');
   if (tabBtn) {
@@ -194,7 +192,6 @@ window._tsRefreshStudentTitlesPanel = function () {
   const _orig = window.renderBadges;
   window.renderBadges = function () {
     if (typeof _orig === 'function') _orig();
-    DB = loadDB();
     renderTitlesPage();
     if (window._tsOpenTitlesTab) { tsTabSwitch('titles'); window._tsOpenTitlesTab = false; }
     setTimeout(() => { tsRefreshSidebarTitle(); tsRefreshProfileTitle(); }, 80);

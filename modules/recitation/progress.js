@@ -299,7 +299,7 @@ function progGetAttendanceForStudent(sid) {
 }
 
 function progGetRecitationsForStudent(sid) {
-  return (DB.recitationLog || []).filter(r => r.studentId === sid);
+  return (AppStore.getSlice(s => s.recitationLog) || []).filter(r => r.studentId === sid);
 }
 
 /**
@@ -353,7 +353,7 @@ function progPerfectMonths(sessions) {
 function progBuildCalendar(sid, year, month) {
   const attendance  = progGetAttendanceForStudent(sid);
   const recitations = progGetRecitationsForStudent(sid);
-  const quizLog     = (DB.pointLog || []).filter(l => l.studentId === sid && (l.what || '').startsWith('Quest:'));
+  const quizLog     = (AppStore.getSlice(s => s.pointLog) || []).filter(l => l.studentId === sid && (l.what || '').startsWith('Quest:'));
 
   const data = {};
   attendance.forEach(a => {
@@ -624,11 +624,13 @@ function progRenderMilestones(st, presentCount, attStreaks, recStats, perfectMon
 }
 
 function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStreaks, perfectMonths, recStats, presentCount, attPct) {
-  const unlocks     = (DB.achievementUnlocks || {})[st.id] || [];
-  const earnedAchs  = unlocks.map(u => (DB.achievements || []).find(a => a.id === u.achId)).filter(Boolean);
-  const earnedTitles = (st.unlockedTitles || []).map(tid => (DB.titles || []).find(t => t.id === tid)).filter(Boolean);
+  const unlocks     = (AppStore.getSlice(s => s.achievementUnlocks) || {})[st.id] || [];
+  const allAchievements = AppStore.getSlice(s => s.achievements) || [];
+  const earnedAchs  = unlocks.map(u => allAchievements.find(a => a.id === u.achId)).filter(Boolean);
+  const allTitles = AppStore.getSlice(s => s.titles) || [];
+  const earnedTitles = (st.unlockedTitles || []).map(tid => allTitles.find(t => t.id === tid)).filter(Boolean);
 
-  const sorted  = [...DB.students].sort((a, b) => b.xp - a.xp);
+  const sorted  = [...(AppStore.getSlice(s => s.students) || [])].sort((a, b) => b.xp - a.xp);
   const myRank  = sorted.findIndex(s => s.id === st.id) + 1;
   const trophies = [];
 
@@ -776,7 +778,6 @@ window.renderStudentProgress = function () {
     return;
   }
 
-  DB = loadDB();
   const attendanceSess = progGetAttendanceForStudent(st.id);
   const recitations    = progGetRecitationsForStudent(st.id);
   const presentCount   = attendanceSess.filter(a => a.status === 'present').length;

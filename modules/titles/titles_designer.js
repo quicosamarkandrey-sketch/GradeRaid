@@ -34,9 +34,8 @@ const _TS3_RARITY_COLORS = {
  * Calls ts3Preview() after 80ms to populate live preview targets.
  */
 window.tsAdminOpenDesigner = function (titleId) {
-  DB = loadDB();
   const isEdit   = !!titleId;
-  const existing = isEdit ? (DB.titles || []).find(t => t.id === titleId) : null;
+  const existing = isEdit ? (AppStore.getSlice(s => s.titles) || []).find(t => t.id === titleId) : null;
   const d        = existing ? JSON.parse(JSON.stringify(existing)) : tsDefaultTitle();
   window._tsDraft              = d;
   window._ts3ActiveTemplate    = null;
@@ -47,9 +46,9 @@ window.tsAdminOpenDesigner = function (titleId) {
   // the id inline here), so d.id is always safe to key against, whether
   // this is a create or an edit. Only meaningful for standalone
   // (non-achievement-linked) titles — see phase21_title_sections_rpc.sql.
-  window._tsDraftSections = ((DB.titleSectionAssignments || {})[d.id] || []).slice();
+  window._tsDraftSections = ((AppStore.getSlice(s => s.titleSectionAssignments) || {})[d.id] || []).slice();
 
-  const achOpts = (DB.achievements || []).filter(a => a.active)
+  const achOpts = (AppStore.getSlice(s => s.achievements) || []).filter(a => a.active)
     .map(a => `<option value="${a.id}"${d.achievementId === a.id ? ' selected' : ''}>${_esc(a.name)} (${a.rarity})</option>`)
     .join('');
 
@@ -452,33 +451,32 @@ window.tsAdminSave = async function (titleId) {
   }
   if (errEl) errEl.style.display = 'none';
 
-  DB = loadDB();
-  if (!DB.titles) DB.titles = [];
-
   // Sanitize achievementId
-  if (d.achievementId && !(DB.achievements || []).some(a => a.id === d.achievementId)) d.achievementId = null;
+  if (d.achievementId && !(AppStore.getSlice(s => s.achievements) || []).some(a => a.id === d.achievementId)) d.achievementId = null;
 
-  if (titleId) {
-    const idx = DB.titles.findIndex(t => t.id === titleId);
-    if (idx >= 0) DB.titles[idx] = { ...DB.titles[idx], ...d, id: titleId };
-    else { d.id = titleId; DB.titles.push(d); }
-    toast(`✅ Title "${name}" updated!`);
-  } else {
-    // Phase 21: d.id was already stamped by tsDefaultTitle() when the
-    // designer opened — kept stable here (not regenerated) so the section
-    // picker's assignment below persists against the same id the title
-    // itself is saved under. Previously this line called uid() again,
-    // silently discarding the id the section picker had been keying
-    // against the whole time it was open.
-    // Phase 32: stamp the owner here too — tsDefaultTitle() doesn't know
-    // who's creating it, this is the first point currentUser is in scope
-    // for a genuinely new title.
-    d.createdAt = new Date().toISOString();
-    d.ownerTeacherId = d.ownerTeacherId || currentUser.id;
-    DB.titles.push(d);
-    toast(`👑 Title "${name}" created!`);
-  }
-  saveDB();
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.titles)) draft.titles = [];
+    if (titleId) {
+      const idx = draft.titles.findIndex(t => t.id === titleId);
+      if (idx >= 0) draft.titles[idx] = { ...draft.titles[idx], ...d, id: titleId };
+      else { d.id = titleId; draft.titles.push(d); }
+    } else {
+      // Phase 21: d.id was already stamped by tsDefaultTitle() when the
+      // designer opened — kept stable here (not regenerated) so the section
+      // picker's assignment below persists against the same id the title
+      // itself is saved under. Previously this line called uid() again,
+      // silently discarding the id the section picker had been keying
+      // against the whole time it was open.
+      // Phase 32: stamp the owner here too — tsDefaultTitle() doesn't know
+      // who's creating it, this is the first point currentUser is in scope
+      // for a genuinely new title.
+      d.createdAt = new Date().toISOString();
+      d.ownerTeacherId = d.ownerTeacherId || currentUser.id;
+      draft.titles.push(d);
+    }
+  }, { type: titleId ? 'titles:title-updated' : 'titles:title-created', payload: { id: d.id } });
+
+  toast(titleId ? `✅ Title "${name}" updated!` : `👑 Title "${name}" created!`);
   closeModalForce();
   const savedId     = d.id;
   const sectionIds  = (window._tsDraftSections || []).slice();
@@ -496,8 +494,18 @@ window.tsAdminSave = async function (titleId) {
     if (error) {
       toast('⚠️ Title saved, but section assignment may not have synced: ' + error.message, '#ffb95f');
     } else {
-      if (!DB.titleSectionAssignments) DB.titleSectionAssignments = {};
-      DB.titleSectionAssignments[savedId] = sectionIds; // optimistic — next realtime pull confirms it
+      // [Phase 3 migration bugfix] The pre-migration version mutated
+      // DB.titleSectionAssignments directly here with no follow-up
+      // saveDB() call — memory-only, so the next time anything reloaded
+      // from persisted storage (a fresh page load, or any other module
+      // calling loadDB()), this specific assignment would silently vanish.
+      // Same bug shape as campaign_admin_map_editor.js's
+      // adminSaveEditWorld() and mail's admin-compose.js — see those
+      // entries in this log. AppStore.updateState() always persists.
+      AppStore.updateState(draft => {
+        if (!draft.titleSectionAssignments) draft.titleSectionAssignments = {};
+        draft.titleSectionAssignments[savedId] = sectionIds; // optimistic — next realtime pull confirms it
+      }, { type: 'titles:sections-set', payload: { id: savedId, sectionIds } });
     }
   }
 };

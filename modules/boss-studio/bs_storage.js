@@ -7,7 +7,7 @@
 //  A single 1MB boss artwork PNG = ~1.37MB of base64 — 2-3 uploads exhaust
 //  the 5MB localStorage quota for the ENTIRE application. Uploaded bytes are
 //  stored in IndexedDB under small reference keys ('idb:img_...'), keeping
-//  DB.bossLibrary[] JSON-safe for localStorage/export.
+//  the AppStore bossLibrary slice JSON-safe for localStorage/export.
 //
 //  Session flow:
 //    Save:  _bsOffloadArtwork() → replaces data-URL with 'idb:img_...' ref → bsUpsert()
@@ -16,8 +16,8 @@
 //
 //  CROSS-DEVICE SYNC + STORAGE-BACKED ARTWORK (Pending Fixes Report §2,
 //  supabase/phase13_boss_studio_storage.sql):
-//    IndexedDB is fast but strictly per-browser — DB.bossLibrary itself used
-//    to live only in localStorage too, so a design (and its art) made on one
+//    IndexedDB is fast but strictly per-browser — the bossLibrary slice itself
+//    used to live only in localStorage too, so a design (and its art) made on one
 //    device simply wasn't there on another. Two additive changes close this,
 //    neither of which changes any existing call site's signature:
 //      • bsUpsert()/bsDelete() now ALSO queue a debounced push of the
@@ -200,23 +200,28 @@ async function _bsUploadArtworkToStorage(dataUrl, ref) {
 // slot — main or rage) currently holds this ref, so a re-save isn't required
 // for the URL to start syncing cross-device via _bsQueueLibraryPush() below.
 function _bsPatchRemoteUrlInPlace(ref, url) {
-  DB = loadDB();
-  if (!Array.isArray(DB.bossLibrary)) return;
   let touched = null;
-  DB.bossLibrary.forEach(function (b) {
-    if (b.artwork && b.artwork.value === ref)         { b.artwork.remoteUrl     = url; touched = b; }
-    if (b.rageArtwork && b.rageArtwork.value === ref) { b.rageArtwork.remoteUrl = url; touched = b; }
-  });
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.bossLibrary)) return;
+    draft.bossLibrary.forEach(function (b) {
+      if (b.artwork && b.artwork.value === ref)         { b.artwork.remoteUrl     = url; touched = b; }
+      if (b.rageArtwork && b.rageArtwork.value === ref) { b.rageArtwork.remoteUrl = url; touched = b; }
+    });
+  }, { type: 'boss-studio:artwork-url-patched', payload: { ref } });
+
   if (touched) {
-    saveDB();
-    // Queue the push BEFORE bsLoad(): bsLoad() resolves idb: refs back into
-    // full data-URLs in place for rendering, reassigning `touched.artwork`
-    // to a new object — queueing first (and _bsQueueLibraryPush snapshotting
-    // immediately) guarantees we send the still-unresolved ref, never the
-    // resolved bytes. See _bsQueueLibraryPush()'s own comment for the
-    // second, independent layer of protection against that.
+    // `touched` is the object captured from inside the draft above, so it
+    // still holds the un-resolved idb: ref at this point — no bsLoad()/
+    // bsGet() call has happened since the commit to resolve it back into a
+    // data-URL. This mirrors the pre-migration ordering exactly: this
+    // function used to queue the push BEFORE calling bsLoad() (which
+    // resolves idb: refs back into full data-URLs in place for rendering,
+    // reassigning `touched.artwork` to a new object) specifically so the
+    // push carries the still-unresolved ref, never the resolved bytes.
+    // (_bsSnapshotProfileForRemote's own sanitize step is a second,
+    // independent layer of protection against the same thing — see its
+    // comment above.)
     _bsQueueLibraryPush(touched.id, touched);
-    bsLoad();
   }
 }
 
@@ -225,8 +230,8 @@ function _bsPatchRemoteUrlInPlace(ref, url) {
 // bsLoad()/bsUpsert()/bsDelete() instead of a separate service object, so
 // every existing call site (bs_editor.js, bs_library.js, bs_bve_engine.js,
 // world-boss/admin-page.js) needs zero changes — they already only ever call
-// these exported functions, never touch DB.bossLibrary or localStorage
-// directly.
+// these exported functions, never touch AppStore's bossLibrary slice or
+// localStorage directly.
 
 function _bsCanUseRemoteLibrary() {
   return typeof DBService !== 'undefined'
@@ -303,8 +308,8 @@ async function _bsFlushLibraryPush() {
 /**
  * _bsInitRemoteLibrary() → Promise<void>
  * Pulls every boss_library row this staff session can see and merges it
- * into DB.bossLibrary (remote entries win on id conflict — same "server is
- * authoritative once reachable" posture DBService.initRemote() takes for
+ * into AppStore's bossLibrary slice (remote entries win on id conflict —
+ * same "server is authoritative once reachable" posture DBService.initRemote() takes for
  * everything else). If the RPC fails (no session yet, offline, or a
  * legitimately non-staff session — get_boss_library() is staff-only, unlike
  * get_dsm_settings()), this is a silent no-op: whatever's already local
@@ -323,14 +328,14 @@ async function _bsInitRemoteLibrary() {
     const { data, error } = await DBService.rpc('get_boss_library', {});
     if (error) throw error;
     if (Array.isArray(data) && data.length) {
-      DB = loadDB();
-      if (!Array.isArray(DB.bossLibrary)) DB.bossLibrary = [];
+      const existing = AppStore.getSlice(s => s.bossLibrary) || [];
       const byId = {};
-      DB.bossLibrary.forEach(function (b) { byId[b.id] = b; });
+      existing.forEach(function (b) { byId[b.id] = b; });
       data.forEach(function (row) { byId[row.id] = row.data; });
-      DB.bossLibrary = Object.values(byId);
-      saveDB();
-      bsLoad();
+      const merged = Object.values(byId);
+      AppStore.updateState(draft => {
+        draft.bossLibrary = merged;
+      }, { type: 'boss-studio:remote-library-merged', payload: { count: data.length } });
     }
     // Remote has nothing yet (fresh migration, before any design has been
     // re-saved under the new sync) — keep whatever this browser already
@@ -346,39 +351,58 @@ window._bsInitRemoteLibrary = _bsInitRemoteLibrary;
 // ── BVP sync CRUD (localStorage) ─────────────────────────────────────────────
 
 function bsLoad() {
-  DB = loadDB();
-  if (!Array.isArray(DB.bossLibrary)) DB.bossLibrary = [];
-  DB.bossLibrary.forEach(b => {
+  // [Phase 3 migration] AppStore.getSlice() returns a fresh clone every
+  // call — unlike the pre-migration DB.bossLibrary (a live, shared
+  // reference), there's no "warm the shared object once, every later read
+  // sees it" effect anymore. So the defaults-backfill and artwork-resolve
+  // enrichment below now run fresh on every bsLoad() call instead of being
+  // a one-time in-place mutation — cheap (bounded by library size, not
+  // history size like recitationLog/pointLog elsewhere in this refactor)
+  // and correctly self-contained: this function's return value no longer
+  // depends on whether some other bsLoad() call happened first.
+  const bossLibrary = AppStore.getSlice(s => s.bossLibrary) || [];
+  bossLibrary.forEach(b => {
     if (!b.visual) b.visual = { themeColor: BS_DEFAULT_THEME, auraColor: BS_DEFAULT_AURA, cardAccent: BS_DEFAULT_ACCENT };
     if (!b.schemaVersion) b.schemaVersion = BS_SCHEMA_VERSION;
     _bsResolveProfileArtwork(b);
   });
-  return DB.bossLibrary;
+  return bossLibrary;
 }
 
-function bsGet(id) { return (DB.bossLibrary || []).find(b => b.id === id) || null; }
+// [Phase 3 migration] Now calls bsLoad() itself instead of reading
+// DB.bossLibrary directly. Pre-migration, this relied on every call site
+// having called bsLoad() first (which mutated the shared DB.bossLibrary
+// array in place) — that convention shows up throughout this directory
+// (bs_library.js, bs_bve_engine.js) as a "bsLoad(); const x = bsGet(id);"
+// pairing. Making bsGet() self-sufficient removes that implicit
+// call-order dependency; the existing "bsLoad(); bsGet(id)" call sites
+// still work identically, just with one harmless redundant read.
+function bsGet(id) { return bsLoad().find(b => b.id === id) || null; }
 
 function bsUpsert(profile) {
-  if (!Array.isArray(DB.bossLibrary)) DB.bossLibrary = [];
-  const idx = DB.bossLibrary.findIndex(b => b.id === profile.id);
-  if (idx >= 0) DB.bossLibrary[idx] = profile;
-  else          DB.bossLibrary.push(profile);
-  saveDB();
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.bossLibrary)) draft.bossLibrary = [];
+    const idx = draft.bossLibrary.findIndex(b => b.id === profile.id);
+    if (idx >= 0) draft.bossLibrary[idx] = profile;
+    else          draft.bossLibrary.push(profile);
+  }, { type: 'boss-studio:profile-saved', payload: { id: profile.id } });
   // Cross-device sync (Pending Fixes Report §2a) — best-effort, debounced;
   // see "Cross-device library sync" section above.
   _bsQueueLibraryPush(profile.id, profile);
 }
 
 function bsDelete(id) {
-  if (!Array.isArray(DB.bossLibrary)) return;
-  const idx = DB.bossLibrary.findIndex(b => b.id === id);
-  if (idx < 0) return;
-  const prof = DB.bossLibrary[idx];
+  // Read before the removal — same profile-shape and best-effort-cleanup
+  // intent as the pre-migration version's `DB.bossLibrary[idx]` read.
+  const existing = bsGet(id);
+  if (!existing) return;
   // Best-effort cleanup of orphaned IDB images
-  if (prof.artwork?.value)     _bsImgDelete(prof.artwork.value);
-  if (prof.rageArtwork?.value) _bsImgDelete(prof.rageArtwork.value);
-  DB.bossLibrary.splice(idx, 1);
-  saveDB();
+  if (existing.artwork?.value)     _bsImgDelete(existing.artwork.value);
+  if (existing.rageArtwork?.value) _bsImgDelete(existing.rageArtwork.value);
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.bossLibrary)) return;
+    draft.bossLibrary = draft.bossLibrary.filter(b => b.id !== id);
+  }, { type: 'boss-studio:profile-deleted', payload: { id } });
   // Cross-device sync (Pending Fixes Report §2a) — remove the remote row
   // too, so this design doesn't reappear on another device's next pull.
   _bsQueueLibraryPush(id, null);
@@ -390,8 +414,11 @@ async function bsUpsertAsync(profile) {
   if (!profile) { console.warn('[BossStudio] bsUpsertAsync called without a profile'); return; }
   if (!profile.id) profile.id = 'bvp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
 
-  const prevDB    = loadDB() || { bossLibrary: [] };
-  const prevList  = Array.isArray(prevDB.bossLibrary) ? prevDB.bossLibrary : [];
+  // Deliberately a raw AppStore.getSlice() read here, not bsLoad() — bsLoad()
+  // resolves idb: refs back into full data-URLs, and prevArtRef/prevRageRef
+  // below need to see the still-unresolved ref to correctly detect "this
+  // upload replaced a different image" and clean up the orphaned one.
+  const prevList  = AppStore.getSlice(s => s.bossLibrary) || [];
   const prev      = prevList.find(b => b.id === profile.id);
   const prevArtRef  = prev?.artwork?.value     && _bsIsImgRef(prev.artwork.value)     ? prev.artwork.value     : null;
   const prevRageRef = prev?.rageArtwork?.value && _bsIsImgRef(prev.rageArtwork.value) ? prev.rageArtwork.value : null;
@@ -400,7 +427,6 @@ async function bsUpsertAsync(profile) {
   if (profile.artwork)     toSave.artwork     = await _bsOffloadArtwork(profile.artwork);
   if (profile.rageArtwork) toSave.rageArtwork = await _bsOffloadArtwork(profile.rageArtwork);
   bsUpsert(toSave);
-  bsLoad();
   const stored = bsGet(profile.id);
   if (stored) {
     if (profile.artwork)     stored.artwork     = { ...profile.artwork };
@@ -416,7 +442,7 @@ let _bsLegacyMigrationDone = false;
 async function _bsMigrateLegacyInlineImages() {
   if (_bsLegacyMigrationDone) return;
   _bsLegacyMigrationDone = true;
-  const candidates = (DB.bossLibrary || []).filter(b =>
+  const candidates = (AppStore.getSlice(s => s.bossLibrary) || []).filter(b =>
     (b.artwork?.type === 'upload' && typeof b.artwork.value === 'string' && b.artwork.value.length > BS_INLINE_DATAURL_THRESHOLD && !_bsIsImgRef(b.artwork.value)) ||
     (b.rageArtwork?.type === 'upload' && typeof b.rageArtwork.value === 'string' && b.rageArtwork.value.length > BS_INLINE_DATAURL_THRESHOLD && !_bsIsImgRef(b.rageArtwork.value))
   );
@@ -454,16 +480,26 @@ window._bsPreloadArt    = async function (profile) {
 };
 window._bsMigrateLegacyInlineImages = _bsMigrateLegacyInlineImages;
 
-// DB migration on load — ensure tables exist and run legacy image migration
+// AppStore migration on load — ensure tables exist and run legacy image migration
 // [SUPABASE MIGRATION] Deferred until AppStore.ready resolves — see the
 // matching note in modules/shop/shop_pos_terminal.js for why this can no
 // longer run synchronously at parse time.
+//
+// [Phase 3 migration note] This duplicates the exact same bossLibrary/
+// animationLibrary initialization as bs_index.js's own AppStore.ready.then()
+// block — a pre-existing redundancy (both guarded by an existence check, so
+// harmless either way, just wasteful/confusing) predating this migration.
+// Left as-is here since de-duplicating it is Phase 1 (dead/duplicate code)
+// territory, not this phase's scope — flagged in this entry's tech debt.
 AppStore.ready.then(function () {
-  DB = loadDB();
-  let dirty = false;
-  if (!DB.bossLibrary)      { DB.bossLibrary      = []; dirty = true; }
-  if (!DB.animationLibrary) { DB.animationLibrary = []; dirty = true; }
-  if (dirty) saveDB();
+  const current = AppStore.getSlice(s => ({ bossLibrary: s.bossLibrary, animationLibrary: s.animationLibrary }));
+  const missing = ['bossLibrary', 'animationLibrary'].filter(k => !current || !current[k]);
+  if (missing.length) {
+    AppStore.updateState(draft => {
+      if (!draft.bossLibrary)      draft.bossLibrary      = [];
+      if (!draft.animationLibrary) draft.animationLibrary = [];
+    }, { type: 'boss-studio:libraries-initialized', payload: { keys: missing } });
+  }
   bsLoad();
   setTimeout(_bsMigrateLegacyInlineImages, 2000);
 });

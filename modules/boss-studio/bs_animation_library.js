@@ -37,34 +37,34 @@ const AL_TARGET_OPTIONS = [
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
 
-function _alLoad()  { DB = loadDB(); if (!Array.isArray(DB.animationLibrary)) DB.animationLibrary = []; return DB.animationLibrary; }
-function _alSave()  { saveDB(); }
+function _alLoad() { return AppStore.getSlice(s => s.animationLibrary) || []; }
 
 function _alUpsert(preset) {
-  _alLoad();
-  const idx = DB.animationLibrary.findIndex(a => a.id === preset.id);
-  if (idx >= 0) DB.animationLibrary[idx] = preset;
-  else          DB.animationLibrary.push(preset);
-  _alSave();
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.animationLibrary)) draft.animationLibrary = [];
+    const idx = draft.animationLibrary.findIndex(a => a.id === preset.id);
+    if (idx >= 0) draft.animationLibrary[idx] = preset;
+    else          draft.animationLibrary.push(preset);
+  }, { type: 'boss-studio:animation-preset-saved', payload: { id: preset.id } });
 }
 
 function _alDeleteRecord(id) {
-  _alLoad();
-  DB.animationLibrary = DB.animationLibrary.filter(a => a.id !== id);
-  _alSave();
+  AppStore.updateState(draft => {
+    draft.animationLibrary = (draft.animationLibrary || []).filter(a => a.id !== id);
+  }, { type: 'boss-studio:animation-preset-deleted', payload: { id } });
 }
 
 // ── Core public API ───────────────────────────────────────────────────────────
 
 function _alAll() {
-  _alLoad();
-  const customIds = new Set(DB.animationLibrary.map(a => a.id));
-  return [...AL_BUILTINS.filter(b => !customIds.has(b.id)), ...DB.animationLibrary];
+  const animationLibrary = _alLoad();
+  const customIds = new Set(animationLibrary.map(a => a.id));
+  return [...AL_BUILTINS.filter(b => !customIds.has(b.id)), ...animationLibrary];
 }
 
 function alGet(id) {
   if (!id) return null;
-  const custom = (DB.animationLibrary || []).find(a => a.id === id);
+  const custom = _alLoad().find(a => a.id === id);
   return custom || AL_BUILTINS.find(b => b.id === id) || null;
 }
 
@@ -75,7 +75,6 @@ function alOptionsForTarget(target) {
 // ── Refresh helper ────────────────────────────────────────────────────────────
 
 function _alRefreshGrid() {
-  _alLoad();
   const root = document.getElementById('al-library-root');
   if (root) root.innerHTML = _alRenderGrid();
 }
@@ -83,9 +82,8 @@ function _alRefreshGrid() {
 // ── Tab body renderer ─────────────────────────────────────────────────────────
 
 function _alRenderTabBody() {
-  _alLoad();
   const all         = _alAll();
-  const customCount = DB.animationLibrary.length;
+  const customCount = _alLoad().length;
   return `
   <div class="al-hero"><div class="al-hero-inner">
     <div class="al-hero-icon">🎬</div>

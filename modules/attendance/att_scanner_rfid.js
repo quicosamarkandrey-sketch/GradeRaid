@@ -89,7 +89,6 @@ let _rfidKioskMode = false;
  * Mounts the full-screen attendance kiosk into #a-scanner.
  */
 window.renderRfidScanner = function () {
-  DB = loadDB(); // legacy bridge — gives us a synchronous snapshot for the initial render
   _rfidScannerMounted = true;
   _rfidSelectedClassId = _rfidSelectedClassId || 'default-class';
 
@@ -105,7 +104,7 @@ window.renderRfidScanner = function () {
   // derive-from-students behavior automatically if no sections exist yet.
   // See modules/admin/sections-service.js.
   const state = (typeof AppStore !== 'undefined') ? AppStore.getState() : {};
-  const classIds = window.getActiveClassIds ? window.getActiveClassIds(state) : Array.from(new Set((DB.students || []).map(s => s.classId || 'default-class'))).sort();
+  const classIds = window.getActiveClassIds ? window.getActiveClassIds(state) : Array.from(new Set((state.students || []).map(s => s.classId || 'default-class'))).sort();
   if (!classIds.includes(_rfidSelectedClassId)) _rfidSelectedClassId = classIds[0] || 'default-class';
 
   document.getElementById('a-scanner').innerHTML = `
@@ -913,8 +912,8 @@ window._rfidSetMode = function (mode) {
   if (document.getElementById('rfid-settings-panel')) window._rfidOpenSettings();
 };
 window._rfidOpenAssignPicker = function () {
-  DB = loadDB();
-  _rfidAssignTargetStudentId = (DB.students && DB.students[0]) ? DB.students[0].id : null;
+  const students = AppStore.getSlice(s => s.students) || [];
+  _rfidAssignTargetStudentId = students[0] ? students[0].id : null;
   _rfidSetMode('assign');
 };
 window._rfidOnClassChange = function (classId) {
@@ -929,7 +928,7 @@ window._rfidOnClassChange = function (classId) {
 // (Manual Override moved out entirely — see the file header.)
 
 window._rfidOpenSettings = function () {
-  DB = loadDB();
+  const students = AppStore.getSlice(s => s.students) || [];
   showModal(`
     <h3 style="margin-bottom:4px">⚙️ Kiosk Settings</h3>
     <div id="rfid-settings-panel" style="color:var(--text-muted);font-size:12px;margin-bottom:18px">Class: ${_esc(window.getClassLabel ? window.getClassLabel(_rfidSelectedClassId, AppStore.getState()) : _rfidSelectedClassId)}</div>
@@ -944,7 +943,7 @@ window._rfidOpenSettings = function () {
       <div style="margin-top:12px;background:rgba(255,255,255,.03);border-radius:10px;padding:12px;border:1px solid var(--border)">
         <div style="font-size:11px;color:var(--text-muted);font-weight:700;margin-bottom:8px;letter-spacing:.06em">ASSIGNING NEXT SCANNED CARD TO</div>
         <select id="rfid-assign-student" style="width:100%" onchange="_rfidAssignTargetStudentId=this.value">
-          ${(DB.students || []).map(s => `<option value="${s.id}" ${s.id === _rfidAssignTargetStudentId ? 'selected' : ''}>${_esc(s.name)}</option>`).join('')}
+          ${students.map(s => `<option value="${s.id}" ${s.id === _rfidAssignTargetStudentId ? 'selected' : ''}>${_esc(s.name)}</option>`).join('')}
         </select>
       </div>` : ''}
     </div>

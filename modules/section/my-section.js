@@ -8,14 +8,15 @@
 //  can never read class_sections or a classmate's profiles.* row directly
 //  (both are correctly locked down at the RLS layer), so this page goes
 //  through a narrow, purpose-built SECURITY DEFINER RPC instead of
-//  DB.students/AppStore — those only ever contain rows this device has
+//  AppStore's students slice — that only ever contains rows this device has
 //  independently synced, and won't reliably span a whole section either.
 //
 //  OFFLINE / LOCAL-ONLY FALLBACK: if Supabase isn't configured (or the RPC
 //  call fails), falls back to whatever this device already has in
-//  DB.students filtered by classId, and DB.admin as a single-teacher stand-
-//  in — same "graceful degrade to local cache" posture every other page in
-//  this app already has (see db-service.js's hybrid design).
+//  AppStore's students slice filtered by classId, and its admin slice as a
+//  single-teacher stand-in — same "graceful degrade to local cache" posture
+//  every other page in this app already has (see db-service.js's hybrid
+//  design).
 //
 //  DEPENDENCY: DBService.rpc() (db-service.js), tsBuildBadgeHTML() —
 //  typeof guard (titles module) for the equipped-title chip.
@@ -56,14 +57,15 @@ async function _mySectionFetch() {
   }
 
   // ── Local-only fallback ──────────────────────────────────────────────
-  DB = loadDB();
+  const students = (typeof AppStore !== 'undefined') ? (AppStore.getSlice(s => s.students) || []) : [];
+  const equippedTitles = (typeof AppStore !== 'undefined') ? (AppStore.getSlice(s => s.equippedTitles) || {}) : {};
   const myClassId = st.classId || 'default-class';
-  const classmates = (DB.students || [])
+  const classmates = students
     .filter(s => (s.classId || 'default-class') === myClassId)
     .map(s => ({
       id: s.id, displayName: s.name, init: s.init, color: s.color,
       profilePicUrl: s.profilePic, xp: s.xp, level: s.level, tier: s.tier,
-      equippedTitleId: (DB.equippedTitles || {})[s.id] || null,
+      equippedTitleId: equippedTitles[s.id] || null,
     }))
     .sort((a, b) => (b.xp || 0) - (a.xp || 0));
 
@@ -73,16 +75,16 @@ async function _mySectionFetch() {
   // whatever single admin/teacher record this device already has cached —
   // good enough offline, and get_my_section_info() (Supabase path above)
   // is what gives the real, multi-teacher-correct answer once online.
-  const teacherRow = DB.admin || null;
+  const teacherRow = (typeof AppStore !== 'undefined') ? (AppStore.getSlice(s => s.admin) || null) : null;
 
   return {
     section: { id: myClassId, label: (typeof getClassLabel === 'function') ? getClassLabel(myClassId) : myClassId },
     teacher: teacherRow ? {
       id: teacherRow.id, displayName: teacherRow.name,
-      achievementCount: (DB.achievements || []).length,
-      quizCount: (DB.quizzes || []).length,
-      campaignWorldCount: (DB.stageMap || []).length,
-      shopProductCount: (DB.store || []).length,
+      achievementCount: (typeof AppStore !== 'undefined') ? (AppStore.getSlice(s => s.achievements) || []).length : 0,
+      quizCount: (typeof AppStore !== 'undefined') ? (AppStore.getSlice(s => s.quizzes) || []).length : 0,
+      campaignWorldCount: (typeof AppStore !== 'undefined') ? (AppStore.getSlice(s => s.stageMap) || []).length : 0,
+      shopProductCount: (typeof AppStore !== 'undefined') ? (AppStore.getSlice(s => s.store) || []).length : 0,
     } : null,
     classmates,
     source: 'local',
@@ -105,6 +107,10 @@ function _mySectionPaint(info) {
   const section = info.section;
   const teacher = info.teacher;
   const classmates = info.classmates || [];
+  // Fetched once per paint (not per-card) — AppStore.getSlice() clones the
+  // whole titles array, so doing this inside the per-classmate map below
+  // would mean one full clone per classmate instead of one for the page.
+  const titles = (typeof AppStore !== 'undefined') ? (AppStore.getSlice(s => s.titles) || []) : [];
 
   el.innerHTML = `
   <div class="page-hero"><div class="page-hero-bg"></div><div style="position:relative;z-index:1">
@@ -122,7 +128,7 @@ function _mySectionPaint(info) {
 
   ${classmates.length ? `
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px">
-    ${classmates.map((c, i) => _mySectionStudentCardHTML(c, i, st)).join('')}
+    ${classmates.map((c, i) => _mySectionStudentCardHTML(c, i, st, titles)).join('')}
   </div>` : `
   <div style="text-align:center;padding:64px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;backdrop-filter:blur(12px)">
     <div style="font-size:48px;margin-bottom:12px">🧑‍🤝‍🧑</div>
@@ -164,7 +170,7 @@ function _mySectionTeacherCardHTML(teacher) {
   </div>`;
 }
 
-function _mySectionStudentCardHTML(c, i, st) {
+function _mySectionStudentCardHTML(c, i, st, titles) {
   const isMe = st && c.id === st.id;
   const rank = i + 1;
   const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null;
@@ -173,8 +179,8 @@ function _mySectionStudentCardHTML(c, i, st) {
     ? `<img src="${c.profilePicUrl}" alt="${_esc(c.init || '')}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.remove()">`
     : _esc(c.init || (c.displayName || '?')[0]);
   let titleBadgeHTML = '';
-  if (c.equippedTitleId && typeof tsBuildBadgeHTML === 'function' && typeof DB !== 'undefined' && Array.isArray(DB.titles)) {
-    const t = DB.titles.find(x => x.id === c.equippedTitleId);
+  if (c.equippedTitleId && typeof tsBuildBadgeHTML === 'function' && Array.isArray(titles)) {
+    const t = titles.find(x => x.id === c.equippedTitleId);
     if (t) titleBadgeHTML = `<div style="margin-top:10px;display:flex;justify-content:center">${tsBuildBadgeHTML(t, { small: true })}</div>`;
   }
   return `

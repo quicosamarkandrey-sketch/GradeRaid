@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //  EduQuest — modules/boss-studio/index.js
 //  Full Boss Studio CSS injection, editor overlay DOM scaffold,
-//  DB migration guard, and load-order verification.
+//  AppStore migration guard, and load-order verification.
 //
 //  Required load order:
 //    1. storage.js          — IndexedDB layer, BVP CRUD
@@ -290,16 +290,19 @@
   document.body.appendChild(overlay);
 })();
 
-// ── DB migration guard ────────────────────────────────────────────────────────
+// ── AppStore migration guard ──────────────────────────────────────────────────
 // [SUPABASE MIGRATION] Deferred until AppStore.ready resolves — see the
 // matching note in modules/shop/shop_pos_terminal.js for why this can no
 // longer run synchronously at parse time.
 AppStore.ready.then(function bossMigrateDB() {
-  DB = loadDB();
-  let dirty = false;
-  if (!DB.bossLibrary)      { DB.bossLibrary      = []; dirty = true; }
-  if (!DB.animationLibrary) { DB.animationLibrary = []; dirty = true; }
-  if (dirty) saveDB();
+  const current = AppStore.getSlice(s => ({ bossLibrary: s.bossLibrary, animationLibrary: s.animationLibrary }));
+  const missing = ['bossLibrary', 'animationLibrary'].filter(k => !current || !current[k]);
+  if (!missing.length) return; // both already set up — nothing to do
+
+  AppStore.updateState(draft => {
+    if (!draft.bossLibrary)      draft.bossLibrary      = [];
+    if (!draft.animationLibrary) draft.animationLibrary = [];
+  }, { type: 'boss-studio:libraries-initialized', payload: { keys: missing } });
 });
 
 // ── Load-order verification ───────────────────────────────────────────────────

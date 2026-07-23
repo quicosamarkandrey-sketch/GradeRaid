@@ -40,10 +40,11 @@ let camp = {
   // both match and sequence modes). Reset to a fresh object every time
   // `_campShowDragDropBeat` runs — see `_campShowDragDropBeat` for shape.
   dragState: null,
-  // Phase 7 — local mirror of DB.studentSkills[currentUser.id] (Decision
-  // #5), refreshed at stage launch and after every grant/spend so the
-  // skill bar can render synchronously without re-reading DB on every
-  // frame. Shape: { hint, heal, shield } (counts, never negative).
+  // Phase 7 — local mirror of the AppStore studentSkills slice for
+  // currentUser.id (Decision #5), refreshed at stage launch and after every
+  // grant/spend so the skill bar can render synchronously without
+  // re-reading AppStore on every frame. Shape: { hint, heal, shield }
+  // (counts, never negative).
   skillCounts: null,
   // Phase 7 — which wrong-option indices a Hint has eliminated on the
   // *currently displayed* encounter question. Fresh Set every time
@@ -68,10 +69,11 @@ let camp = {
 // same "don't yank progress away" carve-out achievements/quizzes use for
 // already-earned/already-completed content.
 window.getVisibleCampaignWorlds = function () {
-  if (currentRole !== 'student' || !currentUser) return DB.stageMap || [];
-  const assignments = DB.campaignSectionAssignments || {};
+  const stageMap = AppStore.getSlice(s => s.stageMap) || [];
+  if (currentRole !== 'student' || !currentUser) return stageMap;
+  const assignments = AppStore.getSlice(s => s.campaignSectionAssignments) || {};
   const myClassId   = currentUser.classId || 'default-class';
-  return (DB.stageMap || []).filter(w => {
+  return stageMap.filter(w => {
     const assigned = assignments[w.id];
     if (!assigned || assigned.length === 0 || assigned.includes(myClassId)) return true;
     return (w.stages || []).some(s => isStageCleared(s.id));
@@ -82,17 +84,17 @@ window.getVisibleCampaignWorlds = function () {
 
 window.isStageCleared = function (stageId) {
   if (!currentUser) return false;
-  if (!DB.stageProgress) DB.stageProgress = {};
-  return !!((DB.stageProgress[currentUser.id] || {})[stageId]);
+  const stageProgress = AppStore.getSlice(s => s.stageProgress) || {};
+  return !!((stageProgress[currentUser.id] || {})[stageId]);
 };
 
 window.markStageCleared = function (stageId) {
   if (!currentUser) return;
-  DB = loadDB();
-  if (!DB.stageProgress) DB.stageProgress = {};
-  if (!DB.stageProgress[currentUser.id]) DB.stageProgress[currentUser.id] = {};
-  DB.stageProgress[currentUser.id][stageId] = true;
-  saveDB();
+  AppStore.updateState(draft => {
+    if (!draft.stageProgress) draft.stageProgress = {};
+    if (!draft.stageProgress[currentUser.id]) draft.stageProgress[currentUser.id] = {};
+    draft.stageProgress[currentUser.id][stageId] = true;
+  }, { type: 'campaign:stage-cleared', payload: { studentId: currentUser.id, stageId } });
 };
 
 window.getMapProgress = function () {
@@ -796,28 +798,27 @@ const CAMP_SKILL_META = {
   shield: { emoji: '🛡️', label: 'Shield', color: '#60a5fa' },
 };
 
-// Reads the student's current skill counts out of DB.studentSkills[id]
-// (the Phase 7 cache slot — see db-schema.js), defaulting every skill to 0
-// for a student with no rows yet (never granted anything).
+// Reads the student's current skill counts out of the AppStore studentSkills
+// slice (the Phase 7 cache slot — see state-manager.js), defaulting every
+// skill to 0 for a student with no rows yet (never granted anything).
 function _campGetSkillCounts() {
-  if (!currentUser || !DB || !DB.studentSkills) return { hint: 0, heal: 0, shield: 0 };
-  const row = DB.studentSkills[currentUser.id] || {};
+  if (!currentUser) return { hint: 0, heal: 0, shield: 0 };
+  const studentSkills = AppStore.getSlice(s => s.studentSkills) || {};
+  const row = studentSkills[currentUser.id] || {};
   return { hint: row.hint || 0, heal: row.heal || 0, shield: row.shield || 0 };
 }
 
-// Applies a local optimistic delta to DB.studentSkills[studentId][skill],
-// clamped at 0 (never negative — mirrors adjust_student_stats()'s
-// `greatest(0, ...)` clamp server-side). Same "mutate cache, saveDB()"
-// shape every other local-first write in this file already uses (see
-// markStageCleared() above).
+// Applies a local optimistic delta to the studentSkills slice, clamped at 0
+// (never negative — mirrors adjust_student_stats()'s `greatest(0, ...)`
+// clamp server-side) via one AppStore.updateState() call.
 function _campAdjustSkillLocal(studentId, skill, delta) {
   if (!studentId) return;
-  DB = loadDB();
-  if (!DB.studentSkills) DB.studentSkills = {};
-  if (!DB.studentSkills[studentId]) DB.studentSkills[studentId] = { hint: 0, heal: 0, shield: 0 };
-  const current = DB.studentSkills[studentId][skill] || 0;
-  DB.studentSkills[studentId][skill] = Math.max(0, current + delta);
-  saveDB();
+  AppStore.updateState(draft => {
+    if (!draft.studentSkills) draft.studentSkills = {};
+    if (!draft.studentSkills[studentId]) draft.studentSkills[studentId] = { hint: 0, heal: 0, shield: 0 };
+    const current = draft.studentSkills[studentId][skill] || 0;
+    draft.studentSkills[studentId][skill] = Math.max(0, current + delta);
+  }, { type: 'campaign:skill-adjusted', payload: { studentId, skill, delta } });
   if (currentUser && currentUser.id === studentId) camp.skillCounts = _campGetSkillCounts();
 }
 
@@ -847,10 +848,19 @@ function _campSyncSkillDeltaToServer(studentId, skill, delta) {
     const row = Array.isArray(data) ? data[0] : data;
     if (!row) return;
     try {
-      if (!DB.studentSkills) DB.studentSkills = {};
-      DB.studentSkills[studentId] = {
-        hint: row.hint_count || 0, heal: row.heal_count || 0, shield: row.shield_count || 0,
-      };
+      // [Phase 3 migration bugfix] The pre-migration version mutated
+      // DB.studentSkills[studentId] directly here but never called saveDB()
+      // afterward. This reconciliation fires asynchronously — often well
+      // after _campAdjustSkillLocal()'s own saveDB() call already ran — so
+      // there was no guarantee anything would ever persist this specific
+      // write; it could silently be lost on the next reload.
+      // AppStore.updateState() always persists, closing that gap.
+      AppStore.updateState(draft => {
+        if (!draft.studentSkills) draft.studentSkills = {};
+        draft.studentSkills[studentId] = {
+          hint: row.hint_count || 0, heal: row.heal_count || 0, shield: row.shield_count || 0,
+        };
+      }, { type: 'campaign:skill-reconciled', payload: { studentId } });
       if (currentUser && currentUser.id === studentId) camp.skillCounts = _campGetSkillCounts();
     } catch (e) { /* best-effort only */ }
   }).catch(function (e) {
@@ -1196,18 +1206,22 @@ function _campVictory() {
     <div class="camp-reward-badge" style="border-color:rgba(78,222,163,.25)"><div class="camp-reward-val" style="color:#4edea3">${accuracy}%</div><div class="camp-reward-lbl">ACCURACY</div></div>`;
 
   if (currentRole === 'student' && currentUser) {
-    DB = loadDB();
-    const idx = DB.students.findIndex(s => s.id === currentUser.id);
-    if (idx >= 0) {
-      DB.students[idx].xp    += xpEarned;
-      DB.students[idx].coins += coinsEarned;
+    const found = (AppStore.getSlice(s => s.students) || []).some(x => x.id === currentUser.id);
+    if (found) {
+      AppStore.updateState(draft => {
+        const s = (draft.students || []).find(x => x.id === currentUser.id);
+        if (!s) return;
+        s.xp    = (s.xp || 0) + xpEarned;
+        s.coins = (s.coins || 0) + coinsEarned;
+        if (!Array.isArray(draft.pointLog)) draft.pointLog = [];
+        draft.pointLog.unshift({ id: 'pl_' + uid(), studentId: currentUser.id, what: 'Stage: ' + camp.stage.title, pts: xpEarned, when: 'Just now', createdAt: new Date().toISOString() });
+      }, { type: 'campaign:stage-rewards-granted', payload: { studentId: currentUser.id, xpEarned, coinsEarned } });
+
       currentUser.xp    += xpEarned;
       currentUser.coins += coinsEarned;
       syncStudentStatsToServer(currentUser.id, xpEarned, coinsEarned);
-      DB.pointLog.unshift({ id: 'pl_' + uid(), studentId: currentUser.id, what: 'Stage: ' + camp.stage.title, pts: xpEarned, when: 'Just now', createdAt: new Date().toISOString() });
     }
     markStageCleared(camp.stage.id);
-    saveDB();
     updateTopbar();
     if (typeof achCheckAndAward === 'function') setTimeout(() => achCheckAndAward(currentUser.id), 400);
   }
