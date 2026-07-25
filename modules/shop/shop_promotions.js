@@ -39,60 +39,75 @@ window.promoIsActive = function (p) {
 };
 
 window.promoGetActive = function () {
-  DB = loadDB();
-  return (DB.promotions || []).filter(promoIsActive).sort((a, b) => (b.priority || 0) - (a.priority || 0));
+  return (AppStore.getSlice(s => s.promotions) || []).filter(promoIsActive).sort((a, b) => (b.priority || 0) - (a.priority || 0));
 };
 
 // ── Analytics recorders ───────────────────────────────────────────────────────
 
 window.promoRecordView = function (id) {
   if (!id) return;
-  DB = loadDB();
-  if (!DB.promoAnalytics) DB.promoAnalytics = {};
-  if (!DB.promoAnalytics[id]) DB.promoAnalytics[id] = { views: 0, clicks: 0, purchases: 0 };
-  DB.promoAnalytics[id].views++;
-  saveDB();
+  AppStore.updateState(draft => {
+    if (!draft.promoAnalytics) draft.promoAnalytics = {};
+    if (!draft.promoAnalytics[id]) draft.promoAnalytics[id] = { views: 0, clicks: 0, purchases: 0 };
+    draft.promoAnalytics[id].views++;
+  }, { type: 'shop:promo-viewed', payload: { id } });
 };
 
 window.promoRecordClick = function (id) {
   if (!id) return;
-  DB = loadDB();
-  if (!DB.promoAnalytics) DB.promoAnalytics = {};
-  if (!DB.promoAnalytics[id]) DB.promoAnalytics[id] = { views: 0, clicks: 0, purchases: 0 };
-  DB.promoAnalytics[id].clicks++;
-  saveDB();
+  AppStore.updateState(draft => {
+    if (!draft.promoAnalytics) draft.promoAnalytics = {};
+    if (!draft.promoAnalytics[id]) draft.promoAnalytics[id] = { views: 0, clicks: 0, purchases: 0 };
+    draft.promoAnalytics[id].clicks++;
+  }, { type: 'shop:promo-clicked', payload: { id } });
 };
 
 /**
- * promoRecordPurchase(itemId) → void  [window.promoRecordPurchase]
- * Called from cartCheckout() / POS's _posPayAttemptCharge() — both are
- * mid-transaction: they've already built up (but not yet saved) new
- * DB.orders/DB.redemptions/DB.inventory entries on the live `DB` object and
- * only call saveDB() once, after their own forEach loop finishes.
+ * promoRecordPurchase(itemId, draftState) → void  [window.promoRecordPurchase]
+ * Called from cartCheckout() (shop_store.js) / POS's _posPayAttemptCharge()
+ * (shop_pos_terminal.js) — both are mid-transaction, inside their own
+ * AppStore.updateState() draft callback for the same checkout.
  *
- * BUGFIX: this used to call `DB = loadDB(); ...; saveDB();` itself. Since
- * `DB` is a single shared global, that reassigned it to a completely fresh
- * snapshot mid-loop, silently discarding every order/redemption/inventory
- * mutation the caller had made so far (and any it makes for the next cart
- * item) — the caller's own saveDB() at the end then persisted that fresh,
- * still-order-less snapshot. For a purchase whose cart had 2+ distinct
- * items, the *next* iteration's `DB.inventory[studentId]` lookup then hit
- * this fresh snapshot (never initialized for that student) and threw
- * ("Cannot read properties of undefined (reading 'find')"), aborting the
- * whole checkout before the final saveDB() ever ran. Either way — crash or
- * not — the purchased item's order/history/inventory records were lost even
- * though the coins were already charged server-side (that RPC is separate
- * and unaffected). Fix: operate on the DB object the caller already has
- * loaded, and don't save here — the caller's own saveDB() call right after
- * its loop covers this write along with everything else it just did, in one
- * atomic flush.
+ * [Phase 3 migration] `draftState` (optional): when the caller passes their
+ * own in-progress draft, this mutates it directly instead of opening a
+ * second AppStore.updateState() call — the analytics write lands in the
+ * exact same atomic commit as the order/redemption/inventory writes it's
+ * conceptually part of. This preserves, by construction, the same "one
+ * atomic flush covers this too" intent the pre-migration BUGFIX comment
+ * below describes — that fix relied on a shared mutable DB object and a
+ * caller-side convention ("don't save here, the caller's saveDB() covers
+ * it"); AppStore.updateState()'s draft parameter makes the same guarantee
+ * structural instead of conventional. When called without a draft (no
+ * other real call site currently does this, but kept for standalone use),
+ * falls back to its own AppStore.updateState() call.
+ *
+ * BUGFIX (kept for history): this used to call `DB = loadDB(); ...;
+ * saveDB();` itself. Since `DB` was a single shared global, that reassigned
+ * it to a completely fresh snapshot mid-loop, silently discarding every
+ * order/redemption/inventory mutation the caller had made so far (and any
+ * it makes for the next cart item) — the caller's own saveDB() at the end
+ * then persisted that fresh, still-order-less snapshot. For a purchase
+ * whose cart had 2+ distinct items, the *next* iteration's
+ * `DB.inventory[studentId]` lookup then hit this fresh snapshot (never
+ * initialized for that student) and threw ("Cannot read properties of
+ * undefined (reading 'find')"), aborting the whole checkout before the
+ * final saveDB() ever ran. Either way — crash or not — the purchased
+ * item's order/history/inventory records were lost even though the coins
+ * were already charged server-side (that RPC is separate and unaffected).
  */
-window.promoRecordPurchase = function (itemId) {
-  if (!DB.promoAnalytics) DB.promoAnalytics = {};
-  (DB.promotions || []).filter(p => p.linkedItemId === itemId && promoIsActive(p)).forEach(p => {
-    if (!DB.promoAnalytics[p.id]) DB.promoAnalytics[p.id] = { views: 0, clicks: 0, purchases: 0 };
-    DB.promoAnalytics[p.id].purchases++;
-  });
+window.promoRecordPurchase = function (itemId, draftState) {
+  const apply = (state) => {
+    if (!state.promoAnalytics) state.promoAnalytics = {};
+    (state.promotions || []).filter(p => p.linkedItemId === itemId && promoIsActive(p)).forEach(p => {
+      if (!state.promoAnalytics[p.id]) state.promoAnalytics[p.id] = { views: 0, clicks: 0, purchases: 0 };
+      state.promoAnalytics[p.id].purchases++;
+    });
+  };
+  if (draftState) {
+    apply(draftState); // caller is inside their own AppStore.updateState() draft
+  } else {
+    AppStore.updateState(apply, { type: 'shop:promo-purchase-recorded', payload: { itemId } });
+  }
 };
 
 // ── Auto-label logic ──────────────────────────────────────────────────────────
@@ -103,7 +118,7 @@ window.promoGetAutoLabel = function (item) {
   if (item._promoLabel) return item._promoLabel;
   if (item.addedAt && new Date(item.addedAt) >= twoDaysAgo) return 'new';
   if (item.stock !== undefined && item.stock <= 3 && item.stock > 0) return 'limited';
-  const count = (DB.redemptions || []).filter(r => r.itemId === item.id).length;
+  const count = (AppStore.getSlice(s => s.redemptions) || []).filter(r => r.itemId === item.id).length;
   if (count >= 3) return 'hot';
   return null;
 };
@@ -129,7 +144,7 @@ let promoCarousel = { idx: 0, slides: [], timer: null, interval: 6000 };
 
 window.promoBuildSlideHTML = function (p) {
   const cfg       = promoTypeConfig(p.type);
-  const item      = p.linkedItemId ? (DB.store || []).find(i => i.id === p.linkedItemId) : null;
+  const item      = p.linkedItemId ? (AppStore.getSlice(s => s.store) || []).find(i => i.id === p.linkedItemId) : null;
   const emoji     = p.image || item?.emoji || '🎁';
   const countdown = p.endDate ? promoCountdownStr(p.endDate) : null;
   const tagLabel  = p.adminLabel || (p.type === 'custom' && p.customTypeLabel ? p.customTypeLabel : cfg.tagLabel);
@@ -239,10 +254,10 @@ window.promoGoTo = function (idx) {
 
 window.promoClickBanner = function (id) {
   promoRecordClick(id);
-  const p = (DB.promotions || []).find(x => x.id === id);
+  const p = (AppStore.getSlice(s => s.promotions) || []).find(x => x.id === id);
   if (!p) return;
   if (p.linkedItemId) {
-    const item = (DB.store || []).find(i => i.id === p.linkedItemId);
+    const item = (AppStore.getSlice(s => s.store) || []).find(i => i.id === p.linkedItemId);
     if (item) {
       renderStudentStore(item.cat);
       showPage('s-store');
@@ -257,7 +272,7 @@ window.promoClickBanner = function (id) {
 };
 
 window.promoGetCardBadge = function (item) {
-  const linked = (DB.promotions || []).find(p => p.linkedItemId === item.id && promoIsActive(p));
+  const linked = (AppStore.getSlice(s => s.promotions) || []).find(p => p.linkedItemId === item.id && promoIsActive(p));
   if (linked) {
     const cfg      = promoTypeConfig(linked.type);
     const tagLabel = linked.adminLabel || (linked.type === 'custom' && linked.customTypeLabel ? linked.customTypeLabel : cfg.tagLabel);
@@ -273,11 +288,12 @@ let promoCountdownInterval = null;
 window.promoStartCountdownTick = function () {
   if (promoCountdownInterval) clearInterval(promoCountdownInterval);
   promoCountdownInterval = setInterval(() => {
+    const promotions = AppStore.getSlice(s => s.promotions) || [];
     document.querySelectorAll('.promo-countdown').forEach(el => {
       const slide = el.closest('.promo-slide');
       if (!slide) return;
       const id  = slide.id?.replace('promo-slide-', '');
-      const p   = (DB.promotions || []).find(x => x.id === id);
+      const p   = promotions.find(x => x.id === id);
       if (!p?.endDate) return;
       const str = promoCountdownStr(p.endDate);
       if (str) { el.textContent = str; el.classList.toggle('urgent', new Date(p.endDate) - new Date() < 3600000); }
@@ -289,9 +305,8 @@ window.promoStartCountdownTick = function () {
 // ── Admin: renderAdminPromotions ──────────────────────────────────────────────
 
 window.renderAdminPromotions = function () {
-  DB = loadDB();
-  const promos    = DB.promotions || [];
-  const analytics = DB.promoAnalytics || {};
+  const promos    = AppStore.getSlice(s => s.promotions) || [];
+  const analytics = AppStore.getSlice(s => s.promoAnalytics) || {};
 
   const activeCount    = promos.filter(p => promoIsActive(p)).length;
   const totalViews     = Object.values(analytics).reduce((s, a) => s + (a.views     || 0), 0);
@@ -343,7 +358,7 @@ window.renderAdminPromotions = function () {
     const cfg      = promoTypeConfig(p.type);
     const isLive   = promoIsActive(p);
     const a        = analytics[p.id] || { views: 0, clicks: 0, purchases: 0 };
-    const item     = p.linkedItemId ? (DB.store || []).find(i => i.id === p.linkedItemId) : null;
+    const item     = p.linkedItemId ? (AppStore.getSlice(s => s.store) || []).find(i => i.id === p.linkedItemId) : null;
     const ctr      = a.views  ? Math.round(a.clicks    / a.views  * 100) : 0;
     const conv     = a.clicks ? Math.round(a.purchases / a.clicks * 100) : 0;
     const tagLabel = p.adminLabel || (p.type === 'custom' && p.customTypeLabel ? p.customTypeLabel : cfg.tagLabel);
@@ -380,10 +395,9 @@ window.renderAdminPromotions = function () {
 // ── Admin: Create/Edit form ───────────────────────────────────────────────────
 
 window.promoAdminOpenForm = function (editId = null) {
-  DB = loadDB();
-  const p        = editId ? (DB.promotions || []).find(x => x.id === editId) : null;
+  const p        = editId ? (AppStore.getSlice(s => s.promotions) || []).find(x => x.id === editId) : null;
   const isEdit   = !!p;
-  const storeOpts = (DB.store || []).map(i => `<option value="${i.id}" ${p?.linkedItemId === i.id ? 'selected' : ''}>${i.emoji} ${_esc(i.name)} (${i.cost} coins)</option>`).join('');
+  const storeOpts = (AppStore.getSlice(s => s.store) || []).map(i => `<option value="${i.id}" ${p?.linkedItemId === i.id ? 'selected' : ''}>${i.emoji} ${_esc(i.name)} (${i.cost} coins)</option>`).join('');
   const typesHTML = PROMO_TYPES.map(t => `<option value="${t.value}" ${(p?.type || 'featured') === t.value ? 'selected' : ''}>${t.label}</option>`).join('');
 
   showModal(`
@@ -432,37 +446,39 @@ window.promoAdminSaveForm = function (editId = '', andPreview = false) {
     priority:    parseInt(document.getElementById('prf-priority')?.value)  || 0,
     rotationInterval: parseInt(document.getElementById('prf-interval')?.value) || 6,
     active:            document.getElementById('prf-active')?.checked !== false,
-    createdAt: editId ? (DB.promotions || []).find(p => p.id === editId)?.createdAt || now : now,
+    createdAt: editId ? (AppStore.getSlice(s => s.promotions) || []).find(p => p.id === editId)?.createdAt || now : now,
   };
-  DB = loadDB();
-  if (!DB.promotions) DB.promotions = [];
-  if (editId) {
-    const idx = DB.promotions.findIndex(p => p.id === editId);
-    if (idx >= 0) DB.promotions[idx] = obj; else DB.promotions.push(obj);
-    toast('✅ Promotion updated!');
-  } else {
-    DB.promotions.push(obj);
-    toast('📣 Promotion created!');
-  }
-  saveDB();
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.promotions)) draft.promotions = [];
+    if (editId) {
+      const idx = draft.promotions.findIndex(p => p.id === editId);
+      if (idx >= 0) draft.promotions[idx] = obj; else draft.promotions.push(obj);
+    } else {
+      draft.promotions.push(obj);
+    }
+  }, { type: editId ? 'shop:promo-updated' : 'shop:promo-created', payload: { id: obj.id } });
+  toast(editId ? '✅ Promotion updated!' : '📣 Promotion created!');
   closeModalForce();
   renderAdminPromotions();
   if (andPreview) promoAdminPreview(obj.id);
 };
 
 window.promoAdminToggle = function (id) {
-  DB = loadDB();
-  const idx = (DB.promotions || []).findIndex(p => p.id === id);
-  if (idx < 0) return;
-  DB.promotions[idx].active = !DB.promotions[idx].active;
-  saveDB();
-  toast(DB.promotions[idx].active ? '✅ Promotion activated!' : '⏸ Promotion disabled.');
+  const existing = (AppStore.getSlice(s => s.promotions) || []).find(p => p.id === id);
+  if (!existing) return;
+  let newActive = null;
+  AppStore.updateState(draft => {
+    const idx = (draft.promotions || []).findIndex(p => p.id === id);
+    if (idx < 0) return;
+    draft.promotions[idx].active = !draft.promotions[idx].active;
+    newActive = draft.promotions[idx].active;
+  }, { type: 'shop:promo-toggled', payload: { id } });
+  toast(newActive ? '✅ Promotion activated!' : '⏸ Promotion disabled.');
   renderAdminPromotions();
 };
 
 window.promoAdminDelete = function (id) {
-  DB = loadDB();
-  const p = (DB.promotions || []).find(x => x.id === id);
+  const p = (AppStore.getSlice(s => s.promotions) || []).find(x => x.id === id);
   if (!p) return;
   showModal(`<div style="text-align:center;padding:10px">
     <div style="font-size:40px;margin-bottom:12px">🗑️</div>
@@ -476,21 +492,20 @@ window.promoAdminDelete = function (id) {
 };
 
 window.promoAdminConfirmDelete = function (id) {
-  DB = loadDB();
-  DB.promotions = (DB.promotions || []).filter(p => p.id !== id);
-  if (DB.promoAnalytics) delete DB.promoAnalytics[id];
-  saveDB();
+  AppStore.updateState(draft => {
+    draft.promotions = (draft.promotions || []).filter(p => p.id !== id);
+    if (draft.promoAnalytics) delete draft.promoAnalytics[id];
+  }, { type: 'shop:promo-deleted', payload: { id } });
   closeModalForce();
   toast('🗑 Promotion deleted.', '#ff8080');
   renderAdminPromotions();
 };
 
 window.promoAdminPreview = function (id) {
-  DB = loadDB();
-  const p = (DB.promotions || []).find(x => x.id === id);
+  const p = (AppStore.getSlice(s => s.promotions) || []).find(x => x.id === id);
   if (!p) return;
   const cfg       = promoTypeConfig(p.type);
-  const item      = p.linkedItemId ? (DB.store || []).find(i => i.id === p.linkedItemId) : null;
+  const item      = p.linkedItemId ? (AppStore.getSlice(s => s.store) || []).find(i => i.id === p.linkedItemId) : null;
   const emoji     = p.image || item?.emoji || '📣';
   const countdown = p.endDate ? promoCountdownStr(p.endDate) : null;
   const tagLabel  = p.adminLabel || (p.type === 'custom' && p.customTypeLabel ? p.customTypeLabel : cfg.tagLabel);
@@ -529,7 +544,6 @@ window.promoAdminPreview = function (id) {
 };
 
 window.promoAdminPreviewStore = function () {
-  DB = loadDB();
   const active = promoGetActive();
   if (!active.length) { toast('No active promotions to preview yet.', '#ffb95f'); return; }
   const slidesHTML = active.map(p => promoBuildSlideHTML(p)).join('');

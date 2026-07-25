@@ -17,10 +17,10 @@ window.INV_CAT_COLORS  = { food: 'var(--secondary)', supplies: 'var(--primary)',
  * Tabs: Items | Purchase History. Calls invFilter() + invHistFilter() after render.
  */
 window.renderInventory = function () {
-  DB = loadDB();
   const st          = currentUser;
-  const inv         = (DB.inventory && DB.inventory[st.id]) ? DB.inventory[st.id] : [];
-  const redemptions = DB.redemptions.filter(r => r.studentId === st.id);
+  const inventory   = AppStore.getSlice(s => s.inventory) || {};
+  const inv         = inventory[st.id] || [];
+  const redemptions = (AppStore.getSlice(s => s.redemptions) || []).filter(r => r.studentId === st.id);
   const totalSpent  = redemptions.reduce((s, r) => s + (r.pts || 0), 0);
   const totalItems  = inv.reduce((s, i) => s + (i.quantity || 1), 0);
   const uniqueItems = inv.length;
@@ -99,9 +99,9 @@ window.invSwitchTab = function (tab) {
 };
 
 window.invFilter = function () {
-  DB = loadDB();
   const st = currentUser;
-  let inv  = (DB.inventory && DB.inventory[st.id]) ? [...DB.inventory[st.id]] : [];
+  const inventory = AppStore.getSlice(s => s.inventory) || {};
+  let inv  = inventory[st.id] ? [...inventory[st.id]] : [];
   const q        = (document.getElementById('inv-search')?.value || '').toLowerCase().trim();
   const cat      = document.getElementById('inv-cat-filter')?.value    || 'all';
   const statusF  = document.getElementById('inv-status-filter')?.value || 'all';
@@ -132,14 +132,16 @@ window.invFilter = function () {
     return;
   }
 
+  const allStore  = AppStore.getSlice(s => s.store) || [];
+  const allOrders = AppStore.getSlice(s => s.orders) || [];
   grid.innerHTML = inv.map(item => {
     const isUsed   = (item.status || 'active') === 'used';
     const catColor = INV_CAT_COLORS[item.category] || 'var(--text-muted)';
     const catLabel = INV_CAT_LABELS[item.category] || 'Other';
     const qty       = item.quantity || 1;
-    const storeItem = DB.store.find(s => s.id === item.itemId);
+    const storeItem = allStore.find(s => s.id === item.itemId);
     const rarity    = storeItem ? getItemRarity(storeItem) : { label: 'Common', cls: 'rarity-common' };
-    const pending   = (DB.orders || []).filter(o => o.studentId === currentUser.id && o.itemId === item.itemId && o.status === 'pending');
+    const pending   = allOrders.filter(o => o.studentId === currentUser.id && o.itemId === item.itemId && o.status === 'pending');
     return `<div class="inv-card ${isUsed ? 'inv-card-used' : ''}">
       <div class="inv-card-top">
         <div class="inv-qty-badge ${qty > 1 ? 'inv-qty-multi' : ''}">${qty}×</div>
@@ -164,12 +166,13 @@ window.invFilter = function () {
 };
 
 window.invHistFilter = function () {
-  DB = loadDB();
-  let records = DB.redemptions.filter(r => r.studentId === currentUser.id);
+  const allStore = AppStore.getSlice(s => s.store) || [];
+  const allOrders = AppStore.getSlice(s => s.orders) || [];
+  let records = (AppStore.getSlice(s => s.redemptions) || []).filter(r => r.studentId === currentUser.id);
   const q   = (document.getElementById('inv-hist-search')?.value || '').toLowerCase().trim();
   const cat = document.getElementById('inv-hist-cat')?.value || 'all';
   if (q)          records = records.filter(r => (r.itemName || r.item || '').toLowerCase().includes(q));
-  if (cat !== 'all') records = records.filter(r => { const s = DB.store.find(x => x.id === r.itemId); return s && s.cat === cat; });
+  if (cat !== 'all') records = records.filter(r => { const s = allStore.find(x => x.id === r.itemId); return s && s.cat === cat; });
 
   const countEl = document.getElementById('inv-hist-count');
   if (countEl) countEl.textContent = `${records.length} purchase${records.length !== 1 ? 's' : ''}`;
@@ -186,12 +189,12 @@ window.invHistFilter = function () {
   }
 
   list.innerHTML = records.map(r => {
-    const storeItem  = DB.store.find(s => s.id === r.itemId);
+    const storeItem  = allStore.find(s => s.id === r.itemId);
     const catLabel   = storeItem ? INV_CAT_LABELS[storeItem.cat] : 'Store';
     const catColor   = storeItem ? INV_CAT_COLORS[storeItem.cat] : 'var(--text-muted)';
     const emoji      = r.emoji || (storeItem ? storeItem.emoji : '🎁');
     const name       = r.itemName || r.item || 'Unknown Item';
-    const order      = r.orderId ? (DB.orders || []).find(o => o.orderId === r.orderId) : null;
+    const order      = r.orderId ? allOrders.find(o => o.orderId === r.orderId) : null;
     const statusColor = { pending: '#ffb95f', claimed: '#4edea3', cancelled: '#ffb4ab' }[order?.status] || 'var(--text-muted)';
     const statusLabel = { pending: '⏳ Pending', claimed: '✅ Claimed', cancelled: '❌ Cancelled' }[order?.status] || '';
     return `<div class="inv-hist-row">
@@ -220,12 +223,11 @@ window.invHistFilter = function () {
 };
 
 window.invUseItem = function (itemId) {
-  DB = loadDB();
-  const inv  = DB.inventory?.[currentUser.id];
+  const inv  = (AppStore.getSlice(s => s.inventory) || {})[currentUser.id];
   if (!inv) return;
   const item      = inv.find(i => i.itemId === itemId);
   if (!item || item.status === 'used') { toast('⚠️ Item already used or not found.', '#ffb4ab'); return; }
-  const storeItem = DB.store.find(s => s.id === itemId);
+  const storeItem = (AppStore.getSlice(s => s.store) || []).find(s => s.id === itemId);
   showModal(`<div style="text-align:center">
     <div style="font-size:56px;margin-bottom:12px">${item.emoji || '🎁'}</div>
     <div class="modal-h2" style="text-align:center">Use ${_esc(item.itemName)}?</div>
@@ -241,27 +243,35 @@ window.invUseItem = function (itemId) {
 };
 
 window.invConfirmUse = function (itemId) {
-  DB = loadDB();
-  if (!DB.inventory?.[currentUser.id]) { closeModalForce(); return; }
-  const item = DB.inventory[currentUser.id].find(i => i.itemId === itemId);
-  if (!item) { closeModalForce(); return; }
-  item.status = 'used';
-  item.usedAt = todayStr() + ' at ' + nowStr();
-  if (item.quantity > 1) { item.quantity--; item.status = 'active'; }
-  saveDB();
+  const existingList = (AppStore.getSlice(s => s.inventory) || {})[currentUser.id];
+  if (!existingList) { closeModalForce(); return; }
+  const existing = existingList.find(i => i.itemId === itemId);
+  if (!existing) { closeModalForce(); return; }
+
+  let itemLabel = null;
+  AppStore.updateState(draft => {
+    const list = draft.inventory && draft.inventory[currentUser.id];
+    if (!list) return;
+    const item = list.find(i => i.itemId === itemId);
+    if (!item) return;
+    item.status = 'used';
+    item.usedAt = todayStr() + ' at ' + nowStr();
+    if (item.quantity > 1) { item.quantity--; item.status = 'active'; }
+    itemLabel = `${item.emoji} ${item.itemName}`;
+  }, { type: 'shop:item-used', payload: { studentId: currentUser.id, itemId } });
+
   closeModalForce();
-  toast(`✅ ${item.emoji} ${item.itemName} used!`, '#4edea3');
+  toast(`✅ ${itemLabel || (existing.emoji + ' ' + existing.itemName)} used!`, '#4edea3');
   renderInventory();
 };
 
 window.invViewDetail = function (itemId) {
-  DB = loadDB();
-  const inv  = (DB.inventory?.[currentUser.id]) || [];
+  const inv  = (AppStore.getSlice(s => s.inventory) || {})[currentUser.id] || [];
   const item  = inv.find(i => i.itemId === itemId);
   if (!item) { toast('Item not found.', '#ffb4ab'); return; }
-  const storeItem = DB.store.find(s => s.id === itemId);
+  const storeItem = (AppStore.getSlice(s => s.store) || []).find(s => s.id === itemId);
   const rarity    = storeItem ? getItemRarity(storeItem) : { label: 'Common', cls: 'rarity-common' };
-  const purchases = DB.redemptions.filter(r => r.studentId === currentUser.id && r.itemId === itemId);
+  const purchases = (AppStore.getSlice(s => s.redemptions) || []).filter(r => r.studentId === currentUser.id && r.itemId === itemId);
   const catColor  = INV_CAT_COLORS[item.category] || 'var(--text-muted)';
   showModal(`<div style="text-align:center">
     <div style="font-size:60px;margin-bottom:10px">${item.emoji || '🎁'}</div>
@@ -294,10 +304,9 @@ window.invViewDetail = function (itemId) {
 };
 
 window.invShowCodes = function (itemId) {
-  DB = loadDB();
-  const orders = (DB.orders || []).filter(o => o.studentId === currentUser.id && o.itemId === itemId && o.status === 'pending');
+  const orders = (AppStore.getSlice(s => s.orders) || []).filter(o => o.studentId === currentUser.id && o.itemId === itemId && o.status === 'pending');
   if (!orders.length) { toast('No pending orders for this item.', '#ffb4ab'); return; }
-  const item  = DB.store.find(s => s.id === itemId);
+  const item  = (AppStore.getSlice(s => s.store) || []).find(s => s.id === itemId);
   const emoji = item ? item.emoji : '🎁';
   const name  = item ? item.name  : (orders[0].itemName || 'Item');
   if (orders.length === 1) { posShowClaimCode(orders[0].claimCode, { emoji, name }, orders[0].orderId); return; }
@@ -329,8 +338,7 @@ window.invShowCodes = function (itemId) {
 window.invUpdateSidebarBadge = function () {
   const btn = document.getElementById('nav-s-inventory');
   if (!btn) return;
-  DB = loadDB();
-  const total = ((DB.inventory && DB.inventory[currentUser?.id]) || []).reduce((s, i) => s + (i.quantity || 1), 0);
+  const total = ((AppStore.getSlice(s => s.inventory) || {})[currentUser?.id] || []).reduce((s, i) => s + (i.quantity || 1), 0);
   const old   = btn.querySelector('.inv-nav-badge');
   if (old) old.remove();
   if (total > 0) {

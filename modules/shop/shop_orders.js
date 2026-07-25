@@ -40,9 +40,8 @@ window.ordLabel = function (status) {
  * Active row actions: "Show Code" → posShowClaimCode(); "Cancel" → ordCancelPrompt().
  */
 window.renderStudentOrders = function () {
-  DB = loadDB();
   const st         = currentUser;
-  const allOrders  = (DB.orders || []).filter(o => o.studentId === st.id);
+  const allOrders  = (AppStore.getSlice(s => s.orders) || []).filter(o => o.studentId === st.id);
   const active     = allOrders.filter(o => o.status === 'pending' || o.status === 'ready');
   const history    = allOrders.filter(o => o.status === 'claimed' || o.status === 'cancelled');
   const totalSpent = allOrders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + (o.cost || 0), 0);
@@ -141,8 +140,7 @@ window.ordSwitchTab = function (tab) {
  * Warns: coins are NOT auto-refunded.
  */
 window.ordCancelPrompt = function (orderId) {
-  DB = loadDB();
-  const order = (DB.orders || []).find(o => o.orderId === orderId);
+  const order = (AppStore.getSlice(s => s.orders) || []).find(o => o.orderId === orderId);
   if (!order) return;
   showModal(`<div>
     <div class="modal-h2">Cancel Order?</div>
@@ -165,14 +163,16 @@ window.ordCancelPrompt = function (orderId) {
  * saveDB() → closeModalForce() → toast → renderStudentOrders().
  */
 window.ordExecuteCancel = function (orderId) {
-  DB = loadDB();
-  const order = (DB.orders || []).find(o => o.orderId === orderId);
-  if (!order) { closeModalForce(); return; }
-  order.status       = 'cancelled';
-  order.cancelledAt  = Date.now();
-  order.cancelReason = 'Cancelled by student';
-  order.cancelledBy  = currentUser.name || 'Student';
-  saveDB();
+  const existing = (AppStore.getSlice(s => s.orders) || []).find(o => o.orderId === orderId);
+  if (!existing) { closeModalForce(); return; }
+  AppStore.updateState(draft => {
+    const order = (draft.orders || []).find(o => o.orderId === orderId);
+    if (!order) return;
+    order.status       = 'cancelled';
+    order.cancelledAt  = Date.now();
+    order.cancelReason = 'Cancelled by student';
+    order.cancelledBy  = currentUser.name || 'Student';
+  }, { type: 'shop:order-cancelled', payload: { orderId } });
   closeModalForce();
   toast('🚫 Order cancelled.', '#ffb4ab');
   renderStudentOrders();
@@ -187,8 +187,7 @@ window.ordExecuteCancel = function (orderId) {
 window.ordUpdateSidebarBadge = function () {
   const btn = document.getElementById('nav-s-orders');
   if (!btn) return;
-  DB = loadDB();
-  const active = (DB.orders || []).filter(o => o.studentId === currentUser?.id && (o.status === 'pending' || o.status === 'ready'));
+  const active = (AppStore.getSlice(s => s.orders) || []).filter(o => o.studentId === currentUser?.id && (o.status === 'pending' || o.status === 'ready'));
   const old = btn.querySelector('.ord-nav-badge');
   if (old) old.remove();
   if (active.length > 0) {

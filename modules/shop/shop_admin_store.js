@@ -17,14 +17,14 @@ let _adminStoreInterval = null;
  * Clears the previous interval on each call.
  */
 window.renderAdminStore = function () {
-  DB = loadDB();
+  let baseline = AppStore.getSlice(s => s.store) || [];
   const catColor = { food: 'bp-green', supplies: 'bp-primary', privilege: 'bp-gold', mystery: 'bp-gray' };
 
   document.getElementById('a-store').innerHTML = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
     <div>
       <div style="font-family:var(--fh);font-size:26px;font-weight:900">🏪 Manage Store</div>
-      <div style="color:var(--text-muted);font-size:13px;margin-top:4px">${DB.store.length} items · ${DB.store.reduce((a, i) => a + i.stock, 0)} total stock</div>
+      <div style="color:var(--text-muted);font-size:13px;margin-top:4px">${baseline.length} items · ${baseline.reduce((a, i) => a + i.stock, 0)} total stock</div>
     </div>
     <button class="btn btn-primary" onclick="openAddProduct()">＋ Add Item</button>
   </div>
@@ -44,17 +44,21 @@ window.renderAdminStore = function () {
     </table>
   </div>`;
 
-  // Live stock refresh every 3s
+  // Live stock refresh every 3s — `baseline` (captured above) is this
+  // closure's own snapshot to compare against, updated only when a change
+  // is actually detected. Self-contained, unlike the pre-migration version
+  // which relied on the shared DB global being kept current by whichever
+  // function last reassigned it.
   if (_adminStoreInterval) clearInterval(_adminStoreInterval);
   _adminStoreInterval = setInterval(() => {
     const page = document.getElementById('a-store');
     if (!page || !page.classList.contains('active')) { clearInterval(_adminStoreInterval); _adminStoreInterval = null; return; }
-    const freshDB = loadDB();
-    const tbody   = document.getElementById('admin-product-list');
+    const tbody = document.getElementById('admin-product-list');
     if (!tbody) return;
     if (tbody.querySelector('.stock-edit-input')) return; // skip while user is editing
-    const changed = freshDB.store.some((item, i) => DB.store[i] && DB.store[i].stock !== item.stock);
-    if (changed) { DB = freshDB; tbody.innerHTML = renderProductRows(); }
+    const freshStore = AppStore.getSlice(s => s.store) || [];
+    const changed = freshStore.some((item, i) => baseline[i] && baseline[i].stock !== item.stock);
+    if (changed) { baseline = freshStore; tbody.innerHTML = renderProductRows(); }
   }, 3000);
 };
 
@@ -65,7 +69,7 @@ window.renderAdminStore = function () {
  */
 window.renderProductRows = function () {
   const catColor = { food: 'bp-green', supplies: 'bp-primary', privilege: 'bp-gold', mystery: 'bp-gray' };
-  return DB.store.map(item => {
+  return (AppStore.getSlice(s => s.store) || []).map(item => {
     const stockColor = item.stock === 0 ? '#ffb4ab' : item.stock <= 3 ? '#ffb95f' : 'var(--text)';
     return `<tr>
     <td style="font-size:28px;text-align:center">${item.emoji}</td>
@@ -98,7 +102,7 @@ window.renderProductRows = function () {
 window.stockStartEdit = function (id) {
   const cell = document.getElementById('stock-cell-' + id);
   if (!cell) return;
-  const item = DB.store.find(i => i.id === id);
+  const item = (AppStore.getSlice(s => s.store) || []).find(i => i.id === id);
   if (!item) return;
   cell.innerHTML = `<div class="stock-edit-wrap">
     <input class="stock-edit-input" id="stock-input-${id}" type="number" min="0" value="${item.stock}"
@@ -110,23 +114,25 @@ window.stockStartEdit = function (id) {
 
 /**
  * stockSave(id) → void  [window.stockSave]
- * Reads #stock-input-{id} value. Updates DB.store item.stock (min 0). saveDB() → toast → renderAdminStore().
+ * Reads #stock-input-{id} value. Updates the store slice's matching item.stock (min 0) via AppStore.updateState() → toast → renderAdminStore().
  */
 window.stockSave = async function (id) {
   const input = document.getElementById('stock-input-' + id);
   if (!input) return;
   const val  = Math.max(0, parseInt(input.value) || 0);
-  DB = loadDB();
-  const item = DB.store.find(i => i.id === id);
-  if (!item) return;
+  const existing = (AppStore.getSlice(s => s.store) || []).find(i => i.id === id);
+  if (!existing) return;
   // Phase 14: stock is RPC-owned (see db-service.js push comment) — write
-  // it straight to the server instead of the generic saveDB() bulk upsert,
-  // which no longer carries this field at all.
+  // it straight to the server instead of the generic bulk upsert, which no
+  // longer carries this field at all.
   const { data, error } = await DBService.rpc('restock_shop_product', { p_product_id: id, p_new_stock: val });
   if (error) { toast('❌ Could not update stock: ' + error.message, '#ffb4ab'); renderAdminStore(); return; }
-  item.stock = (typeof data === 'number') ? data : val;
-  saveDB(); // persists the other (non-stock) fields as usual; harmless no-op for stock itself
-  toast(`✅ Stock updated: ${item.name} → ×${item.stock}`, '#4edea3');
+  const finalStock = (typeof data === 'number') ? data : val;
+  AppStore.updateState(draft => {
+    const item = (draft.store || []).find(i => i.id === id);
+    if (item) item.stock = finalStock;
+  }, { type: 'shop:stock-updated', payload: { id, stock: finalStock } });
+  toast(`✅ Stock updated: ${existing.name} → ×${finalStock}`, '#4edea3');
   renderAdminStore();
 };
 
@@ -166,11 +172,11 @@ window.openAddProduct = function () { showModal(productForm(null), 'md'); };
  * openEditProduct(id) → void  [window.openEditProduct]
  * Opens 'md' modal with prefilled product form for the given store item id.
  */
-window.openEditProduct = function (id) { showModal(productForm(DB.store.find(i => i.id === id)), 'md'); };
+window.openEditProduct = function (id) { showModal(productForm((AppStore.getSlice(s => s.store) || []).find(i => i.id === id)), 'md'); };
 
 /**
  * doAddProduct() → void  [window.doAddProduct]
- * Reads #pf-* form fields. Validates name. Pushes new item to DB.store with uid().
+ * Reads #pf-* form fields. Validates name. Pushes new item to the store slice with uid().
  * saveDB() → closeModalForce() → renderAdminStore() → toast.
  */
 window.doAddProduct = async function () {
@@ -179,17 +185,19 @@ window.doAddProduct = async function () {
   if (!name) { toast('❌ Name required', '#ffb4ab'); return; }
   const newId    = uid();
   const newStock = parseInt(document.getElementById('pf-stock').value) || 10;
-  DB.store.push({
-    id: newId,
-    ownerTeacherId: currentUser.id, // Phase 14: shop is per-teacher
-    emoji, name,
-    desc:  document.getElementById('pf-desc').value.trim(),
-    cat:   document.getElementById('pf-cat').value,
-    cost:  parseInt(document.getElementById('pf-cost').value)  || 100,
-    stock: newStock, // local/display value only — see RPC call below
-    addedAt: new Date().toISOString(),
-  });
-  saveDB(); // pushes name/emoji/desc/cat/cost/owner — stock excluded, see db-service.js
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.store)) draft.store = [];
+    draft.store.push({
+      id: newId,
+      ownerTeacherId: currentUser.id, // Phase 14: shop is per-teacher
+      emoji, name,
+      desc:  document.getElementById('pf-desc').value.trim(),
+      cat:   document.getElementById('pf-cat').value,
+      cost:  parseInt(document.getElementById('pf-cost').value)  || 100,
+      stock: newStock, // local/display value only — see RPC call below
+      addedAt: new Date().toISOString(),
+    });
+  }, { type: 'shop:product-added', payload: { id: newId } });
   closeModalForce(); renderAdminStore(); toast(`✅ "${name}" added!`);
   // Set the real server-side stock now that the row exists. If this fails
   // (e.g. still offline), the product exists with column-default stock
@@ -201,26 +209,29 @@ window.doAddProduct = async function () {
 
 /**
  * doEditProduct(id) → void  [window.doEditProduct]
- * Reads #pf-* form fields. Validates name. Merges changes into DB.store[idx].
+ * Reads #pf-* form fields. Validates name. Merges changes into the store slice's matching item.
  * saveDB() → closeModalForce() → renderAdminStore() → toast.
  */
 window.doEditProduct = async function (id) {
-  const idx  = DB.store.findIndex(i => i.id === id);
-  if (idx < 0) return;
+  const existing = (AppStore.getSlice(s => s.store) || []).find(i => i.id === id);
+  if (!existing) return;
   const name = document.getElementById('pf-name').value.trim();
   if (!name) { toast('❌ Name required', '#ffb4ab'); return; }
   const newStock   = parseInt(document.getElementById('pf-stock').value) || 0;
-  const stockDirty = newStock !== DB.store[idx].stock;
-  DB.store[idx] = {
-    ...DB.store[idx],
-    emoji: document.getElementById('pf-emoji').value.trim() || '🎁',
-    name,
-    desc:  document.getElementById('pf-desc').value.trim(),
-    cat:   document.getElementById('pf-cat').value,
-    cost:  parseInt(document.getElementById('pf-cost').value)  || 100,
-    stock: newStock, // local/display value — server write happens below if changed
-  };
-  saveDB(); // stock excluded from this push, see db-service.js
+  const stockDirty = newStock !== existing.stock;
+  AppStore.updateState(draft => {
+    const idx = (draft.store || []).findIndex(i => i.id === id);
+    if (idx < 0) return;
+    draft.store[idx] = {
+      ...draft.store[idx],
+      emoji: document.getElementById('pf-emoji').value.trim() || '🎁',
+      name,
+      desc:  document.getElementById('pf-desc').value.trim(),
+      cat:   document.getElementById('pf-cat').value,
+      cost:  parseInt(document.getElementById('pf-cost').value)  || 100,
+      stock: newStock, // local/display value — server write happens below if changed
+    };
+  }, { type: 'shop:product-updated', payload: { id } });
   closeModalForce(); renderAdminStore(); toast(`✅ "${name}" updated!`);
   if (stockDirty) {
     const { error } = await DBService.rpc('restock_shop_product', { p_product_id: id, p_new_stock: newStock });
@@ -233,7 +244,7 @@ window.doEditProduct = async function (id) {
  * Opens a confirm modal before actually deleting.
  */
 window.deleteProduct = function (id) {
-  const item = DB.store.find(i => i.id === id);
+  const item = (AppStore.getSlice(s => s.store) || []).find(i => i.id === id);
   showModal(`<div style="text-align:center;padding:10px">
     <div style="font-size:40px;margin-bottom:12px">🗑️</div>
     <div class="modal-h2" style="text-align:center">Delete Product?</div>
@@ -247,12 +258,14 @@ window.deleteProduct = function (id) {
 
 /**
  * confirmDeleteProduct(id) → void  [window.confirmDeleteProduct]
- * Removes item from DB.store. saveDB() → closeModalForce() → renderAdminStore() → toast.
+ * Removes item from the store slice via AppStore.updateState() → closeModalForce() → renderAdminStore() → toast.
  */
 window.confirmDeleteProduct = async function (id) {
-  const item = DB.store.find(i => i.id === id);
-  DB.store = DB.store.filter(i => i.id !== id);
-  saveDB(); closeModalForce(); renderAdminStore();
+  const item = (AppStore.getSlice(s => s.store) || []).find(i => i.id === id);
+  AppStore.updateState(draft => {
+    draft.store = (draft.store || []).filter(i => i.id !== id);
+  }, { type: 'shop:product-deleted', payload: { id } });
+  closeModalForce(); renderAdminStore();
   toast(`🗑️ "${item?.name}" removed`);
   // Phase 14: the bulk push is upsert-only and never deletes server rows —
   // without this, the product would silently reappear for everyone on the

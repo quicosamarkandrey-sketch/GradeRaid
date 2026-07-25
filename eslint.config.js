@@ -196,7 +196,53 @@ module.exports = [
     // instance of the never-persisted-async-mutation bug (section
     // assignment, same shape as campaign/mail's). titles_student_page.js
     // (10) was read-only. titles_badge_renderer.js had zero references.
-    files: ['modules/shared/**/*.js', 'modules/attendance/**/*.js', 'modules/section/**/*.js', 'modules/recitation/**/*.js', 'modules/leaderboard/**/*.js', 'modules/mail/**/*.js', 'modules/boss-studio/**/*.js', 'modules/campaign/**/*.js', 'modules/titles/**/*.js'],
+    //
+    // modules/admin/ — migrated 2026-07-21. Of 26 files, only 7 had DB.*
+    // references: registrations.js (51 refs — the largest single-file
+    // count in this phase; regAdminApprove()'s new-student-plus-three-
+    // slices-plus-status-flip write now commits atomically, and a fifth
+    // instance of the never-persisted-async-mutation bug was NOT found
+    // here, unlike quiz-builder.js below) and quiz-builder.js (26 refs —
+    // saveQuiz()'s section-assignment sync WAS the fifth instance of that
+    // bug, same shape as leaderboard/mail/campaign/titles' versions).
+    // analytics.js (10), student-manager.js (8, a bulk XP-award write with
+    // the same checkLevelUp()-must-stay-in-the-draft subtlety as mail's
+    // and campaign's reward grants), and command-center.js (4) were
+    // otherwise straightforward. starter-pack-service.js and
+    // content-oversight-service.js had only comment mentions. Root-level
+    // duplicate analytics.js (already flagged in Phase 1/2) was NOT
+    // touched — this migration only ever edited modules/admin/analytics.js.
+    //
+    // modules/achievements/ — migrated 2026-07-21. ach_admin_page.js (60
+    // refs — largest single-file count in this phase) had a full CRUD +
+    // grant/revoke + category-management surface, including a sixth
+    // instance of the never-persisted-async-mutation bug (achAdminSave()'s
+    // section assignment, same shape as leaderboard/mail/campaign/titles/
+    // quiz-builder's versions). ach_engine.js (36 refs) is the core
+    // check-and-award/claim engine every other module's achievement
+    // triggers funnel through — achCheckAndAward()/achGrantRewardsForClaim()
+    // migrated to one atomic AppStore.updateState() commit each.
+    // ach_student_page.js (8) was read-only; ach_index.js (5) had one
+    // migration-guard block.
+    //
+    // modules/shop/ — migrated 2026-07-21, the largest module in this
+    // phase (176 refs across 7 files). shop_store.js's cartCheckout() and
+    // shop_pos_terminal.js's _posPayAttemptCharge() (the self-checkout and
+    // teacher-POS purchase flows) each now commit their whole transaction
+    // (stock reservation via RPC, coin deduction, order/redemption/
+    // inventory writes) as one atomic AppStore.updateState() call.
+    // posGenCode() and promoRecordPurchase() (shop_promotions.js) both
+    // gained an optional draft parameter so their writes land in that same
+    // atomic commit — formalizing, via AppStore's draft mechanism, a
+    // caller convention ("operate on the shared object I already loaded,
+    // don't save yourself") the pre-migration code had already adopted
+    // after hitting a real crash from violating it once (see
+    // promoRecordPurchase()'s preserved BUGFIX comment). shop_admin_store.js's
+    // live stock-refresh interval no longer depends on the shared DB
+    // global being kept current by another function. bs_storage.js-style
+    // self-sufficiency fixes were not needed here — no bsLoad()/bsGet()-like
+    // pre-warming convention existed in this directory.
+    files: ['modules/shared/**/*.js', 'modules/attendance/**/*.js', 'modules/section/**/*.js', 'modules/recitation/**/*.js', 'modules/leaderboard/**/*.js', 'modules/mail/**/*.js', 'modules/boss-studio/**/*.js', 'modules/campaign/**/*.js', 'modules/titles/**/*.js', 'modules/admin/**/*.js', 'modules/achievements/**/*.js', 'modules/shop/**/*.js'],
     rules: {
       'no-restricted-syntax': [
         'error',

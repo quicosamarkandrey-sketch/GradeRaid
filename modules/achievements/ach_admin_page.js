@@ -17,12 +17,13 @@ let draftAchSections = [];
  * Shows stats bar, full achievement table with unlock counts, action buttons.
  */
 window.renderAdminAchievements = function () {
-  DB = loadDB();
-  const achs          = DB.achievements || [];
-  const cats          = DB.achievementCategories || [];
-  const totalStudents = DB.students.length;
+  const achs          = AppStore.getSlice(s => s.achievements) || [];
+  const cats          = AppStore.getSlice(s => s.achievementCategories) || [];
+  const totalStudents = (AppStore.getSlice(s => s.students) || []).length;
+  const achievementUnlocks = AppStore.getSlice(s => s.achievementUnlocks) || {};
+  const achievementSectionAssignments = AppStore.getSlice(s => s.achievementSectionAssignments) || {};
   const unlockCounts  = {};
-  Object.values(DB.achievementUnlocks || {}).forEach(list => {
+  Object.values(achievementUnlocks).forEach(list => {
     list.forEach(u => { unlockCounts[u.achId] = (unlockCounts[u.achId] || 0) + 1; });
   });
 
@@ -46,7 +47,7 @@ window.renderAdminAchievements = function () {
     <div class="ach-stat-card"><div class="ach-stat-val" style="color:var(--primary)">${achs.length}</div><div class="ach-stat-lbl">Total Badges</div></div>
     <div class="ach-stat-card"><div class="ach-stat-val" style="color:var(--secondary)">${achs.filter(a => a.active).length}</div><div class="ach-stat-lbl">Active</div></div>
     <div class="ach-stat-card"><div class="ach-stat-val" style="color:#ffb95f">${achs.filter(a => a.isHidden).length}</div><div class="ach-stat-lbl">Hidden</div></div>
-    <div class="ach-stat-card"><div class="ach-stat-val" style="color:#f472b6">${Object.values(DB.achievementUnlocks || {}).reduce((a, l) => a + l.length, 0)}</div><div class="ach-stat-lbl">Total Unlocks</div></div>
+    <div class="ach-stat-card"><div class="ach-stat-val" style="color:#f472b6">${Object.values(achievementUnlocks).reduce((a, l) => a + l.length, 0)}</div><div class="ach-stat-lbl">Total Unlocks</div></div>
   </div>
 
   ${achs.length === 0 ? `
@@ -67,7 +68,7 @@ window.renderAdminAchievements = function () {
         // Phase 16: section scoping is now live (see achAdminOpenForm's NOTE
         // and student-page.js/engine.js), so surface it here the same way
         // quiz-builder.js's list rows surface quiz section assignment.
-        const assignedIds   = (DB.achievementSectionAssignments && DB.achievementSectionAssignments[ach.id]) || [];
+        const assignedIds   = achievementSectionAssignments[ach.id] || [];
         const sectionsLabel = assignedIds.length
           ? assignedIds.map(cid => (typeof getClassLabel === 'function' ? getClassLabel(cid) : cid)).join(', ')
           : 'All sections';
@@ -95,10 +96,9 @@ window.renderAdminAchievements = function () {
 // ── Create / Edit form ────────────────────────────────────────────────────────
 
 window.achAdminOpenForm = function (achId) {
-  DB = loadDB();
   const isEdit   = !!achId;
-  const existing = isEdit ? (DB.achievements || []).find(a => a.id === achId) : null;
-  const cats     = DB.achievementCategories || [];
+  const existing = isEdit ? (AppStore.getSlice(s => s.achievements) || []).find(a => a.id === achId) : null;
+  const cats     = AppStore.getSlice(s => s.achievementCategories) || [];
   const d        = existing || {
     name: '', description: '', icon: '🏅', category: cats[0] || 'Quests',
     rarity: 'Common', xpReward: 50, coinReward: 25,
@@ -111,7 +111,7 @@ window.achAdminOpenForm = function (achId) {
   // set_achievement_sections() the moment the badge is first saved,
   // instead of needing a second round-trip after creation.
   const formAchId = achId || uid();
-  draftAchSections = ((DB.achievementSectionAssignments && DB.achievementSectionAssignments[formAchId]) || []).slice();
+  draftAchSections = ((AppStore.getSlice(s => s.achievementSectionAssignments) || {})[formAchId] || []).slice();
 
   // Phase 16: "assign to section(s)" picker — set_achievement_sections()
   // RPC and the achievement_sections junction table have existed since
@@ -122,8 +122,8 @@ window.achAdminOpenForm = function (achId) {
   // NOTE on visibility: this wires the WRITE side (persisting which
   // section(s) a badge is assigned to, synced cross-device via Supabase).
   // The READ side is now wired too — renderBadges() (student-page.js) and
-  // achCheckAndAward() (engine.js) both filter/gate on
-  // DB.achievementSectionAssignments, so assigning sections here does
+  // achCheckAndAward() (engine.js) both filter/gate on the
+  // achievementSectionAssignments slice, so assigning sections here does
   // actually scope who can see and auto-unlock the badge. An achievement
   // with no assigned sections stays global (visible/unlockable by
   // everyone) — assigning it here is what opts it into section scoping.
@@ -198,22 +198,25 @@ window.achAdminSave = async function (achId) {
   if (!desc) { if (errEl) { errEl.textContent = 'Description is required.'; errEl.style.display = 'block'; } return; }
   if (errEl) errEl.style.display = 'none';
 
-  DB = loadDB();
-  if (!DB.achievements) DB.achievements = [];
-  const idx = DB.achievements.findIndex(a => a.id === achId);
-  if (idx >= 0) {
-    DB.achievements[idx] = { ...DB.achievements[idx], name, description: desc, icon, category: cat, rarity, xpReward, coinReward, isHidden, active, triggerType, triggerValue };
-    toast(`✅ Badge "${name}" updated!`);
-  } else {
-    // achId was pre-generated by achAdminOpenForm (Phase 16) so the section
-    // picker has a stable id to save against on first creation too.
-    // Phase 32: stamp the owner so the catalog isolation RLS/RPC checks
-    // have something to key against — mirrors shop_admin_store.js's
-    // doAddProduct() stamping ownerTeacherId at creation time.
-    DB.achievements.push({ id: achId, ownerTeacherId: currentUser.id, name, description: desc, icon, category: cat, rarity, xpReward, coinReward, isHidden, active, triggerType, triggerValue, createdAt: new Date().toISOString() });
-    toast(`🏅 Badge "${name}" created!`);
-  }
-  saveDB(); closeModalForce();
+  let toastMsg;
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.achievements)) draft.achievements = [];
+    const idx = draft.achievements.findIndex(a => a.id === achId);
+    if (idx >= 0) {
+      draft.achievements[idx] = { ...draft.achievements[idx], name, description: desc, icon, category: cat, rarity, xpReward, coinReward, isHidden, active, triggerType, triggerValue };
+      toastMsg = `✅ Badge "${name}" updated!`;
+    } else {
+      // achId was pre-generated by achAdminOpenForm (Phase 16) so the section
+      // picker has a stable id to save against on first creation too.
+      // Phase 32: stamp the owner so the catalog isolation RLS/RPC checks
+      // have something to key against — mirrors shop_admin_store.js's
+      // doAddProduct() stamping ownerTeacherId at creation time.
+      draft.achievements.push({ id: achId, ownerTeacherId: currentUser.id, name, description: desc, icon, category: cat, rarity, xpReward, coinReward, isHidden, active, triggerType, triggerValue, createdAt: new Date().toISOString() });
+      toastMsg = `🏅 Badge "${name}" created!`;
+    }
+  }, { type: 'achievements:saved', payload: { id: achId } });
+  toast(toastMsg);
+  closeModalForce();
   const sectionIds = draftAchSections.slice();
   renderAdminAchievements();
 
@@ -230,8 +233,17 @@ window.achAdminSave = async function (achId) {
     if (error) {
       toast('⚠️ Badge saved, but section assignment may not have synced: ' + error.message, '#ffb95f');
     } else {
-      if (!DB.achievementSectionAssignments) DB.achievementSectionAssignments = {};
-      DB.achievementSectionAssignments[achId] = sectionIds; // optimistic — next realtime pull confirms it
+      // [Phase 3 migration bugfix] The pre-migration version mutated
+      // DB.achievementSectionAssignments directly here with no follow-up
+      // saveDB() call — memory-only, silently lost the next time anything
+      // reloaded from persisted storage. Sixth instance of this exact bug
+      // shape found across this phase (leaderboard, mail, campaign ×2,
+      // titles, quiz-builder — see those entries in this log).
+      // AppStore.updateState() always persists.
+      AppStore.updateState(draft => {
+        if (!draft.achievementSectionAssignments) draft.achievementSectionAssignments = {};
+        draft.achievementSectionAssignments[achId] = sectionIds; // optimistic — next realtime pull confirms it
+      }, { type: 'achievements:sections-set', payload: { id: achId, sectionIds } });
     }
   }
 };
@@ -239,24 +251,31 @@ window.achAdminSave = async function (achId) {
 // ── Toggle / Delete / Duplicate ───────────────────────────────────────────────
 
 window.achAdminToggle = function (achId) {
-  DB = loadDB();
-  const idx = (DB.achievements || []).findIndex(a => a.id === achId);
-  if (idx < 0) return;
-  DB.achievements[idx].active = !DB.achievements[idx].active;
-  saveDB();
-  toast(DB.achievements[idx].active ? '✅ Badge enabled.' : '⏸ Badge disabled.');
+  const existing = (AppStore.getSlice(s => s.achievements) || []).find(a => a.id === achId);
+  if (!existing) return;
+  let newActive = null;
+  AppStore.updateState(draft => {
+    const idx = (draft.achievements || []).findIndex(a => a.id === achId);
+    if (idx < 0) return;
+    draft.achievements[idx].active = !draft.achievements[idx].active;
+    newActive = draft.achievements[idx].active;
+  }, { type: 'achievements:toggled', payload: { id: achId } });
+  toast(newActive ? '✅ Badge enabled.' : '⏸ Badge disabled.');
   renderAdminAchievements();
 };
 
 window.achAdminDelete = async function (achId) {
-  DB = loadDB();
-  const ach = (DB.achievements || []).find(a => a.id === achId);
+  const ach = (AppStore.getSlice(s => s.achievements) || []).find(a => a.id === achId);
   if (!ach || !confirm(`Delete badge "${ach.name}"? This will also remove all unlock records.`)) return;
-  DB.achievements = (DB.achievements || []).filter(a => a.id !== achId);
-  Object.keys(DB.achievementUnlocks || {}).forEach(sid => {
-    DB.achievementUnlocks[sid] = (DB.achievementUnlocks[sid] || []).filter(u => u.achId !== achId);
-  });
-  saveDB(); toast('🗑 Badge deleted.', '#ff8080'); renderAdminAchievements();
+  AppStore.updateState(draft => {
+    draft.achievements = (draft.achievements || []).filter(a => a.id !== achId);
+    if (draft.achievementUnlocks) {
+      Object.keys(draft.achievementUnlocks).forEach(sid => {
+        draft.achievementUnlocks[sid] = (draft.achievementUnlocks[sid] || []).filter(u => u.achId !== achId);
+      });
+    }
+  }, { type: 'achievements:deleted', payload: { id: achId } });
+  toast('🗑 Badge deleted.', '#ff8080'); renderAdminAchievements();
   // Phase 23: the bulk push is upsert-only and never deletes server rows —
   // without this, the badge (and its section assignments/unlock records)
   // would silently reappear for everyone on the next pull.
@@ -269,20 +288,21 @@ window.achAdminDelete = async function (achId) {
 };
 
 window.achAdminDuplicate = function (achId) {
-  DB = loadDB();
-  const ach = (DB.achievements || []).find(a => a.id === achId);
+  const ach = (AppStore.getSlice(s => s.achievements) || []).find(a => a.id === achId);
   if (!ach) return;
   // Phase 32: carry the original's owner forward (falls back to the
   // current caller for any pre-migration row that somehow lacks one yet).
-  DB.achievements.push({ ...ach, id: uid(), ownerTeacherId: ach.ownerTeacherId || currentUser.id, name: ach.name + ' (Copy)', createdAt: new Date().toISOString() });
-  saveDB(); toast('⧉ Badge duplicated!'); renderAdminAchievements();
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.achievements)) draft.achievements = [];
+    draft.achievements.push({ ...ach, id: uid(), ownerTeacherId: ach.ownerTeacherId || currentUser.id, name: ach.name + ' (Copy)', createdAt: new Date().toISOString() });
+  }, { type: 'achievements:duplicated', payload: { sourceId: achId } });
+  toast('⧉ Badge duplicated!'); renderAdminAchievements();
 };
 
 // ── Preview ───────────────────────────────────────────────────────────────────
 
 window.achAdminPreview = function (achId) {
-  DB = loadDB();
-  const ach        = (DB.achievements || []).find(a => a.id === achId); if (!ach) return;
+  const ach        = (AppStore.getSlice(s => s.achievements) || []).find(a => a.id === achId); if (!ach) return;
   const rarity     = ACH_RARITY[ach.rarity] || ACH_RARITY.Common;
   const triggerDef = ACH_TRIGGER_TYPES.find(t => t.value === ach.triggerType) || { label: ach.triggerType };
   showModal(`
@@ -313,11 +333,10 @@ window.achAdminPreview = function (achId) {
 // ── Grant / Revoke ────────────────────────────────────────────────────────────
 
 window.achAdminGrantAchievement = function () {
-  DB = loadDB();
-  const achs = DB.achievements || [];
+  const achs = AppStore.getSlice(s => s.achievements) || [];
   if (!achs.length) { toast('❌ Create achievements first', '#ffb4ab'); return; }
   const achOpts     = achs.map(a => `<option value="${a.id}">${a.icon} ${_esc(a.name)}</option>`).join('');
-  const studentOpts = DB.students.map(s => `<option value="${s.id}">${_esc(s.name)}</option>`).join('');
+  const studentOpts = (AppStore.getSlice(s => s.students) || []).map(s => `<option value="${s.id}">${_esc(s.name)}</option>`).join('');
   showModal(`
   <div style="max-width:480px">
     <h2 style="font-family:var(--fh);font-size:20px;font-weight:900;margin-bottom:20px">🎁 Grant/Revoke Achievements</h2>
@@ -353,8 +372,7 @@ window.achAdminGrantAchievement = function () {
 
 window.achAdminUpdateGrantPreview = function () {
   const achId   = document.getElementById('ach-grant-ach').value;
-  DB = loadDB();
-  const ach     = achId ? (DB.achievements || []).find(a => a.id === achId) : null;
+  const ach     = achId ? (AppStore.getSlice(s => s.achievements) || []).find(a => a.id === achId) : null;
   const preview = document.getElementById('ach-grant-preview');
   if (ach && preview) {
     document.getElementById('ach-grant-preview-name').textContent  = ach.name;
@@ -376,38 +394,47 @@ window.achAdminDoGrant = function () {
   if (!achId) { if (errEl) { errEl.textContent = 'Please select an achievement.'; errEl.style.display = 'block'; } return; }
   if (errEl) errEl.style.display = 'none';
 
-  DB = loadDB();
-  const ach     = (DB.achievements || []).find(a => a.id === achId);
-  const student = DB.students.find(s => s.id === sid);
+  const ach     = (AppStore.getSlice(s => s.achievements) || []).find(a => a.id === achId);
+  const student = (AppStore.getSlice(s => s.students) || []).find(s => s.id === sid);
   if (!ach || !student) return;
 
-  if (!DB.achievementUnlocks)      DB.achievementUnlocks = {};
-  if (!DB.achievementUnlocks[sid]) DB.achievementUnlocks[sid] = [];
-  const alreadyUnlocked = DB.achievementUnlocks[sid].some(u => u.achId === achId);
-  const sIdx            = DB.students.indexOf(student);
+  const alreadyUnlocked = ((AppStore.getSlice(s => s.achievementUnlocks) || {})[sid] || []).some(u => u.achId === achId);
 
   if (action === 'grant') {
     if (alreadyUnlocked) { if (errEl) { errEl.textContent = '❌ Student already has this achievement.'; errEl.style.display = 'block'; } return; }
     const xpGrant   = parseInt(ach.xpReward)   || 0;
     const coinGrant = parseInt(ach.coinReward) || 0;
-    if (sIdx >= 0) { DB.students[sIdx].xp += xpGrant; DB.students[sIdx].coins += coinGrant; }
+    AppStore.updateState(draft => {
+      const s = (draft.students || []).find(x => x.id === sid);
+      if (s) { s.xp = (s.xp || 0) + xpGrant; s.coins = (s.coins || 0) + coinGrant; }
+      if (!draft.achievementUnlocks) draft.achievementUnlocks = {};
+      if (!draft.achievementUnlocks[sid]) draft.achievementUnlocks[sid] = [];
+      draft.achievementUnlocks[sid].push({ achId, unlockedAt: new Date().toISOString(), xpGranted: xpGrant, coinsGranted: coinGrant, claimed: true, claimedAt: new Date().toISOString() });
+    }, { type: 'achievements:granted', payload: { sid, achId } });
     syncStudentStatsToServer(sid, xpGrant, coinGrant);
-    DB.achievementUnlocks[sid].push({ achId, unlockedAt: new Date().toISOString(), xpGranted: xpGrant, coinsGranted: coinGrant, claimed: true, claimedAt: new Date().toISOString() });
     // Phase 17: admin grants unlock+claim in one step, unlike auto-unlock.
     syncAchievementUnlockToServer(sid, achId, xpGrant, coinGrant, true, student.classId || 'default-class');
-    saveDB(); closeModalForce();
+    closeModalForce();
     toast(`✅ Granted "${_esc(ach.name)}" to ${_esc(student.name)}! +${xpGrant} XP, +${coinGrant} 🪙`);
   } else {
     if (!alreadyUnlocked) { if (errEl) { errEl.textContent = '❌ Student does not have this achievement.'; errEl.style.display = 'block'; } return; }
-    const unlock = DB.achievementUnlocks[sid].find(u => u.achId === achId);
-    if (unlock && sIdx >= 0) {
-      DB.students[sIdx].xp     = Math.max(0, DB.students[sIdx].xp     - (unlock.xpGranted     || 0));
-      DB.students[sIdx].coins  = Math.max(0, DB.students[sIdx].coins  - (unlock.coinsGranted  || 0));
-      syncStudentStatsToServer(sid, -(unlock.xpGranted || 0), -(unlock.coinsGranted || 0));
-    }
-    DB.achievementUnlocks[sid] = (DB.achievementUnlocks[sid] || []).filter(u => u.achId !== achId);
+    let revokedXp = 0, revokedCoins = 0;
+    AppStore.updateState(draft => {
+      const unlock = ((draft.achievementUnlocks || {})[sid] || []).find(u => u.achId === achId);
+      if (unlock) {
+        revokedXp = unlock.xpGranted || 0;
+        revokedCoins = unlock.coinsGranted || 0;
+        const s = (draft.students || []).find(x => x.id === sid);
+        if (s) {
+          s.xp    = Math.max(0, (s.xp || 0)    - revokedXp);
+          s.coins = Math.max(0, (s.coins || 0) - revokedCoins);
+        }
+      }
+      draft.achievementUnlocks[sid] = (draft.achievementUnlocks[sid] || []).filter(u => u.achId !== achId);
+    }, { type: 'achievements:revoked', payload: { sid, achId } });
+    syncStudentStatsToServer(sid, -revokedXp, -revokedCoins);
     syncAchievementRevokeToServer(sid, achId);
-    saveDB(); closeModalForce();
+    closeModalForce();
     toast(`🗑 Revoked "${_esc(ach.name)}" from ${_esc(student.name)}.`, '#ff8080');
   }
   renderAdminAchievements();
@@ -416,8 +443,7 @@ window.achAdminDoGrant = function () {
 // ── Category management ───────────────────────────────────────────────────────
 
 window.achAdminManageCategories = function () {
-  DB = loadDB();
-  const cats = DB.achievementCategories || [];
+  const cats = AppStore.getSlice(s => s.achievementCategories) || [];
   showModal(`
   <div style="max-width:400px">
     <h2 style="font-family:var(--fh);font-size:18px;font-weight:900;margin-bottom:16px">Manage Categories</h2>
@@ -436,20 +462,25 @@ window.achAdminAddCat = function () {
   const input = document.getElementById('ach-new-cat-input');
   const val   = (input?.value || '').trim();
   if (!val) return;
-  DB = loadDB();
-  if (!DB.achievementCategories)           DB.achievementCategories = [];
-  if (!DB.achievementCategories.includes(val)) {
-    DB.achievementCategories.push(val);
-    saveDB(); toast(`✅ Category "${val}" added!`); achAdminManageCategories();
-  }
+  const existing = AppStore.getSlice(s => s.achievementCategories) || [];
+  if (existing.includes(val)) return;
+  AppStore.updateState(draft => {
+    if (!draft.achievementCategories) draft.achievementCategories = [];
+    if (!draft.achievementCategories.includes(val)) draft.achievementCategories.push(val);
+  }, { type: 'achievements:category-added', payload: { name: val } });
+  toast(`✅ Category "${val}" added!`);
+  achAdminManageCategories();
 };
 
 window.achAdminDeleteCat = function (idx) {
-  DB = loadDB();
-  const cat = (DB.achievementCategories || [])[idx];
+  const cat = (AppStore.getSlice(s => s.achievementCategories) || [])[idx];
+  if (!cat) return;
   if (confirm(`Remove category "${cat}"?`)) {
-    DB.achievementCategories.splice(idx, 1);
-    saveDB(); toast('🗑 Category removed.', '#ff8080'); achAdminManageCategories();
+    AppStore.updateState(draft => {
+      if (Array.isArray(draft.achievementCategories)) draft.achievementCategories.splice(idx, 1);
+    }, { type: 'achievements:category-deleted', payload: { name: cat } });
+    toast('🗑 Category removed.', '#ff8080');
+    achAdminManageCategories();
   }
 };
 

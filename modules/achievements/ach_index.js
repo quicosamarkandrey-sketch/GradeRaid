@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //  EduQuest — modules/achievements/index.js
-//  CSS injection + DB migration + load-order guard for the achievements module.
+//  CSS injection + AppStore migration + load-order guard for the achievements module.
 //
 //  Required load order:
 //    1. engine.js       — constants, achBuildStats, achCheckAndAward, etc.
@@ -96,20 +96,22 @@
   document.head.appendChild(style);
 })();
 
-// ── DB migration guard ────────────────────────────────────────────────────────
+// ── AppStore migration guard ──────────────────────────────────────────────────
 // [SUPABASE MIGRATION] Deferred until AppStore.ready resolves — see the
 // matching note in modules/shop/shop_pos_terminal.js for why this can no
 // longer run synchronously at parse time.
 AppStore.ready.then(function achMigrateDB() {
-  DB = loadDB();
-  let dirty = false;
-  if (!DB.achievements)          { DB.achievements          = []; dirty = true; }
-  if (!DB.achievementUnlocks)    { DB.achievementUnlocks    = {}; dirty = true; }
-  if (!DB.achievementCategories) {
-    DB.achievementCategories = ['Quests', 'Attendance', 'Combat', 'Social', 'Milestones', 'Hidden', 'Special'];
-    dirty = true;
-  }
-  if (dirty) saveDB();
+  const current = AppStore.getSlice(s => ({ achievements: s.achievements, achievementUnlocks: s.achievementUnlocks, achievementCategories: s.achievementCategories }));
+  const missing = ['achievements', 'achievementUnlocks', 'achievementCategories'].filter(k => !current || !current[k]);
+  if (!missing.length) return; // already fully set up — nothing to do
+
+  AppStore.updateState(draft => {
+    if (!draft.achievements)       draft.achievements       = [];
+    if (!draft.achievementUnlocks) draft.achievementUnlocks = {};
+    if (!draft.achievementCategories) {
+      draft.achievementCategories = ['Quests', 'Attendance', 'Combat', 'Social', 'Milestones', 'Hidden', 'Special'];
+    }
+  }, { type: 'achievements:libraries-initialized', payload: { keys: missing } });
 });
 
 // ── Backwards-compat safety stub ──────────────────────────────────────────────

@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //  EduQuest — modules/shop/index.js
 //  Load-order guard + window.* alias verification + shop CSS injection +
-//  DB schema migration (ensures all shop tables exist in DB).
+//  AppStore schema migration (ensures all shop slices exist).
 //
 //  Required load order:
 //    1. store.js        — student Armory + cart engine
@@ -188,21 +188,24 @@
   document.head.appendChild(style);
 })();
 
-// ── DB migration guard ────────────────────────────────────────────────────────
-// Ensures all shop-related tables exist; runs once AppStore is hydrated.
+// ── AppStore migration guard ───────────────────────────────────────────────────
+// Ensures all shop-related slices exist; runs once AppStore is hydrated.
 // [SUPABASE MIGRATION] Deferred until AppStore.ready resolves — see the
 // matching note in modules/shop/shop_pos_terminal.js for why this can no
 // longer run synchronously at parse time.
 AppStore.ready.then(function shopMigrateDB() {
-  DB = loadDB();
-  let dirty = false;
-  if (!DB.store)          { DB.store          = []; dirty = true; }
-  if (!DB.orders)         { DB.orders         = []; dirty = true; }
-  if (!DB.redemptions)    { DB.redemptions    = []; dirty = true; }
-  if (!DB.inventory)      { DB.inventory      = {}; dirty = true; }
-  if (!DB.promotions)     { DB.promotions     = []; dirty = true; }
-  if (!DB.promoAnalytics) { DB.promoAnalytics = {}; dirty = true; }
-  if (dirty) saveDB();
+  const current = AppStore.getSlice(s => ({ store: s.store, orders: s.orders, redemptions: s.redemptions, inventory: s.inventory, promotions: s.promotions, promoAnalytics: s.promoAnalytics }));
+  const missing = ['store', 'orders', 'redemptions', 'inventory', 'promotions', 'promoAnalytics'].filter(k => !current || !current[k]);
+  if (!missing.length) return; // already fully set up — nothing to do
+
+  AppStore.updateState(draft => {
+    if (!draft.store)          draft.store          = [];
+    if (!draft.orders)         draft.orders         = [];
+    if (!draft.redemptions)    draft.redemptions    = [];
+    if (!draft.inventory)      draft.inventory      = {};
+    if (!draft.promotions)     draft.promotions     = [];
+    if (!draft.promoAnalytics) draft.promoAnalytics = {};
+  }, { type: 'shop:libraries-initialized', payload: { keys: missing } });
 });
 
 // ── Load-order verification ───────────────────────────────────────────────────

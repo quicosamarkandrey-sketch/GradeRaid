@@ -34,9 +34,9 @@ window.getItemRarity = function (item) {
  * After HTML set: calls _cartRenderFab() and promoRenderCarousel() (typeof guards).
  */
 window.renderStudentStore = function (cat = 'all') {
-  DB = loadDB();
   const st    = currentUser;
-  const items = cat === 'all' ? DB.store : DB.store.filter(i => i.cat === cat);
+  const allStore = AppStore.getSlice(s => s.store) || [];
+  const items = cat === 'all' ? allStore : allStore.filter(i => i.cat === cat);
   const cats  = ['all', 'food', 'supplies', 'privilege', 'mystery'];
   const catLabel = { all: 'All Items', food: 'Food & Snacks', supplies: 'Supplies', privilege: 'Privileges', mystery: 'Mystery' };
 
@@ -114,8 +114,7 @@ window.renderStudentStore = function (cat = 'all') {
 const _CART = {};
 
 window.cartAdd = function (id) {
-  DB = loadDB();
-  const item = DB.store.find(i => i.id === id);
+  const item = (AppStore.getSlice(s => s.store) || []).find(i => i.id === id);
   if (!item) return;
   if (item.stock === 0) { toast('❌ Out of stock!', '#ffb4ab'); return; }
   const cartQty = _CART[id] ? _CART[id].qty : 0;
@@ -136,8 +135,7 @@ window.cartRemove = function (id) {
 };
 
 window.cartSetQty = function (id, qty) {
-  DB = loadDB();
-  const item = DB.store.find(i => i.id === id);
+  const item = (AppStore.getSlice(s => s.store) || []).find(i => i.id === id);
   if (!item) return;
   const n = parseInt(qty);
   if (isNaN(n) || n <= 0) { delete _CART[id]; _cartRenderFab(); _cartRenderModal(); return; }
@@ -171,9 +169,9 @@ function _cartRenderFab() {
 }
 
 window.cartOpenModal = function () {
-  DB = loadDB();
+  const allStore = AppStore.getSlice(s => s.store) || [];
   for (const id in _CART) {
-    const item = DB.store.find(i => i.id === id);
+    const item = allStore.find(i => i.id === id);
     if (!item || item.stock === 0) { delete _CART[id]; continue; }
     _CART[id].item = item;
     if (_CART[id].qty > item.stock) _CART[id].qty = item.stock;
@@ -242,24 +240,24 @@ function _cartRenderModal() {
  * else is written — this is what stops two students racing for the last
  * unit. Items that lose that race are reported via toast and left in the
  * cart; only items that actually reserved stock go on to:
- *   Creates DB.orders entries (one per unit): { orderId, claimCode, studentId, studentName,
+ *   Creates orders-slice entries (one per unit): { orderId, claimCode, studentId, studentName,
  *     studentInit, studentColor, itemId, itemName, emoji, cost, category,
  *     status:'pending', createdAt, createdDateStr, claimedAt:null, ... }
- *   Creates DB.redemptions entries (one per unit): { studentId, itemId, itemName, emoji,
+ *   Creates redemptions-slice entries (one per unit): { studentId, itemId, itemName, emoji,
  *     item:'emoji name', pts:cost, date, time, orderId, claimCode }
- *   Updates DB.inventory[sid]: upserts { itemId, itemName, emoji, category, quantity, datePurchased, source, status }
- * Deducts coins for successfully-reserved items only, saves DB, shows the
+ *   Updates the inventory slice for sid: upserts { itemId, itemName, emoji, category, quantity, datePurchased, source, status }
+ * Deducts coins for successfully-reserved items only, persists via
+ * AppStore.updateState(), shows the
  * consolidated claim-codes modal for those items.
  * Calls promoRecordPurchase(itemId) per item (typeof guard).
  * Calls achCheckAndAward(currentUser.id) after 400ms (typeof guard).
  * Calls renderStudentStore(), updateTopbar(), invUpdateSidebarBadge().
  */
 window.cartCheckout = async function () {
-  DB = loadDB();
   const entries = Object.values(_CART);
   if (!entries.length) return;
-  const stIdx  = DB.students.findIndex(s => s.id === currentUser.id);
-  if (stIdx < 0) return;
+  const student = (AppStore.getSlice(s => s.students) || []).find(s => s.id === currentUser.id);
+  if (!student) return;
 
   // Check affordability against current cart contents BEFORE reserving any
   // stock — simpler and safer than trying to "refund" a stock reservation
@@ -268,7 +266,7 @@ window.cartCheckout = async function () {
   // button is already disabled client-side when unaffordable; this is the
   // authoritative re-check right before writing anything.
   const estimatedTotal = entries.reduce((s, e) => s + e.item.cost * e.qty, 0);
-  if (DB.students[stIdx].coins < estimatedTotal) { toast('❌ Not enough coins!', '#ffb4ab'); return; }
+  if (student.coins < estimatedTotal) { toast('❌ Not enough coins!', '#ffb4ab'); return; }
 
   // Phase 14: reserve stock atomically per item BEFORE creating any
   // order/redemption/inventory record. The old code did `item.stock -= qty`
@@ -281,7 +279,7 @@ window.cartCheckout = async function () {
   const succeeded = [];
   const failed    = [];
   for (const e of entries) {
-    const item = DB.store.find(i => i.id === e.item.id);
+    const item = (AppStore.getSlice(s => s.store) || []).find(i => i.id === e.item.id);
     if (!item) { failed.push({ e, reason: 'no longer available' }); continue; }
     const { data, error } = await DBService.rpc('purchase_shop_product', {
       p_product_id: item.id, p_student_id: currentUser.id, p_quantity: e.qty,
@@ -304,8 +302,65 @@ window.cartCheckout = async function () {
   }
 
   const total = succeeded.reduce((s, { e }) => s + e.item.cost * e.qty, 0);
+  const orderIds = [];
 
-  DB.students[stIdx].coins -= total;
+  // Coin deduction, order/redemption creation, and inventory upsert for
+  // every purchased unit all commit as one atomic AppStore.updateState()
+  // call — previously a sequence of direct DB.* mutations followed by one
+  // saveDB(). promoRecordPurchase() is passed this same draft (see its
+  // updated signature in shop_promotions.js) so its own analytics write
+  // lands in this same atomic commit too, preserving that function's
+  // original "one atomic flush covers this too" design intent.
+  AppStore.updateState(draft => {
+    const s = (draft.students || []).find(x => x.id === currentUser.id);
+    if (s) s.coins = (s.coins || 0) - total;
+
+    if (!Array.isArray(draft.orders))      draft.orders = [];
+    if (!Array.isArray(draft.redemptions)) draft.redemptions = [];
+    if (!draft.inventory)                  draft.inventory = {};
+    if (!draft.inventory[currentUser.id])  draft.inventory[currentUser.id] = [];
+
+    succeeded.forEach(({ e, item }) => {
+      for (let q = 0; q < e.qty; q++) {
+        const claimCode = posGenCode(draft.orders);
+        const orderId   = 'ORD-' + Date.now().toString(36).toUpperCase() + '-' + q;
+        orderIds.push({ orderId, claimCode, item, qty: e.qty });
+        draft.orders.unshift({
+          orderId, claimCode,
+          studentId: currentUser.id, studentName: currentUser.name,
+          studentInit: currentUser.init, studentColor: currentUser.color,
+          itemId: item.id, itemName: item.name, emoji: item.emoji,
+          cost: item.cost, category: item.cat,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          createdDateStr: todayStr() + ' at ' + nowStr(),
+          claimedAt: null, claimedBy: null, cancelledAt: null, cancelReason: null
+        });
+        draft.redemptions.unshift({
+          studentId: currentUser.id, itemId: item.id, itemName: item.name,
+          emoji: item.emoji, item: `${item.emoji} ${item.name}`,
+          pts: item.cost, date: todayStr(), time: nowStr(), orderId, claimCode
+        });
+      }
+      // Upsert inventory
+      const inv      = draft.inventory[currentUser.id];
+      const existing = inv.find(i => i.itemId === item.id);
+      if (existing) {
+        existing.quantity      = (existing.quantity || 1) + e.qty;
+        existing.lastPurchased = todayStr() + ' ' + nowStr();
+      } else {
+        inv.unshift({
+          itemId: item.id, itemName: item.name, emoji: item.emoji,
+          category: item.cat, quantity: e.qty,
+          datePurchased: todayStr() + ' at ' + nowStr(), source: 'Store', status: 'active'
+        });
+      }
+
+      // Promo analytics — typeof guard (promotions.js)
+      if (typeof promoRecordPurchase === 'function') promoRecordPurchase(item.id, draft);
+    });
+  }, { type: 'shop:checkout', payload: { studentId: currentUser.id, total, itemCount: succeeded.length } });
+
   // Phase 14: this local mutation alone is not enough to persist — Phase 9
   // deliberately removed coins from the bulk profiles upsert (see
   // db-service.js / phase9_student_stat_rpc.sql), specifically so it could
@@ -318,54 +373,8 @@ window.cartCheckout = async function () {
   // this one, after a refresh) would show the student's PRE-purchase coin
   // balance, effectively refunding them for free.
   syncStudentStatsToServer(currentUser.id, 0, -total);
-  if (!DB.orders)                           DB.orders = [];
-  if (!DB.redemptions)                      DB.redemptions = [];
-  if (!DB.inventory)                        DB.inventory = {};
-  if (!DB.inventory[currentUser.id])        DB.inventory[currentUser.id] = [];
 
-  const orderIds = [];
-  succeeded.forEach(({ e, item }) => {
-    for (let q = 0; q < e.qty; q++) {
-      const claimCode = posGenCode();
-      const orderId   = 'ORD-' + Date.now().toString(36).toUpperCase() + '-' + q;
-      orderIds.push({ orderId, claimCode, item, qty: e.qty });
-      DB.orders.unshift({
-        orderId, claimCode,
-        studentId: currentUser.id, studentName: currentUser.name,
-        studentInit: currentUser.init, studentColor: currentUser.color,
-        itemId: item.id, itemName: item.name, emoji: item.emoji,
-        cost: item.cost, category: item.cat,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        createdDateStr: todayStr() + ' at ' + nowStr(),
-        claimedAt: null, claimedBy: null, cancelledAt: null, cancelReason: null
-      });
-      DB.redemptions.unshift({
-        studentId: currentUser.id, itemId: item.id, itemName: item.name,
-        emoji: item.emoji, item: `${item.emoji} ${item.name}`,
-        pts: item.cost, date: todayStr(), time: nowStr(), orderId, claimCode
-      });
-    }
-    // Upsert inventory
-    const inv      = DB.inventory[currentUser.id];
-    const existing = inv.find(i => i.itemId === item.id);
-    if (existing) {
-      existing.quantity      = (existing.quantity || 1) + e.qty;
-      existing.lastPurchased = todayStr() + ' ' + nowStr();
-    } else {
-      inv.unshift({
-        itemId: item.id, itemName: item.name, emoji: item.emoji,
-        category: item.cat, quantity: e.qty,
-        datePurchased: todayStr() + ' at ' + nowStr(), source: 'Store', status: 'active'
-      });
-    }
-
-    // Promo analytics — typeof guard (promotions.js)
-    if (typeof promoRecordPurchase === 'function') promoRecordPurchase(item.id);
-  });
-
-  currentUser = DB.students[stIdx];
-  saveDB();
+  currentUser = (AppStore.getSlice(s => s.students) || []).find(x => x.id === currentUser.id);
   closeModalForce();
 
   // Only clear cart entries that actually succeeded — a failed item (lost
@@ -404,10 +413,17 @@ window.cartCheckout = async function () {
 // ── Claim code generator ──────────────────────────────────────────────────────
 
 /**
- * posGenCode() → string  [window.posGenCode]
+ * posGenCode(existingOrders) → string  [window.posGenCode]
  * Format: XXX-NNN-XXX (alpha no I/O, digit, alpha). Retries up to 100× for uniqueness.
+ * existingOrders (optional): a pre-fetched orders array to check uniqueness
+ * against — passed by cartCheckout() so uniqueness is checked against the
+ * in-progress draft.orders (which keeps growing as more codes are
+ * generated in the same checkout), not a stale pre-transaction snapshot.
+ * Falls back to a fresh AppStore.getSlice() read when omitted, so the
+ * existing 0-arg call site in shop_pos_terminal.js is unaffected.
  */
-window.posGenCode = function () {
+window.posGenCode = function (existingOrders) {
+  const orders = existingOrders || AppStore.getSlice(s => s.orders) || [];
   const alpha = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   const rA = () => alpha[Math.floor(Math.random() * alpha.length)];
   const rN = () => Math.floor(Math.random() * 10);
@@ -415,7 +431,7 @@ window.posGenCode = function () {
   do {
     code = `${rA()}${rA()}${rA()}-${rN()}${rN()}${rN()}-${rA()}${rA()}${rA()}`;
     tries++;
-  } while (tries < 100 && (DB.orders || []).some(o => o.claimCode === code && o.status === 'pending'));
+  } while (tries < 100 && orders.some(o => o.claimCode === code && o.status === 'pending'));
   return code;
 };
 

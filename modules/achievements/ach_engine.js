@@ -61,14 +61,14 @@ window.achRarityClass = function (rarity) {
 /**
  * achBuildStats(student) → StatSnapshot  [window.achBuildStats]
  *
- * Builds a live stats object from DB for a given student. Used by achCheckAndAward
+ * Builds a live stats object from AppStore for a given student. Used by achCheckAndAward
  * and achEvaluateTrigger to check all trigger conditions.
  */
 window.achBuildStats = function (student) {
   if (!student) return {};
   const sid = student.id;
   let bossVictories = 0, totalBossDmg = 0, totalCrits = 0, totalMinionsKilled = 0;
-  Object.values(DB.bossParticipants || {}).forEach(roster => {
+  Object.values(AppStore.getSlice(s => s.bossParticipants) || {}).forEach(roster => {
     const rec = roster[sid];
     if (rec) {
       totalBossDmg      += (rec.totalDamage     || 0);
@@ -76,28 +76,31 @@ window.achBuildStats = function (student) {
       totalMinionsKilled += (rec.minionsDefeated || 0);
     }
   });
-  (DB.bossEvents || []).forEach((boss, bi) => {
+  const bossParticipants = AppStore.getSlice(s => s.bossParticipants) || {};
+  (AppStore.getSlice(s => s.bossEvents) || []).forEach((boss, bi) => {
     if (boss.status === 'ended' || boss.status === 'loot') {
-      const roster = (DB.bossParticipants || {})[bi] || {};
+      const roster = bossParticipants[bi] || {};
       if (roster[sid] && (roster[sid].totalDamage || 0) > 0) bossVictories++;
     }
   });
-  const storePurchases  = (DB.redemptions || []).filter(r => r.studentId === sid).length;
-  const totalCoinsSpent = (DB.redemptions || []).filter(r => r.studentId === sid).reduce((a, r) => a + (r.pts || 0), 0);
+  const redemptions = AppStore.getSlice(s => s.redemptions) || [];
+  const storePurchases  = redemptions.filter(r => r.studentId === sid).length;
+  const totalCoinsSpent = redemptions.filter(r => r.studentId === sid).reduce((a, r) => a + (r.pts || 0), 0);
   // BUGFIX (Investigation Report §1): DB.attendanceSessions is a dead
   // local-only array nothing has written to since Phase 1 shipped —
-  // real attendance lives in DB.attendanceLogs (Early/On Time/Late = present).
-  const attendancePresent = (DB.attendanceLogs || []).filter(r => r.studentId === sid && (r.status === 'Early' || r.status === 'On Time' || r.status === 'Late')).length;
+  // real attendance lives in the attendanceLogs slice (Early/On Time/Late = present).
+  const attendancePresent = (AppStore.getSlice(s => s.attendanceLogs) || []).filter(r => r.studentId === sid && (r.status === 'Early' || r.status === 'On Time' || r.status === 'Late')).length;
   let bestQuizScore = 0;
-  (DB.pointLog || []).filter(e => e.studentId === sid && e.what && e.what.startsWith('Quest:')).forEach(e => {
+  const pointLog = AppStore.getSlice(s => s.pointLog) || [];
+  pointLog.filter(e => e.studentId === sid && e.what && e.what.startsWith('Quest:')).forEach(e => {
     const m = e.what.match(/\((\d+)%\)/);
     if (m) { const s = parseInt(m[1]); if (s > bestQuizScore) bestQuizScore = s; }
   });
-  const recitationCount = (DB.recitationLog || []).filter(r => r.studentId === sid).length;
-  const sorted   = [...DB.students].sort((a, b) => b.xp - a.xp);
+  const recitationCount = (AppStore.getSlice(s => s.recitationLog) || []).filter(r => r.studentId === sid).length;
+  const sorted   = [...(AppStore.getSlice(s => s.students) || [])].sort((a, b) => b.xp - a.xp);
   const liveRank = sorted.findIndex(s => s.id === sid) + 1;
   let maxPerfectStreak = 0, currentPerfect = 0;
-  [...(DB.pointLog || [])].filter(e => e.studentId === sid && e.what && e.what.startsWith('Quest:')).reverse().forEach(e => {
+  [...pointLog].filter(e => e.studentId === sid && e.what && e.what.startsWith('Quest:')).reverse().forEach(e => {
     const m = e.what.match(/\((\d+)%\)/);
     if (m && parseInt(m[1]) >= 100) { currentPerfect++; if (currentPerfect > maxPerfectStreak) maxPerfectStreak = currentPerfect; }
     else currentPerfect = 0;
@@ -122,7 +125,7 @@ window.achBuildStats = function (student) {
     attendance:         student.attendance  || 0,
     quizAvg:            student.quizAvg     || 0,
     quests_completed:   (student.completedQuizzes || []).length,
-    total_quests:       (DB.quizzes || []).length,
+    total_quests:       (AppStore.getSlice(s => s.quizzes) || []).length,
     boss_victories:     bossVictories,
     boss_damage:        totalBossDmg,
     boss_crits:         totalCrits,
@@ -134,7 +137,7 @@ window.achBuildStats = function (student) {
     recitation_count:   recitationCount,
     live_rank:          liveRank,
     perfect_streak:     maxPerfectStreak,
-    student_count:      DB.students.length,
+    student_count:      sorted.length,
     quest_chains_completed: chainsCompleted,
     quest_streak:       questStreak,
   };
@@ -177,7 +180,7 @@ function achEvaluateTrigger(ach, stats) {
  * achCheckAndAward(studentId, suppressPopup) → void  [window.achCheckAndAward]
  *
  * Evaluates all active achievements for a student. For each newly met trigger:
- *   DB.achievementUnlocks[sid].push({ achId, unlockedAt, xpGranted, coinsGranted,
+ *   the achievementUnlocks slice for sid gets pushed({ achId, unlockedAt, xpGranted, coinsGranted,
  *                                      claimed: false, claimedAt: null })
  * NOTE: Rewards are NOT granted here — only granted when student clicks Claim.
  * On new unlocks: saveDB(), achUpdateSidebarBadge(), optionally achShowUnlockPopup().
@@ -187,53 +190,60 @@ function achEvaluateTrigger(ach, stats) {
  */
 window.achCheckAndAward = function (studentId, suppressPopup) {
   if (!studentId) return;
-  DB = loadDB();
-  const sIdx = DB.students.findIndex(s => s.id === studentId);
-  if (sIdx < 0) return;
-  const student = DB.students[sIdx];
+  const student = (AppStore.getSlice(s => s.students) || []).find(s => s.id === studentId);
+  if (!student) return;
   const stats   = achBuildStats(student);
 
-  if (!DB.achievementUnlocks)           DB.achievementUnlocks = {};
-  if (!DB.achievementUnlocks[studentId]) DB.achievementUnlocks[studentId] = [];
-
-  const alreadyUnlocked = new Set(DB.achievementUnlocks[studentId].map(u => u.achId));
-  const newlyUnlocked   = [];
+  const alreadyUnlocked = new Set(((AppStore.getSlice(s => s.achievementUnlocks) || {})[studentId] || []).map(u => u.achId));
 
   // Phase 16: same section-scoping as renderBadges() (student-page.js) —
   // a badge assigned to specific section(s) should not auto-unlock for a
   // student outside those sections. Unassigned badges (no rows in
   // achievementSectionAssignments) stay global, matching the "opt-in
   // scoping" convention used for quiz/mail section assignment too.
-  const sectionAssignments = DB.achievementSectionAssignments || {};
+  const sectionAssignments = AppStore.getSlice(s => s.achievementSectionAssignments) || {};
   const myClassId          = student.classId || 'default-class';
 
-  (DB.achievements || []).forEach(ach => {
-    if (!ach.active || alreadyUnlocked.has(ach.id)) return;
+  const newlyUnlocked = (AppStore.getSlice(s => s.achievements) || []).filter(ach => {
+    if (!ach.active || alreadyUnlocked.has(ach.id)) return false;
     const assignedSections = sectionAssignments[ach.id];
-    if (assignedSections && assignedSections.length > 0 && !assignedSections.includes(myClassId)) return;
-    if (!achEvaluateTrigger(ach, stats)) return;
-    DB.achievementUnlocks[studentId].push({
-      achId:         ach.id,
-      unlockedAt:    new Date().toISOString(),
-      xpGranted:     parseInt(ach.xpReward)   || 0,
-      coinsGranted:  parseInt(ach.coinReward) || 0,
-      claimed:       false,
-      claimedAt:     null,
-    });
-    // Phase 17: record the unlock server-side too (claimed:false, 0/0 —
-    // actual xp/coins are stamped at claim time by
-    // syncAchievementClaimToServer). Fire-and-forget, same posture as
-    // syncStudentStatsToServer elsewhere in this file.
-    syncAchievementUnlockToServer(studentId, ach.id, 0, 0, false, myClassId);
-    newlyUnlocked.push(ach);
+    if (assignedSections && assignedSections.length > 0 && !assignedSections.includes(myClassId)) return false;
+    return achEvaluateTrigger(ach, stats);
   });
 
-  if (newlyUnlocked.length) {
-    currentUser = DB.students[sIdx];
-    saveDB();
-    achUpdateSidebarBadge();
-    if (!suppressPopup) newlyUnlocked.forEach((ach, i) => setTimeout(() => achShowUnlockPopup(ach), i * 1400));
-  }
+  if (!newlyUnlocked.length) return;
+
+  AppStore.updateState(draft => {
+    if (!draft.achievementUnlocks) draft.achievementUnlocks = {};
+    if (!draft.achievementUnlocks[studentId]) draft.achievementUnlocks[studentId] = [];
+    newlyUnlocked.forEach(ach => {
+      draft.achievementUnlocks[studentId].push({
+        achId:         ach.id,
+        unlockedAt:    new Date().toISOString(),
+        xpGranted:     parseInt(ach.xpReward)   || 0,
+        coinsGranted:  parseInt(ach.coinReward) || 0,
+        claimed:       false,
+        claimedAt:     null,
+      });
+    });
+  }, { type: 'achievements:unlocked', payload: { studentId, achIds: newlyUnlocked.map(a => a.id) } });
+
+  // Phase 17: record the unlock server-side too (claimed:false, 0/0 —
+  // actual xp/coins are stamped at claim time by
+  // syncAchievementClaimToServer). Fire-and-forget, same posture as
+  // syncStudentStatsToServer elsewhere in this file.
+  newlyUnlocked.forEach(ach => syncAchievementUnlockToServer(studentId, ach.id, 0, 0, false, myClassId));
+
+  // [Preserved from pre-migration behavior, not introduced by this
+  // migration] This reassigns currentUser unconditionally, even when
+  // studentId isn't the logged-in session's own id (achCheckAndAward is
+  // sometimes called for other students — e.g. every boss-fight
+  // participant in combat-settings.js). Whether that's correct for those
+  // call sites is a pre-existing question, not something this phase's
+  // storage-layer migration should silently change.
+  currentUser = (AppStore.getSlice(s => s.students) || []).find(s => s.id === studentId);
+  achUpdateSidebarBadge();
+  if (!suppressPopup) newlyUnlocked.forEach((ach, i) => setTimeout(() => achShowUnlockPopup(ach), i * 1400));
 };
 
 // ── Claim-time reward granting ────────────────────────────────────────────────
@@ -247,28 +257,36 @@ window.achCheckAndAward = function (studentId, suppressPopup) {
  * Returns { xp, coins } on success, false if already claimed.
  */
 window.achGrantRewardsForClaim = function (studentId, achId) {
-  DB = loadDB();
-  const sIdx = DB.students.findIndex(s => s.id === studentId);
-  if (sIdx < 0) return false;
-  const unlockList = DB.achievementUnlocks[studentId] || [];
-  const unlockRec  = unlockList.find(u => u.achId === achId);
-  if (!unlockRec || unlockRec.claimed) return false;
+  const existingUnlock = ((AppStore.getSlice(s => s.achievementUnlocks) || {})[studentId] || []).find(u => u.achId === achId);
+  if (!existingUnlock || existingUnlock.claimed) return false;
 
-  const xpGrant   = parseInt(unlockRec.xpGranted)   || 0;
-  const coinGrant = parseInt(unlockRec.coinsGranted) || 0;
-  DB.students[sIdx].xp    += xpGrant;
-  DB.students[sIdx].coins += coinGrant;
+  const xpGrant   = parseInt(existingUnlock.xpGranted)   || 0;
+  const coinGrant = parseInt(existingUnlock.coinsGranted) || 0;
+  const achName   = (AppStore.getSlice(s => s.achievements) || []).find(a => a.id === achId)?.name || 'Achievement';
+
+  let updatedStudent = null;
+  AppStore.updateState(draft => {
+    const s = (draft.students || []).find(x => x.id === studentId);
+    if (!s) return;
+    s.xp    = (s.xp || 0) + xpGrant;
+    s.coins = (s.coins || 0) + coinGrant;
+
+    const unlockRec = ((draft.achievementUnlocks || {})[studentId] || []).find(u => u.achId === achId);
+    if (unlockRec) { unlockRec.claimed = true; unlockRec.claimedAt = new Date().toISOString(); }
+
+    if (xpGrant > 0 || coinGrant > 0) {
+      if (!Array.isArray(draft.pointLog)) draft.pointLog = [];
+      draft.pointLog.unshift({ id: 'pl_' + uid(), studentId, what: `🏅 Achievement Claimed: ${achName}`, pts: coinGrant || xpGrant, when: 'Just now', createdAt: new Date().toISOString() });
+    }
+    updatedStudent = s;
+  }, { type: 'achievements:claimed', payload: { studentId, achId } });
+
+  if (!updatedStudent) return false; // student or unlock record vanished between the pre-check and the update
+
   syncStudentStatsToServer(studentId, xpGrant, coinGrant);
   syncAchievementClaimToServer(studentId, achId, xpGrant, coinGrant);
-  unlockRec.claimed   = true;
-  unlockRec.claimedAt = new Date().toISOString();
 
-  if (xpGrant > 0 || coinGrant > 0) {
-    const achName = (DB.achievements || []).find(a => a.id === achId)?.name || 'Achievement';
-    DB.pointLog.unshift({ id: 'pl_' + uid(), studentId, what: `🏅 Achievement Claimed: ${achName}`, pts: coinGrant || xpGrant, when: 'Just now', createdAt: new Date().toISOString() });
-  }
-  currentUser = DB.students[sIdx];
-  saveDB();
+  currentUser = updatedStudent;
   achUpdateSidebarBadge();
   updateTopbar();
   return { xp: xpGrant, coins: coinGrant };
@@ -282,8 +300,7 @@ window.achGrantRewardsForClaim = function (studentId, achId) {
  */
 window.achUpdateSidebarBadge = function () {
   if (currentRole !== 'student' || !currentUser) return;
-  DB = loadDB();
-  const unlocks       = (DB.achievementUnlocks || {})[currentUser.id] || [];
+  const unlocks       = (AppStore.getSlice(s => s.achievementUnlocks) || {})[currentUser.id] || [];
   const unclaimedCount = unlocks.filter(u => !u.claimed).length;
   const btn            = document.getElementById('nav-s-badges');
   if (!btn) return;
@@ -356,7 +373,7 @@ window.achShowUnlockPopup = function (ach) {
   window.logAttendance = function (status) {
     if (typeof _orig === 'function') _orig(status);
     const sid     = document.getElementById('att-student')?.value;
-    const targets = sid === 'all' ? DB.students.map(s => s.id) : [sid];
+    const targets = sid === 'all' ? (AppStore.getSlice(s => s.students) || []).map(s => s.id) : [sid];
     setTimeout(() => targets.forEach(id => achCheckAndAward(id, true)), 400);
   };
 })();

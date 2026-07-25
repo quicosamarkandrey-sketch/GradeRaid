@@ -28,9 +28,8 @@
 window.renderBadges = function () {
   const st = currentUser;
   if (!st) return;
-  DB = loadDB();
 
-  const unlocks     = (DB.achievementUnlocks || {})[st.id] || [];
+  const unlocks     = (AppStore.getSlice(s => s.achievementUnlocks) || {})[st.id] || [];
   const unlockedIds = new Set(unlocks.map(u => u.achId));
 
   // Phase 16 (closing the deferred gap noted in ach_admin_page.js): a badge
@@ -40,14 +39,14 @@ window.renderBadges = function () {
   // only shown to students in one of those sections. Already-unlocked badges
   // stay visible regardless (an assignment change after the fact shouldn't
   // make an earned badge disappear from a student's own collection).
-  const sectionAssignments = DB.achievementSectionAssignments || {};
+  const sectionAssignments = AppStore.getSlice(s => s.achievementSectionAssignments) || {};
   const myClassId          = st.classId || 'default-class';
   const inMySection = (ach) => {
     const assigned = sectionAssignments[ach.id];
     return !assigned || assigned.length === 0 || assigned.includes(myClassId);
   };
 
-  const allAchs     = (DB.achievements || []).filter(a => a.active && (inMySection(a) || unlockedIds.has(a.id)));
+  const allAchs     = (AppStore.getSlice(s => s.achievements) || []).filter(a => a.active && (inMySection(a) || unlockedIds.has(a.id)));
   const visibleAchs = allAchs.filter(a => !a.isHidden || unlockedIds.has(a.id));
   const earned      = allAchs.filter(a => unlockedIds.has(a.id));
 
@@ -171,10 +170,9 @@ window.renderBadges = function () {
  */
 window.achClaimReward = function (achId) {
   if (!currentUser || currentRole !== 'student') return;
-  DB = loadDB();
-  const ach      = (DB.achievements || []).find(a => a.id === achId);
+  const ach      = (AppStore.getSlice(s => s.achievements) || []).find(a => a.id === achId);
   if (!ach) return;
-  const unlocks  = (DB.achievementUnlocks || {})[currentUser.id] || [];
+  const unlocks  = (AppStore.getSlice(s => s.achievementUnlocks) || {})[currentUser.id] || [];
   const rec      = unlocks.find(u => u.achId === achId);
   if (!rec || rec.claimed) { toast('This achievement has already been claimed.', '#ffb4ab'); return; }
 
@@ -195,7 +193,7 @@ window.achClaimReward = function (achId) {
   if ((rec.coinsGranted|| 0) > 0) rewards.push({ type: 'coins', amount: rec.coinsGranted, icon: '🪙',          label: 'Coins', color: 'var(--tertiary)' });
 
   // Check for linked title
-  const linkedTitle = (DB.titles || []).find(t => t.achievementId === achId && t.active);
+  const linkedTitle = (AppStore.getSlice(s => s.titles) || []).find(t => t.achievementId === achId && t.active);
   if (linkedTitle) rewards.push({ type: 'title', amount: 1, icon: linkedTitle.icon || '🎖️', label: linkedTitle.name, color: '#EC4899', titleId: linkedTitle.id });
 
   // Grant rewards

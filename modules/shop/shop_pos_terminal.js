@@ -75,13 +75,15 @@
   document.head.appendChild(style);
 })();
 
-// ── DB migration guard ────────────────────────────────────────────────────────
+// ── AppStore migration guard ──────────────────────────────────────────────────
 // [SUPABASE MIGRATION] Deferred until AppStore.ready resolves — this used to
 // run synchronously at parse time, which relied on loadDB() always being
 // instantly available. That's no longer guaranteed during the brief window
 // before DBService.initRemote() finishes hydrating from Supabase.
 AppStore.ready.then(function () {
-  if (!DB.orders) { DB.orders = []; saveDB(); }
+  if (!AppStore.getSlice(s => s.orders)) {
+    AppStore.updateState(draft => { draft.orders = []; }, { type: 'shop:orders-initialized' });
+  }
 });
 
 // ── Main renderer ─────────────────────────────────────────────────────────────
@@ -93,11 +95,10 @@ AppStore.ready.then(function () {
  * After render: posFilterQueue(), posFilterHistory(), auto-focuses #pos-code-input.
  */
 window.renderPOS = function () {
-  DB = loadDB();
   _posPayCart = {};
   _posPayManualStudentId = null;
   if (typeof window.unmountPosPayCapture === 'function') window.unmountPosPayCapture();
-  const orders    = DB.orders || [];
+  const orders    = AppStore.getSlice(s => s.orders) || [];
   const pending   = orders.filter(o => o.status === 'pending');
   const claimed   = orders.filter(o => o.status === 'claimed');
   const cancelled = orders.filter(o => o.status === 'cancelled');
@@ -244,13 +245,12 @@ window.posSwitchTab = function (tab) {
 // ── Claim code lookup ─────────────────────────────────────────────────────────
 
 window.posLookupCode = function () {
-  DB = loadDB();
   const raw    = (document.getElementById('pos-code-input')?.value || '').trim().toUpperCase();
   const result = document.getElementById('pos-lookup-result');
   if (!result) return;
   if (!raw) { result.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;font-size:13px">Enter a claim code above to look up an order.</div>'; return; }
 
-  const order = (DB.orders || []).find(o => o.claimCode === raw);
+  const order = (AppStore.getSlice(s => s.orders) || []).find(o => o.claimCode === raw);
   if (!order) {
     result.innerHTML = `<div class="pos-result-card pos-result-error"><div style="display:flex;align-items:center;gap:14px"><div style="font-size:36px">❌</div><div><div style="font-family:var(--fh);font-size:16px;font-weight:900;color:#ffb4ab;margin-bottom:4px">Code Not Found</div><div style="font-size:13px;color:var(--text-muted)">No order matches <span style="font-family:var(--fm);color:#ffb4ab">${_esc(raw)}</span>. Check the code and try again.</div></div></div></div>`;
     return;
@@ -291,8 +291,7 @@ window.posLookupCode = function () {
 // ── Claim flow ────────────────────────────────────────────────────────────────
 
 window.posConfirmClaim = function (orderId) {
-  DB = loadDB();
-  const order = (DB.orders || []).find(o => o.orderId === orderId);
+  const order = (AppStore.getSlice(s => s.orders) || []).find(o => o.orderId === orderId);
   if (!order) { toast('Order not found.', '#ffb4ab'); return; }
   if (order.status === 'claimed')   { toast('⚠️ Already claimed!', '#ffb4ab'); return; }
   if (order.status === 'cancelled') { toast('⚠️ Order was cancelled.', '#ffb4ab'); return; }
@@ -315,28 +314,30 @@ window.posConfirmClaim = function (orderId) {
 };
 
 window.posExecuteClaim = function (orderId) {
-  DB = loadDB();
-  const order = (DB.orders || []).find(o => o.orderId === orderId);
-  if (!order || order.status === 'claimed') { closeModalForce(); toast('⚠️ Already claimed.', '#ffb4ab'); return; }
-  order.status    = 'claimed';
-  order.claimedAt = Date.now();
-  order.claimedBy = DB.admin?.name || 'Teacher';
-  saveDB();
+  const existing = (AppStore.getSlice(s => s.orders) || []).find(o => o.orderId === orderId);
+  if (!existing || existing.status === 'claimed') { closeModalForce(); toast('⚠️ Already claimed.', '#ffb4ab'); return; }
+  const claimedBy = (AppStore.getSlice(s => s.admin) || {}).name || currentUser?.name || 'Teacher';
+  AppStore.updateState(draft => {
+    const order = (draft.orders || []).find(o => o.orderId === orderId);
+    if (!order || order.status === 'claimed') return;
+    order.status    = 'claimed';
+    order.claimedAt = Date.now();
+    order.claimedBy = claimedBy;
+  }, { type: 'shop:order-claimed', payload: { orderId } });
   closeModalForce();
-  toast(`✅ ${order.emoji} "${_esc(order.itemName)}" claimed by ${_esc(order.studentName)}!`, '#4edea3');
+  toast(`✅ ${existing.emoji} "${_esc(existing.itemName)}" claimed by ${_esc(existing.studentName)}!`, '#4edea3');
   const input = document.getElementById('pos-code-input');
   if (input) input.value = '';
   const resultEl = document.getElementById('pos-lookup-result');
-  if (resultEl) resultEl.innerHTML = `<div style="text-align:center;padding:20px;background:rgba(78,222,163,.07);border:1px solid rgba(78,222,163,.2);border-radius:14px;animation:fadeIn .3s ease"><div style="font-size:40px;margin-bottom:8px">✅</div><div style="font-family:var(--fh);font-size:16px;font-weight:900;color:var(--secondary);margin-bottom:4px">Reward Distributed!</div><div style="font-size:13px;color:var(--text-muted)">${_esc(order.emoji)} ${_esc(order.itemName)} → ${_esc(order.studentName)}</div></div>`;
+  if (resultEl) resultEl.innerHTML = `<div style="text-align:center;padding:20px;background:rgba(78,222,163,.07);border:1px solid rgba(78,222,163,.2);border-radius:14px;animation:fadeIn .3s ease"><div style="font-size:40px;margin-bottom:8px">✅</div><div style="font-family:var(--fh);font-size:16px;font-weight:900;color:var(--secondary);margin-bottom:4px">Reward Distributed!</div><div style="font-size:13px;color:var(--text-muted)">${_esc(existing.emoji)} ${_esc(existing.itemName)} → ${_esc(existing.studentName)}</div></div>`;
   const tab = document.getElementById('postab-queue');
-  if (tab) { DB = loadDB(); const pCount = (DB.orders || []).filter(o => o.status === 'pending').length; tab.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px">pending_actions</span> Pending Queue${pCount > 0 ? `<span style="background:rgba(255,185,95,.2);border:1px solid rgba(255,185,95,.3);border-radius:10px;padding:1px 7px;font-size:10px;font-weight:900;color:var(--tertiary);font-family:var(--fh)">${pCount}</span>` : ''}`; }
+  if (tab) { const pCount = (AppStore.getSlice(s => s.orders) || []).filter(o => o.status === 'pending').length; tab.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px">pending_actions</span> Pending Queue${pCount > 0 ? `<span style="background:rgba(255,185,95,.2);border:1px solid rgba(255,185,95,.3);border-radius:10px;padding:1px 7px;font-size:10px;font-weight:900;color:var(--tertiary);font-family:var(--fh)">${pCount}</span>` : ''}`; }
 };
 
 // ── Cancel flow ───────────────────────────────────────────────────────────────
 
 window.posCancelOrderPrompt = function (orderId) {
-  DB = loadDB();
-  const order = (DB.orders || []).find(o => o.orderId === orderId);
+  const order = (AppStore.getSlice(s => s.orders) || []).find(o => o.orderId === orderId);
   if (!order) return;
   showModal(`<div>
     <div class="modal-h2">Cancel Order?</div>
@@ -353,17 +354,20 @@ window.posCancelOrderPrompt = function (orderId) {
 };
 
 window.posExecuteCancel = function (orderId) {
-  DB = loadDB();
-  const order = (DB.orders || []).find(o => o.orderId === orderId);
-  if (!order) { closeModalForce(); return; }
+  const existing = (AppStore.getSlice(s => s.orders) || []).find(o => o.orderId === orderId);
+  if (!existing) { closeModalForce(); return; }
   const reason = (document.getElementById('pos-cancel-reason')?.value || '').trim();
-  order.status      = 'cancelled';
-  order.cancelledAt = Date.now();
-  order.cancelReason = reason || 'Cancelled by teacher';
-  order.cancelledBy  = DB.admin?.name || 'Teacher';
-  saveDB();
+  const cancelledBy = (AppStore.getSlice(s => s.admin) || {}).name || currentUser?.name || 'Teacher';
+  AppStore.updateState(draft => {
+    const order = (draft.orders || []).find(o => o.orderId === orderId);
+    if (!order) return;
+    order.status       = 'cancelled';
+    order.cancelledAt  = Date.now();
+    order.cancelReason = reason || 'Cancelled by teacher';
+    order.cancelledBy  = cancelledBy;
+  }, { type: 'shop:order-cancelled', payload: { orderId } });
   closeModalForce();
-  toast(`🚫 Order for "${order.itemName}" cancelled.`, '#ffb4ab');
+  toast(`🚫 Order for "${existing.itemName}" cancelled.`, '#ffb4ab');
   renderPOS();
   posSwitchTab('queue');
 };
@@ -411,12 +415,11 @@ function _posPayRenderPanel() {
 }
 
 function _posPayRenderGrid() {
-  DB = loadDB();
   const grid = document.getElementById('pos-pay-grid');
   if (!grid) return;
   const q   = (document.getElementById('pos-pay-search')?.value || '').toLowerCase().trim();
   const cat = document.getElementById('pos-pay-cat')?.value || 'all';
-  let items = DB.store || [];
+  let items = AppStore.getSlice(s => s.store) || [];
   if (cat !== 'all') items = items.filter(i => i.cat === cat);
   if (q)             items = items.filter(i => (i.name || '').toLowerCase().includes(q));
 
@@ -439,8 +442,7 @@ function _posPayRenderGrid() {
 // ── Cart mutation ────────────────────────────────────────────────────────────
 
 window.posPayAddItem = function (id) {
-  DB = loadDB();
-  const item = DB.store.find(i => i.id === id);
+  const item = (AppStore.getSlice(s => s.store) || []).find(i => i.id === id);
   if (!item) return;
   if (item.stock === 0) { toast('❌ Out of stock!', '#ffb4ab'); return; }
   const cartQty = _posPayCart[id] ? _posPayCart[id].qty : 0;
@@ -585,8 +587,7 @@ window.posPayEditSale = function () {
 };
 
 function _posPayHandleTag(tag) {
-  DB = loadDB();
-  const card = (DB.rfidCards || []).find(c => c.tagId === tag && c.isActive);
+  const card = (AppStore.getSlice(s => s.rfidCards) || []).find(c => c.tagId === tag && c.isActive);
   if (!card) {
     _posPayRenderScanError('Card not recognized — it isn\'t registered to any student.');
     return;
@@ -615,12 +616,11 @@ function _posPayRenderScanError(msg) {
 // ── Manual student search (lost/unregistered card fallback) ─────────────────
 
 window.posPaySearchStudent = function () {
-  DB = loadDB();
   const q   = (document.getElementById('pos-pay-manual-search')?.value || '').toLowerCase().trim();
   const box = document.getElementById('pos-pay-manual-results');
   if (!box) return;
   if (!q) { box.innerHTML = ''; return; }
-  const matches = (DB.students || []).filter(s => (s.name || '').toLowerCase().includes(q)).slice(0, 6);
+  const matches = (AppStore.getSlice(s => s.students) || []).filter(s => (s.name || '').toLowerCase().includes(q)).slice(0, 6);
   if (!matches.length) { box.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:6px 2px">No students match "${_esc(q)}".</div>`; return; }
   box.innerHTML = matches.map(s => `
     <div class="pos-pay-manual-row" onclick="posPaySelectStudent('${s.id}')">
@@ -633,8 +633,7 @@ window.posPaySearchStudent = function () {
 };
 
 window.posPaySelectStudent = function (id) {
-  DB = loadDB();
-  const student = (DB.students || []).find(s => s.id === id);
+  const student = (AppStore.getSlice(s => s.students) || []).find(s => s.id === id);
   if (!student) return;
   _posPayManualStudentId = id;
   const total  = _posPayTotal();
@@ -739,8 +738,7 @@ window.posPayNewTransaction = function () {
 
 async function _posPayAttemptCharge(studentId, method) {
   if (_posPayBusy) return;
-  DB = loadDB();
-  const student = (DB.students || []).find(s => s.id === studentId);
+  const student = (AppStore.getSlice(s => s.students) || []).find(s => s.id === studentId);
   const entries = Object.values(_posPayCart);
   if (!student)      { _posPayRenderScanError('Student not found.'); return; }
   if (!entries.length) { toast('Cart is empty.', '#ffb95f'); return; }
@@ -759,7 +757,7 @@ async function _posPayAttemptCharge(studentId, method) {
   const succeeded = [];
   const failed    = [];
   for (const e of entries) {
-    const item = DB.store.find(i => i.id === e.item.id);
+    const item = (AppStore.getSlice(s => s.store) || []).find(i => i.id === e.item.id);
     if (!item) { failed.push({ e, reason: 'no longer available' }); continue; }
     const { data, error } = await DBService.rpc('purchase_shop_product', {
       p_product_id: item.id, p_student_id: studentId, p_quantity: e.qty,
@@ -782,61 +780,68 @@ async function _posPayAttemptCharge(studentId, method) {
   }
 
   const chargeable = succeeded.reduce((s, { e }) => s + e.item.cost * e.qty, 0);
-  const stIdx = DB.students.findIndex(s => s.id === studentId);
-  DB.students[stIdx].coins -= chargeable;
+  const cashier = (AppStore.getSlice(s => s.admin) || {}).name || (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || 'Teacher';
+  const receiptItems = [];
+
+  // Same one-atomic-commit shape as cartCheckout() (shop_store.js) — see
+  // that function's comment for the full reasoning, including why
+  // posGenCode()/promoRecordPurchase() both take the in-progress draft.
+  AppStore.updateState(draft => {
+    const s = (draft.students || []).find(x => x.id === studentId);
+    if (s) s.coins = (s.coins || 0) - chargeable;
+
+    if (!Array.isArray(draft.orders))      draft.orders = [];
+    if (!Array.isArray(draft.redemptions)) draft.redemptions = [];
+    if (!draft.inventory)                  draft.inventory = {};
+    if (!draft.inventory[studentId])       draft.inventory[studentId] = [];
+
+    succeeded.forEach(({ e, item }) => {
+      for (let q = 0; q < e.qty; q++) {
+        const claimCode = posGenCode(draft.orders);
+        const orderId   = 'POS-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(100 + Math.random() * 900);
+        // Created already-claimed: unlike a self-checkout Armory order, this
+        // reward was handed over in person at the moment of payment — there
+        // is no separate claim step for the teacher to do later.
+        draft.orders.unshift({
+          orderId, claimCode,
+          studentId, studentName: student.name, studentInit: student.init, studentColor: student.color,
+          itemId: item.id, itemName: item.name, emoji: item.emoji,
+          cost: item.cost, category: item.cat,
+          status: 'claimed',
+          createdAt: new Date().toISOString(), createdDateStr: todayStr() + ' at ' + nowStr(),
+          claimedAt: Date.now(), claimedBy: cashier, cancelledAt: null, cancelReason: null,
+          entryMethod: method === 'scan' ? 'POS Card Tap' : 'POS Manual',
+        });
+        draft.redemptions.unshift({
+          studentId, itemId: item.id, itemName: item.name, emoji: item.emoji,
+          item: `${item.emoji} ${item.name}`, pts: item.cost, date: todayStr(), time: nowStr(), orderId, claimCode,
+        });
+      }
+      const inv      = draft.inventory[studentId];
+      const existing = inv.find(i => i.itemId === item.id);
+      if (existing) {
+        existing.quantity      = (existing.quantity || 1) + e.qty;
+        existing.lastPurchased = todayStr() + ' ' + nowStr();
+      } else {
+        inv.unshift({
+          itemId: item.id, itemName: item.name, emoji: item.emoji,
+          category: item.cat, quantity: e.qty,
+          datePurchased: todayStr() + ' at ' + nowStr(), source: 'Teacher POS', status: 'active',
+        });
+      }
+      receiptItems.push({ item, qty: e.qty });
+      if (typeof promoRecordPurchase === 'function') promoRecordPurchase(item.id, draft);
+    });
+  }, { type: 'shop:pos-checkout', payload: { studentId, total: chargeable, itemCount: succeeded.length } });
+
   // Same atomic-delta persistence path every other spend site in the app
   // uses — see utils.js's syncStudentStatsToServer() header for why a
   // local-only mutation here would silently "refund" the student on the
   // next reload.
   syncStudentStatsToServer(studentId, 0, -chargeable);
 
-  if (!DB.orders)                    DB.orders = [];
-  if (!DB.redemptions)                DB.redemptions = [];
-  if (!DB.inventory)                  DB.inventory = {};
-  if (!DB.inventory[studentId])       DB.inventory[studentId] = [];
-
-  const cashier = (DB.admin && DB.admin.name) || (typeof currentUser !== 'undefined' && currentUser && currentUser.name) || 'Teacher';
-  const receiptItems = [];
-  succeeded.forEach(({ e, item }) => {
-    for (let q = 0; q < e.qty; q++) {
-      const claimCode = posGenCode();
-      const orderId   = 'POS-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(100 + Math.random() * 900);
-      // Created already-claimed: unlike a self-checkout Armory order, this
-      // reward was handed over in person at the moment of payment — there
-      // is no separate claim step for the teacher to do later.
-      DB.orders.unshift({
-        orderId, claimCode,
-        studentId, studentName: student.name, studentInit: student.init, studentColor: student.color,
-        itemId: item.id, itemName: item.name, emoji: item.emoji,
-        cost: item.cost, category: item.cat,
-        status: 'claimed',
-        createdAt: new Date().toISOString(), createdDateStr: todayStr() + ' at ' + nowStr(),
-        claimedAt: Date.now(), claimedBy: cashier, cancelledAt: null, cancelReason: null,
-        entryMethod: method === 'scan' ? 'POS Card Tap' : 'POS Manual',
-      });
-      DB.redemptions.unshift({
-        studentId, itemId: item.id, itemName: item.name, emoji: item.emoji,
-        item: `${item.emoji} ${item.name}`, pts: item.cost, date: todayStr(), time: nowStr(), orderId, claimCode,
-      });
-    }
-    const inv      = DB.inventory[studentId];
-    const existing = inv.find(i => i.itemId === item.id);
-    if (existing) {
-      existing.quantity      = (existing.quantity || 1) + e.qty;
-      existing.lastPurchased = todayStr() + ' ' + nowStr();
-    } else {
-      inv.unshift({
-        itemId: item.id, itemName: item.name, emoji: item.emoji,
-        category: item.cat, quantity: e.qty,
-        datePurchased: todayStr() + ' at ' + nowStr(), source: 'Teacher POS', status: 'active',
-      });
-    }
-    receiptItems.push({ item, qty: e.qty });
-    if (typeof promoRecordPurchase === 'function') promoRecordPurchase(item.id);
-  });
-
-  if (typeof currentUser !== 'undefined' && currentUser && currentUser.id === studentId) currentUser = DB.students[stIdx];
-  saveDB();
+  const updatedStudent = (AppStore.getSlice(s => s.students) || []).find(s => s.id === studentId);
+  if (typeof currentUser !== 'undefined' && currentUser && currentUser.id === studentId) currentUser = updatedStudent;
   _posPayBusy = false;
 
   toast(`✅ ${chargeable.toLocaleString()} 🪙 charged to ${_esc(student.name)}`, '#4edea3');
@@ -844,7 +849,7 @@ async function _posPayAttemptCharge(studentId, method) {
   _posPayManualStudentId = null;
   _posPayRenderGrid();
   _posPayRenderCart();
-  _posPayRenderReceipt(DB.students[stIdx], receiptItems, chargeable, failed);
+  _posPayRenderReceipt(updatedStudent, receiptItems, chargeable, failed);
   if (typeof invUpdateSidebarBadge === 'function' && typeof currentUser !== 'undefined' && currentUser && currentUser.id === studentId) invUpdateSidebarBadge();
   if (typeof achCheckAndAward === 'function') setTimeout(() => achCheckAndAward(studentId), 400);
 }
@@ -852,10 +857,9 @@ async function _posPayAttemptCharge(studentId, method) {
 // ── Queue filter & render ─────────────────────────────────────────────────────
 
 window.posFilterQueue = function () {
-  DB = loadDB();
   const q   = (document.getElementById('pos-queue-search')?.value || '').toLowerCase().trim();
   const cat = document.getElementById('pos-queue-cat')?.value || 'all';
-  let orders = (DB.orders || []).filter(o => o.status === 'pending' || o.status === 'ready');
+  let orders = (AppStore.getSlice(s => s.orders) || []).filter(o => o.status === 'pending' || o.status === 'ready');
   if (q)          orders = orders.filter(o => (o.studentName || '').toLowerCase().includes(q) || (o.itemName || '').toLowerCase().includes(q) || (o.claimCode || '').toLowerCase().includes(q));
   if (cat !== 'all') orders = orders.filter(o => o.category === cat);
 
@@ -918,11 +922,10 @@ function _posHistPagination(page, totalPages, totalCount, rangeStart, rangeEnd) 
 }
 
 window.posFilterHistory = function (resetPage) {
-  DB = loadDB();
   if (resetPage !== false) _posHistPage = 1;
   const q      = (document.getElementById('pos-hist-search')?.value || '').toLowerCase().trim();
   const filter = document.getElementById('pos-hist-filter')?.value || 'claimed';
-  let orders   = DB.orders || [];
+  let orders   = AppStore.getSlice(s => s.orders) || [];
   if (filter === 'claimed')   orders = orders.filter(o => o.status === 'claimed');
   else if (filter === 'cancelled') orders = orders.filter(o => o.status === 'cancelled');
   else orders = orders.filter(o => o.status === 'claimed' || o.status === 'cancelled');
@@ -955,8 +958,7 @@ window.posFilterHistory = function (resetPage) {
 // ── Analytics ─────────────────────────────────────────────────────────────────
 
 function _posAnalyticsHTML() {
-  DB = loadDB();
-  const orders    = DB.orders || [];
+  const orders    = AppStore.getSlice(s => s.orders) || [];
   const today     = isoDate ? isoDate() : new Date().toISOString().slice(0, 10);
   const todayOrds = orders.filter(o => o.status === 'claimed' && o.claimedAt && new Date(o.claimedAt).toISOString().slice(0, 10) === today);
   const weekAgo   = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
@@ -1021,8 +1023,7 @@ function _posAnalyticsHTML() {
   const _orig = window.renderAnalytics;
   window.renderAnalytics = function () {
     if (typeof _orig === 'function') _orig();
-    DB = loadDB();
-    const orders  = DB.orders || [];
+    const orders  = AppStore.getSlice(s => s.orders) || [];
     const pending = orders.filter(o => o.status === 'pending').length;
     const claimed = orders.filter(o => o.status === 'claimed').length;
     const sect    = document.getElementById('a-analytics');
