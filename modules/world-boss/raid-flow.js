@@ -83,7 +83,7 @@ function wbrPct(boss) {
 // ── HUD update ────────────────────────────────────────────────────────────────
 
 function wbrUpdateHUD() {
-  var boss  = DB.bossEvents[WBR.bossIdx];
+  var boss  = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[WBR.bossIdx];
   if (!boss) return;
   var rec   = wbcMyRecord(WBR.bossIdx);
   var pct   = wbrPct(boss);
@@ -136,17 +136,17 @@ function wbrSceneClick() {
     if (hint) hint.style.display = 'block';
     return;
   }
-  var parts = wbcGetParticipants(WBR.bossIdx);
-  if (parts[currentUser.id]) parts[currentUser.id].bossIntroSeen = true;
-  saveDB();
+  AppStore.updateState(function (draft) {
+    var p = ((draft.bossParticipants || {})[WBR.bossIdx] || {})[currentUser.id];
+    if (p) p.bossIntroSeen = true;
+  }, { type: 'world-boss:intro-seen', payload: { bossIdx: WBR.bossIdx, studentId: currentUser.id } });
   wbrShowEncounter();
 }
 
 // ── Intro screen ──────────────────────────────────────────────────────────────
 
 function wbrShowIntro() {
-  DB = loadDB();
-  var boss  = DB.bossEvents[WBR.bossIdx];
+  var boss  = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[WBR.bossIdx];
   if (!boss) return;
   var stage = wbrBossStage(boss);
   WBR.phase = 'intro';
@@ -165,15 +165,17 @@ function wbrShowIntro() {
 // ── Damage feed ───────────────────────────────────────────────────────────────
 
 function wbrRecordFeed(bossIdx, entry) {
-  var boss = DB.bossEvents[bossIdx];
-  if (!boss) return;
-  if (!boss.damageFeed) boss.damageFeed = [];
-  boss.damageFeed.unshift(Object.assign({ id: uid(), ts: Date.now() }, entry));
-  boss.damageFeed = boss.damageFeed.slice(0, 40);
+  AppStore.updateState(function (draft) {
+    var boss = (draft.bossEvents || [])[bossIdx];
+    if (!boss) return;
+    if (!boss.damageFeed) boss.damageFeed = [];
+    boss.damageFeed.unshift(Object.assign({ id: uid(), ts: Date.now() }, entry));
+    boss.damageFeed = boss.damageFeed.slice(0, 40);
+  }, { type: 'world-boss:feed-recorded', payload: { bossIdx: bossIdx } });
 }
 
 function wbrFeedHTML(bossIdx) {
-  var boss  = DB.bossEvents[bossIdx];
+  var boss  = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
   var feed  = (boss && boss.damageFeed) || [];
   if (!feed.length) return '<div class="wbr-feed-item"><div class="wbr-feed-copy">No raid hits yet.</div></div>';
   return feed.slice(0, 10).map(function (e) {
@@ -194,7 +196,7 @@ function wbrRenderSideOverlays() {
   if (!scene) return;
   scene.querySelectorAll('#wbr-live-feed,#wbr-minion-dock,#wbr-minion-dock-right,#wbr-raid-meta,#wbr-close-btn')
        .forEach(function (el) { el.remove(); });
-  var boss = DB.bossEvents[WBR.bossIdx];
+  var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[WBR.bossIdx];
   if (!boss) return;
   var stats = wbcBattleStats(WBR.bossIdx);
   var rec   = wbcMyRecord(WBR.bossIdx);
@@ -251,8 +253,7 @@ function wbrRenderSideOverlays() {
 // ── Encounter screen ──────────────────────────────────────────────────────────
 
 function wbrShowEncounter() {
-  DB = loadDB();
-  var boss = DB.bossEvents[WBR.bossIdx];
+  var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[WBR.bossIdx];
   if (!boss) return;
   if (boss.status === 'loot' || boss.status === 'ended') { wbrCloseBattle(); return; }
 
@@ -295,8 +296,7 @@ function wbrShowEncounter() {
 // ── Answer handler ────────────────────────────────────────────────────────────
 
 async function wbrAnswer(bossIdx, qIdx, choice) {
-  DB = loadDB();
-  var boss = DB.bossEvents[bossIdx];
+  var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
   var rec = wbcMyRecord(bossIdx);
   if (!rec || rec.isKO) return;
@@ -313,19 +313,20 @@ async function wbrAnswer(bossIdx, qIdx, choice) {
     chosen?.classList.add('correct');
     var result  = wbcCalcDamage(boss);
     var outcome = await wbcApplyDamage(bossIdx, result.damage, currentUser.id, result.isCrit);
-    // Re-fetch rec after wbcApplyDamage (rage patches may have called loadDB internally)
-    var liveRec = wbcGetParticipants(bossIdx)[currentUser.id] || rec;
-    if (result.isCrit) liveRec.critHits = (liveRec.critHits || 0) + 1;
-    if (!liveRec.answerHistory) liveRec.answerHistory = [];
-    liveRec.answerHistory[qIdx] = { correct: true, damage: result.damage };
-    liveRec.lastQIdx = qIdx + 1;
+    AppStore.updateState(function (draft) {
+      var p = ((draft.bossParticipants || {})[bossIdx] || {})[currentUser.id];
+      if (!p) return;
+      if (result.isCrit) p.critHits = (p.critHits || 0) + 1;
+      if (!p.answerHistory) p.answerHistory = [];
+      p.answerHistory[qIdx] = { correct: true, damage: result.damage };
+      p.lastQIdx = qIdx + 1;
+    }, { type: 'world-boss:answer-recorded', payload: { bossIdx: bossIdx, studentId: currentUser.id } });
     wbrRecordFeed(bossIdx, {
       type:      outcome === 'defeated' ? 'kill' : 'hit',
       studentId: currentUser.id, name: currentUser.name,
       init:      currentUser.init, color: currentUser.color,
       damage:    result.damage, crit: result.isCrit,
     });
-    saveDB();
     toast(currentUser.name + ' dealt ' + result.damage.toLocaleString() + ' damage!', result.isCrit ? '#ffb95f' : '#EC4899');
     document.getElementById('camp-scene')?.classList.add('shake');
     setTimeout(function () { document.getElementById('camp-scene')?.classList.remove('shake'); }, 350);
@@ -344,11 +345,14 @@ async function wbrAnswer(bossIdx, qIdx, choice) {
   } else {
     chosen?.classList.add('wrong');
     correct?.classList.add('correct');
-    rec.wrongAnswers = (rec.wrongAnswers || 0) + 1;
-    if (!rec.answerHistory) rec.answerHistory = [];
-    rec.answerHistory[qIdx] = { correct: false, damage: 0 };
-    rec.lastQIdx = qIdx + 1;
-    saveDB();
+    AppStore.updateState(function (draft) {
+      var p = ((draft.bossParticipants || {})[bossIdx] || {})[currentUser.id];
+      if (!p) return;
+      p.wrongAnswers = (p.wrongAnswers || 0) + 1;
+      if (!p.answerHistory) p.answerHistory = [];
+      p.answerHistory[qIdx] = { correct: false, damage: 0 };
+      p.lastQIdx = qIdx + 1;
+    }, { type: 'world-boss:answer-recorded', payload: { bossIdx: bossIdx, studentId: currentUser.id } });
     toast('Wrong answer. The boss resists.', '#ffb4ab');
     setTimeout(function () { wbrShowEncounter(); }, 1100);
   }
@@ -357,8 +361,7 @@ async function wbrAnswer(bossIdx, qIdx, choice) {
 // ── Open battle (with BVE art preload) ───────────────────────────────────────
 
 function wbrOpenBattle(bossIdx) {
-  DB = loadDB();
-  var boss = DB.bossEvents[bossIdx];
+  var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
   if (typeof bvePreloadBossArt === 'function') {
     bvePreloadBossArt(boss)
@@ -370,8 +373,7 @@ function wbrOpenBattle(bossIdx) {
 }
 
 function _wbrOpenBattleRender(bossIdx) {
-  DB = loadDB();
-  var boss = DB.bossEvents[bossIdx];
+  var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
   WBR.bossIdx = bossIdx;
   document.getElementById('campaign-overlay').classList.add('open');
@@ -382,8 +384,7 @@ function _wbrOpenBattleRender(bossIdx) {
   clearInterval(WBR.refreshTimer);
   WBR.refreshTimer = setInterval(function () {
     if (WBR.bossIdx == null) return;
-    DB = loadDB();
-    var b = DB.bossEvents[WBR.bossIdx];
+    var b = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[WBR.bossIdx];
     if (!b || b.status !== 'active') { wbrCloseBattle(); return; }
     wbrUpdateHUD();
     if (WBR.phase === 'battle') {
@@ -406,7 +407,6 @@ function _wbrOpenBattleRender(bossIdx) {
 // ── Lobby page render ─────────────────────────────────────────────────────────
 
 function wbrRenderLobby() {
-  DB = loadDB();
   var page = document.getElementById('s-world-boss');
   if (!page) return;
   var loot = (typeof wblrGetCurrentLootBoss === 'function') ? wblrGetCurrentLootBoss() : null;
@@ -423,7 +423,6 @@ function wbrRenderLobby() {
 }
 
 function _wbrRenderLobbyCore() {
-  DB = loadDB();
   var page = document.getElementById('s-world-boss');
   if (!page) return;
   var loot = (typeof wblrGetCurrentLootBoss === 'function') ? wblrGetCurrentLootBoss() : null;
@@ -500,25 +499,39 @@ function _wbrRenderLobbyCore() {
 window.renderStudentWorldBoss = wbrRenderLobby;
 
 // ── Replace wbcJoinBoss to open battle immediately after joining ──────────────
+// [Phase 3 migration note] This unconditionally overwrites window.wbcJoinBoss
+// again — combat-settings.js's original definition and battle-overlay.js's
+// Patch 3 wrapper (which adds hp/maxHp/isKO to a joined-but-missing-them
+// record) are both already-shadowed dead code by the time this file loads
+// (raid-flow.js's own header says "LOAD AFTER: battle-overlay.js"), since
+// this version already includes hp/maxHp/isKO/bossIntroSeen inline at
+// creation. Third such duplicate-definition finding in this module — see
+// this module's log entry for the others (wbcAnswer in combat-settings.js
+// vs student-page.js). Flagged, not consolidated — Phase 1's job.
 window.wbcJoinBoss = function (bossIdx) {
-  DB = loadDB();
-  var boss = DB.bossEvents[bossIdx];
+  var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
-  var parts = wbcGetParticipants(bossIdx);
-  if (!parts[currentUser.id]) {
-    parts[currentUser.id] = {
-      studentId: currentUser.id, studentName: currentUser.name,
-      studentInit: currentUser.init, studentColor: currentUser.color,
-      totalDamage: 0, correctAnswers: 0, wrongAnswers: 0,
-      critHits: 0, minionsDefeated: 0,
-      joinTime: Date.now(), lastQIdx: 0,
-      hp: 3, maxHp: 3, isKO: false, bossIntroSeen: false,
-    };
+  var existing = wbcGetParticipants(bossIdx)[currentUser.id];
+  if (!existing) {
+    AppStore.updateState(function (draft) {
+      if (!draft.bossParticipants) draft.bossParticipants = {};
+      if (!draft.bossParticipants[bossIdx]) draft.bossParticipants[bossIdx] = {};
+      if (!draft.bossParticipants[bossIdx][currentUser.id]) {
+        draft.bossParticipants[bossIdx][currentUser.id] = {
+          studentId: currentUser.id, studentName: currentUser.name,
+          studentInit: currentUser.init, studentColor: currentUser.color,
+          totalDamage: 0, correctAnswers: 0, wrongAnswers: 0,
+          critHits: 0, minionsDefeated: 0,
+          joinTime: Date.now(), lastQIdx: 0,
+          hp: 3, maxHp: 3, isKO: false, bossIntroSeen: false,
+        };
+      }
+    }, { type: 'world-boss:joined', payload: { bossIdx: bossIdx, studentId: currentUser.id } });
   }
-  saveDB();
+  var myRec = wbcGetParticipants(bossIdx)[currentUser.id];
   WBC.joined = true; WBC.bossIdx = bossIdx;
-  WBC.qIdx = parts[currentUser.id].lastQIdx || 0;
-  WBC.battleStartTime = parts[currentUser.id].joinTime;
+  WBC.qIdx = myRec.lastQIdx || 0;
+  WBC.battleStartTime = myRec.joinTime;
   renderStudentWorldBoss();
   toast('You joined the raid. Opening battle...', '#EC4899');
   setTimeout(function () { wbrOpenBattle(bossIdx); }, 150);

@@ -40,7 +40,7 @@ function bossHpPct(boss) {
 // ── Main admin render ─────────────────────────────────────────────────────────
 
 window.renderAdminBossEvents = function () {
-  const bosses = DB.bossEvents || [];
+  const bosses = AppStore.getSlice(s => s.bossEvents) || [];
   const stats  = {
     total:  bosses.length,
     active: bosses.filter(b => b.status === 'active').length,
@@ -89,6 +89,7 @@ window.renderAdminBossEvents = function () {
 // ── Boss event card HTML ───────────────────────────────────────────────────────
 
 window._bossEventCardHTML = function (boss, bi) {
+  const bossParticipants = AppStore.getSlice(s => s.bossParticipants) || {};
   const hpPct  = bossHpPct(boss);
   const diffC  = diffColor(boss.difficulty);
   const _ms    = wbmSettings(boss);
@@ -129,8 +130,8 @@ window._bossEventCardHTML = function (boss, bi) {
       <div class="boss-event-stats">
         <div class="boss-ev-stat"><div class="v" style="color:#d0bcff">⚡${(boss.xpReward || 0).toLocaleString()}</div><div class="l">XP Reward</div></div>
         <div class="boss-ev-stat"><div class="v" style="color:var(--tertiary)">🪙${(boss.coinReward || 0).toLocaleString()}</div><div class="l">Coin Reward</div></div>
-        <div class="boss-ev-stat"><div class="v" style="color:#4edea3">⚔️${Object.keys((DB.bossParticipants || {})[bi] || {}).length}</div><div class="l">Raiders</div></div>
-        <div class="boss-ev-stat"><div class="v" style="color:#EC4899">💥${Object.values((DB.bossParticipants || {})[bi] || {}).reduce((a, p) => a + p.totalDamage, 0).toLocaleString()}</div><div class="l">Total Dmg</div></div>
+        <div class="boss-ev-stat"><div class="v" style="color:#4edea3">⚔️${Object.keys(bossParticipants[bi] || {}).length}</div><div class="l">Raiders</div></div>
+        <div class="boss-ev-stat"><div class="v" style="color:#EC4899">💥${Object.values(bossParticipants[bi] || {}).reduce((a, p) => a + p.totalDamage, 0).toLocaleString()}</div><div class="l">Total Dmg</div></div>
       </div>
       <div class="boss-event-actions">
         <button class="btn btn-ghost btn-sm" onclick="openBossForm(${bi})" title="Edit Boss"><span class="material-symbols-outlined" style="font-size:15px">edit</span> Edit</button>
@@ -159,81 +160,98 @@ window._bossEventCardHTML = function (boss, bi) {
 // ── Boss actions ───────────────────────────────────────────────────────────────
 
 window.bossActivate = async function (bi) {
-  if (!DB.bossEvents[bi]) return;
-  const boss       = DB.bossEvents[bi];
-  const restarting = boss.status === 'ended' || boss.status === 'loot' || (boss.currentHp !== undefined && boss.currentHp <= 0);
-  if (!confirm(`Activate "${boss.name}"?\n\nThis will make the boss LIVE and visible to all students.${restarting ? '\n\nPrevious raid, loot, and claim progress will reset for a fresh run.' : ''}`)) return;
-  // Phase 14: only end other bosses in THIS boss's own section — a global
-  // sweep here was ending every other teacher's live boss the moment any
-  // one section's boss was activated (see phase14_section_isolation.sql).
-  DB.bossEvents.forEach((b, i) => {
-    if (i !== bi && b.classId === boss.classId && (b.status === 'active' || b.status === 'loot')) {
-      b.status = 'ended';
-    }
-  });
-  boss.status = 'active'; boss.activatedAt = Date.now(); boss.currentHp = boss.maxHp;
-  if (!boss.lootRewards || !boss.lootRewards.length) boss.lootRewards = wblrDefaultRewards();
-  boss.lootRewards = wblrNormalizeRewards(boss.lootRewards);
-  boss.lootClaims  = [];
-  delete boss.defeatedAt; delete boss.endedAt; delete boss.lootStartedAt; delete boss.lootFinalizedAt; delete boss._lootRainShown;
-  if (!DB.bossParticipants) DB.bossParticipants = {};
-  DB.bossParticipants[bi] = {};
-  boss.activeMinions = [];
-  const parts = wbcGetParticipants(bi);
-  Object.values(parts).forEach(p => { p.hp = 3; p.maxHp = 3; p.isKO = false; p.koTime = 0; p.reviveAt = 0; p.minionLog = []; });
-  saveDB();
+  const existing = (AppStore.getSlice(s => s.bossEvents) || [])[bi];
+  if (!existing) return;
+  const restarting = existing.status === 'ended' || existing.status === 'loot' || (existing.currentHp !== undefined && existing.currentHp <= 0);
+  if (!confirm(`Activate "${existing.name}"?\n\nThis will make the boss LIVE and visible to all students.${restarting ? '\n\nPrevious raid, loot, and claim progress will reset for a fresh run.' : ''}`)) return;
+
+  let bossName = existing.name;
+  AppStore.updateState(draft => {
+    const boss = (draft.bossEvents || [])[bi];
+    if (!boss) return;
+    bossName = boss.name;
+    // Phase 14: only end other bosses in THIS boss's own section — a global
+    // sweep here was ending every other teacher's live boss the moment any
+    // one section's boss was activated (see phase14_section_isolation.sql).
+    (draft.bossEvents || []).forEach((b, i) => {
+      if (i !== bi && b.classId === boss.classId && (b.status === 'active' || b.status === 'loot')) {
+        b.status = 'ended';
+      }
+    });
+    boss.status = 'active'; boss.activatedAt = Date.now(); boss.currentHp = boss.maxHp;
+    if (!boss.lootRewards || !boss.lootRewards.length) boss.lootRewards = wblrDefaultRewards();
+    boss.lootRewards = wblrNormalizeRewards(boss.lootRewards);
+    boss.lootClaims  = [];
+    delete boss.defeatedAt; delete boss.endedAt; delete boss.lootStartedAt; delete boss.lootFinalizedAt; delete boss._lootRainShown;
+    if (!draft.bossParticipants) draft.bossParticipants = {};
+    draft.bossParticipants[bi] = {};
+    boss.activeMinions = [];
+  }, { type: 'world-boss:activated', payload: { bossIdx: bi } });
+
   renderAdminBossEvents();
-  toast('💀 Boss "' + boss.name + '" is now LIVE!', '#EC4899');
+  toast('💀 Boss "' + bossName + '" is now LIVE!', '#EC4899');
   // Phase 24: start_boss_event() atomically ends siblings + resets
   // current_hp/status/timestamps + clears participant/loot rows
   // server-side, instead of leaving all of that to whatever the next
   // bulk boss_events push happens to carry.
-  if (typeof DBService !== 'undefined' && typeof DBService.rpc === 'function' && boss._id) {
-    const { error } = await DBService.rpc('start_boss_event', { p_boss_id: boss._id, p_class_id: boss.classId || 'default-class' });
+  if (typeof DBService !== 'undefined' && typeof DBService.rpc === 'function' && existing._id) {
+    const { error } = await DBService.rpc('start_boss_event', { p_boss_id: existing._id, p_class_id: existing.classId || 'default-class' });
     if (error) toast('⚠️ Activated locally, but may not have synced: ' + error.message, '#ffb95f');
   }
 };
 
 window.bossEnd = async function (bi) {
-  if (!DB.bossEvents[bi]) return;
-  const boss = DB.bossEvents[bi];
-  if (!confirm(`End the event for "${boss.name}"?\n\nThe boss will be marked as ended and hidden from students.`)) return;
-  boss.status = 'ended'; boss.endedAt = Date.now();
-  saveDB(); renderAdminBossEvents();
-  toast('⏹️ Boss event "' + boss.name + '" ended.', '#ffb95f');
+  const existing = (AppStore.getSlice(s => s.bossEvents) || [])[bi];
+  if (!existing) return;
+  if (!confirm(`End the event for "${existing.name}"?\n\nThe boss will be marked as ended and hidden from students.`)) return;
+  AppStore.updateState(draft => {
+    const boss = (draft.bossEvents || [])[bi];
+    if (boss) { boss.status = 'ended'; boss.endedAt = Date.now(); }
+  }, { type: 'world-boss:ended', payload: { bossIdx: bi } });
+  renderAdminBossEvents();
+  toast('⏹️ Boss event "' + existing.name + '" ended.', '#ffb95f');
   // Phase 24: end_boss_event() atomically writes status/ended_at
   // server-side instead of leaving it to whatever the next bulk
   // boss_events push happens to carry.
-  if (typeof DBService !== 'undefined' && typeof DBService.rpc === 'function' && boss._id) {
-    const { error } = await DBService.rpc('end_boss_event', { p_boss_id: boss._id, p_class_id: boss.classId || 'default-class' });
+  if (typeof DBService !== 'undefined' && typeof DBService.rpc === 'function' && existing._id) {
+    const { error } = await DBService.rpc('end_boss_event', { p_boss_id: existing._id, p_class_id: existing.classId || 'default-class' });
     if (error) toast('⚠️ Ended locally, but may not have synced: ' + error.message, '#ffb95f');
   }
 };
 
 window.bossDelete = async function (bi) {
-  if (!DB.bossEvents[bi]) return;
-  const boss = DB.bossEvents[bi];
-  if (!confirm(`Permanently delete "${boss.name}"?\n\nThis cannot be undone.`)) return;
+  const existing = (AppStore.getSlice(s => s.bossEvents) || [])[bi];
+  if (!existing) return;
+  if (!confirm(`Permanently delete "${existing.name}"?\n\nThis cannot be undone.`)) return;
   wbmStopSpawnLoop();
   if (WBC.refreshInterval)  { clearInterval(WBC.refreshInterval);  WBC.refreshInterval  = null; }
   if (WBC.cooldownTimeout)  { clearTimeout(WBC.cooldownTimeout);   WBC.cooldownTimeout  = null; }
-  DB.bossEvents.splice(bi, 1);
-  saveDB(); renderAdminBossEvents();
-  toast('🗑️ Boss "' + boss.name + '" deleted.');
+  AppStore.updateState(draft => {
+    if (Array.isArray(draft.bossEvents)) draft.bossEvents.splice(bi, 1);
+  }, { type: 'world-boss:deleted', payload: { bossIdx: bi } });
+  renderAdminBossEvents();
+  toast('🗑️ Boss "' + existing.name + '" deleted.');
   // Phase 23: the bulk push is upsert-only and never deletes server rows —
   // without this, the boss (and its participants/loot claims) would
   // silently reappear for everyone on the next pull. delete_boss_event()
   // is section-scope-checked the same as boss_events' own RLS write policy.
-  if (typeof DBService !== 'undefined' && typeof DBService.rpc === 'function' && boss._id) {
-    const { error } = await DBService.rpc('delete_boss_event', { p_boss_id: boss._id });
+  if (typeof DBService !== 'undefined' && typeof DBService.rpc === 'function' && existing._id) {
+    const { error } = await DBService.rpc('delete_boss_event', { p_boss_id: existing._id });
     if (error) toast('⚠️ Removed locally, but may not have synced: ' + error.message, '#ffb95f');
   }
 };
 
 // ── Combat settings modal ──────────────────────────────────────────────────────
 
+// [Phase 3 migration note] This unconditionally overwrites window.
+// wbcOpenCombatSettings/wbcSaveCombatSettings again — admin-page.js's own
+// header says "LOAD AFTER: combat-settings.js", so combat-settings.js's
+// versions of both functions are already-shadowed dead code by the time
+// this file loads. Fourth duplicate-definition finding in this module
+// (after wbcAnswer, wbcJoinBoss, and this pair) — see this module's log
+// entry. Flagged, not consolidated — Phase 1's job.
 window.wbcOpenCombatSettings = function (bossIdx) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;
   const s = boss.combatSettings || wbcDefaultSettings();
   showModal(`
@@ -267,9 +285,9 @@ window.wbcOpenCombatSettings = function (bossIdx) {
 };
 
 window.wbcSaveCombatSettings = function (bossIdx) {
-  const boss = DB.bossEvents[bossIdx];
-  if (!boss) return;
-  boss.combatSettings = {
+  const existing = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
+  if (!existing) return;
+  const combatSettings = {
     damagePerAnswer: parseInt(document.getElementById('cs-dmg-fixed')?.value) || 150,
     damageMinRandom: parseInt(document.getElementById('cs-dmg-min')?.value)   || 80,
     damageMaxRandom: parseInt(document.getElementById('cs-dmg-max')?.value)   || 200,
@@ -278,7 +296,11 @@ window.wbcSaveCombatSettings = function (bossIdx) {
     critMultiplier:  parseFloat(document.getElementById('cs-crit-mult')?.value)   || 2.5,
     questionCooldown: parseInt(document.getElementById('cs-cooldown')?.value) || 0,
   };
-  saveDB(); closeModalForce();
+  AppStore.updateState(draft => {
+    const boss = (draft.bossEvents || [])[bossIdx];
+    if (boss) boss.combatSettings = combatSettings;
+  }, { type: 'world-boss:combat-settings-saved', payload: { bossIdx } });
+  closeModalForce();
   toast('✅ Combat settings saved!', '#EC4899');
   renderAdminBossEvents();
 };
@@ -286,11 +308,10 @@ window.wbcSaveCombatSettings = function (bossIdx) {
 // ── Question editor ───────────────────────────────────────────────────────────
 
 window.wbcOpenQuestionEditor = function (bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;
   const qs = boss.bossQuestions || [];
-  const allQuizzes = DB.quizzes || [];
+  const allQuizzes = AppStore.getSlice(s => s.quizzes) || [];
   window._wbcDraftQuestions   = JSON.parse(JSON.stringify(qs));
   showModal(`
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
@@ -347,7 +368,7 @@ window.wbcRemoveQuestion = function (qi) {
 window.wbcImportFromQuiz = function (bossIdx) {
   const quizId = document.getElementById('wbq-import-quiz')?.value;
   if (!quizId) { toast('Select a quest first', '#ffb4ab'); return; }
-  const quiz = (DB.quizzes || []).find(q => q.id === quizId);
+  const quiz = (AppStore.getSlice(s => s.quizzes) || []).find(q => q.id === quizId);
   if (!quiz) return;
   // Quest Board Phase 1/3/5 note: boss combat (battle-overlay.js /
   // minions.js) renders questions as option buttons and only understands
@@ -371,9 +392,8 @@ window.wbcImportFromQuiz = function (bossIdx) {
 };
 
 window.wbcSaveQuestions = function (bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx];
-  if (!boss) return;
+  const existing = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
+  if (!existing) return;
   const qs = window._wbcDraftQuestions || [];
   const emptyQIdx = qs.findIndex(q => !q.q.trim());
   if (emptyQIdx !== -1) { toast(`❌ Question ${emptyQIdx + 1} has no text`, '#ffb4ab'); const el = document.getElementById('wbqb-' + emptyQIdx); if (el) { el.style.border = '1.5px solid #ef4444'; el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
@@ -381,9 +401,12 @@ window.wbcSaveQuestions = function (bossIdx) {
     const emptyOptIdx = (qs[qi].opts || []).findIndex(o => !o.trim());
     if (emptyOptIdx !== -1) { toast(`❌ Q${qi + 1} Option ${String.fromCharCode(65 + emptyOptIdx)} is empty`, '#ffb4ab'); const el = document.getElementById('wbqb-' + qi); if (el) { el.style.border = '1.5px solid #ef4444'; el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
   }
-  boss.bossQuestions = qs;
-  saveDB(); closeModalForce();
-  toast(`✅ ${qs.length} questions saved to "${boss.name}"!`, '#EC4899');
+  AppStore.updateState(draft => {
+    const boss = (draft.bossEvents || [])[bossIdx];
+    if (boss) boss.bossQuestions = qs;
+  }, { type: 'world-boss:questions-saved', payload: { bossIdx } });
+  closeModalForce();
+  toast(`✅ ${qs.length} questions saved to "${existing.name}"!`, '#EC4899');
   renderAdminBossEvents();
 };
 
@@ -445,7 +468,7 @@ window.saveBossForm = function () {
   // BUGFIX (double-submit race): this button has no disable/loading guard
   // (unlike login/logout, which use eqButtonLoading), so a fast double-click
   // could run this function twice before closeModalForce() removes the
-  // modal — pushing the SAME boss into DB.bossEvents twice in quick
+  // modal — pushing the SAME boss into the bossEvents slice twice in quick
   // succession. Whichever copy's autosave cycle fires first can race the
   // debounced persist layer and reach Supabase before every field (notably
   // currentHp, set further down) is guaranteed settled, occasionally
@@ -521,19 +544,21 @@ window.saveBossForm = function () {
   const isEdit  = d._index !== null;
   const saveObj = { ...d };
   delete saveObj._index;
-  if (!DB.bossEvents) DB.bossEvents = [];
-  if (isEdit) { DB.bossEvents[d._index] = saveObj; toast('✅ Boss "' + saveObj.name + '" updated!'); }
-  else        {
+  if (!isEdit) {
     // Uses whatever the "Spawn Section" dropdown had selected (see
     // _wbSpawnableSections() / the #bf-section field above) — falls back to
     // ActiveSection only in the unlikely case the field wasn't rendered.
-    saveObj.classId   = d.classId || (window.ActiveSection ? window.ActiveSection.get() : (DB.admin?.classId || 'default-class'));
+    saveObj.classId   = d.classId || (window.ActiveSection ? window.ActiveSection.get() : ((AppStore.getSlice(s => s.admin) || {}).classId || 'default-class'));
     saveObj.status    = 'draft';
     saveObj.createdAt = Date.now();
-    DB.bossEvents.push(saveObj);
-    toast('💀 Boss "' + saveObj.name + '" created!');
   }
-  saveDB(); closeModalForce(); renderAdminBossEvents();
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.bossEvents)) draft.bossEvents = [];
+    if (isEdit) draft.bossEvents[d._index] = saveObj;
+    else        draft.bossEvents.push(saveObj);
+  }, { type: isEdit ? 'world-boss:updated' : 'world-boss:created', payload: { name: saveObj.name } });
+  toast(isEdit ? '✅ Boss "' + saveObj.name + '" updated!' : '💀 Boss "' + saveObj.name + '" created!');
+  closeModalForce(); renderAdminBossEvents();
   } finally {
     window._bossFormSaving = false;
   }
@@ -543,7 +568,7 @@ window.saveBossForm = function () {
 
 window.openBossForm = function (bossIndex) {
   const isEdit     = bossIndex !== null && bossIndex !== undefined;
-  const boss       = isEdit ? { ...DB.bossEvents[bossIndex] } : {
+  const boss       = isEdit ? { ...(AppStore.getSlice(s => s.bossEvents) || [])[bossIndex] } : {
     name: '', description: '', image: '💀', maxHp: 10000, currentHp: 10000,
     startDate: '', endDate: '', difficulty: 'Normal',
     xpReward: 500, coinReward: 250, participationReward: 100, victoryReward: 300,
@@ -582,7 +607,7 @@ window.openBossForm = function (bossIndex) {
       <button type="button" class="btn btn-primary" onclick="bfOpenLibraryPicker()" style="background:linear-gradient(135deg,rgba(236,72,153,0.8),rgba(139,92,246,0.8));width:100%;padding:12px;font-family:var(--fh);font-weight:800;font-size:13px;gap:8px">
         <span class="material-symbols-outlined" style="font-size:16px">library_books</span> Browse Boss Library
       </button>
-      ${(DB.bossLibrary || []).length === 0 ? `<div style="margin-top:10px;font-size:11px;color:var(--text-muted);text-align:center">No boss profiles yet. <button type="button" class="btn btn-ghost btn-xs" onclick="closeModalForce();navTo('a-boss-studio')" style="margin-left:4px">Open Boss Studio →</button></div>` : ''}
+      ${(AppStore.getSlice(s => s.bossLibrary) || []).length === 0 ? `<div style="margin-top:10px;font-size:11px;color:var(--text-muted);text-align:center">No boss profiles yet. <button type="button" class="btn btn-ghost btn-xs" onclick="closeModalForce();navTo('a-boss-studio')" style="margin-left:4px">Open Boss Studio →</button></div>` : ''}
     </div>
     <div style="margin-top:10px;text-align:center"><button type="button" style="background:none;border:none;font-size:11px;color:var(--text-muted);cursor:pointer;text-decoration:underline" onclick="bfSkipLibraryLink()">Or use a simple emoji/image instead (legacy)</button></div>
     <div id="bf-legacy-visual" style="display:none;margin-top:12px">
@@ -674,7 +699,7 @@ window.bfOpenLibraryPicker = function () {
 };
 
 function _bflpRenderModal() {
-  const library  = DB.bossLibrary || [];
+  const library  = AppStore.getSlice(s => s.bossLibrary) || [];
   const existing = document.getElementById('bflp-overlay');
   if (existing) existing.remove();
   const overlay  = document.createElement('div');
@@ -690,7 +715,7 @@ function _bflpRenderModal() {
     <div class="bflp-search"><div class="bflp-search-inner"><span class="material-symbols-outlined" style="font-size:16px;color:var(--text-muted)">search</span><input type="text" id="bflp-search-inp" placeholder="Search by name, theme, or tag…" oninput="_bflpRefreshGrid(this.value)" autocomplete="off"></div></div>
     <div class="bflp-grid" id="bflp-grid">${_bflpBuildCards(library, _bflpSelected, '')}</div>
     <div class="bflp-footer">
-      <div class="bflp-selected-name" id="bflp-sel-label">${_bflpSelected ? ('✅ ' + _esc((DB.bossLibrary || []).find(b => b.id === _bflpSelected)?.name || 'Selected')) : 'No boss selected'}</div>
+      <div class="bflp-selected-name" id="bflp-sel-label">${_bflpSelected ? ('✅ ' + _esc(library.find(b => b.id === _bflpSelected)?.name || 'Selected')) : 'No boss selected'}</div>
       <button class="btn btn-ghost" onclick="document.getElementById('bflp-overlay').remove()">Cancel</button>
       <button class="btn btn-primary" id="bflp-confirm-btn" style="background:linear-gradient(135deg,#EC4899,#9333ea)" ${_bflpSelected ? '' : 'disabled'} onclick="_bflpConfirmSelection()"><span class="material-symbols-outlined" style="font-size:16px">check</span> Use This Boss</button>
     </div>
@@ -734,7 +759,7 @@ window._bflpRefreshGrid = function (query) {
   const grid = document.getElementById('bflp-grid');
   if (!grid) return;
   if (typeof _bveBsLoad === 'function') _bveBsLoad();
-  grid.innerHTML = _bflpBuildCards(DB.bossLibrary || [], _bflpSelected, query);
+  grid.innerHTML = _bflpBuildCards(AppStore.getSlice(s => s.bossLibrary) || [], _bflpSelected, query);
 };
 
 window._bflpSelectCard = function (id, el) {
@@ -743,7 +768,7 @@ window._bflpSelectCard = function (id, el) {
   if (el) el.classList.add('selected');
   const lbl  = document.getElementById('bflp-sel-label');
   const btn  = document.getElementById('bflp-confirm-btn');
-  const boss = (DB.bossLibrary || []).find(b => b.id === id);
+  const boss = (AppStore.getSlice(s => s.bossLibrary) || []).find(b => b.id === id);
   if (lbl) lbl.textContent = boss ? ('✅ ' + boss.name) : 'No boss selected';
   if (btn) btn.disabled = !id;
 };

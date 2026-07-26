@@ -75,22 +75,23 @@ window.wbmEnsureActiveMinions = function (boss) {
 // ── Spawn a minion ─────────────────────────────────────────────────────────────
 
 window.wbmSpawnMinion = function (bossIdx) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
   const s = wbmSettings(boss);
   if (!s.enabled) return;
-  wbmEnsureActiveMinions(boss);
   wbmPruneExpiredMinions(bossIdx);
-  if (boss.activeMinions.length >= (s.maxActive || 3)) return;
+  const freshBoss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
+  const currentActive = (freshBoss && freshBoss.activeMinions) || [];
+  if (currentActive.length >= (s.maxActive || 3)) return;
   if (!s.questions || s.questions.length === 0) return;
 
   const resolvedSide = _wbmResolveSide(s.spawnSide || 'random');
+  const maxActive    = s.maxActive || 3;
 
-  function _createMinion(side) {
-    if (boss.activeMinions.length >= (s.maxActive || 3)) return null;
+  function _buildMinion(side) {
     const minion = _wbmRandomMinion();
     const qIdx = Math.floor(Math.random() * s.questions.length);
-    boss.activeMinions.push({
+    return {
       id:              'mn_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       name:            minion.name,
       sprite:          minion.sprite,
@@ -98,22 +99,25 @@ window.wbmSpawnMinion = function (bossIdx) {
       lifetimeSec:     s.lifetimeSec || 30,
       questionTimeSec: s.questionTimeSec || 20,
       questionIdx:     qIdx,
-      side:            side,
-    });
-    return minion;
+      side,
+    };
   }
 
-  if (resolvedSide === 'both') {
-    const m1 = _createMinion('left');
-    const m2 = _createMinion('right');
-    saveDB();
-    if (m1) _wbmShowSpawnToast(m1.sprite, m1.name + ' (Left)');
-    if (m2) setTimeout(() => _wbmShowSpawnToast(m2.sprite, m2.name + ' (Right)'), 600);
-  } else {
-    const m = _createMinion(resolvedSide);
-    saveDB();
-    if (m) _wbmShowSpawnToast(m.sprite, m.name);
-  }
+  let m1 = null, m2 = null;
+  AppStore.updateState(draft => {
+    const b = (draft.bossEvents || [])[bossIdx];
+    if (!b) return;
+    if (!b.activeMinions) b.activeMinions = [];
+    if (resolvedSide === 'both') {
+      if (b.activeMinions.length < maxActive) { m1 = _buildMinion('left');  b.activeMinions.push(m1); }
+      if (b.activeMinions.length < maxActive) { m2 = _buildMinion('right'); b.activeMinions.push(m2); }
+    } else {
+      if (b.activeMinions.length < maxActive) { m1 = _buildMinion(resolvedSide); b.activeMinions.push(m1); }
+    }
+  }, { type: 'world-boss:minion-spawned', payload: { bossIdx } });
+
+  if (m1) _wbmShowSpawnToast(m1.sprite, resolvedSide === 'both' ? m1.name + ' (Left)' : m1.name);
+  if (m2) setTimeout(() => _wbmShowSpawnToast(m2.sprite, m2.name + ' (Right)'), 600);
 
   if (currentRole === 'student') _wbmRefreshBattleArea(bossIdx);
 };
@@ -121,16 +125,18 @@ window.wbmSpawnMinion = function (bossIdx) {
 // ── Prune expired minions ──────────────────────────────────────────────────────
 
 window.wbmPruneExpiredMinions = function (bossIdx) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;
-  wbmEnsureActiveMinions(boss);
   const now = Date.now();
-  const before = boss.activeMinions.length;
-  boss.activeMinions = boss.activeMinions.filter(m => {
-    const age = (now - m.spawnTime) / 1000;
-    return age < (m.lifetimeSec || 30);
-  });
-  if (boss.activeMinions.length < before) saveDB();
+  const activeMinions = boss.activeMinions || [];
+  const isAlive = m => (now - m.spawnTime) / 1000 < (m.lifetimeSec || 30);
+  const before = activeMinions.length;
+  if (activeMinions.filter(isAlive).length < before) {
+    AppStore.updateState(draft => {
+      const b = (draft.bossEvents || [])[bossIdx];
+      if (b) b.activeMinions = (b.activeMinions || []).filter(isAlive);
+    }, { type: 'world-boss:minions-pruned', payload: { bossIdx } });
+  }
 };
 
 // ── Spawn loop ─────────────────────────────────────────────────────────────────
@@ -140,7 +146,7 @@ window.wbmPruneExpiredMinions = function (bossIdx) {
 
 window.wbmStartSpawnLoop = function (bossIdx) {
   wbmStopSpawnLoop();
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;
   const s = wbmSettings(boss);
   if (!s.enabled || s.spawnIntervalSec <= 0) return;
@@ -169,7 +175,7 @@ window.wbmMyHp = function (bossIdx) {
 };
 
 window.wbmGetCurrentMinion = function (bossIdx) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return null;
   wbmPruneExpiredMinions(bossIdx);
   if (!boss.activeMinions || boss.activeMinions.length === 0) return null;
@@ -177,7 +183,7 @@ window.wbmGetCurrentMinion = function (bossIdx) {
 };
 
 window.wbmGetCurrentMinionBySide = function (bossIdx, side) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return null;
   wbmPruneExpiredMinions(bossIdx);
   if (!boss.activeMinions || boss.activeMinions.length === 0) return null;
@@ -215,37 +221,43 @@ window.wbmRenderHpBar = function (bossIdx) {
 // ── Damage application ────────────────────────────────────────────────────────
 
 window.wbmDealDamage = function (bossIdx, reason) {
-  const parts = wbcGetParticipants(bossIdx);
-  if (!parts[currentUser.id]) return;
-  const rec = parts[currentUser.id];
-  if (rec.hp    === undefined) rec.hp    = 3;
-  if (rec.maxHp === undefined) rec.maxHp = 3;
-  if (rec.isKO) return;
+  const existing = wbcGetParticipants(bossIdx)[currentUser.id];
+  if (!existing || existing.isKO) return;
 
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   const s = wbmSettings(boss);
   const damage = Math.max(1, Math.min(3, parseInt(s.minionDamage) || 1));
-  rec.hp = Math.max(0, rec.hp - damage);
 
-  const lostIdx = rec.hp;
-  const heartEl = document.getElementById('wbm-heart-' + lostIdx);
+  let newHp = 0, becameKO = false;
+  AppStore.updateState(draft => {
+    const rec = ((draft.bossParticipants || {})[bossIdx] || {})[currentUser.id];
+    if (!rec || rec.isKO) return;
+    if (rec.hp    === undefined) rec.hp    = 3;
+    if (rec.maxHp === undefined) rec.maxHp = 3;
+    rec.hp = Math.max(0, rec.hp - damage);
+
+    if (!rec.minionLog) rec.minionLog = [];
+    rec.minionLog.unshift({ ts: Date.now(), event: reason === 'timeout' ? 'timeout' : 'wrong' });
+
+    if (rec.hp <= 0) {
+      rec.isKO     = true;
+      rec.koTime   = Date.now();
+      rec.reviveAt = Date.now() + ((s.reviveTimeSec || 60) * 1000);
+      rec.hp       = 0;
+      becameKO     = true;
+    }
+    newHp = rec.hp;
+  }, { type: 'world-boss:minion-damage-taken', payload: { bossIdx, studentId: currentUser.id } });
+
+  const heartEl = document.getElementById('wbm-heart-' + newHp);
   if (heartEl) { heartEl.classList.add('shake'); setTimeout(() => heartEl.classList.remove('shake'), 500); }
 
-  if (!rec.minionLog) rec.minionLog = [];
-  rec.minionLog.unshift({ ts: Date.now(), event: reason === 'timeout' ? 'timeout' : 'wrong' });
-
-  if (rec.hp <= 0) {
-    rec.isKO = true;
-    rec.koTime = Date.now();
-    rec.reviveAt = Date.now() + ((s.reviveTimeSec || 60) * 1000);
-    rec.hp = 0;
-    saveDB();
+  if (becameKO) {
     toast('💀 You have been knocked out! Wait to revive or ask your teacher.', '#ef4444');
     _wbmRefreshBattleArea(bossIdx);
     wbmStartKoTimer(bossIdx);
   } else {
-    saveDB();
-    toast(`You lost ${damage} HP! (${rec.hp} remaining)`, reason === 'timeout' ? '#f97316' : '#ef4444');
+    toast(`You lost ${damage} HP! (${newHp} remaining)`, reason === 'timeout' ? '#f97316' : '#ef4444');
     _wbmRefreshBattleArea(bossIdx);
   }
 };
@@ -253,13 +265,13 @@ window.wbmDealDamage = function (bossIdx, reason) {
 // ── Minion answer handler ─────────────────────────────────────────────────────
 
 window.wbmAnswerMinion = function (bossIdx, minionId, chosenOpt) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;
-  wbmEnsureActiveMinions(boss);
-  const mIdx = boss.activeMinions.findIndex(m => m.id === minionId);
+  const activeMinions = boss.activeMinions || [];
+  const mIdx = activeMinions.findIndex(m => m.id === minionId);
   if (mIdx < 0) return;
 
-  const minion = boss.activeMinions[mIdx];
+  const minion = activeMinions[mIdx];
   const s = wbmSettings(boss);
   const q = s.questions[minion.questionIdx];
   if (!q) return;
@@ -272,14 +284,17 @@ window.wbmAnswerMinion = function (bossIdx, minionId, chosenOpt) {
 
   if (isCorrect) {
     chosenEl?.classList.add('correct');
-    boss.activeMinions.splice(mIdx, 1);
-    if (currentUser) {
-      const parts = wbcGetParticipants(bossIdx);
-      if (parts[currentUser.id]) {
-        parts[currentUser.id].minionsDefeated = (parts[currentUser.id].minionsDefeated || 0) + 1;
+    AppStore.updateState(draft => {
+      const b = (draft.bossEvents || [])[bossIdx];
+      if (b && Array.isArray(b.activeMinions)) {
+        const idx = b.activeMinions.findIndex(m => m.id === minionId);
+        if (idx >= 0) b.activeMinions.splice(idx, 1);
       }
-    }
-    saveDB();
+      if (currentUser) {
+        const p = ((draft.bossParticipants || {})[bossIdx] || {})[currentUser.id];
+        if (p) p.minionsDefeated = (p.minionsDefeated || 0) + 1;
+      }
+    }, { type: 'world-boss:minion-defeated', payload: { bossIdx, minionId } });
     if (typeof wblTrackMinionKill === 'function') wblTrackMinionKill(bossIdx, currentUser.id);
     toast('✅ Minion defeated! +1 Minion Kill', '#4edea3');
     setTimeout(() => { _wbmRefreshBattleArea(bossIdx); }, 800);
@@ -293,20 +308,24 @@ window.wbmAnswerMinion = function (bossIdx, minionId, chosenOpt) {
 // ── Minion timeout ────────────────────────────────────────────────────────────
 
 window.wbmMinionTimeout = function (bossIdx, minionId) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;
-  wbmEnsureActiveMinions(boss);
-  const mIdx = boss.activeMinions.findIndex(m => m.id === minionId);
-  if (mIdx < 0) return;
-  boss.activeMinions.splice(mIdx, 1);
-  saveDB();
+  const exists = (boss.activeMinions || []).some(m => m.id === minionId);
+  if (!exists) return;
+  AppStore.updateState(draft => {
+    const b = (draft.bossEvents || [])[bossIdx];
+    if (b && Array.isArray(b.activeMinions)) {
+      const idx = b.activeMinions.findIndex(m => m.id === minionId);
+      if (idx >= 0) b.activeMinions.splice(idx, 1);
+    }
+  }, { type: 'world-boss:minion-timeout', payload: { bossIdx, minionId } });
   wbmDealDamage(bossIdx, 'timeout');
 };
 
 // ── Minion encounter rendering ─────────────────────────────────────────────────
 
 window.wbmRenderMinionSection = function (bossIdx, sideOverride) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return '';
   const minion = sideOverride
     ? wbmGetCurrentMinionBySide(bossIdx, sideOverride)
@@ -385,15 +404,16 @@ window.wbmRenderKOSection = function (bossIdx) {
 // ── Self-revive ────────────────────────────────────────────────────────────────
 
 window.wbmSelfRevive = function (bossIdx) {
-  const parts = wbcGetParticipants(bossIdx);
-  const rec = parts[currentUser.id];
+  const rec = wbcGetParticipants(bossIdx)[currentUser.id];
   if (!rec || !rec.isKO) return;
   if (rec.reviveAt && Date.now() < rec.reviveAt) {
     toast('Auto-revive timer not finished yet!', '#ffb4ab');
     return;
   }
-  rec.isKO = false; rec.hp = 1; rec.koTime = 0; rec.reviveAt = 0;
-  saveDB();
+  AppStore.updateState(draft => {
+    const p = ((draft.bossParticipants || {})[bossIdx] || {})[currentUser.id];
+    if (p) { p.isKO = false; p.hp = 1; p.koTime = 0; p.reviveAt = 0; }
+  }, { type: 'world-boss:self-revived', payload: { bossIdx, studentId: currentUser.id } });
   toast('✨ You have been revived with 1 HP!', '#4edea3');
   wbmStopKoTimer();
   _wbmRefreshBattleArea(bossIdx);
@@ -430,7 +450,7 @@ window.wbmStopKoTimer = function () {
 window.wbmStartMinionCountdown = function (bossIdx) {
   if (WBM.countdownTimer) clearInterval(WBM.countdownTimer);
   WBM.countdownTimer = setInterval(() => {
-    const boss = DB.bossEvents[bossIdx];
+    const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
     if (!boss) { clearInterval(WBM.countdownTimer); return; }
     wbmPruneExpiredMinions(bossIdx);
     const minions = (boss.activeMinions || []).slice();
@@ -453,7 +473,7 @@ window.wbmStartMinionCountdown = function (bossIdx) {
     });
     if (anyTimeout) {
       clearInterval(WBM.countdownTimer); WBM.countdownTimer = null;
-      const boss2 = DB.bossEvents[bossIdx];
+      const boss2 = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
       if (boss2 && boss2.activeMinions) {
         const now = Date.now();
         const expired = boss2.activeMinions.find(m => (now - m.spawnTime) / 1000 >= (m.questionTimeSec || 20));
@@ -526,7 +546,7 @@ function _wbmShowSpawnToast(sprite, name) {
 // ── Admin: Force spawn ────────────────────────────────────────────────────────
 
 window.wbmAdminForceSpawn = function (bossIdx) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;
   const s = wbmSettings(boss);
   if (!s.enabled)                                      { toast('Enable minions first!', '#ffb4ab'); return; }
@@ -539,12 +559,13 @@ window.wbmAdminForceSpawn = function (bossIdx) {
 // ── Admin: Revive student ─────────────────────────────────────────────────────
 
 window.wbmAdminReviveStudent = function (bossIdx, studentId) {
-  const parts = wbcGetParticipants(bossIdx);
-  const rec = parts[studentId];
-  if (!rec) return;
-  rec.isKO = false; rec.hp = 3; rec.koTime = 0; rec.reviveAt = 0;
-  saveDB();
-  const st = DB.students.find(s => s.id === studentId);
+  const existing = wbcGetParticipants(bossIdx)[studentId];
+  if (!existing) return;
+  AppStore.updateState(draft => {
+    const p = ((draft.bossParticipants || {})[bossIdx] || {})[studentId];
+    if (p) { p.isKO = false; p.hp = 3; p.koTime = 0; p.reviveAt = 0; }
+  }, { type: 'world-boss:student-revived', payload: { bossIdx, studentId } });
+  const st = (AppStore.getSlice(s => s.students) || []).find(s => s.id === studentId);
   toast(`✨ ${st ? st.name : 'Student'} has been revived with full HP!`, '#4edea3');
   if (currentUser && currentUser.id === studentId) _wbmRefreshBattleArea(bossIdx);
 };
@@ -553,6 +574,7 @@ window.wbmAdminReviveStudent = function (bossIdx, studentId) {
 
 window.wbmOpenRevivePanel = function (bossIdx) {
   const parts = Object.values(wbcGetParticipants(bossIdx));
+  const students = AppStore.getSlice(s => s.students) || [];
   showModal(`
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
     <div style="width:40px;height:40px;border-radius:10px;background:rgba(78,222,163,.15);border:1px solid rgba(78,222,163,.3);display:flex;align-items:center;justify-content:center;font-size:22px">✨</div>
@@ -564,7 +586,7 @@ window.wbmOpenRevivePanel = function (bossIdx) {
   ${parts.length === 0
     ? `<div style="text-align:center;padding:32px;color:var(--text-muted)">No students have joined yet.</div>`
     : parts.map(p => {
-        const st = DB.students.find(s => s.id === p.studentId);
+        const st = students.find(s => s.id === p.studentId);
         const hp = p.hp !== undefined ? p.hp : 3;
         const isKO = !!p.isKO;
         return `<div class="wbm-revive-student-row ${isKO ? 'ko-row' : ''}">
@@ -590,7 +612,7 @@ window.wbmOpenRevivePanel = function (bossIdx) {
 // ── Admin: Minion settings modal ──────────────────────────────────────────────
 
 window.wbmOpenMinionSettings = function (bossIdx) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;
   const s = wbmSettings(boss);
   window._wbmDraftMinionQs = JSON.parse(JSON.stringify(s.questions || []));
@@ -682,13 +704,13 @@ window.wbmOpenMinionSettings = function (bossIdx) {
       <button class="btn btn-ghost btn-xs" onclick="wbmAdminAddMinionQ()">＋ Add</button>
     </div>
     <div id="wbm-q-list">${_wbmRenderMinionQList(window._wbmDraftMinionQs)}</div>
-    ${(DB.quizzes || []).length > 0 ? `
+    ${(AppStore.getSlice(s => s.quizzes) || []).length > 0 ? `
     <div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px">
       <div class="form-group" style="flex:1;margin:0">
         <label class="form-label">Import from Quest</label>
         <select id="wbm-import-quiz" style="width:100%">
           <option value="">— Pick a quest —</option>
-          ${(DB.quizzes || []).map(q => `<option value="${q.id}">${q.title} (${q.questions.length} Qs)</option>`).join('')}
+          ${(AppStore.getSlice(s => s.quizzes) || []).map(q => `<option value="${q.id}">${q.title} (${q.questions.length} Qs)</option>`).join('')}
         </select>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="wbmAdminImportQs()">Import</button>
@@ -757,7 +779,7 @@ window.wbmAdminRemoveMinionQ = function (qi) {
 window.wbmAdminImportQs = function () {
   const qid = document.getElementById('wbm-import-quiz')?.value;
   if (!qid) { toast('Select a quest first', '#ffb4ab'); return; }
-  const quiz = (DB.quizzes || []).find(q => q.id === qid);
+  const quiz = (AppStore.getSlice(s => s.quizzes) || []).find(q => q.id === qid);
   if (!quiz) return;
   window._wbmDraftMinionQs = JSON.parse(JSON.stringify(quiz.questions));
   document.getElementById('wbm-q-list').innerHTML = _wbmRenderMinionQList(window._wbmDraftMinionQs);
@@ -765,9 +787,9 @@ window.wbmAdminImportQs = function () {
 };
 
 window.wbmSaveMinionSettings = function (bossIdx) {
-  const boss = DB.bossEvents[bossIdx];
-  if (!boss) return;
-  boss.minionSettings = {
+  const existing = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
+  if (!existing) return;
+  const minionSettings = {
     enabled:          document.getElementById('wbm-enabled')?.checked  || false,
     spawnIntervalSec: parseInt(document.getElementById('wbm-interval')?.value) || 60,
     maxActive:        parseInt(document.getElementById('wbm-max')?.value)      || 3,
@@ -778,7 +800,10 @@ window.wbmSaveMinionSettings = function (bossIdx) {
     spawnSide:        document.getElementById('wbm-spawn-side')?.value         || 'random',
     questions:        window._wbmDraftMinionQs || [],
   };
-  saveDB();
+  AppStore.updateState(draft => {
+    const boss = (draft.bossEvents || [])[bossIdx];
+    if (boss) boss.minionSettings = minionSettings;
+  }, { type: 'world-boss:minion-settings-saved', payload: { bossIdx } });
   closeModalForce();
   toast('👿 Minion settings saved!', '#f97316');
   renderAdminBossEvents();

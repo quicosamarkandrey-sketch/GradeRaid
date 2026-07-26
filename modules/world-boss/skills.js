@@ -45,8 +45,7 @@ window.wbsStartCooldown = function (bossIdx, skillId, cooldownSec) {
 };
 
 window.wbsPickSkill = function (bossIdx) {
-  DB = loadDB();
-  const boss   = DB.bossEvents[bossIdx]; if (!boss) return null;
+  const boss   = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return null;
   const skills = wbsGetSkills(boss);
   const phase  = typeof wbpGetPhaseNumber === 'function' ? wbpGetPhaseNumber(boss) : 1;
   const candidates = Object.values(skills).filter(sk =>
@@ -143,8 +142,7 @@ function wbsEffect_meteor_shower(skill) {
 
 window.wbsFireSkill = function (bossIdx, skillId) {
   if (currentRole !== 'student') return;
-  DB = loadDB();
-  const boss   = DB.bossEvents[bossIdx]; if (!boss) return;
+  const boss   = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const skills = wbsGetSkills(boss);
   const skill  = skills[skillId]; if (!skill || !skill.enabled) return;
   wbsStartCooldown(bossIdx, skillId, skill.cooldownSec || 40);
@@ -159,16 +157,16 @@ window.wbsFireSkill = function (bossIdx, skillId) {
 };
 
 window.wbsAdminFireSkill = function (bossIdx, skillId) {
-  DB = loadDB();
-  const boss   = DB.bossEvents[bossIdx]; if (!boss) return;
+  const boss   = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const skills = wbsGetSkills(boss);
   const skill  = skills[skillId];
   if (!skill || !skill.enabled) { toast('⚠️ Skill is disabled — enable it first.', '#ffb95f'); return; }
   WBS.skillCooldowns[bossIdx + '_' + skillId] = 0;
   wbsStartCooldown(bossIdx, skillId, skill.cooldownSec || 40);
   // ⚠️ pendingSkill is a cross-tab signal — DO NOT rename this key [BLOCKER-SIGNAL]
-  DB.pendingSkill = { bossIdx, skillId, firedAt: Date.now() };
-  saveDB();
+  AppStore.updateState(draft => {
+    draft.pendingSkill = { bossIdx, skillId, firedAt: Date.now() };
+  }, { type: 'world-boss:skill-signal', payload: { bossIdx, skillId } });
   toast(`✅ Fired ${skill.emoji} ${skill.name} on student screens!`, '#4edea3');
 };
 
@@ -177,8 +175,7 @@ window.wbsStartSkillLoop = function (bossIdx) {
   WBS.currentBossIdx = bossIdx;
   function _tick() {
     if (currentRole !== 'student') return;
-    DB = loadDB();
-    const boss = DB.bossEvents[bossIdx];
+    const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
     if (!boss || boss.status !== 'active') return;
     if ((boss.skillFireMode || 'auto') === 'manual') { WBS.loopTimer = setTimeout(_tick, 5000); return; }
     const skill = wbsPickSkill(bossIdx);
@@ -201,8 +198,7 @@ window.wbsStopSkillLoop = function () {
 // ── Admin skill config modal ──────────────────────────────────────────────────
 
 window.wbsOpenSkillConfig = function (bossIdx) {
-  DB = loadDB();
-  const boss   = DB.bossEvents[bossIdx]; if (!boss) return;
+  const boss   = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const skills = wbsGetSkills(boss);
   const PHASES = ['any', '1', '2', '3'];
   const rows   = Object.values(skills).map(sk => {
@@ -241,21 +237,31 @@ window.wbsOpenSkillConfig = function (bossIdx) {
 };
 
 window.wbsSaveSkillConfig = function (bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx]; if (!boss) return;
-  boss.skillFireMode    = document.querySelector('input[name="wbs-mode"]:checked')?.value || 'auto';
-  boss.skillIntervalMin = parseInt(document.getElementById('wbs-imin')?.value) || 15;
-  boss.skillIntervalMax = parseInt(document.getElementById('wbs-imax')?.value) || 35;
-  if (!boss.skills) boss.skills = {};
+  const existing = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!existing) return;
+  const skillFireMode    = document.querySelector('input[name="wbs-mode"]:checked')?.value || 'auto';
+  const skillIntervalMin = parseInt(document.getElementById('wbs-imin')?.value) || 15;
+  const skillIntervalMax = parseInt(document.getElementById('wbs-imax')?.value) || 35;
+  const skillPatch = {};
   Object.keys(WBS_SKILL_DEFAULTS).forEach(id => {
-    if (!boss.skills[id]) boss.skills[id] = {};
-    boss.skills[id].enabled     = document.getElementById(`wbs-en-${id}`)?.checked  ?? true;
-    boss.skills[id].durationSec = parseInt(document.getElementById(`wbs-dur-${id}`)?.value) || 4;
-    boss.skills[id].cooldownSec = parseInt(document.getElementById(`wbs-cd-${id}`)?.value)  || 40;
-    boss.skills[id].triggerPhase = document.getElementById(`wbs-ph-${id}`)?.value   || 'any';
-    if (id === 'chaos_wind') boss.skills[id].windSpeed = document.getElementById(`wbs-wind-${id}`)?.value || 'medium';
+    skillPatch[id] = {
+      enabled:      document.getElementById(`wbs-en-${id}`)?.checked  ?? true,
+      durationSec:  parseInt(document.getElementById(`wbs-dur-${id}`)?.value) || 4,
+      cooldownSec:  parseInt(document.getElementById(`wbs-cd-${id}`)?.value)  || 40,
+      triggerPhase: document.getElementById(`wbs-ph-${id}`)?.value   || 'any',
+      ...(id === 'chaos_wind' ? { windSpeed: document.getElementById(`wbs-wind-${id}`)?.value || 'medium' } : {}),
+    };
   });
-  saveDB();
+  AppStore.updateState(draft => {
+    const boss = (draft.bossEvents || [])[bossIdx];
+    if (!boss) return;
+    boss.skillFireMode    = skillFireMode;
+    boss.skillIntervalMin = skillIntervalMin;
+    boss.skillIntervalMax = skillIntervalMax;
+    if (!boss.skills) boss.skills = {};
+    Object.keys(skillPatch).forEach(id => {
+      boss.skills[id] = { ...(boss.skills[id] || {}), ...skillPatch[id] };
+    });
+  }, { type: 'world-boss:skills-saved', payload: { bossIdx } });
   closeModalForce();
   toast('✅ Skill config saved!');
   renderAdminBossEvents();
@@ -417,8 +423,8 @@ window.wblTrackCrit = function (bossIdx, studentId) {
 console.log('[EduQuest] world-boss/skills.js loaded — WBS, WBS_SKILL_DEFAULTS, 6 skill effects, fire loop, admin config registered.');
 
 // ── Cross-tab signal consumer (student-side) ──────────────────────────────────
-// RESTORED: wbsAdminFireSkill() writes a `pendingSkill` signal into the shared
-// DB blob so student tabs can run the effect locally, but nothing in the
+// RESTORED: wbsAdminFireSkill() writes a `pendingSkill` signal into AppStore
+// so student tabs can run the effect locally, but nothing in the
 // extracted codebase ever read that signal back out — admin-triggered
 // "Fire Now" / "Quick Fire" skills never actually appeared on student screens.
 // ⚠️ pendingSkill is a cross-tab signal key — DO NOT rename it [BLOCKER-SIGNAL]
@@ -427,40 +433,44 @@ console.log('[EduQuest] world-boss/skills.js loaded — WBS, WBS_SKILL_DEFAULTS,
   if (window._wbsStorageHandlerAttached) return;
   window._wbsStorageHandlerAttached = true;
 
-  function _consumePendingSkill(freshDB) {
+  function _consumePendingSkill() {
     if (currentRole !== 'student') return;
-    const ps = freshDB.pendingSkill;
+    const state = AppStore.getSlice(s => ({ pendingSkill: s.pendingSkill, bossEvents: s.bossEvents }));
+    const ps = state.pendingSkill;
     if (!ps) return;
     // Only act if the signal is recent (< 8s old) to avoid replaying stale signals
-    if (Date.now() - (ps.firedAt || 0) >= 8000) { delete freshDB.pendingSkill; return; }
-    const boss = freshDB.bossEvents && freshDB.bossEvents[ps.bossIdx];
-    if (boss && boss.status === 'active') {
-      const skills = wbsGetSkills(boss);
-      const skill  = skills[ps.skillId];
-      if (skill && skill.enabled) {
-        if (typeof BVS !== 'undefined') BVS.request('cast', 900);
-        switch (ps.skillId) {
-          case 'earthquake':    wbsEffect_earthquake(skill);    break;
-          case 'chaos_wind':    wbsEffect_chaos_wind(skill);    break;
-          case 'darkness':      wbsEffect_darkness(skill);      break;
-          case 'mirror_trick':  wbsEffect_mirror_trick(skill);  break;
-          case 'berserk_roar':  wbsEffect_berserk_roar(skill);  break;
-          case 'meteor_shower': wbsEffect_meteor_shower(skill); break;
+    const stale = Date.now() - (ps.firedAt || 0) >= 8000;
+    if (!stale) {
+      const boss = state.bossEvents && state.bossEvents[ps.bossIdx];
+      if (boss && boss.status === 'active') {
+        const skills = wbsGetSkills(boss);
+        const skill  = skills[ps.skillId];
+        if (skill && skill.enabled) {
+          if (typeof BVS !== 'undefined') BVS.request('cast', 900);
+          switch (ps.skillId) {
+            case 'earthquake':    wbsEffect_earthquake(skill);    break;
+            case 'chaos_wind':    wbsEffect_chaos_wind(skill);    break;
+            case 'darkness':      wbsEffect_darkness(skill);      break;
+            case 'mirror_trick':  wbsEffect_mirror_trick(skill);  break;
+            case 'berserk_roar':  wbsEffect_berserk_roar(skill);  break;
+            case 'meteor_shower': wbsEffect_meteor_shower(skill); break;
+          }
         }
       }
     }
     // Clear the signal so it only fires once per student tab
-    delete freshDB.pendingSkill;
-    try { DB = freshDB; saveDB(); } catch (ex) {}
+    try {
+      AppStore.updateState(draft => { delete draft.pendingSkill; }, { type: 'world-boss:skill-signal-consumed' });
+    } catch (ex) {}
   }
 
   window.addEventListener('storage', function () {
-    _consumePendingSkill(loadDB());
+    _consumePendingSkill();
   });
 
   // Same-tab fallback poll (storage events don't fire in the tab that wrote them)
   setInterval(() => {
     if (currentRole !== 'student') return;
-    _consumePendingSkill(loadDB());
+    _consumePendingSkill();
   }, 2000);
 })();
