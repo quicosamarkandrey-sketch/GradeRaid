@@ -109,16 +109,14 @@ function _wbrageRemovePersistentToast() {
 
 function _wbrageStartSkillLoop(bossIdx) {
   _wbrageStopSkillLoop();
-  const DB2  = loadDB();
-  const boss = DB2.bossEvents[bossIdx]; if (!boss) return;
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const cfg  = wbrageSettings(boss);
   const mul  = Math.max(1.1, parseFloat(cfg.skillMultiplier) || 2.5);
   const base = Math.max(5, (parseInt(boss.skillIntervalMin) || 15) / mul);
   const max2 = Math.max(base + 2, (parseInt(boss.skillIntervalMax) || 35) / mul);
   function _tick() {
     if (!WBRAGE.activated[bossIdx]) return;
-    DB = loadDB();
-    const b2 = DB.bossEvents[bossIdx];
+    const b2 = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
     if (!b2 || b2.status !== 'active' || !wbrageIsActive(b2)) { _wbrageStopSkillLoop(); return; }
     const skill = wbsPickSkill(bossIdx);
     if (skill) wbsFireSkill(bossIdx, skill.id);
@@ -132,8 +130,7 @@ function _wbrageStopSkillLoop() {
 }
 
 function _wbrageAccelerateSpawns(bossIdx) {
-  const DB2  = loadDB();
-  const boss = DB2.bossEvents[bossIdx]; if (!boss) return;
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const cfg  = wbrageSettings(boss);
   WBRAGE._rageSpawnMult     = parseFloat(cfg.spawnMultiplier) || 2.0;
   WBRAGE._rageSpawnBossIdx  = bossIdx;
@@ -156,8 +153,7 @@ function _wbrageCleanupVisuals() {
 // ── Main check-and-activate ───────────────────────────────────────────────────
 
 window.wbrageCheckAndActivate = function (bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx]; if (!boss) return;
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const isActive = wbrageIsActive(boss);
   if (!isActive) {
     if (WBRAGE.activated[bossIdx]) { delete WBRAGE.activated[bossIdx]; _wbrageCleanupVisuals(); }
@@ -232,8 +228,7 @@ window.wbrageReset = function (bossIdx) {
 // ── Admin config modal ────────────────────────────────────────────────────────
 
 window.wbrageOpenConfig = function (bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx]; if (!boss) return;
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const cfg  = wbrageSettings(boss);
   showModal(`<div>
     <div class="modal-h2" style="margin-bottom:14px">🔥 Rage Mode — ${_esc(boss.name)}</div>
@@ -264,9 +259,9 @@ window.wbrageOpenConfig = function (bossIdx) {
 };
 
 window.wbrageAdminSave = function (bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx]; if (!boss) return;
-  boss.rageSettings = {
+  const existing = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
+  if (!existing) return;
+  const rageSettings = {
     enabled:         document.getElementById('wbr-enabled')?.checked ?? true,
     thresholdPct:    parseInt(document.getElementById('wbr-threshold')?.value) || 25,
     dialogue:        (document.getElementById('wbr-dialogue')?.value || '').trim(),
@@ -276,7 +271,11 @@ window.wbrageAdminSave = function (bossIdx) {
     showBanner:      document.getElementById('wbr-banner')?.checked  ?? true,
     showToast:       document.getElementById('wbr-toast')?.checked   ?? true,
   };
-  saveDB(); closeModalForce();
+  AppStore.updateState(draft => {
+    const boss = (draft.bossEvents || [])[bossIdx];
+    if (boss) boss.rageSettings = rageSettings;
+  }, { type: 'world-boss:rage-settings-saved', payload: { bossIdx } });
+  closeModalForce();
   toast('✅ Rage config saved!', '#ef4444');
   renderAdminBossEvents();
 };

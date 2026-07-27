@@ -127,7 +127,7 @@ function wblRenderRow(p, rank, statValue, statLabel, statColor) {
 
 function wblRenderPanel(bossIdx, activeTab) {
   activeTab = activeTab || 'damage';
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return '<div style="padding:20px;text-align:center;color:var(--text-muted)">No boss data.</div>';
   const { byDamage, byEvent, byMinion, scoreOf } = wblGetRankings(bossIdx);
   const parts = Object.values(wbcGetParticipants(bossIdx));
@@ -183,7 +183,7 @@ window.wblSwitchTab = function (bossIdx, tab) {
 
 window.wblOpenAdminLeaderboard = function (bossIdx, activeTab) {
   activeTab = activeTab || 'event';
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;
   showModal(`
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
@@ -201,7 +201,7 @@ window.wblOpenAdminLeaderboard = function (bossIdx, activeTab) {
 };
 
 window.wblExportCSV = function (bossIdx) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   const { byEvent } = wblGetRankings(bossIdx);
   const rows = [
     ['Rank', 'Student Name', 'Total Damage', 'Correct Answers', 'Wrong Answers', 'Critical Hits', 'Minions Slain', 'Participation Time', 'Reward Tier'],
@@ -288,8 +288,7 @@ function _wbvFireworks(canvasId) {
 // ── Defeat narration screen ────────────────────────────────────────────────────
 
 window.wbrShowBossDefeat = function (bossIdx, onDone) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
 
   wbrStop();
   _wbvEnsureOverlayOpen();
@@ -363,8 +362,7 @@ window.wbrShowBossDefeat = function (bossIdx, onDone) {
 // ── Victory screen ─────────────────────────────────────────────────────────────
 
 window.wbrShowBossVictory = function (bossIdx, onContinue) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (typeof bvePreloadBossArt === 'function') {
     bvePreloadBossArt(boss)
       .then(() => _wbrShowBossVictoryRender(bossIdx, onContinue))
@@ -375,8 +373,7 @@ window.wbrShowBossVictory = function (bossIdx, onContinue) {
 };
 
 function _wbrShowBossVictoryRender(bossIdx, onContinue) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
 
   _wbvHideAllPanels();
   const panel = document.getElementById('camp-boss-victory');

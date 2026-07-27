@@ -480,8 +480,7 @@ function _cblSpawnSparks(battlefield) {
 
 /* Refresh the HUD counters inside the overlay loot panel */
 function _cblRefreshHud(bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;
   const summary = wblrLootSummary(boss);
   const remEl = document.getElementById('cbl-remaining');
@@ -517,8 +516,7 @@ function _cblFlashFeed(msg) {
 
 /* Main entry point — called from wbrShowBossVictory's continue button */
 window.wblrShowInOverlayLoot = function (bossIdx, onDone) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) { _wbvCloseOverlay(); if (onDone) onDone(); return; }
   // Pre-load idb: art before rendering so boss core shows Boss Studio image
   if (typeof bvePreloadBossArt === 'function') {
@@ -529,13 +527,12 @@ window.wblrShowInOverlayLoot = function (bossIdx, onDone) {
 };
 
 function _wblrShowInOverlayLootRender(bossIdx, onDone) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) { _wbvCloseOverlay(); if (onDone) onDone(); return; }
 
-  // Prepare the boss for loot phase (status, timestamps, etc.)
+  // Prepare the boss for loot phase (status, timestamps, etc.) — wblrPrepareLootRush()
+  // persists via its own AppStore.updateState() call internally now.
   wblrPrepareLootRush(boss, bossIdx);
-  saveDB();
 
   // Show the panel — uses the existing static markup in index.html, does NOT
   // destroy or rebuild the campaign overlay's innerHTML.
@@ -596,8 +593,7 @@ function _wblrShowInOverlayLootRender(bossIdx, onDone) {
   tokenDefs.forEach((r, i) => {
     const token = _cblCreateToken(bossIdx, r, i, total, cxFrac, cyFrac, () => {
       // After any claim, refresh HUD and show feed message
-      DB = loadDB();
-      const updBoss = DB.bossEvents[bossIdx];
+      const updBoss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
       if (updBoss) {
         const summary = wblrLootSummary(updBoss);
         _cblFlashFeed(`✨ ${r.itemName} claimed! (${summary.remaining} left)`);
@@ -625,8 +621,7 @@ function _wblrShowInOverlayLootRender(bossIdx, onDone) {
     freshBtn.style.display = 'none';
     freshBtn.addEventListener('click', function () {
       // Finalize if still in loot phase
-      DB = loadDB();
-      const b = DB.bossEvents[bossIdx];
+      const b = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
       if (b && b.status === 'loot') wblrFinalizeLoot(bossIdx, 'student_exit');
       panel.style.display = 'none';
       _wbvCloseOverlay();
@@ -660,8 +655,7 @@ function _wblrShowInOverlayLootRender(bossIdx, onDone) {
     }
     _cblRefreshHud(bossIdx);
     // Check if loot phase ended by admin
-    DB = loadDB();
-    const b = DB.bossEvents[bossIdx];
+    const b = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
     if (!b || b.status === 'ended') {
       clearInterval(window._cblSyncTimer);
     }
@@ -672,8 +666,7 @@ function _wblrShowInOverlayLootRender(bossIdx, onDone) {
 
 window.wblrRenderStudentLootPage = function (bossIdx) {
   const page = document.getElementById('s-world-boss'); if (!page) return;
-  DB = loadDB();
-  const boss    = DB.bossEvents[bossIdx]; if (!boss) return;
+  const boss    = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const rewards = wblrRewards(boss);
   const loot    = wblrLootSummary(boss);
   const meta    = wblrRarityMeta;
@@ -715,7 +708,7 @@ window.wblrRenderStudentLootPage = function (bossIdx) {
 // ── Claim feed ────────────────────────────────────────────────────────────────
 
 window.wblrClaimFeedHTML = function (bossIdx, limit = 12) {
-  const boss  = DB.bossEvents[bossIdx]; if (!boss) return '';
+  const boss  = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return '';
   const claims = [...(boss.lootClaims || [])].reverse().slice(0, limit);
   if (!claims.length) return '<div class="wblr-empty">No claims yet — be the first!</div>';
   return claims.map(c => {
@@ -741,8 +734,7 @@ window.wblrClaimFeedHTML = function (bossIdx, limit = 12) {
 // "Save Loot" is clicked.
 
 window.wblrOpenLootSettings = function (bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx]; if (!boss) return;
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   window._wblrDraft = { bossIdx, rewards: wblrNormalizeRewards((boss.lootRewards && boss.lootRewards.length) ? boss.lootRewards : wblrDefaultRewards()) };
   showModal(`
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
@@ -861,8 +853,7 @@ window.wblrSaveLootSettings = function (bossIdx) {
 // ── Reward cards HTML ─────────────────────────────────────────────────────────
 
 window.wblrRewardCardsHTML = function (bossIdx) {
-  DB = loadDB();
-  const boss    = DB.bossEvents[bossIdx]; if (!boss) return '';
+  const boss    = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return '';
   const rewards = wblrRewards(boss);
   if (!rewards.length) return '<div class="wblr-empty">No rewards configured.</div>';
   return rewards.map(r => {
@@ -884,7 +875,7 @@ window.wblrRewardCardsHTML = function (bossIdx) {
 // ── Final summary ─────────────────────────────────────────────────────────────
 
 window.wblrFinalSummaryInner = function (bossIdx) {
-  const boss  = DB.bossEvents[bossIdx];
+  const boss  = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return '<div class="wblr-empty">No boss summary found.</div>';
   const parts        = Object.values(wbcGetParticipants(bossIdx));
   const totalDmg     = parts.reduce((a, p) => a + (p.totalDamage     || 0), 0);
@@ -933,7 +924,6 @@ window.wblrFinalSummaryInner = function (bossIdx) {
 
 window.wblrRenderFinalSummaryPage = function (bossIdx) {
   const page = document.getElementById('s-world-boss'); if (!page) return;
-  DB = loadDB();
   page.innerHTML = `<div style="padding:32px;max-width:960px;margin:0 auto">${wblrFinalSummaryInner(bossIdx)}</div>`;
 };
 

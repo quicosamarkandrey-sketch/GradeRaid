@@ -132,7 +132,7 @@ window.LootService = (function () {
       // read (confirmed dead end; see phase48_shop_orders_inventory_sync.sql
       // header note). This is what makes claimed boss loot actually show up
       // on the student-facing "My Inventory" page (shop_inventory.js reads
-      // exclusively from DB.inventory[studentId]) and what lets it ride the
+      // exclusively from the inventory slice for studentId) and what lets it ride the
       // same inventory table/RLS/sync path shop purchases already use —
       // no separate boss-loot column or sync path needed.
       if (!draft.inventory) draft.inventory = {};
@@ -164,7 +164,7 @@ window.LootService = (function () {
    * claim actually lost a race against another student's near-simultaneous
    * claim and the reward was really gone by the time the RPC's row lock
    * resolved it. Removes both the boss's lootClaims entry and decrements
-   * (or removes, if it hits zero) the matching DB.inventory[studentId] item,
+   * (or removes, if it hits zero) the matching inventory-slice item for studentId,
    * mirroring exactly what claimReward() added.
    * @param {number} bossIdx
    * @param {string} claimId

@@ -499,15 +499,15 @@ function _wbrRenderLobbyCore() {
 window.renderStudentWorldBoss = wbrRenderLobby;
 
 // ── Replace wbcJoinBoss to open battle immediately after joining ──────────────
-// [Phase 3 migration note] This unconditionally overwrites window.wbcJoinBoss
-// again — combat-settings.js's original definition and battle-overlay.js's
-// Patch 3 wrapper (which adds hp/maxHp/isKO to a joined-but-missing-them
-// record) are both already-shadowed dead code by the time this file loads
-// (raid-flow.js's own header says "LOAD AFTER: battle-overlay.js"), since
-// this version already includes hp/maxHp/isKO/bossIntroSeen inline at
-// creation. Third such duplicate-definition finding in this module — see
-// this module's log entry for the others (wbcAnswer in combat-settings.js
-// vs student-page.js). Flagged, not consolidated — Phase 1's job.
+// [Phase 1 cleanup] This is now the only window.wbcJoinBoss definition in
+// the module — combat-settings.js's original and battle-overlay.js's Patch
+// 3 wrapper (which used to add hp/maxHp/isKO to a joined-but-missing-them
+// record) were both confirmed-dead (unconditionally overwritten by this
+// file, per this file's own header: "LOAD AFTER: battle-overlay.js") and
+// removed 2026-07-21. This version already includes hp/maxHp/isKO/
+// bossIntroSeen inline at creation, which is what made the battle-overlay.js
+// patch redundant even before it was unreachable. See the refactor log's
+// Tier-1 debt-review entry.
 window.wbcJoinBoss = function (bossIdx) {
   var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;

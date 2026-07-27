@@ -4,7 +4,7 @@
 //  replacement, and minion-inject monkey-patches.
 //
 //  LOAD AFTER: student-page.js, minions.js, leaderboard.js
-//  (Monkey-patches _wbcStartLiveRefresh, renderStudentWorldBoss, wbcJoinBoss,
+//  (Monkey-patches _wbcStartLiveRefresh, renderStudentWorldBoss,
 //   wbmStopSpawnLoop, wbmStartSpawnLoop — all must exist before this runs.)
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -60,16 +60,13 @@
   };
 })();
 
-// ── Patch 3: wbcJoinBoss — initialise student HP on first join ────────────────
-;(function () {
-  var _orig = wbcJoinBoss;
-  wbcJoinBoss = function (bossIdx) {
-    _orig(bossIdx);
-    var parts = wbcGetParticipants(bossIdx);
-    var rec = parts[currentUser.id];
-    if (rec && rec.hp === undefined) { rec.hp = 3; rec.maxHp = 3; rec.isKO = false; saveDB(); }
-  };
-})();
+// [Phase 1 cleanup] Patch 3 (a wbcJoinBoss wrapper adding hp/maxHp/isKO on
+// first join) used to live here. Removed 2026-07-21 — raid-flow.js's own
+// window.wbcJoinBoss (loaded after this file) unconditionally overwrote
+// this patch's result anyway, and that version already sets hp/maxHp/isKO
+// inline at participant creation, making this patch's job redundant even
+// on top of being unreachable. See the refactor log's Tier-1 debt-review
+// entry for the verification behind this deletion.
 
 // ── Patch 4: replace wbmStopSpawnLoop + wbmStartSpawnLoop with random-delay ──
 ;(function () {
@@ -82,15 +79,13 @@
   wbmStartSpawnLoop = function (bossIdx) {
     wbmStopSpawnLoop();
     var scheduleNext = function () {
-      DB = loadDB();
-      var boss = DB.bossEvents[bossIdx];
+      var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
       if (!boss || boss.status !== 'active') return;
       var s = wbmSettings(boss);
       if (!s.enabled) return;
       var delay = wbeRandomDelay(s);
       WBM.spawnInterval = setTimeout(function () {
-        DB = loadDB();
-        var liveBoss = DB.bossEvents[bossIdx];
+        var liveBoss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
         if (!liveBoss || liveBoss.status !== 'active') return;
         var liveSettings = wbmSettings(liveBoss);
         if (!liveSettings.enabled) return;
@@ -136,12 +131,10 @@ function wbeSparkField() {
 // ── Intro "skip" handler ──────────────────────────────────────────────────────
 
 function wbeFinishIntro(bossIdx) {
-  DB = loadDB();
-  var parts = wbcGetParticipants(bossIdx);
-  if (parts[currentUser.id]) {
-    parts[currentUser.id].bossIntroSeen = true;
-    saveDB();
-  }
+  AppStore.updateState(function (draft) {
+    var p = ((draft.bossParticipants || {})[bossIdx] || {})[currentUser.id];
+    if (p) p.bossIntroSeen = true;
+  }, { type: 'world-boss:intro-seen', payload: { bossIdx, studentId: currentUser.id } });
   renderStudentWorldBoss();
 }
 
@@ -214,8 +207,7 @@ function wbeMinionPanel(bossIdx, boss, myRec) {
 // ── Full-screen battle render ─────────────────────────────────────────────────
 
 function wbeRenderFullBattle(bossIdx) {
-  DB = loadDB();
-  var boss = DB.bossEvents[bossIdx];
+  var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
   var page = document.getElementById('s-world-boss');
   if (!page || !boss) return false;
   var myRec = wbcMyRecord(bossIdx);
@@ -334,7 +326,6 @@ function _wbeInitOrientationPrompt() {
   var _baseRenderStudentWorldBoss = renderStudentWorldBoss;
   renderStudentWorldBoss = function () {
     if (currentRole === 'student') {
-      DB = loadDB();
       var loot = (typeof wblrGetCurrentLootBoss === 'function') ? wblrGetCurrentLootBoss() : null;
       if (!loot) {
         var found = wbcGetActiveBoss();

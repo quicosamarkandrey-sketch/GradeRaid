@@ -7,7 +7,6 @@
 
 /* ── Student World Boss Page Entry Point ── */
 window.renderStudentWorldBoss = function () {
-  DB = loadDB();
   const found = wbcGetActiveBoss();
   const page  = document.getElementById('s-world-boss');
   if (!page) return;
@@ -24,7 +23,6 @@ window.renderStudentWorldBoss = function () {
 
 /* ── Core render ── */
 function _renderStudentWorldBossCore() {
-  DB = loadDB();
   const found = wbcGetActiveBoss();
   const page  = document.getElementById('s-world-boss');
   if (!page) return;
@@ -255,8 +253,7 @@ function _renderStudentWorldBossCore() {
 /* ── Answer handler ── */
 window.wbcAnswer = async function (bossIdx, qIdx, chosenOpt) {
   if (WBC.cooldownActive) return;
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
   const questions = wbcGetBossQuestions(boss);
   if (qIdx >= questions.length) return;
@@ -284,22 +281,23 @@ window.wbcAnswer = async function (bossIdx, qIdx, chosenOpt) {
 
     // Apply damage
     const result = await wbcApplyDamage(bossIdx, resultDmg, currentUser.id, isCrit);
-    DB = loadDB();
 
     // Track answer history
-    const parts = wbcGetParticipants(bossIdx);
-    if (parts[currentUser.id]) {
-      if (!parts[currentUser.id].answerHistory) parts[currentUser.id].answerHistory = [];
-      parts[currentUser.id].answerHistory[qIdx] = { correct: true, damage: resultDmg, isCrit };
-      parts[currentUser.id].lastQIdx = qIdx + 1;
-    }
-    saveDB();
+    AppStore.updateState(draft => {
+      const p = ((draft.bossParticipants || {})[bossIdx] || {})[currentUser.id];
+      if (p) {
+        if (!p.answerHistory) p.answerHistory = [];
+        p.answerHistory[qIdx] = { correct: true, damage: resultDmg, isCrit };
+        p.lastQIdx = qIdx + 1;
+      }
+    }, { type: 'world-boss:answer-recorded', payload: { bossIdx, studentId: currentUser.id, qIdx, correct: true } });
 
     _wbcFloatDamage(resultDmg, isCrit);
     toast(`${isCrit ? '💥 CRIT! ' : '✅ '}+${resultDmg.toLocaleString()} damage!`, isCrit ? '#ffb95f' : '#4edea3');
     _wbcUpdateHPDisplay(bossIdx);
 
-    if (result === 'defeated' || DB.bossEvents[bossIdx].currentHp <= 0) {
+    const freshBoss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
+    if (result === 'defeated' || (freshBoss && freshBoss.currentHp <= 0)) {
       setTimeout(() => {
         if (typeof wblShowVictoryScreen === 'function') {
           wblShowVictoryScreen(bossIdx, () => renderStudentWorldBoss());
@@ -315,14 +313,15 @@ window.wbcAnswer = async function (bossIdx, qIdx, chosenOpt) {
     correctEl?.classList.add('correct');
     WBC.comboCount = 0;
 
-    const parts = wbcGetParticipants(bossIdx);
-    if (parts[currentUser.id]) {
-      parts[currentUser.id].wrongAnswers = (parts[currentUser.id].wrongAnswers || 0) + 1;
-      if (!parts[currentUser.id].answerHistory) parts[currentUser.id].answerHistory = [];
-      parts[currentUser.id].answerHistory[qIdx] = { correct: false };
-      parts[currentUser.id].lastQIdx = qIdx + 1;
-    }
-    saveDB();
+    AppStore.updateState(draft => {
+      const p = ((draft.bossParticipants || {})[bossIdx] || {})[currentUser.id];
+      if (p) {
+        p.wrongAnswers = (p.wrongAnswers || 0) + 1;
+        if (!p.answerHistory) p.answerHistory = [];
+        p.answerHistory[qIdx] = { correct: false };
+        p.lastQIdx = qIdx + 1;
+      }
+    }, { type: 'world-boss:answer-recorded', payload: { bossIdx, studentId: currentUser.id, qIdx, correct: false } });
     toast('❌ Wrong answer! No damage dealt.', '#ef4444');
   }
 
@@ -351,7 +350,7 @@ window.wbcAnswer = async function (bossIdx, qIdx, chosenOpt) {
 
 /* ── HP display update ── */
 function _wbcUpdateHPDisplay(bossIdx) {
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;
   const pct      = Math.max(0, Math.min(100, Math.round((boss.currentHp || boss.maxHp) / boss.maxHp * 100)));
   const hpColor  = pct > 60 ? '#EC4899' : pct > 30 ? '#ffb95f' : '#ef4444';
@@ -438,7 +437,6 @@ function _wbcSpawnParticles() {
 function _wbcStartLiveRefresh() {
   if (WBC.refreshInterval) clearInterval(WBC.refreshInterval);
   WBC.refreshInterval = setInterval(() => {
-    DB = loadDB();
     const lootBoss = typeof wblrGetCurrentLootBoss === 'function' ? wblrGetCurrentLootBoss() : null;
     if (lootBoss && currentRole === 'student') { renderStudentWorldBoss(); return; }
     const found = wbcGetActiveBoss();

@@ -243,13 +243,11 @@ window.bossDelete = async function (bi) {
 
 // ── Combat settings modal ──────────────────────────────────────────────────────
 
-// [Phase 3 migration note] This unconditionally overwrites window.
-// wbcOpenCombatSettings/wbcSaveCombatSettings again — admin-page.js's own
-// header says "LOAD AFTER: combat-settings.js", so combat-settings.js's
-// versions of both functions are already-shadowed dead code by the time
-// this file loads. Fourth duplicate-definition finding in this module
-// (after wbcAnswer, wbcJoinBoss, and this pair) — see this module's log
-// entry. Flagged, not consolidated — Phase 1's job.
+// [Phase 1 cleanup] This is now the only definition of window.
+// wbcOpenCombatSettings/wbcSaveCombatSettings in the module —
+// combat-settings.js's versions of both functions were confirmed-dead
+// (this file's own header: "LOAD AFTER: combat-settings.js") and removed
+// 2026-07-21. See the refactor log's Tier-1 debt-review entry.
 window.wbcOpenCombatSettings = function (bossIdx) {
   const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss) return;

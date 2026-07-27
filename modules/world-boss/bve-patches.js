@@ -370,8 +370,8 @@
 
   // §8c  HP-based rage-phase detection (purely cosmetic)
   function _bveCheckRagePhase(bossIdx) {
-    if (typeof DB === 'undefined') return;
-    const boss = (DB.bossEvents || [])[bossIdx];
+    if (typeof AppStore === 'undefined') return;
+    const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
     if (!boss) return;
     const pct = (boss.currentHP != null && boss.maxHP)
       ? boss.currentHP / boss.maxHP : 1;
@@ -486,9 +486,9 @@
   });
   _observer.observe(document.body, { childList: true, subtree: true });
 
-  // Try once DB is ready in case battle DOM is already present.
-  // Wrapped in AppStore.ready.then() so DB is guaranteed to be populated
-  // before wbcGetActiveBoss() (which reads DB.bossEvents) is called.
+  // Try once AppStore is ready in case battle DOM is already present.
+  // Wrapped in AppStore.ready.then() so AppStore is guaranteed to be populated
+  // before wbcGetActiveBoss() (which reads the bossEvents slice) is called.
   AppStore.ready.then(() => {
     setTimeout(() => {
       _upgradeSprite(false);

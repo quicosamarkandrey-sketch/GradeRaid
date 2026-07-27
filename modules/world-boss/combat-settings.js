@@ -36,48 +36,32 @@ window.wbcDefaultSettings = function () {
 // ── Core helpers ──────────────────────────────────────────────────────────────
 
 window.wbcGetActiveBoss = function () {
-  if (typeof DB === 'undefined' || !DB) return null;
-  const bosses = DB.bossEvents || [];
+  const bosses = AppStore.getSlice(s => s.bossEvents) || [];
   const idx    = bosses.findIndex(b => b.status === 'active');
   return idx >= 0 ? { boss: bosses[idx], idx } : null;
 };
 
+// [Phase 3 migration] Now returns a fresh AppStore.getSlice() clone instead
+// of a live reference into DB.bossParticipants[bossIdx] — every write path
+// in this module used to mutate whatever this function returned, then call
+// saveDB() separately, relying on DB being one shared mutable object.
+// wbcApplyDamage() below (and, in other files, raid-flow.js's wbcJoinBoss
+// and various minions.js/raid-flow.js handlers) now build their mutations
+// inside AppStore.updateState() draft callbacks instead of mutating this
+// function's return value directly.
 window.wbcGetParticipants = function (bossIdx) {
-  if (!DB.bossParticipants)          DB.bossParticipants = {};
-  if (!DB.bossParticipants[bossIdx]) DB.bossParticipants[bossIdx] = {};
-  return DB.bossParticipants[bossIdx];
+  return (AppStore.getSlice(s => s.bossParticipants) || {})[bossIdx] || {};
 };
 
 window.wbcMyRecord = function (bossIdx) {
   return wbcGetParticipants(bossIdx)[currentUser.id] || null;
 };
 
-window.wbcJoinBoss = function (bossIdx) {
-  const parts = wbcGetParticipants(bossIdx);
-  if (!parts[currentUser.id]) {
-    parts[currentUser.id] = {
-      studentId:       currentUser.id,
-      studentName:     currentUser.name,
-      studentInit:     currentUser.init,
-      studentColor:    currentUser.color,
-      totalDamage:     0,
-      correctAnswers:  0,
-      wrongAnswers:    0,
-      critHits:        0,
-      minionsDefeated: 0,
-      joinTime:        Date.now(),
-      lastQIdx:        0,
-    };
-  }
-  saveDB();
-  WBC.joined          = true;
-  WBC.bossIdx         = bossIdx;
-  const myRec         = parts[currentUser.id];
-  WBC.qIdx            = myRec.lastQIdx || 0;
-  WBC.battleStartTime = myRec.joinTime;
-  toast('⚔️ You joined the raid! Answer questions to deal damage!', '#EC4899');
-  renderStudentWorldBoss();
-};
+// [Phase 1 cleanup] wbcJoinBoss used to be defined here too, until
+// raid-flow.js's own window.wbcJoinBoss (loaded after this file, and after
+// battle-overlay.js's now-also-removed patch of this same function)
+// unconditionally overwrote it. Removed 2026-07-21 — see the refactor
+// log's Tier-1 debt-review entry for the verification behind this deletion.
 
 // ── Damage calculation ────────────────────────────────────────────────────────
 
@@ -114,19 +98,16 @@ window.wbcCalcDamage = function (boss) {
  * its own guess by the time the next bulk push fires.
  */
 window.wbcApplyDamage = async function (bossIdx, damage, studentId, isCrit) {
-  const boss = DB.bossEvents[bossIdx]; if (!boss) return;
-  boss.currentHp = Math.max(0, (boss.currentHp || boss.maxHp) - damage);
-  const parts    = wbcGetParticipants(bossIdx);
-  if (parts[studentId]) {
-    parts[studentId].totalDamage    += damage;
-    parts[studentId].correctAnswers += 1;
-  }
-  let defeated = boss.currentHp <= 0;
+  const bossBefore = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
+  if (!bossBefore) return;
 
-  if (typeof DBService !== 'undefined' && typeof DBService.rpc === 'function' && boss._id) {
+  let newHp    = Math.max(0, (bossBefore.currentHp || bossBefore.maxHp) - damage);
+  let defeated = newHp <= 0;
+
+  if (typeof DBService !== 'undefined' && typeof DBService.rpc === 'function' && bossBefore._id) {
     try {
       const { data, error } = await DBService.rpc('apply_boss_damage', {
-        p_boss_id: boss._id, p_class_id: boss.classId || 'default-class',
+        p_boss_id: bossBefore._id, p_class_id: bossBefore.classId || 'default-class',
         p_student_id: studentId, p_damage: damage, p_is_crit: !!isCrit,
       });
       if (error) {
@@ -134,35 +115,53 @@ window.wbcApplyDamage = async function (bossIdx, damage, studentId, isCrit) {
       } else {
         const row = Array.isArray(data) ? data[0] : data;
         if (row && typeof row.new_hp === 'number') {
-          boss.currentHp = row.new_hp;
-          defeated       = !!row.defeated;
+          newHp    = row.new_hp;
+          defeated = !!row.defeated;
         }
       }
     } catch (e) {
       console.warn('[EduQuest] apply_boss_damage RPC threw, keeping local optimistic HP:', e);
     }
   }
+  if (defeated) newHp = 0;
+  if (defeated && typeof wblrPrepareLootRush === 'function') await wblrPrepareLootRush(bossBefore, bossIdx);
+
+  const victoryPayouts = [];
+  AppStore.updateState(draft => {
+    const boss = (draft.bossEvents || [])[bossIdx];
+    if (!boss) return;
+    boss.currentHp = newHp;
+
+    if (!draft.bossParticipants) draft.bossParticipants = {};
+    if (!draft.bossParticipants[bossIdx]) draft.bossParticipants[bossIdx] = {};
+    const parts = draft.bossParticipants[bossIdx];
+    if (parts[studentId]) {
+      parts[studentId].totalDamage    = (parts[studentId].totalDamage || 0) + damage;
+      parts[studentId].correctAnswers = (parts[studentId].correctAnswers || 0) + 1;
+    }
+
+    if (defeated) {
+      Object.values(parts).forEach(p => {
+        const s = (draft.students || []).find(x => x.id === p.studentId);
+        if (!s || p.totalDamage <= 0) return;
+        const xpReward   = (boss.xpReward   || 500) + (boss.participationReward || 100);
+        const coinReward = (boss.coinReward || 250) + (boss.victoryReward       || 300);
+        s.xp    = (s.xp || 0)    + xpReward;
+        s.coins = (s.coins || 0) + coinReward;
+        if (!Array.isArray(draft.pointLog)) draft.pointLog = [];
+        draft.pointLog.unshift({ id: 'pl_' + uid(), studentId: p.studentId, what: `⚔️ Boss Raid: "${boss.name}" DEFEATED! Victory rewards granted.`, pts: xpReward, when: 'Just now', createdAt: new Date().toISOString() });
+        victoryPayouts.push({ studentId: p.studentId, xpReward, coinReward });
+      });
+    }
+  }, { type: defeated ? 'world-boss:defeated' : 'world-boss:damage-applied', payload: { bossIdx, studentId, damage } });
 
   if (defeated) {
-    boss.currentHp = 0;
-    if (typeof wblrPrepareLootRush === 'function') await wblrPrepareLootRush(boss, bossIdx);
-    Object.values(parts).forEach(p => {
-      const si = DB.students.findIndex(s => s.id === p.studentId);
-      if (si < 0 || p.totalDamage <= 0) return;
-      const xpReward   = (boss.xpReward    || 500) + (boss.participationReward || 100);
-      const coinReward = (boss.coinReward   || 250) + (boss.victoryReward      || 300);
-      DB.students[si].xp    += xpReward;
-      DB.students[si].coins += coinReward;
-      syncStudentStatsToServer(p.studentId, xpReward, coinReward);
-      DB.pointLog.unshift({ id: 'pl_' + uid(), studentId: p.studentId, what: `⚔️ Boss Raid: "${boss.name}" DEFEATED! Victory rewards granted.`, pts: xpReward, when: 'Just now', createdAt: new Date().toISOString() });
-    });
-    saveDB();
+    victoryPayouts.forEach(({ studentId: sid, xpReward, coinReward }) => syncStudentStatsToServer(sid, xpReward, coinReward));
     if (typeof achCheckAndAward === 'function') {
-      Object.keys(parts).forEach(sid => setTimeout(() => achCheckAndAward(sid), 600));
+      Object.keys(wbcGetParticipants(bossIdx)).forEach(sid => setTimeout(() => achCheckAndAward(sid), 600));
     }
     return 'defeated';
   }
-  saveDB();
   return 'hit';
 };
 
@@ -171,7 +170,7 @@ window.wbcApplyDamage = async function (bossIdx, damage, studentId, isCrit) {
 window.wbcGetBossQuestions = function (boss) {
   if (boss.bossQuestions && boss.bossQuestions.length) return boss.bossQuestions;
   if (boss.linkedQuizId) {
-    const q = (DB.quizzes || []).find(q => q.id === boss.linkedQuizId);
+    const q = (AppStore.getSlice(s => s.quizzes) || []).find(q => q.id === boss.linkedQuizId);
     if (q) return q.questions;
   }
   return boss._generatedQuestions || [];
@@ -180,7 +179,7 @@ window.wbcGetBossQuestions = function (boss) {
 // ── Battle statistics ─────────────────────────────────────────────────────────
 
 window.wbcBattleStats = function (bossIdx) {
-  const boss  = DB.bossEvents[bossIdx]; if (!boss) return {};
+  const boss  = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return {};
   const parts = Object.values(wbcGetParticipants(bossIdx));
   const now   = Date.now();
   const totalDmg   = parts.reduce((a, p) => a + p.totalDamage, 0);
@@ -230,100 +229,15 @@ window.wbcUpdateTopbarWidget = function () {
 };
 
 // ── Answer handler ─────────────────────────────────────────────────────────────
+// [Phase 1 cleanup] The dead wbcAnswer definition that used to live here was
+// removed 2026-07-21 — student-page.js's own window.wbcAnswer (that file's
+// header: "LOAD AFTER: combat-settings.js") always won at load time, so this
+// copy never ran. See the refactor log's Tier-1 debt-review entry for the
+// verification behind this deletion.
 
-window.wbcAnswer = async function (bossIdx, qIdx, chosenOpt) {
-  if (WBC.cooldownActive) return;
-  DB = loadDB();
-  const boss      = DB.bossEvents[bossIdx]; if (!boss) return;
-  const questions = wbcGetBossQuestions(boss);
-  const q         = questions[qIdx]; if (!q) return;
-  const correct   = chosenOpt === q.answer;
-
-  // Mark answer buttons
-  document.querySelectorAll('.wb-answer-btn').forEach((btn, i) => {
-    btn.onclick = null;
-    if (i === q.answer)              btn.classList.add('correct');
-    else if (i === chosenOpt && !correct) btn.classList.add('wrong');
-  });
-
-  const parts = wbcGetParticipants(bossIdx);
-  const myRec = parts[currentUser.id]; if (!myRec) return;
-
-  if (correct) {
-    const { damage, isCrit } = wbcCalcDamage(boss);
-    if (isCrit) { wblTrackCrit(bossIdx, currentUser.id); toast('🌟 CRITICAL HIT! ×2.5 damage!', '#fbbf24'); }
-    WBC.comboCount++;
-    WBC.answered.push({ correct: true, damage });
-    const result = await wbcApplyDamage(bossIdx, damage, currentUser.id, isCrit);
-    myRec.lastQIdx = qIdx + 1;
-    saveDB();
-    DB = loadDB();
-    wbcUpdateTopbarWidget();
-    if (result === 'defeated') {
-      setTimeout(() => { if (typeof wbrShowBossVictory === 'function') wbrShowBossVictory(bossIdx, () => renderStudentWorldBoss()); }, 600);
-      return;
-    }
-  } else {
-    WBC.comboCount = 0;
-    WBC.answered.push({ correct: false, damage: 0 });
-    if (parts[currentUser.id]) parts[currentUser.id].wrongAnswers++;
-    myRec.lastQIdx = qIdx + 1;
-    saveDB();
-  }
-
-  WBC.qIdx = qIdx + 1;
-  const cooldown = parseInt(boss.combatSettings?.questionCooldown) || 0;
-  if (cooldown > 0) {
-    WBC.cooldownActive = true;
-    setTimeout(() => { WBC.cooldownActive = false; renderStudentWorldBoss(); }, cooldown * 1000);
-  } else {
-    setTimeout(() => renderStudentWorldBoss(), correct ? 1000 : 1400);
-  }
-};
-
-// ── Combat settings modal ─────────────────────────────────────────────────────
-
-window.wbcOpenCombatSettings = function (bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx]; if (!boss) return;
-  const s    = boss.combatSettings || wbcDefaultSettings();
-  showModal(`<div>
-    <div class="modal-h2" style="margin-bottom:16px">⚙️ Combat Settings — ${_esc(boss.name)}</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group"><label class="form-label">Damage Per Answer</label><input type="number" id="cs-dmg" value="${s.damagePerAnswer||150}" min="1" style="width:100%"></div>
-      <div class="form-group"><label class="form-label">Crit Chance (%)</label><input type="number" id="cs-crit" value="${s.critChance||20}" min="0" max="100" style="width:100%"></div>
-      <div class="form-group"><label class="form-label">Crit Multiplier</label><input type="number" id="cs-critmul" value="${s.critMultiplier||2.5}" min="1" step="0.1" style="width:100%"></div>
-      <div class="form-group"><label class="form-label">Question Cooldown (s)</label><input type="number" id="cs-cooldown" value="${s.questionCooldown||0}" min="0" style="width:100%"></div>
-    </div>
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px"><input type="checkbox" id="cs-rnd" ${s.useRandomDamage?'checked':''} style="width:16px;height:16px"> Use random damage range</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div><label class="form-label">Min Damage</label><input type="number" id="cs-dmin" value="${s.damageMinRandom||80}" min="1" style="width:100%"></div>
-        <div><label class="form-label">Max Damage</label><input type="number" id="cs-dmax" value="${s.damageMaxRandom||200}" min="1" style="width:100%"></div>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button>
-      <button class="btn btn-primary" style="flex:1" onclick="wbcSaveCombatSettings(${bossIdx})">Save Settings</button>
-    </div>
-  </div>`, 'md');
-};
-
-window.wbcSaveCombatSettings = function (bossIdx) {
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx]; if (!boss) return;
-  boss.combatSettings = {
-    damagePerAnswer:  parseInt(document.getElementById('cs-dmg')?.value)     || 150,
-    critChance:       parseInt(document.getElementById('cs-crit')?.value)    || 20,
-    critMultiplier:   parseFloat(document.getElementById('cs-critmul')?.value) || 2.5,
-    questionCooldown: parseInt(document.getElementById('cs-cooldown')?.value) || 0,
-    useRandomDamage:  document.getElementById('cs-rnd')?.checked || false,
-    damageMinRandom:  parseInt(document.getElementById('cs-dmin')?.value) || 80,
-    damageMaxRandom:  parseInt(document.getElementById('cs-dmax')?.value) || 200,
-  };
-  saveDB();
-  closeModalForce();
-  toast('✅ Combat settings saved!');
-  renderAdminBossEvents();
-};
-
+// [Phase 1 cleanup] wbcOpenCombatSettings/wbcSaveCombatSettings used to be
+// defined here too. Removed 2026-07-21 — admin-page.js's own header says
+// "LOAD AFTER: combat-settings.js", confirming its versions of both
+// functions always won at load time, so these copies never ran. See the
+// refactor log's Tier-1 debt-review entry for the verification behind
+// this deletion.

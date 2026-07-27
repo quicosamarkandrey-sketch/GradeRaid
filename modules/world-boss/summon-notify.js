@@ -348,8 +348,7 @@ window.WBSN = {
 window.wbsnShow = function (bossIdx) {
   if (WBSN.dismissedBosses[bossIdx]) return;
   if (document.getElementById('wbsn-overlay')) return;
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
 
   // FIX: stop re-showing the notification once the student has already
@@ -377,8 +376,7 @@ window.wbsnShow = function (bossIdx) {
 function _wbsnShowRender(bossIdx) {
   if (WBSN.dismissedBosses[bossIdx]) return;
   if (document.getElementById('wbsn-overlay')) return;
-  DB = loadDB();
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
 
   const artHTML = typeof bveRenderBossArt === 'function'
@@ -434,14 +432,13 @@ function _wbsnShowRender(bossIdx) {
 
 window.wbsnJoin = function (bossIdx) {
   // Belt-and-suspenders: mark dismissed immediately so polling can't sneak
-  // a re-show in during the brief window before wbcJoinBoss's DB write
+  // a re-show in during the brief window before wbcJoinBoss's AppStore write
   // (inside the setTimeout below) actually lands.
   WBSN.dismissedBosses[bossIdx] = true;
   wbsnRemove();
   if (typeof navTo === 'function') navTo('s-world-boss');
   setTimeout(() => {
-    DB = loadDB();
-    const boss = DB.bossEvents[bossIdx];
+    const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
     if (boss && boss.status === 'active') wbcJoinBoss(bossIdx);
   }, 200);
 };
@@ -463,15 +460,17 @@ window.wbsnRemove = function () {
 
 /**
  * wbsnWriteSignal(bossIdx) → void
- * ⚠️ [BLOCKER-SIGNAL] Writes pendingBossSummon to the DB blob in localStorage.
+ * ⚠️ [BLOCKER-SIGNAL] Writes pendingBossSummon to AppStore (persisted to localStorage).
  * Student tabs pick this up via the storage event listener below.
  * DO NOT rename the pendingBossSummon key — it is the cross-tab signal mechanism.
  */
 window.wbsnWriteSignal = function (bossIdx) {
-  DB = loadDB();
-  // ⚠️ [BLOCKER-SIGNAL] — key pendingBossSummon must not be renamed
-  DB.pendingBossSummon = { bossIdx, firedAt: Date.now() };
-  try { saveDB(); } catch (ex) { console.warn('[WBSN] Signal write failed:', ex); }
+  try {
+    // ⚠️ [BLOCKER-SIGNAL] — key pendingBossSummon must not be renamed
+    AppStore.updateState(draft => {
+      draft.pendingBossSummon = { bossIdx, firedAt: Date.now() };
+    }, { type: 'world-boss:summon-signal', payload: { bossIdx } });
+  } catch (ex) { console.warn('[WBSN] Signal write failed:', ex); }
 };
 
 // ── Cross-tab storage event (student-side) ────────────────────────────────────
@@ -482,12 +481,12 @@ window.wbsnWriteSignal = function (bossIdx) {
 
   const _listener = function (e) {
     if (currentRole !== 'student') return;
-    const freshDB = loadDB();
+    const freshDB = AppStore.getSlice(s => ({ pendingBossSummon: s.pendingBossSummon, bossEvents: s.bossEvents }));
     // ⚠️ [BLOCKER-SIGNAL] — reads pendingBossSummon signal
     const signal = freshDB.pendingBossSummon;
     if (!signal) return;
     if (Date.now() - (signal.firedAt || 0) > 12000) return;
-    const boss = freshDB.bossEvents[signal.bossIdx];
+    const boss = (freshDB.bossEvents || [])[signal.bossIdx];
     if (!boss || boss.status !== 'active') return;
     wbsnShow(signal.bossIdx);
   };
@@ -496,11 +495,11 @@ window.wbsnWriteSignal = function (bossIdx) {
   // Also poll for same-tab cross-component signals every 3s
   setInterval(() => {
     if (currentRole !== 'student') return;
-    DB = loadDB();
+    const pending = AppStore.getSlice(s => ({ pendingBossSummon: s.pendingBossSummon, bossEvents: s.bossEvents }));
     // ⚠️ [BLOCKER-SIGNAL]
-    const signal = DB.pendingBossSummon;
+    const signal = pending.pendingBossSummon;
     if (!signal || Date.now() - (signal.firedAt || 0) > 12000) return;
-    const boss = DB.bossEvents[signal.bossIdx];
+    const boss = (pending.bossEvents || [])[signal.bossIdx];
     if (!boss || boss.status !== 'active') return;
     wbsnShow(signal.bossIdx);
   }, 3000);
@@ -512,8 +511,7 @@ window.wbsnWriteSignal = function (bossIdx) {
   const _orig = window.bossActivate;
   window.bossActivate = function (bi) {
     if (typeof _orig === 'function') _orig(bi);
-    DB = loadDB();
-    const boss = DB.bossEvents[bi];
+    const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bi];
     if (boss && boss.status === 'active') {
       delete WBSN.dismissedBosses[bi];
       wbsnWriteSignal(bi);
@@ -537,7 +535,6 @@ window.wbsnWriteSignal = function (bossIdx) {
   window.bootApp = function () {
     if (typeof _origBoot === 'function') _origBoot();
     if (currentRole !== 'student') return;
-    DB = loadDB();
     const found = (typeof wbcGetActiveBoss === 'function') ? wbcGetActiveBoss() : null;
     if (!found) return;
     const { idx } = found;

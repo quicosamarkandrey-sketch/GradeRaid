@@ -107,6 +107,15 @@ module.exports = [
     // Warning-level everywhere until Phase 3 (Single Source of Truth)
     // makes AppStore the sole writer; the state layer itself is exempt
     // since it IS the intended place DB gets mutated.
+    //
+    // [Post-Phase-3 fix] Two selectors, not one. The original rule only
+    // matched `DB.x = ...` (left is a MemberExpression) — it never caught
+    // a bare `DB = loadDB()` reassignment (left is a plain Identifier).
+    // Phase 3's own migration work found and hand-fixed several of exactly
+    // that shape (bs_storage.js, campaign_engine.js, and others) that this
+    // rule would have silently let back in. Both shapes are the same
+    // underlying problem — code depending on `DB` as a mutable object
+    // outside AppStore's gate — so both are covered now.
     files: ['**/*.js'],
     ignores: ['modules/core/state-manager.js', 'db-service.js', 'db-migrations.js', 'db-schema.js'],
     rules: {
@@ -117,6 +126,12 @@ module.exports = [
             "AssignmentExpression[left.object.name='DB']",
           message:
             'Direct DB.* mutation outside the state layer. Prefer AppStore.updateState() (modules/core/state-manager.js) so subscribers repaint and writes go through one place — see Phase 3 of the refactor roadmap.',
+        },
+        {
+          selector:
+            "AssignmentExpression[left.name='DB']",
+          message:
+            'Reassigning the legacy `DB` global directly (e.g. `DB = loadDB()`) outside the state layer. This is the same single-source-of-truth problem as DB.* mutation, just via the whole-object shape instead of a property — prefer AppStore.getSlice()/AppStore.getState() to read, and AppStore.updateState() to write. See Phase 3 of the refactor roadmap.',
         },
       ],
     },
@@ -242,7 +257,24 @@ module.exports = [
     // global being kept current by another function. bs_storage.js-style
     // self-sufficiency fixes were not needed here — no bsLoad()/bsGet()-like
     // pre-warming convention existed in this directory.
-    files: ['modules/shared/**/*.js', 'modules/attendance/**/*.js', 'modules/section/**/*.js', 'modules/recitation/**/*.js', 'modules/leaderboard/**/*.js', 'modules/mail/**/*.js', 'modules/boss-studio/**/*.js', 'modules/campaign/**/*.js', 'modules/titles/**/*.js', 'modules/admin/**/*.js', 'modules/achievements/**/*.js', 'modules/shop/**/*.js'],
+    //
+    // modules/world-boss/ — migrated 2026-07-21, the last real per-module
+    // target in Phase 3 (14 files, 139 refs). wbcGetParticipants()
+    // (combat-settings.js) was this module's bs_storage.js-equivalent
+    // architectural core — every write path in the whole module used to
+    // mutate whatever it returned, relying on that being a live reference
+    // into DB.bossParticipants[bossIdx]; redesigned the same way
+    // bsLoad()/bsGet() were, so every write now goes through
+    // AppStore.updateState() explicitly instead. wbcApplyDamage() (victory
+    // reward distribution across every participant), the self-checkout-
+    // equivalent minion-spawn/damage/answer flow in minions.js, and
+    // admin-page.js's bossActivate()/saveBossForm() were the largest
+    // individual write-path rebuilds. This module also turned up FOUR
+    // duplicate-function-definition findings (wbcAnswer, wbcJoinBoss, and
+    // wbcOpenCombatSettings/wbcSaveCombatSettings, each shadowed by a
+    // later-loading file per the files' own header comments) — flagged in
+    // each file's migration, not consolidated; that's Phase 1's job.
+    files: ['modules/shared/**/*.js', 'modules/attendance/**/*.js', 'modules/section/**/*.js', 'modules/recitation/**/*.js', 'modules/leaderboard/**/*.js', 'modules/mail/**/*.js', 'modules/boss-studio/**/*.js', 'modules/campaign/**/*.js', 'modules/titles/**/*.js', 'modules/admin/**/*.js', 'modules/achievements/**/*.js', 'modules/shop/**/*.js', 'modules/world-boss/**/*.js'],
     rules: {
       'no-restricted-syntax': [
         'error',

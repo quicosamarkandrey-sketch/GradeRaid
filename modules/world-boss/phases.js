@@ -73,14 +73,15 @@ window.wbpGetPhaseNumber = function (boss) {
 };
 
 window.wbpCheckPhaseChange = function (bossIdx) {
-  const _db  = (DB && DB.bossEvents) ? DB : loadDB();
-  const boss = _db.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
   const newPhase  = wbpGetPhaseNumber(boss);
   const lastPhase = WBP.lastSeenPhase[bossIdx];
-  if (_db.bossEvents[bossIdx]._currentPhaseNum !== newPhase) {
-    _db.bossEvents[bossIdx]._currentPhaseNum = newPhase;
-    if (_db === DB) saveDB(); else { DB = _db; saveDB(); }
+  if (boss._currentPhaseNum !== newPhase) {
+    AppStore.updateState(draft => {
+      const b = (draft.bossEvents || [])[bossIdx];
+      if (b) b._currentPhaseNum = newPhase;
+    }, { type: 'world-boss:phase-recorded', payload: { bossIdx, phase: newPhase } });
   }
   if (lastPhase === undefined) { WBP.lastSeenPhase[bossIdx] = newPhase; return; }
   if (newPhase !== lastPhase) { WBP.lastSeenPhase[bossIdx] = newPhase; wbpTriggerPhaseAnnouncement(bossIdx, newPhase); }
@@ -95,8 +96,7 @@ window.wbpCheckPhaseChange = function (bossIdx) {
 // none of which existed in the extracted codebase.
 
 window.wbpTriggerPhaseAnnouncement = function (bossIdx, phaseNum) {
-  const _db  = (DB && DB.bossEvents) ? DB : loadDB();
-  const boss = _db.bossEvents[bossIdx]; if (!boss) return;
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const phases = wbpGetPhases(boss);
   const phase  = phases.find(p => p.phase === phaseNum) || phases[phaseNum - 1];
   if (!phase) return;
@@ -128,9 +128,11 @@ window.wbpTriggerPhaseAnnouncement = function (bossIdx, phaseNum) {
   _wbpUpdateHPBarColor(bossIdx);
 
   // 7. Persist the current phase on the boss so the admin card reflects it
-  if (!_db.bossEvents[bossIdx]._currentPhaseNum || _db.bossEvents[bossIdx]._currentPhaseNum < phaseNum) {
-    _db.bossEvents[bossIdx]._currentPhaseNum = phaseNum;
-    if (_db === DB) saveDB(); else { DB = _db; saveDB(); }
+  if (!boss._currentPhaseNum || boss._currentPhaseNum < phaseNum) {
+    AppStore.updateState(draft => {
+      const b = (draft.bossEvents || [])[bossIdx];
+      if (b) b._currentPhaseNum = phaseNum;
+    }, { type: 'world-boss:phase-recorded', payload: { bossIdx, phase: phaseNum } });
   }
 };
 
@@ -139,7 +141,7 @@ function _wbpShowPhaseBanner(bossIdx, phase) {
   const existing = document.getElementById('wbp-phase-banner');
   if (existing) existing.remove();
 
-  const boss = DB.bossEvents[bossIdx];
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
 
   const banner = document.createElement('div');
   banner.id = 'wbp-phase-banner';
@@ -198,8 +200,7 @@ function _wbpScreenFlash(color) {
 
 // ── Update HP bar gradient to match current phase ─────────────────────────────
 function _wbpUpdateHPBarColor(bossIdx) {
-  const _db  = (DB && DB.bossEvents) ? DB : loadDB();
-  const boss = _db.bossEvents[bossIdx]; if (!boss) return;
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const phase = wbpGetCurrentPhase(boss);
   const fill = document.getElementById('wb-hp-fill') || document.getElementById('camp-enemy-hp');
   if (fill) fill.style.background = phase.hpBarGradient;
@@ -210,8 +211,7 @@ function _wbpUpdateHPBarColor(bossIdx) {
 
 // ── Phase indicator strip shown below the HP bar ──────────────────────────────
 function _wbpUpdatePhaseIndicator(bossIdx) {
-  const _db  = (DB && DB.bossEvents) ? DB : loadDB();
-  const boss = _db.bossEvents[bossIdx]; if (!boss) return;
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const phases  = wbpGetPhases(boss);
   const current = wbpGetCurrentPhase(boss);
 
@@ -241,8 +241,7 @@ function _wbpInjectPhaseIndicator(bossIdx) {
     _wbpUpdatePhaseIndicator(bossIdx);
     return;
   }
-  const _db  = (DB && DB.bossEvents) ? DB : loadDB();
-  const boss = _db.bossEvents[bossIdx]; if (!boss) return;
+  const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const current = wbpGetCurrentPhase(boss);
 
   const wrap = document.createElement('div');
@@ -448,8 +447,7 @@ function _wbpInjectPhaseIndicator(bossIdx) {
 // ── Admin phase config modal ──────────────────────────────────────────────────
 
 window.wbpOpenPhaseConfig = function (bossIdx) {
-  DB = loadDB();
-  const boss   = DB.bossEvents[bossIdx]; if (!boss) return;
+  const boss   = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const phases = wbpGetPhases(boss);
   const rows   = phases.map((p, i) => `
   <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-left:3px solid ${p.color||'#8b5cf6'};border-radius:10px;padding:14px;margin-bottom:10px">
@@ -481,10 +479,8 @@ window.wbpOpenPhaseConfig = function (bossIdx) {
 };
 
 window.wbpSavePhaseConfig = function (bossIdx) {
-  DB = loadDB();
-  const boss   = DB.bossEvents[bossIdx]; if (!boss) return;
-  const phases = wbpGetPhases(boss);
-  boss.phases  = phases.map((p, i) => ({
+  const existing = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!existing) return;
+  const phases = wbpGetPhases(existing).map((p, i) => ({
     ...p,
     icon:         document.getElementById(`wbp-icon-${i}`)?.value.trim()    || p.icon,
     label:        document.getElementById(`wbp-label-${i}`)?.value.trim()   || p.label,
@@ -494,12 +490,18 @@ window.wbpSavePhaseConfig = function (bossIdx) {
     description:  document.getElementById(`wbp-desc-${i}`)?.value.trim()   || '',
     dialogue:     document.getElementById(`wbp-dlg-${i}`)?.value.trim()    || '',
   }));
-  saveDB(); closeModalForce(); toast('✅ Phase config saved!'); renderAdminBossEvents();
+  AppStore.updateState(draft => {
+    const b = (draft.bossEvents || [])[bossIdx];
+    if (b) b.phases = phases;
+  }, { type: 'world-boss:phases-saved', payload: { bossIdx } });
+  closeModalForce(); toast('✅ Phase config saved!'); renderAdminBossEvents();
 };
 
 window.wbpResetPhasesToDefault = function (bossIdx) {
   if (!confirm('Reset phases to defaults?')) return;
-  DB = loadDB();
-  DB.bossEvents[bossIdx].phases = null;
-  saveDB(); closeModalForce(); toast('↺ Phases reset to defaults.'); renderAdminBossEvents();
+  AppStore.updateState(draft => {
+    const b = (draft.bossEvents || [])[bossIdx];
+    if (b) b.phases = null;
+  }, { type: 'world-boss:phases-reset', payload: { bossIdx } });
+  closeModalForce(); toast('↺ Phases reset to defaults.'); renderAdminBossEvents();
 };
