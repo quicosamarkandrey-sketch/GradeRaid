@@ -463,6 +463,30 @@ function _esc(s) {
 }
 window._esc = _esc;
 
+// _cssColor(s) — Tier 2 debt fix (studentColor/studentInit CSS-injection
+// audit). Student `color` values are drawn from a fixed admin-defined hex
+// palette (see modules/admin/registrations.js's `colors` array) and are
+// never free text today, but dozens of render sites across the app
+// (my-section.js, hall-of-fame.js, and others) interpolate that value
+// directly into `style="..."` attributes — and in a couple of hall-of-fame.js
+// spots, into an inline `onerror="...'${color}'..."` JS-attribute string.
+// That's an attribute-breakout hazard, not just a styling one, the moment
+// this field's provenance ever changes (a new admin custom-color picker, a
+// data-import path, a bug elsewhere that lets a raw value through). _esc()
+// isn't the right tool here — HTML-entity-escaping a color string doesn't
+// stop it from closing a `style="` or `onerror="` attribute early. Instead,
+// validate the shape is actually a color (3/4/6/8-digit hex, or a CSS
+// variable reference) and fall back to a safe default otherwise, so this
+// value is inert by construction rather than escaped-and-hoped.
+function _cssColor(s, fallback) {
+  fallback = fallback || '#8b5cf6';
+  const v = String(s || '').trim();
+  if (/^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(v)) return v;
+  if (/^var\(--[a-zA-Z0-9-]+\)$/.test(v)) return v;
+  return fallback;
+}
+window._cssColor = _cssColor;
+
 function todayStr(){return new Date().toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'});}
 function nowStr(){return new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});}
 // isoDate() → 'YYYY-MM-DD' for "today", in Philippine time (Asia/Manila).

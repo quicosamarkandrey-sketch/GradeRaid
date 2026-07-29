@@ -182,7 +182,7 @@ window.achClaimReward = function (achId) {
                  : null;
   if (!_present) {
     achGrantRewardsForClaim(currentUser.id, achId);
-    toast('🏅 ' + ach.name + ' claimed!', '#d0bcff');
+    toast('🏅 ' + _esc(ach.name) + ' claimed!', '#d0bcff');
     renderBadges();
     return;
   }

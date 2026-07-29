@@ -179,7 +179,7 @@ window.wbrageCheckAndActivate = function (bossIdx) {
   if (hpFill) { hpFill.style.setProperty('--rage-glow','1'); hpFill.classList.add('wbrage-hp'); }
   _wbrageAccelerateSpawns(bossIdx);
   _wbrageStartSkillLoop(bossIdx);
-  toast(`🔥 <b>${boss.name}</b> has entered <b>RAGE MODE!</b>`, '#ef4444');
+  toast(`🔥 <b>${_esc(boss.name)}</b> has entered <b>RAGE MODE!</b>`, '#ef4444');
 };
 
 window.wbrageReset = function (bossIdx) {

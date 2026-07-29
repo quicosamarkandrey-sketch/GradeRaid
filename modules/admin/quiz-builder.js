@@ -67,15 +67,15 @@ function _qbQuizCard(q) {
     <div style="display:flex;align-items:center;gap:16px">
       <div style="font-size:36px;width:52px;text-align:center">📝</div>
       <div style="flex:1">
-        <div style="font-size:15px;font-weight:700;color:var(--on-surface)">${q.title}</div>
-        <div style="color:var(--text-muted);font-size:12px;margin-top:3px">${q.desc}</div>
+        <div style="font-size:15px;font-weight:700;color:var(--on-surface)">${_esc(q.title)}</div>
+        <div style="color:var(--text-muted);font-size:12px;margin-top:3px">${_esc(q.desc)}</div>
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
           <span class="badge-pill bp-primary">+${q.xpReward} XP</span>
           <span class="badge-pill bp-gold">+${q.coinReward} 🪙</span>
           <span class="badge-pill bp-gray">${q.questions.length} questions</span>
           <span class="badge-pill bp-gray">⏱ ${q.timeLimit} min</span>
           <span class="badge-pill bp-green">${completions}/${DB.students.length} completed</span>
-          <span class="badge-pill ${assignedIds.length ? 'bp-primary' : 'bp-gray'}" title="${_esc(sectionsLabel)}">🏫 ${assignedIds.length ? sectionsLabel : 'Unassigned'}</span>
+          <span class="badge-pill ${assignedIds.length ? 'bp-primary' : 'bp-gray'}" title="${_esc(sectionsLabel)}">🏫 ${assignedIds.length ? _esc(sectionsLabel) : 'Unassigned'}</span>
           <span class="badge-pill" style="background:${(ACH_RARITY[eqQuizRarity(q)] || ACH_RARITY.Common).glow};color:${(ACH_RARITY[eqQuizRarity(q)] || ACH_RARITY.Common).color}">${eqQuizRarity(q)}</span>
           ${eqQuizCadence(q) !== 'standing' ? `<span class="badge-pill bp-gray">${eqQuizCadence(q) === 'daily' ? '☀️ Daily pool' : '🗓️ Weekly pool'}</span>` : ''}
           ${q.chainId ? `<span class="badge-pill" style="background:rgba(244,114,182,0.15);color:#f472b6">🔗 ${_esc(q.chainLabel || q.chainId)} · Part ${q.chainOrder || 1}</span>` : ''}
@@ -273,7 +273,7 @@ window.cloneQuiz = function(id) {
   DB.quizzes.push(clone);
   saveDB();
   renderAdminQuizzes();
-  toast(`📋 Cloned "${src.title}" — edit and publish when ready.`);
+  toast(`📋 Cloned "${_esc(src.title)}" — edit and publish when ready.`);
   openQuizBuilder(clone.id);
 };
 
@@ -300,8 +300,8 @@ function renderQuizBuilderModal() {
   ).join('');
 
   showModal(`<div class="modal-h2">${DB.quizzes.find(q => q.id === draftQuiz.id) ? '✏️ Edit Quest' : '📝 Create Quest'}</div>
-    <div class="form-group"><label class="form-label">Quest Title</label><input type="text" id="qb-title" value="${draftQuiz.title}" placeholder="e.g. Science Chapter 5 Quiz" style="width:100%" oninput="draftQuiz.title=this.value"></div>
-    <div class="form-group"><label class="form-label">Description</label><input type="text" id="qb-desc" value="${draftQuiz.desc}" placeholder="Brief description..." style="width:100%" oninput="draftQuiz.desc=this.value"></div>
+    <div class="form-group"><label class="form-label">Quest Title</label><input type="text" id="qb-title" value="${_esc(draftQuiz.title)}" placeholder="e.g. Science Chapter 5 Quiz" style="width:100%" oninput="draftQuiz.title=this.value"></div>
+    <div class="form-group"><label class="form-label">Description</label><input type="text" id="qb-desc" value="${_esc(draftQuiz.desc)}" placeholder="Brief description..." style="width:100%" oninput="draftQuiz.desc=this.value"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
       <div class="form-group"><label class="form-label">XP Reward</label><input type="number" id="qb-xp" value="${draftQuiz.xpReward}" min="0" style="width:100%" oninput="draftQuiz.xpReward=parseInt(this.value)||0"></div>
       <div class="form-group"><label class="form-label">Coin Reward</label><input type="number" id="qb-coins" value="${draftQuiz.coinReward}" min="0" style="width:100%" oninput="draftQuiz.coinReward=parseInt(this.value)||0"></div>
@@ -640,7 +640,7 @@ window.saveQuiz = async function() {
 
 window.deleteQuiz = function(id) {
   const q = DB.quizzes.find(q => q.id === id);
-  showModal(`<div style="text-align:center;padding:10px"><div style="font-size:40px;margin-bottom:12px">🗑️</div><div class="modal-h2" style="text-align:center">Delete Quest?</div><div style="color:var(--text-muted);margin-bottom:20px">Remove "${q?.title}" permanently?</div><div style="display:flex;gap:10px"><button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button><button class="btn btn-danger" style="flex:1" onclick="confirmDeleteQuiz('${id}')">Delete</button></div></div>`, 'sm');
+  showModal(`<div style="text-align:center;padding:10px"><div style="font-size:40px;margin-bottom:12px">🗑️</div><div class="modal-h2" style="text-align:center">Delete Quest?</div><div style="color:var(--text-muted);margin-bottom:20px">Remove "${_esc(q?.title)}" permanently?</div><div style="display:flex;gap:10px"><button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button><button class="btn btn-danger" style="flex:1" onclick="confirmDeleteQuiz('${id}')">Delete</button></div></div>`, 'sm');
 };
 
 window.confirmDeleteQuiz = async function(id) {
@@ -651,7 +651,7 @@ window.confirmDeleteQuiz = async function(id) {
   saveDB();
   closeModalForce();
   renderAdminQuizzes();
-  toast(`🗑️ "${q?.title}" deleted`);
+  toast(`🗑️ "${_esc(q?.title)}" deleted`);
   // Phase 29: delete_quiz() closes the gap this comment used to flag — the
   // bulk push is upsert-only and never deletes server rows, so without
   // this the quiz would silently reappear for everyone on the next pull.

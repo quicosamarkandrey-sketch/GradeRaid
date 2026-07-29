@@ -110,14 +110,14 @@ window._bossEventCardHTML = function (boss, bi) {
             ${bossStatusLabel(boss)}
             <span style="font-size:10px;font-weight:700;color:${diffC};background:${diffC}18;border:1px solid ${diffC}33;padding:2px 8px;border-radius:6px">${boss.difficulty || 'Normal'}</span>
           </div>
-          <div class="boss-event-name" title="${boss.name}">${boss.name || 'Unnamed Boss'}</div>
+          <div class="boss-event-name" title="${_esc(boss.name)}">${_esc(boss.name) || 'Unnamed Boss'}</div>
           <div class="boss-event-dates">
             <span class="material-symbols-outlined" style="font-size:12px">calendar_month</span>
             ${boss.startDate || '—'} → ${boss.endDate || '—'}
           </div>
         </div>
       </div>
-      ${boss.description ? `<div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:12px;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${boss.description}</div>` : ''}
+      ${boss.description ? `<div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:12px;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${_esc(boss.description)}</div>` : ''}
       <div style="margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <div style="font-family:var(--fm);font-size:9px;color:#EC4899;letter-spacing:.1em">BOSS HP</div>
@@ -189,7 +189,7 @@ window.bossActivate = async function (bi) {
   }, { type: 'world-boss:activated', payload: { bossIdx: bi } });
 
   renderAdminBossEvents();
-  toast('💀 Boss "' + bossName + '" is now LIVE!', '#EC4899');
+  toast('💀 Boss "' + _esc(bossName) + '" is now LIVE!', '#EC4899');
   // Phase 24: start_boss_event() atomically ends siblings + resets
   // current_hp/status/timestamps + clears participant/loot rows
   // server-side, instead of leaving all of that to whatever the next
@@ -209,7 +209,7 @@ window.bossEnd = async function (bi) {
     if (boss) { boss.status = 'ended'; boss.endedAt = Date.now(); }
   }, { type: 'world-boss:ended', payload: { bossIdx: bi } });
   renderAdminBossEvents();
-  toast('⏹️ Boss event "' + existing.name + '" ended.', '#ffb95f');
+  toast('⏹️ Boss event "' + _esc(existing.name) + '" ended.', '#ffb95f');
   // Phase 24: end_boss_event() atomically writes status/ended_at
   // server-side instead of leaving it to whatever the next bulk
   // boss_events push happens to carry.
@@ -230,7 +230,7 @@ window.bossDelete = async function (bi) {
     if (Array.isArray(draft.bossEvents)) draft.bossEvents.splice(bi, 1);
   }, { type: 'world-boss:deleted', payload: { bossIdx: bi } });
   renderAdminBossEvents();
-  toast('🗑️ Boss "' + existing.name + '" deleted.');
+  toast('🗑️ Boss "' + _esc(existing.name) + '" deleted.');
   // Phase 23: the bulk push is upsert-only and never deletes server rows —
   // without this, the boss (and its participants/loot claims) would
   // silently reappear for everyone on the next pull. delete_boss_event()
@@ -255,7 +255,7 @@ window.wbcOpenCombatSettings = function (bossIdx) {
   showModal(`
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
     <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,rgba(236,72,153,.25),rgba(139,92,246,.2));border:1px solid rgba(236,72,153,.4);display:flex;align-items:center;justify-content:center;font-size:22px">⚔️</div>
-    <div><div class="modal-h2" style="margin-bottom:2px">Combat Settings — ${boss.name}</div><div style="font-size:12px;color:var(--text-muted)">Configure damage, crit chance, and question flow</div></div>
+    <div><div class="modal-h2" style="margin-bottom:2px">Combat Settings — ${_esc(boss.name)}</div><div style="font-size:12px;color:var(--text-muted)">Configure damage, crit chance, and question flow</div></div>
   </div>
   <div class="boss-form-section">
     <div class="boss-form-section-title">💥 Damage Settings</div>
@@ -314,7 +314,7 @@ window.wbcOpenQuestionEditor = function (bossIdx) {
   showModal(`
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
     <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,rgba(236,72,153,.25),rgba(139,92,246,.2));border:1px solid rgba(236,72,153,.4);display:flex;align-items:center;justify-content:center;font-size:22px">📝</div>
-    <div><div class="modal-h2" style="margin-bottom:2px">Boss Questions — ${boss.name}</div><div style="font-size:12px;color:var(--text-muted)">Add questions students will answer to deal damage</div></div>
+    <div><div class="modal-h2" style="margin-bottom:2px">Boss Questions — ${_esc(boss.name)}</div><div style="font-size:12px;color:var(--text-muted)">Add questions students will answer to deal damage</div></div>
   </div>
   ${allQuizzes.length > 0 ? `
   <div class="boss-form-section" style="margin-bottom:16px">
@@ -386,7 +386,7 @@ window.wbcImportFromQuiz = function (bossIdx) {
   document.getElementById('wbq-list').innerHTML = _wbcRenderQuestionList(window._wbcDraftQuestions);
   toast(skipped
     ? `✅ Imported ${importable.length} questions (${skipped} question${skipped>1?'s':''} skipped — Identification/Enumeration/Matching aren't supported in boss combat yet)`
-    : `✅ Imported ${importable.length} questions from "${quiz.title}"`, '#4edea3');
+    : `✅ Imported ${importable.length} questions from "${_esc(quiz.title)}"`, '#4edea3');
 };
 
 window.wbcSaveQuestions = function (bossIdx) {
@@ -404,7 +404,7 @@ window.wbcSaveQuestions = function (bossIdx) {
     if (boss) boss.bossQuestions = qs;
   }, { type: 'world-boss:questions-saved', payload: { bossIdx } });
   closeModalForce();
-  toast(`✅ ${qs.length} questions saved to "${existing.name}"!`, '#EC4899');
+  toast(`✅ ${qs.length} questions saved to "${_esc(existing.name)}"!`, '#EC4899');
   renderAdminBossEvents();
 };
 
@@ -555,7 +555,7 @@ window.saveBossForm = function () {
     if (isEdit) draft.bossEvents[d._index] = saveObj;
     else        draft.bossEvents.push(saveObj);
   }, { type: isEdit ? 'world-boss:updated' : 'world-boss:created', payload: { name: saveObj.name } });
-  toast(isEdit ? '✅ Boss "' + saveObj.name + '" updated!' : '💀 Boss "' + saveObj.name + '" created!');
+  toast(isEdit ? '✅ Boss "' + _esc(saveObj.name) + '" updated!' : '💀 Boss "' + _esc(saveObj.name) + '" created!');
   closeModalForce(); renderAdminBossEvents();
   } finally {
     window._bossFormSaving = false;
@@ -629,8 +629,8 @@ window.openBossForm = function (bossIndex) {
   </div>
   <div class="boss-form-section">
     <div class="boss-form-section-title">💀 Basic Info</div>
-    <div class="form-group" style="margin-bottom:12px"><label class="form-label">Boss Name <span style="color:#EC4899">*</span></label><input type="text" id="bf-name" value="${boss.name || ''}" placeholder="e.g. The Void Tyrant" style="width:100%" oninput="window._bossDraft.name=this.value;clearFieldErr(this,'bf-name-err')"><div class="field-err" id="bf-name-err">Boss name is required</div></div>
-    <div class="form-group" style="margin-bottom:12px"><label class="form-label">Boss Description</label><textarea id="bf-desc" rows="3" placeholder="Describe the boss lore and threat…" style="width:100%;resize:vertical" oninput="window._bossDraft.description=this.value">${boss.description || ''}</textarea></div>
+    <div class="form-group" style="margin-bottom:12px"><label class="form-label">Boss Name <span style="color:#EC4899">*</span></label><input type="text" id="bf-name" value="${_esc(boss.name || '')}" placeholder="e.g. The Void Tyrant" style="width:100%" oninput="window._bossDraft.name=this.value;clearFieldErr(this,'bf-name-err')"><div class="field-err" id="bf-name-err">Boss name is required</div></div>
+    <div class="form-group" style="margin-bottom:12px"><label class="form-label">Boss Description</label><textarea id="bf-desc" rows="3" placeholder="Describe the boss lore and threat…" style="width:100%;resize:vertical" oninput="window._bossDraft.description=this.value">${_esc(boss.description || '')}</textarea></div>
     <div class="form-group" style="margin-bottom:0">
       <label class="form-label">Spawn Section <span style="color:#EC4899">*</span></label>
       <select id="bf-section" style="width:100%" ${lockSection ? 'disabled' : ''} onchange="window._bossDraft.classId=this.value">
@@ -671,13 +671,13 @@ window.openBossForm = function (bossIndex) {
     <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;line-height:1.6;background:rgba(255,185,95,0.05);border:1px solid rgba(255,185,95,0.15);border-radius:8px;padding:10px 12px"><span style="color:#ffb95f;font-weight:700">Optional.</span> Customize what appears in the overlay when the boss is defeated.</div>
     <div style="background:rgba(236,72,153,0.05);border:1px solid rgba(236,72,153,0.18);border-radius:12px;padding:14px 16px;margin-bottom:14px">
       <div style="font-family:var(--fm);font-size:9px;color:#EC4899;letter-spacing:.14em;margin-bottom:12px">DEFEAT NARRATION</div>
-      <div class="form-group" style="margin-bottom:10px"><label class="form-label">Narration Title</label><input type="text" id="bf-narr-title" value="${boss.defeatNarrTitle || ''}" placeholder="e.g. ANCIENT DRAGON FALLS" style="width:100%" oninput="window._bossDraft.defeatNarrTitle=this.value"></div>
-      <div class="form-group" style="margin-bottom:0"><label class="form-label">Narration Text (use \\n for line breaks)</label><textarea id="bf-narr-text" rows="3" style="width:100%;resize:vertical" oninput="window._bossDraft.defeatNarrText=this.value">${boss.defeatNarrText || ''}</textarea></div>
+      <div class="form-group" style="margin-bottom:10px"><label class="form-label">Narration Title</label><input type="text" id="bf-narr-title" value="${_esc(boss.defeatNarrTitle || '')}" placeholder="e.g. ANCIENT DRAGON FALLS" style="width:100%" oninput="window._bossDraft.defeatNarrTitle=this.value"></div>
+      <div class="form-group" style="margin-bottom:0"><label class="form-label">Narration Text (use \\n for line breaks)</label><textarea id="bf-narr-text" rows="3" style="width:100%;resize:vertical" oninput="window._bossDraft.defeatNarrText=this.value">${_esc(boss.defeatNarrText || '')}</textarea></div>
     </div>
     <div style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.18);border-radius:12px;padding:14px 16px">
       <div style="font-family:var(--fm);font-size:9px;color:var(--primary);letter-spacing:.14em;margin-bottom:12px">VICTORY SCREEN</div>
-      <div class="form-group" style="margin-bottom:10px"><label class="form-label">Victory Title</label><input type="text" id="bf-vic-title" value="${boss.victoryTitle || ''}" placeholder="e.g. BOSS DEFEATED!" style="width:100%" oninput="window._bossDraft.victoryTitle=this.value"></div>
-      <div class="form-group" style="margin-bottom:0"><label class="form-label">Victory Message</label><textarea id="bf-vic-msg" rows="2" style="width:100%;resize:vertical" oninput="window._bossDraft.victoryMessage=this.value">${boss.victoryMessage || ''}</textarea></div>
+      <div class="form-group" style="margin-bottom:10px"><label class="form-label">Victory Title</label><input type="text" id="bf-vic-title" value="${_esc(boss.victoryTitle || '')}" placeholder="e.g. BOSS DEFEATED!" style="width:100%" oninput="window._bossDraft.victoryTitle=this.value"></div>
+      <div class="form-group" style="margin-bottom:0"><label class="form-label">Victory Message</label><textarea id="bf-vic-msg" rows="2" style="width:100%;resize:vertical" oninput="window._bossDraft.victoryMessage=this.value">${_esc(boss.victoryMessage || '')}</textarea></div>
     </div>
   </div>
   <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:4px">
@@ -734,9 +734,9 @@ function _bflpBuildCards(library, selectedId, query) {
   return filtered.map(boss => {
     const sel    = boss.id === selectedId;
     const artSrc = bveGetArtSrc(boss);
-    const theme  = (boss.visual && boss.visual.themeColor) || '#8b5cf6';
-    const aura   = (boss.visual && boss.visual.auraColor)  || '#EC4899';
-    const accent = (boss.visual && boss.visual.cardAccent)  || '#d0bcff';
+    const theme  = _cssColor((boss.visual && boss.visual.themeColor), '#8b5cf6');
+    const aura   = _cssColor((boss.visual && boss.visual.auraColor), '#EC4899');
+    const accent = _cssColor((boss.visual && boss.visual.cardAccent), '#d0bcff');
     let artHTML  = '';
     if (artSrc.type === 'emoji') artHTML = `<div class="bflp-card-art-emoji">${artSrc.value}</div>`;
     else if (artSrc.type === 'img') artHTML = `<div class="bflp-card-art-img-wrap"><img class="bflp-card-art-img" src="${_esc(artSrc.value)}" alt="${_esc(boss.name)}" onerror="this.style.display='none'"></div>`;
@@ -786,7 +786,7 @@ window._bflpConfirmSelection = function () {
   }
   document.getElementById('bflp-overlay')?.remove();
   _bflpUpdateFormAfterSelect(boss);
-  toast(`✅ Linked "${boss.name}"`, '#4edea3');
+  toast(`✅ Linked "${_esc(boss.name)}"`, '#4edea3');
 };
 
 function _bflpUpdateFormAfterSelect(boss) {
@@ -794,9 +794,9 @@ function _bflpUpdateFormAfterSelect(boss) {
   if (!section) return;
   const artSrc = bveGetArtSrc(boss);
   const vis    = boss.visual || {};
-  const theme  = vis.themeColor || '#8b5cf6';
-  const aura   = vis.auraColor  || '#EC4899';
-  const accent = vis.cardAccent  || '#d0bcff';
+  const theme  = _cssColor(vis.themeColor, '#8b5cf6');
+  const aura   = _cssColor(vis.auraColor, '#EC4899');
+  const accent = _cssColor(vis.cardAccent, '#d0bcff');
   let artThumb = artSrc.type === 'emoji' ? `<span style="font-size:32px;line-height:1">${artSrc.value}</span>`
     : artSrc.type === 'img' ? `<img src="${_esc(artSrc.value)}" style="width:100%;height:100%;object-fit:contain" alt="">`
     : '<span style="font-size:32px">💀</span>';

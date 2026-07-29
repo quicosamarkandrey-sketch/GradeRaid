@@ -1472,7 +1472,7 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
       return;
     }
 
-    const color = student.color || '#8b5cf6';
+    const color = _cssColor(student.color);
 
     // Equipped title, rendered with the same badge renderer the kiosk/
     // sidebar/leaderboard use — reuses tsGetEquippedTitle()/tsBuildBadgeHTML()

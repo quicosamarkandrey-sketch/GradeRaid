@@ -122,7 +122,7 @@ window.wbpTriggerPhaseAnnouncement = function (bossIdx, phaseNum) {
   _wbpShowPhaseBanner(bossIdx, phase);
 
   // 5. Toast announcement
-  toast(`${phase.icon} <b>${boss.name}</b> has entered <b>${phase.name}!</b> — ${phase.label}`, phase.color);
+  toast(`${phase.icon} <b>${_esc(boss.name)}</b> has entered <b>${_esc(phase.name)}!</b> — ${_esc(phase.label)}`, phase.color);
 
   // 6. Update HP bar color immediately
   _wbpUpdateHPBarColor(bossIdx);
@@ -151,7 +151,7 @@ function _wbpShowPhaseBanner(bossIdx, phase) {
     <div class="wbp-banner-inner">
       <div class="wbp-banner-left">
         <div class="wbp-banner-phase-label">PHASE TRANSITION</div>
-        <div class="wbp-banner-phase-name">${phase.icon} ${phase.name.toUpperCase()} — ${phase.label}</div>
+        <div class="wbp-banner-phase-name">${phase.icon} ${_esc(phase.name.toUpperCase())} — ${_esc(phase.label)}</div>
         <div class="wbp-banner-desc">${_esc(phase.description||'')}</div>
         <div class="wbp-banner-dialogue">"${_esc(phase.dialogue||'')}"<span class="wbp-banner-speaker"> — ${_esc(boss.name)}</span></div>
       </div>
@@ -219,14 +219,14 @@ function _wbpUpdatePhaseIndicator(bossIdx) {
   const badge = document.querySelector('.wbp-current-phase-badge');
   if (badge) {
     badge.style.setProperty('--pc', current.color);
-    badge.innerHTML = `${current.icon} ${current.name.toUpperCase()} — ${current.label}`;
+    badge.innerHTML = `${current.icon} ${_esc(current.name.toUpperCase())} — ${_esc(current.label)}`;
   }
   if (!el) return;
 
   el.innerHTML = phases.map(p => {
     const isActive = p.phase === current.phase;
     const isPast   = p.phase < current.phase;
-    return `<div class="wbp-phase-pip ${isActive?'active':''} ${isPast?'past':''}" style="--pc:${p.color}"
+    return `<div class="wbp-phase-pip ${isActive?'active':''} ${isPast?'past':''}" style="--pc:${_cssColor(p.color)}"
       title="${_esc(p.name)} — ${p.thresholdMax}% to ${p.thresholdMin}% HP">
       <div class="wbp-phase-pip-icon">${p.icon}</div>
       <div class="wbp-phase-pip-label">${_esc(p.name)}</div>
@@ -249,9 +249,9 @@ function _wbpInjectPhaseIndicator(bossIdx) {
   wrap.className = 'wbp-phase-wrap';
   wrap.innerHTML = `
     <div class="wbp-phase-header">
-      <span class="material-symbols-outlined" style="font-size:14px;color:${current.color}">local_fire_department</span>
+      <span class="material-symbols-outlined" style="font-size:14px;color:${_cssColor(current.color)}">local_fire_department</span>
       <span class="wbp-phase-header-label">BATTLE PHASES</span>
-      <span class="wbp-current-phase-badge" style="--pc:${current.color}">${current.icon} ${current.name.toUpperCase()} — ${current.label}</span>
+      <span class="wbp-current-phase-badge" style="--pc:${_cssColor(current.color)}">${current.icon} ${_esc(current.name.toUpperCase())} — ${_esc(current.label)}</span>
     </div>
     <div class="wbp-phase-track" id="wbp-phase-indicator"></div>
   `;
@@ -337,9 +337,9 @@ function _wbpInjectPhaseIndicator(bossIdx) {
     const phasePips = phases.map(p => {
       const isActive = p.phase === current.phase;
       return `<div title="${_esc(p.name)}: ${p.thresholdMin}–${p.thresholdMax}% HP"
-        style="width:24px;height:24px;border-radius:50%;border:2px solid ${p.color}${isActive?'':'66'};
-          background:${isActive?p.color+'33':'transparent'};display:flex;align-items:center;justify-content:center;
-          font-size:11px;transition:all .2s;${isActive?'box-shadow:0 0 8px '+p.color+'88':''}">${p.icon}</div>`;
+        style="width:24px;height:24px;border-radius:50%;border:2px solid ${_cssColor(p.color)}${isActive?'':'66'};
+          background:${isActive?_cssColor(p.color)+'33':'transparent'};display:flex;align-items:center;justify-content:center;
+          font-size:11px;transition:all .2s;${isActive?'box-shadow:0 0 8px '+_cssColor(p.color)+'88':''}">${p.icon}</div>`;
     }).join('');
 
     const phaseStrip = `
@@ -450,11 +450,11 @@ window.wbpOpenPhaseConfig = function (bossIdx) {
   const boss   = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const phases = wbpGetPhases(boss);
   const rows   = phases.map((p, i) => `
-  <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-left:3px solid ${p.color||'#8b5cf6'};border-radius:10px;padding:14px;margin-bottom:10px">
+  <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-left:3px solid ${_cssColor(p.color)};border-radius:10px;padding:14px;margin-bottom:10px">
     <div style="display:grid;grid-template-columns:60px 1fr 1fr;gap:10px;margin-bottom:10px">
       <div><label class="form-label" style="font-size:9px">ICON</label><input type="text" id="wbp-icon-${i}" value="${_esc(p.icon||'⚡')}" style="width:100%;font-size:18px;text-align:center"></div>
       <div><label class="form-label" style="font-size:9px">LABEL</label><input type="text" id="wbp-label-${i}" value="${_esc(p.label||'Phase '+(i+1))}" style="width:100%"></div>
-      <div><label class="form-label" style="font-size:9px">COLOR</label><div style="display:flex;gap:6px;align-items:center"><input type="color" value="${p.color||'#8b5cf6'}" id="wbp-color-${i}" style="width:36px;height:28px;border:none;border-radius:6px;cursor:pointer"><input type="text" id="wbp-colorhex-${i}" value="${p.color||'#8b5cf6'}" style="flex:1;font-family:monospace;font-size:11px" oninput="document.getElementById('wbp-color-${i}').value=this.value"></div></div>
+      <div><label class="form-label" style="font-size:9px">COLOR</label><div style="display:flex;gap:6px;align-items:center"><input type="color" value="${_cssColor(p.color)}" id="wbp-color-${i}" style="width:36px;height:28px;border:none;border-radius:6px;cursor:pointer"><input type="text" id="wbp-colorhex-${i}" value="${_cssColor(p.color)}" style="flex:1;font-family:monospace;font-size:11px" oninput="document.getElementById('wbp-color-${i}').value=this.value"></div></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       <div><label class="form-label" style="font-size:9px">HP% MIN (activates below)</label><input type="number" id="wbp-min-${i}" value="${p.thresholdMin??0}" min="0" max="100" style="width:100%"></div>

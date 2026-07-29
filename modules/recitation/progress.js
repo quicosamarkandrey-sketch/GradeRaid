@@ -561,7 +561,7 @@ function progRenderRecitationPanel(st, recitations, recStats, recStreaks) {
         <div class="rec-entry-icon ${tier}"><span style="font-size:20px">${icon}</span></div>
         <div class="rec-entry-body">
           <div class="rec-entry-pts" style="color:${pts >= 20 ? '#ffd700' : pts >= 15 ? '#d0bcff' : '#4edea3'}">+${pts} pts</div>
-          <div class="rec-entry-note">${r.note || 'Recitation session'}</div>
+          <div class="rec-entry-note">${_esc(r.note || 'Recitation session')}</div>
           <div class="rec-entry-when">🕐 ${r.when || '—'}</div>
         </div>
         ${pts >= 20 ? `<span class="badge-pill bp-gold" style="font-size:10px">🌟 Epic</span>` : pts >= 15 ? `<span class="badge-pill bp-primary" style="font-size:10px">⭐ High Score</span>` : ''}
@@ -676,7 +676,7 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
     <div class="share-card-inner">
       <div class="share-watermark">EduQuest · Academic Achievement Profile</div>
       <div class="share-student-row">
-        <div style="width:96px;height:96px;border-radius:50%;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:32px;font-weight:900;background:${st.color + '33'};color:${st.color};border:3px solid ${st.color + '55'};box-shadow:0 0 30px ${st.color + '33'}">${
+        <div style="width:96px;height:96px;border-radius:50%;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:32px;font-weight:900;background:${_cssColor(st.color) + '33'};color:${_cssColor(st.color)};border:3px solid ${_cssColor(st.color) + '55'};box-shadow:0 0 30px ${_cssColor(st.color) + '33'}">${
           st.profilePic
             ? `<img src="${_esc(st.profilePic)}" alt="${_esc(st.init)}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.remove()">`
             : _esc(st.init)
@@ -740,8 +740,8 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
     ${earnedAchs.map(a => `
     <div class="glass-card" style="padding:16px;text-align:center;border-color:rgba(255,185,95,.25)">
       <div style="font-size:32px;margin-bottom:8px">${a.icon || '🏆'}</div>
-      <div style="font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface);margin-bottom:4px">${a.name}</div>
-      <div style="font-size:11px;color:var(--text-muted)">${a.description}</div>
+      <div style="font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface);margin-bottom:4px">${_esc(a.name)}</div>
+      <div style="font-size:11px;color:var(--text-muted)">${_esc(a.description)}</div>
     </div>`).join('')}
   </div>` : ''}
 
@@ -753,8 +753,8 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:28px">
     ${earnedTitles.map(t => `
-    <div style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:${t.bgColor || 'rgba(255,215,0,.1)'};border:2px solid ${t.borderColor || 'rgba(255,215,0,.4)'};font-family:var(--fh);font-size:14px;font-weight:800;color:${t.textColor || '#ffd700'}">
-      ${t.icon || '🎖️'} ${t.name}
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:${_cssColor(t.bgColor, 'rgba(255,215,0,.1)')};border:2px solid ${_cssColor(t.borderColor, 'rgba(255,215,0,.4)')};font-family:var(--fh);font-size:14px;font-weight:800;color:${_cssColor(t.textColor, '#ffd700')}">
+      ${t.icon || '🎖️'} ${_esc(t.name)}
     </div>`).join('')}
   </div>` : ''}
   `;
@@ -805,7 +805,7 @@ window.renderStudentProgress = function () {
           <div class="prog-stat-chip"><span class="v" style="color:#ffd700">${perfectMonths}</span><span class="l">Perfect Months</span></div>
         </div>
       </div>
-      <div class="prog-hero-avatar" style="background:${st.color + '22'};color:${st.color};border-color:${st.color + '44'};box-shadow:0 0 40px ${st.color + '44'}">${_esc(st.init)}</div>
+      <div class="prog-hero-avatar" style="background:${_cssColor(st.color) + '22'};color:${_cssColor(st.color)};border-color:${_cssColor(st.color) + '44'};box-shadow:0 0 40px ${_cssColor(st.color) + '44'}">${_esc(st.init)}</div>
     </div>
   </div>
 
@@ -888,7 +888,7 @@ window.progShowCalDay = function (day, year, month) {
     html += `<div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">🎤 Recitations (${d.recitations.length})</div>`;
     d.recitations.forEach(r => {
       html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(78,222,163,.06);border:1px solid rgba(78,222,163,.15);border-radius:8px;margin-bottom:6px;font-size:12px">
-        <span style="color:var(--on-surface)">${r.note || 'Recitation'}</span>
+        <span style="color:var(--on-surface)">${_esc(r.note || 'Recitation')}</span>
         <span style="color:#4edea3;font-weight:800">+${r.pts} pts</span>
       </div>`;
     });

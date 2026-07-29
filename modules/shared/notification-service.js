@@ -280,8 +280,8 @@ window.eqTimeAgo = function (iso) {
     <div class="notif-row ${n.read ? '' : 'unread'}" onclick="NotificationService.openRow('${n.id}')">
       <div class="notif-row-icon">${n.icon || '🔔'}</div>
       <div class="notif-row-body">
-        <div class="notif-row-title">${n.title}</div>
-        <div class="notif-row-sub">${(n.body || '').replace(/</g, '&lt;')}</div>
+        <div class="notif-row-title">${_esc(n.title)}</div>
+        <div class="notif-row-sub">${_esc(n.body || '')}</div>
         <div class="notif-row-when">${window.eqTimeAgo(n.createdAt)}</div>
       </div>
       ${ptsHtml}

@@ -654,7 +654,7 @@ function _rfidProfileCardHtml(student, status, alreadyRecorded, fallbackName) {
   const badgeColor = colors[status] || '#4edea3';
   const name = student ? (student.name || student.displayName) : fallbackName;
   const initials = (student && student.init) || String(name || '?').trim().slice(0, 2).toUpperCase();
-  const avatarColor = (student && student.color) || '#8b5cf6';
+  const avatarColor = _cssColor(student && student.color);
   const pct = student ? Math.round(Number(student.attendance) || 0) : null;
   const pctColor = pct === null ? 'var(--text-muted)' : pct >= 90 ? '#4edea3' : pct >= 75 ? '#ffd166' : '#ffb4ab';
 
@@ -884,7 +884,7 @@ function _rfidRenderActivity() {
     const student = students.find(s => s.id === l.studentId);
     const name = student ? (student.name || student.displayName) : l.studentId;
     const initials = (student && student.init) || String(name || '?').trim().slice(0, 2).toUpperCase();
-    const avatarColor = (student && student.color) || '#8b5cf6';
+    const avatarColor = _cssColor(student && student.color);
     const color = colors[l.status] || 'var(--text-muted)';
     return `
       <div class="kiosk-activity-item">

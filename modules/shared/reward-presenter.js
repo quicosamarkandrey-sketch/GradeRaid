@@ -276,16 +276,17 @@ window.eqRewardPresent = function(opts){
   // Build reward cards HTML - enhanced with title display
   const _buildRewardCard = (r, i) => {
     const isTitleReward = r.type === 'title';
+    const rColor = r.color ? _cssColor(r.color) : null;
     let amtDisplay;
     if(isTitleReward){
-      amtDisplay = `<span class="eqr-reward-amount" style="color:${r.color||'#EC4899'};font-size:14px;letter-spacing:.02em">${r.label||'Title'}</span>`;
+      amtDisplay = `<span class="eqr-reward-amount" style="color:${rColor||'#EC4899'};font-size:14px;letter-spacing:.02em">${_esc(r.label||'Title')}</span>`;
     } else {
-      amtDisplay = `<span class="eqr-reward-amount" style="color:${r.color||'var(--on-surface)'}">${typeof r.amount==='number'?'+'+r.amount.toLocaleString():r.amount}</span>`;
+      amtDisplay = `<span class="eqr-reward-amount" style="color:${rColor||'var(--on-surface)'}">${typeof r.amount==='number'?'+'+r.amount.toLocaleString():_esc(r.amount)}</span>`;
     }
-    return `<div class="eqr-reward-card${isTitleReward?' eqr-reward-title':''}" style="border-color:${r.color||'rgba(255,255,255,.1)'};animation-delay:${(i*0.1+0.2)}s">
+    return `<div class="eqr-reward-card${isTitleReward?' eqr-reward-title':''}" style="border-color:${rColor||'rgba(255,255,255,.1)'};animation-delay:${(i*0.1+0.2)}s">
       <span class="eqr-reward-icon">${r.icon||'🎁'}</span>
       ${amtDisplay}
-      <span class="eqr-reward-label">${isTitleReward?'Title Unlocked':r.label||'Reward'}</span>
+      <span class="eqr-reward-label">${isTitleReward?'Title Unlocked':_esc(r.label||'Reward')}</span>
     </div>`;
   };
   const rewardCardsHTML = rewards.length > 0
@@ -311,8 +312,8 @@ window.eqRewardPresent = function(opts){
             ${rarityKey}
           </div>
         </div>
-        <div class="eqr-title">${title}</div>
-        ${subtitle?`<div class="eqr-subtitle">${subtitle}</div>`:''}
+        <div class="eqr-title">${_esc(title)}</div>
+        ${subtitle?`<div class="eqr-subtitle">${_esc(subtitle)}</div>`:''}
         <div class="eqr-divider"></div>
         ${rewards.length>0?'<div class="eqr-rewards-label">REWARDS ACQUIRED</div>':''}
         <div class="eqr-rewards-grid">${rewardCardsHTML}</div>

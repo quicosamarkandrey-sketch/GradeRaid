@@ -256,7 +256,7 @@ window.posLookupCode = function () {
     return;
   }
   if (order.status === 'claimed') {
-    result.innerHTML = `<div class="pos-result-card pos-result-claimed"><div style="display:flex;align-items:flex-start;gap:16px"><div style="font-size:44px;flex-shrink:0">${order.emoji || '🎁'}</div><div style="flex:1"><div style="font-family:var(--fh);font-size:18px;font-weight:900;color:#d0bcff;margin-bottom:6px">${_esc(order.itemName)}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${ordStatusPill('claimed')}<span class="pos-student-chip"><span class="pos-av" style="background:${order.studentColor || '#8b5cf6'}22;border:1px solid ${order.studentColor || '#8b5cf6'}44;color:${order.studentColor || '#8b5cf6'}">${_esc(order.studentInit || '?')}</span>${_esc(order.studentName)}</span></div><div style="font-size:12px;color:var(--text-muted)">Already claimed on ${order.claimedAt ? new Date(order.claimedAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unknown'} by ${_esc(order.claimedBy || 'Teacher')}</div></div></div><div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-size:12px;color:var(--text-muted);text-align:center">⚠️ This reward has already been distributed. Duplicate claims are blocked.</div></div></div>`;
+    result.innerHTML = `<div class="pos-result-card pos-result-claimed"><div style="display:flex;align-items:flex-start;gap:16px"><div style="font-size:44px;flex-shrink:0">${order.emoji || '🎁'}</div><div style="flex:1"><div style="font-family:var(--fh);font-size:18px;font-weight:900;color:#d0bcff;margin-bottom:6px">${_esc(order.itemName)}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${ordStatusPill('claimed')}<span class="pos-student-chip"><span class="pos-av" style="background:${_cssColor(order.studentColor)}22;border:1px solid ${_cssColor(order.studentColor)}44;color:${_cssColor(order.studentColor)}">${_esc(order.studentInit || '?')}</span>${_esc(order.studentName)}</span></div><div style="font-size:12px;color:var(--text-muted)">Already claimed on ${order.claimedAt ? new Date(order.claimedAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unknown'} by ${_esc(order.claimedBy || 'Teacher')}</div></div></div><div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-size:12px;color:var(--text-muted);text-align:center">⚠️ This reward has already been distributed. Duplicate claims are blocked.</div></div></div>`;
     return;
   }
   if (order.status === 'cancelled') {
@@ -269,7 +269,7 @@ window.posLookupCode = function () {
       <div class="pos-order-emoji">${order.emoji || '🎁'}</div>
       <div style="flex:1">
         <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:var(--on-surface);margin-bottom:6px">${_esc(order.itemName)}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${ordStatusPill(order.status)}<span class="pos-student-chip"><span class="pos-av" style="background:${order.studentColor || '#8b5cf6'}22;border:1px solid ${order.studentColor || '#8b5cf6'}44;color:${order.studentColor || '#8b5cf6'}">${_esc(order.studentInit || '?')}</span>${_esc(order.studentName)}</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${ordStatusPill(order.status)}<span class="pos-student-chip"><span class="pos-av" style="background:${_cssColor(order.studentColor)}22;border:1px solid ${_cssColor(order.studentColor)}44;color:${_cssColor(order.studentColor)}">${_esc(order.studentInit || '?')}</span>${_esc(order.studentName)}</span></div>
         <div style="display:flex;gap:16px;font-size:12px;color:var(--text-muted);flex-wrap:wrap">
           <span><span class="material-symbols-outlined" style="font-size:12px;vertical-align:middle">monetization_on</span> ${(order.cost || 0).toLocaleString()} coins</span>
           <span><span class="material-symbols-outlined" style="font-size:12px;vertical-align:middle">calendar_today</span> ${_esc(order.createdDateStr || '')}</span>
@@ -367,7 +367,7 @@ window.posExecuteCancel = function (orderId) {
     order.cancelledBy  = cancelledBy;
   }, { type: 'shop:order-cancelled', payload: { orderId } });
   closeModalForce();
-  toast(`🚫 Order for "${existing.itemName}" cancelled.`, '#ffb4ab');
+  toast(`🚫 Order for "${_esc(existing.itemName)}" cancelled.`, '#ffb4ab');
   renderPOS();
   posSwitchTab('queue');
 };
@@ -624,7 +624,7 @@ window.posPaySearchStudent = function () {
   if (!matches.length) { box.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:6px 2px">No students match "${_esc(q)}".</div>`; return; }
   box.innerHTML = matches.map(s => `
     <div class="pos-pay-manual-row" onclick="posPaySelectStudent('${s.id}')">
-      <span class="pos-av" style="background:${s.color || '#8b5cf6'}22;border:1px solid ${s.color || '#8b5cf6'}44;color:${s.color || '#8b5cf6'}">${_esc(s.init || '?')}</span>
+      <span class="pos-av" style="background:${_cssColor(s.color)}22;border:1px solid ${_cssColor(s.color)}44;color:${_cssColor(s.color)}">${_esc(s.init || '?')}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:700;color:var(--on-surface)">${_esc(s.name)}</div>
         <div style="font-size:10px;color:var(--text-muted)">${(s.coins || 0).toLocaleString()} 🪙 balance</div>
@@ -641,7 +641,7 @@ window.posPaySelectStudent = function (id) {
   if (!status) return;
   status.innerHTML = `
     <div class="pos-pay-identified">
-      <span class="pos-av" style="width:34px;height:34px;font-size:13px;background:${student.color || '#8b5cf6'}22;border:1px solid ${student.color || '#8b5cf6'}44;color:${student.color || '#8b5cf6'}">${_esc(student.init || '?')}</span>
+      <span class="pos-av" style="width:34px;height:34px;font-size:13px;background:${_cssColor(student.color)}22;border:1px solid ${_cssColor(student.color)}44;color:${_cssColor(student.color)}">${_esc(student.init || '?')}</span>
       <div style="flex:1;min-width:0">
         <div style="font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface)">${_esc(student.name)}</div>
         <div style="font-size:11px;color:var(--text-muted)">Balance: ${(student.coins || 0).toLocaleString()} 🪙</div>
@@ -665,7 +665,7 @@ function _posPayRenderProcessing(student) {
   if (!status) return;
   status.innerHTML = `
     <div class="pos-pay-identified">
-      <span class="pos-av" style="width:34px;height:34px;font-size:13px;background:${student.color || '#8b5cf6'}22;border:1px solid ${student.color || '#8b5cf6'}44;color:${student.color || '#8b5cf6'}">${_esc(student.init || '?')}</span>
+      <span class="pos-av" style="width:34px;height:34px;font-size:13px;background:${_cssColor(student.color)}22;border:1px solid ${_cssColor(student.color)}44;color:${_cssColor(student.color)}">${_esc(student.init || '?')}</span>
       <div style="flex:1;min-width:0">
         <div style="font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface)">${_esc(student.name)}</div>
         <div style="font-size:11px;color:var(--text-muted)">Balance: ${(student.coins || 0).toLocaleString()} 🪙</div>
@@ -684,7 +684,7 @@ function _posPayRenderDeclined(student, total) {
       <div style="font-family:var(--fh);font-size:15px;font-weight:900;color:#ffb4ab;text-align:center;margin:6px 0 2px">DECLINED</div>
       <div style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:12px">Insufficient balance</div>
       <div class="pos-pay-declined-row">
-        <span class="pos-av" style="background:${student.color || '#8b5cf6'}22;border:1px solid ${student.color || '#8b5cf6'}44;color:${student.color || '#8b5cf6'}">${_esc(student.init || '?')}</span>
+        <span class="pos-av" style="background:${_cssColor(student.color)}22;border:1px solid ${_cssColor(student.color)}44;color:${_cssColor(student.color)}">${_esc(student.init || '?')}</span>
         ${_esc(student.name)}
       </div>
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:10px"><span style="color:var(--text-muted)">Sale Total</span><span style="font-weight:700">${total.toLocaleString()} 🪙</span></div>
@@ -874,7 +874,7 @@ window.posFilterQueue = function () {
     <div style="font-size:22px">${o.emoji || '🎁'}</div>
     <div style="min-width:0">
       <div style="font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface)">${_esc(o.itemName)}</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap"><span style="color:${o.studentColor || 'var(--primary)'}">👤 ${_esc(o.studentName)}</span><span>${(o.cost || 0).toLocaleString()} coins</span><span>${_esc(o.createdDateStr || '')}</span></div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap"><span style="color:${_cssColor(o.studentColor, 'var(--primary)')}">👤 ${_esc(o.studentName)}</span><span>${(o.cost || 0).toLocaleString()} coins</span><span>${_esc(o.createdDateStr || '')}</span></div>
     </div>
     <div style="font-family:var(--fm);font-size:12px;color:var(--secondary);letter-spacing:.1em;flex-shrink:0">${_esc(o.claimCode)}</div>
     <div style="flex-shrink:0">${ordStatusPill(o.status)}</div>
@@ -944,7 +944,7 @@ window.posFilterHistory = function (resetPage) {
     <thead><tr><th>Item</th><th>Student</th><th>Claim Code</th><th>Coins</th><th>Ordered</th><th>Status</th><th>Resolved</th></tr></thead>
     <tbody>${shown.map(o => `<tr>
       <td><span style="font-size:16px;margin-right:6px">${o.emoji || '🎁'}</span>${_esc(o.itemName)}</td>
-      <td><div style="display:flex;align-items:center;gap:7px"><span style="width:24px;height:24px;border-radius:50%;background:${o.studentColor || '#8b5cf6'}22;border:1px solid ${o.studentColor || '#8b5cf6'}44;color:${o.studentColor || '#8b5cf6'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;font-family:var(--fh)">${_esc(o.studentInit || '?')}</span>${_esc(o.studentName)}</div></td>
+      <td><div style="display:flex;align-items:center;gap:7px"><span style="width:24px;height:24px;border-radius:50%;background:${_cssColor(o.studentColor)}22;border:1px solid ${_cssColor(o.studentColor)}44;color:${_cssColor(o.studentColor)};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;font-family:var(--fh)">${_esc(o.studentInit || '?')}</span>${_esc(o.studentName)}</div></td>
       <td><span style="font-family:var(--fm);font-size:11px;color:${o.status === 'claimed' ? 'var(--secondary)' : 'var(--text-muted)'}">${_esc(o.claimCode)}</span></td>
       <td><span style="color:var(--tertiary);font-weight:700">${(o.cost || 0).toLocaleString()}</span></td>
       <td style="color:var(--text-muted);font-size:12px">${_esc(o.createdDateStr || '')}</td>

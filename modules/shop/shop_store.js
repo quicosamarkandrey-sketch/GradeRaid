@@ -122,7 +122,7 @@ window.cartAdd = function (id) {
   if (!_CART[id]) _CART[id] = { item, qty: 0 };
   _CART[id].qty++;
   _CART[id].item = item;
-  toast(`🛒 ${item.emoji} ${item.name} added to cart!`, '#8b5cf6');
+  toast(`🛒 ${item.emoji} ${_esc(item.name)} added to cart!`, '#8b5cf6');
   _cartRenderFab();
 };
 
@@ -296,7 +296,7 @@ window.cartCheckout = async function () {
   }
 
   if (!succeeded.length) {
-    failed.forEach(f => toast(`❌ ${f.e.item.name}: ${f.reason}`, '#ffb4ab'));
+    failed.forEach(f => toast(`❌ ${_esc(f.e.item.name)}: ${f.reason}`, '#ffb4ab'));
     _cartRenderModal(); // refreshes stock numbers shown in the still-open cart
     return;
   }
@@ -381,7 +381,7 @@ window.cartCheckout = async function () {
   // the stock race) stays in the cart so the student can see it and adjust
   // quantity/remove it themselves, instead of it silently vanishing.
   succeeded.forEach(({ e }) => delete _CART[e.item.id]);
-  failed.forEach(f => toast(`❌ ${f.e.item.name}: ${f.reason}`, '#ffb4ab'));
+  failed.forEach(f => toast(`❌ ${_esc(f.e.item.name)}: ${f.reason}`, '#ffb4ab'));
 
   // Consolidated claim codes modal
   const codesHtml = [...new Map(orderIds.map(o => [o.item.id, o])).values()].map(o => `

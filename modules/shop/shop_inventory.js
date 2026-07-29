@@ -257,11 +257,11 @@ window.invConfirmUse = function (itemId) {
     item.status = 'used';
     item.usedAt = todayStr() + ' at ' + nowStr();
     if (item.quantity > 1) { item.quantity--; item.status = 'active'; }
-    itemLabel = `${item.emoji} ${item.itemName}`;
+    itemLabel = `${item.emoji} ${_esc(item.itemName)}`;
   }, { type: 'shop:item-used', payload: { studentId: currentUser.id, itemId } });
 
   closeModalForce();
-  toast(`✅ ${itemLabel || (existing.emoji + ' ' + existing.itemName)} used!`, '#4edea3');
+  toast(`✅ ${itemLabel || (existing.emoji + ' ' + _esc(existing.itemName))} used!`, '#4edea3');
   renderInventory();
 };
 

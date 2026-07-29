@@ -819,7 +819,7 @@
       </div>`;
     }
     const s      = entry.student;
-    const color  = s.color || '#8b5cf6';
+    const color  = _cssColor(s.color);
     const title  = _holGetTitle(s, catKey);
     const medals = ['🥇', '🥈', '🥉'];
 
@@ -893,7 +893,7 @@
     const titleObj = _holGetTitleObj(s);
     const titleDisplayHTML = (titleObj && typeof tsBuildBadgeHTML === 'function')
       ? `<div class="hol-card-title">${tsBuildBadgeHTML(titleObj, { noParticles: true })}</div>`
-      : (title ? `<div class="hol-card-title" style="--hol-title-color:${color}88">${title}</div>` : '');
+      : (title ? `<div class="hol-card-title" style="--hol-title-color:${color}88">${_esc(title)}</div>` : '');
 
     return `<div class="hol-card rank${rankNum}" title="${_esc(displayName)}" style="">
       ${embersHtml}
@@ -1006,7 +1006,7 @@
   function _holRenderRow(entry, catKey, meta, animDelay) {
     const { rank, student: s, stats, scoreLabel } = entry;
     const isMe  = currentUser && s.id === currentUser.id;
-    const color = s.color || '#8b5cf6';
+    const color = _cssColor(s.color);
     const title = _holGetTitle(s, catKey);
 
     let rowTint = '';
@@ -1049,7 +1049,7 @@
     const titleObj = _holGetTitleObj(s);
     const titleLineHTML = (titleObj && typeof tsBuildBadgeHTML === 'function')
       ? `<div class="hol-row-title" style="margin-top:2px;display:flex;align-items:center">${tsBuildBadgeHTML(titleObj, { small: true, noParticles: true })}</div>`
-      : (title ? `<div class="hol-row-title" style="color:${color}88">${title}</div>` : '');
+      : (title ? `<div class="hol-row-title" style="color:${color}88">${_esc(title)}</div>` : '');
 
     return `<div class="hol-row ${rowTint} ${isMe ? 'hol-me' : ''}"
       style="animation-delay:${animDelay}ms">

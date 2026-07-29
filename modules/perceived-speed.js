@@ -285,7 +285,7 @@
       ? wblrRarityMeta(result.reward.rarity)
       : { color: '#4edea3' };
     if (typeof toast === 'function') {
-      toast('✨ Claimed ' + result.reward.itemName + '!', rewardMeta.color);
+      toast('✨ Claimed ' + _esc(result.reward.itemName) + '!', rewardMeta.color);
     }
 
     // Refresh HUD with spring micro-interaction
@@ -414,7 +414,7 @@
                  : null;
 
     if (!_present) {
-      if (typeof toast === 'function') toast('🏅 ' + ach.name + ' claimed!', '#d0bcff');
+      if (typeof toast === 'function') toast('🏅 ' + _esc(ach.name) + ' claimed!', '#d0bcff');
       if (typeof renderBadges === 'function') renderBadges();
       return;
     }

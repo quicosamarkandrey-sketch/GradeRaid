@@ -178,8 +178,8 @@ window.tsBuildBadgeHTML = function (title, opts) {
   opts = opts || {};
   const rCfg   = TS_RARITY[title.rarity] || TS_RARITY.Common;
   const bg       = title.bgColor      || '#1a1438';
-  const border   = title.borderColor  || '#8b5cf6';
-  const glow     = title.glowColor    || '#8b5cf6';
+  const border   = _cssColor(title.borderColor, '#8b5cf6');
+  const glow     = _cssColor(title.glowColor, '#8b5cf6');
   const text     = title.textColor    || '#ffffff';
   const gradFrom = title.gradientFrom || '#8b5cf6';
   const gradTo   = title.gradientTo   || '#4edea3';
@@ -330,7 +330,7 @@ window.tsBuildBadgeHTML = function (title, opts) {
 
   const rarityOverlay = rarityOverlayInner ? `<span class="ts-rarity-overlay-host">${rarityOverlayInner}</span>` : '';
 
-  return `<span class="${wrapperClasses}" style="${wrapperInlineStyle}" title="${title.name || ''} (${title.rarity || ''})">` +
+  return `<span class="${wrapperClasses}" style="${wrapperInlineStyle}" title="${_esc(title.name || '')} (${_esc(title.rarity || '')})">` +
     buildFrameSVG(frameShape) + rarityOverlay + particlesHTML + fxLayerHTML +
     `<span class="ts-badge ts-badge-text" style="${innerInlineStyle}">${_esc(title.name || 'Title')}</span>` +
     `</span>`;

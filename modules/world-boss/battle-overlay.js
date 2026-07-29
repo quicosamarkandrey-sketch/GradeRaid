@@ -220,13 +220,13 @@ function wbeRenderFullBattle(bossIdx) {
     page.innerHTML = '<div class="wbe-shell">' +
       wbeSparkField() +
       '<div id="boss-orientation-prompt"><div class="bop-icon">📱</div><div class="bop-title">Rotate to Landscape</div><div class="bop-sub">The Boss Battle requires landscape orientation. Please rotate your device to continue.</div></div>' +
-      '<div class="wbe-top"><div class="wbe-brand"><div class="wbe-boss-chip">' + bossArtCompact + '</div><div style="min-width:0"><div class="wbe-title">' + boss.name + '</div><div class="wbe-subtitle">Boss Encounter Intro</div></div></div>' +
+      '<div class="wbe-top"><div class="wbe-brand"><div class="wbe-boss-chip">' + bossArtCompact + '</div><div style="min-width:0"><div class="wbe-title">' + _esc(boss.name) + '</div><div class="wbe-subtitle">Boss Encounter Intro</div></div></div>' +
       '<button class="wbe-close" onclick="navTo(\'s-dashboard\')">Dashboard</button></div>' +
       '<div class="wbe-intro"><div class="wbe-intro-card">' +
       '<div class="wbe-intro-boss">' + bossArtFull + '</div>' +
       '<div class="wbe-intro-kicker">A class raid begins</div>' +
-      '<div class="wbe-intro-name">' + boss.name + '</div>' +
-      '<div class="wbe-intro-copy">' + (boss.description || 'The boss has entered the arena. Answer fast, land critical hits, and watch for minions trying to break your focus.') + '</div>' +
+      '<div class="wbe-intro-name">' + _esc(boss.name) + '</div>' +
+      '<div class="wbe-intro-copy">' + _esc(boss.description || 'The boss has entered the arena. Answer fast, land critical hits, and watch for minions trying to break your focus.') + '</div>' +
       '<div class="wbe-intro-actions"><button class="wbe-begin" onclick="wbeFinishIntro(' + bossIdx + ')">Begin Battle</button></div>' +
       '</div></div></div>';
     wbmStopSpawnLoop();
@@ -244,7 +244,7 @@ function wbeRenderFullBattle(bossIdx) {
     wbeSparkField() +
     '<div id="boss-orientation-prompt"><div class="bop-icon">📱</div><div class="bop-title">Rotate to Landscape</div><div class="bop-sub">The Boss Battle requires landscape orientation. Please rotate your device to continue.</div></div>' +
     '<div class="wbe-top"><div class="wbe-brand"><div class="wbe-boss-chip">' + bossArtCompact + '</div>' +
-    '<div style="min-width:0"><div class="wbe-title">' + boss.name + '</div><div class="wbe-subtitle">Full-screen raid arena</div></div></div>' +
+    '<div style="min-width:0"><div class="wbe-title">' + _esc(boss.name) + '</div><div class="wbe-subtitle">Full-screen raid arena</div></div></div>' +
     '<button class="wbe-close" onclick="navTo(\'s-dashboard\')">Exit Screen</button></div>' +
     '<div class="wbe-arena">' +
     // Left column

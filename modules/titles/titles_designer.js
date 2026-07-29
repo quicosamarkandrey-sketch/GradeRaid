@@ -61,7 +61,7 @@ window.tsAdminOpenDesigner = function (titleId) {
 
   // ── Internal helpers (modal-scoped) ─────────────────────────────────────────
   function shapeMinSVG(shape, color) {
-    const c = color || '#8b5cf6';
+    const c = _cssColor(color, '#8b5cf6');
     const shapes = {
       classic:    `<rect x="2" y="5" width="50" height="14" rx="5" fill="${c}" fill-opacity=".25" stroke="${c}" stroke-width="1.5"/>`,
       rectangle:  `<rect x="2" y="5" width="50" height="14" rx="1" fill="${c}" fill-opacity=".25" stroke="${c}" stroke-width="1.5"/>`,

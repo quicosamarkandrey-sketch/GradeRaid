@@ -132,7 +132,7 @@ window.stockSave = async function (id) {
     const item = (draft.store || []).find(i => i.id === id);
     if (item) item.stock = finalStock;
   }, { type: 'shop:stock-updated', payload: { id, stock: finalStock } });
-  toast(`✅ Stock updated: ${existing.name} → ×${finalStock}`, '#4edea3');
+  toast(`✅ Stock updated: ${_esc(existing.name)} → ×${finalStock}`, '#4edea3');
   renderAdminStore();
 };
 

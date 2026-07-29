@@ -278,7 +278,7 @@ function _teacherDirRow(r, adminCount, activeAdminCount, activeStaffCount) {
     <div style="font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(r.email || '—')}</div>
     <div style="font-size:13px;font-weight:700;text-align:center">${r.studentCount ?? 0}</div>
     <div style="font-size:13px;font-weight:700;text-align:center"><a href="javascript:void(0)" onclick="openContentOversightFor('${r.id}','${label}')" style="color:inherit;text-decoration:underline;text-decoration-style:dotted" title="${r.achievementCount||0} achievements · ${r.titleCount||0} titles · ${r.quizCount||0} quizzes · ${r.campaignWorldCount||0} worlds · ${r.shopProductCount||0} shop items">${contentTotal}</a></div>
-    <div style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${_esc(sectionsLabel)}">${sectionsLabel}</div>
+    <div style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${_esc(sectionsLabel)}">${_esc(sectionsLabel)}</div>
     <div style="font-size:11px;color:var(--text-muted)">${lastActive}</div>
     <div style="display:flex;flex-direction:column;gap:4px">${roleBtn}${statusBtn}${resetBtn}${contentBtn}${transferBtn}</div>
   </div>`;

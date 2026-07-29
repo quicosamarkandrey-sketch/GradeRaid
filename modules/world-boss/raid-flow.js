@@ -179,7 +179,7 @@ function wbrFeedHTML(bossIdx) {
   var feed  = (boss && boss.damageFeed) || [];
   if (!feed.length) return '<div class="wbr-feed-item"><div class="wbr-feed-copy">No raid hits yet.</div></div>';
   return feed.slice(0, 10).map(function (e) {
-    var color = e.color || '#d0bcff';
+    var color = _cssColor(e.color);
     var label = e.type === 'kill'
       ? '<b>' + wblrEsc(e.name) + '</b> defeated the boss!'
       : '<b>' + wblrEsc(e.name) + '</b> dealt <b style="color:#EC4899">' + (e.damage || 0).toLocaleString() + '</b> damage' + (e.crit ? ' with a critical hit' : '') + '.';
@@ -327,12 +327,12 @@ async function wbrAnswer(bossIdx, qIdx, choice) {
       init:      currentUser.init, color: currentUser.color,
       damage:    result.damage, crit: result.isCrit,
     });
-    toast(currentUser.name + ' dealt ' + result.damage.toLocaleString() + ' damage!', result.isCrit ? '#ffb95f' : '#EC4899');
+    toast(_esc(currentUser.name) + ' dealt ' + result.damage.toLocaleString() + ' damage!', result.isCrit ? '#ffb95f' : '#EC4899');
     document.getElementById('camp-scene')?.classList.add('shake');
     setTimeout(function () { document.getElementById('camp-scene')?.classList.remove('shake'); }, 350);
 
     if (outcome === 'defeated') {
-      toast(currentUser.name + ' defeated ' + boss.name + '! Loot Rush is open.', '#ffb95f');
+      toast(_esc(currentUser.name) + ' defeated ' + _esc(boss.name) + '! Loot Rush is open.', '#ffb95f');
       setTimeout(function () {
         wbrStop();
         document.getElementById('campaign-overlay')?.classList.remove('open');
@@ -458,8 +458,8 @@ function _wbrRenderLobbyCore() {
     '<div class="wb-hero-content">' +
     '<div class="wb-hero-left">' +
     '<div class="wb-boss-tag">LIVE RAID LOBBY</div>' +
-    '<div class="wb-boss-name">' + boss.name + '</div>' +
-    '<div class="wb-boss-desc">' + (boss.description || 'A powerful boss has appeared. Join the raid to open the full-screen battle.') + '</div>' +
+    '<div class="wb-boss-name">' + _esc(boss.name) + '</div>' +
+    '<div class="wb-boss-desc">' + _esc(boss.description || 'A powerful boss has appeared. Join the raid to open the full-screen battle.') + '</div>' +
     '<div class="wb-hero-stats">' +
     '<div class="wb-stat-chip"><div class="v" style="color:#EC4899">' + pct + '%</div><div class="l">HP Remaining</div></div>' +
     '<div class="wb-stat-chip"><div class="v" style="color:var(--secondary)">' + stats.participants + '</div><div class="l">Raiders</div></div>' +

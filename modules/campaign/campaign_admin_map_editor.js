@@ -54,7 +54,7 @@ window.renderAdminStageMap = function () {
             <div style="font-family:var(--fh);font-size:16px;font-weight:800;color:var(--on-surface)">${_esc(w.label)}</div>
             <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${_esc(w.desc)}</div>
           </div>
-          <span style="font-family:var(--fm);font-size:9px;color:${w.color};background:${w.color}18;border:1px solid ${w.color}44;padding:2px 10px;border-radius:4px;letter-spacing:.06em">${w.stages.length} STAGES</span>
+          <span style="font-family:var(--fm);font-size:9px;color:${_cssColor(w.color)};background:${_cssColor(w.color)}18;border:1px solid ${_cssColor(w.color)}44;padding:2px 10px;border-radius:4px;letter-spacing:.06em">${w.stages.length} STAGES</span>
           <span class="badge-pill ${assignedIds.length ? 'bp-primary' : 'bp-gray'}" title="${_esc(sectionsLabel)}">🏫 ${_esc(sectionsLabel)}</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
@@ -179,7 +179,7 @@ window.adminSaveNewWorld = function () {
     draft.stageMap.push(d);
   }, { type: 'campaign:world-created', payload: { id: d.id } });
   closeModalForce(); renderAdminStageMap();
-  toast('✅ World "' + d.label + '" created!');
+  toast('✅ World "' + _esc(d.label) + '" created!');
 };
 
 window.adminSaveEditWorld = async function (wi) {
@@ -851,7 +851,7 @@ window.adminSaveStage = function () {
     else             draft.stageMap[wi].stages[si] = d;
   }, { type: 'campaign:stage-saved', payload: { worldIndex: wi, stageIndex: si } });
   closeModalForce(); renderAdminStageMap();
-  toast('✅ Stage "' + d.title + '" ' + (si === null ? 'added' : 'updated') + '!');
+  toast('✅ Stage "' + _esc(d.title) + '" ' + (si === null ? 'added' : 'updated') + '!');
 };
 
 window.adminDeleteStage = function (wi, si) {

@@ -125,7 +125,7 @@ window._bsSyncEditorPreview = function () {
     if (btn) { const assigned = d.animations?.[k] && typeof window._alGet === 'function' && window._alGet(d.animations[k]); btn.disabled = !assigned; btn.style.opacity = assigned ? '1' : '0.5'; if (!assigned) btn.classList.remove('active'); }
   });
   const tagDiv = document.getElementById('bsed-tag-preview');
-  if (tagDiv) tagDiv.innerHTML = (d.tags || []).slice(0, 5).map(t => `<span class="bs-card-tag" style="border-color:${theme}55;color:${theme}">${_esc(t)}</span>`).join('');
+  if (tagDiv) tagDiv.innerHTML = (d.tags || []).slice(0, 5).map(t => `<span class="bs-card-tag" style="border-color:${_cssColor(theme)}55;color:${_cssColor(theme)}">${_esc(t)}</span>`).join('');
   const setTS = (id, valId, val) => { const s = document.getElementById(id); if (s) s.style.background = val; const v = document.getElementById(valId); if (v) v.textContent = val; };
   setTS('bsed-ts-theme', 'bsed-ts-theme-val', theme);
   setTS('bsed-ts-aura',  'bsed-ts-aura-val',  aura);
@@ -552,7 +552,7 @@ window.bsSaveForm = async function () {
   try {
     await bsUpsertAsync(d);
     if (savingToast && typeof savingToast.dismiss === 'function') savingToast.dismiss();
-    toast(`✅ "${d.name}" saved!`, '#4edea3');
+    toast(`✅ "${_esc(d.name)}" saved!`, '#4edea3');
     _bsDirtyFlag = false;
     window._bsForceCloseEditor();
     bsLoad();

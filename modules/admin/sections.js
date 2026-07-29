@@ -860,7 +860,7 @@ function _secRosterGridHTML(roster) {
 }
 
 function _secRosterCardHTML(s) {
-  const color = s.color || '#8b5cf6';
+  const color = _cssColor(s.color);
   const init = s.init || (s.name || '?').charAt(0).toUpperCase();
   const portraitHtml = s.profilePic
     ? `<div class="sec-roster-portrait" style="background:${color}22;border-color:${color}55">

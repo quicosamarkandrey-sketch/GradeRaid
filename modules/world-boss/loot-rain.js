@@ -244,7 +244,7 @@ window.wblrClaimReward = function (bossIdx, rewardId, tokenEl) {
   const meta = wblrRarityMeta(result.reward.rarity);
   tokenEl?.classList.add('claimed');
   setTimeout(() => tokenEl?.remove(), 220);
-  toast('Claimed ' + result.reward.itemName + '!', meta.color);
+  toast('Claimed ' + wblrEsc(result.reward.itemName) + '!', meta.color);
 
   // [OPT-2] Read only the one boss event for the HUD refresh
   const boss = AppStore.getBossEvent(bossIdx);
@@ -715,7 +715,7 @@ window.wblrClaimFeedHTML = function (bossIdx, limit = 12) {
     const r    = wblrRewards(boss).find(r => r.id === c.rewardId);
     const meta = r ? wblrRarityMeta(r.rarity) : WBLR_RARITY_META.common;
     const name = r ? r.itemName : 'Reward';
-    return `<div class="wblr-feed-row"><div class="wblr-feed-avatar" style="background:${c.studentColor||'#8b5cf6'}22;border:1px solid ${c.studentColor||'#8b5cf6'}44;color:${c.studentColor||'#8b5cf6'}">${wblrEsc(c.studentInit||'?')}</div><div style="flex:1;min-width:0"><span style="font-weight:700;color:var(--on-surface)">${wblrEsc(c.studentName||'Student')}</span> claimed <span style="color:${meta.color};font-weight:700">${wblrEsc(name)}</span></div><span class="material-symbols-outlined" style="font-size:14px;color:${meta.color}">${meta.icon}</span></div>`;
+    return `<div class="wblr-feed-row"><div class="wblr-feed-avatar" style="background:${_cssColor(c.studentColor)}22;border:1px solid ${_cssColor(c.studentColor)}44;color:${_cssColor(c.studentColor)}">${wblrEsc(c.studentInit||'?')}</div><div style="flex:1;min-width:0"><span style="font-weight:700;color:var(--on-surface)">${wblrEsc(c.studentName||'Student')}</span> claimed <span style="color:${meta.color};font-weight:700">${wblrEsc(name)}</span></div><span class="material-symbols-outlined" style="font-size:14px;color:${meta.color}">${meta.icon}</span></div>`;
   }).join('');
 };
 

@@ -59,8 +59,8 @@ window.__bsDraftValue = null;
 
 function _bsBossCardArtwork(boss) {
   const art   = boss.artwork;
-  const theme = boss.visual?.themeColor || '#8b5cf6';
-  const aura  = boss.visual?.auraColor  || '#EC4899';
+  const theme = _cssColor(boss.visual?.themeColor, '#8b5cf6');
+  const aura  = _cssColor(boss.visual?.auraColor, '#EC4899');
   const auraStyle = `background:radial-gradient(ellipse at center,${aura}55 0%,${theme}22 60%,transparent 100%)`;
   if (!art || !art.value) return `<div class="bs-card-artwork"><div class="bs-card-artwork-placeholder"><span class="material-symbols-outlined">image_not_supported</span><span>No Artwork</span></div></div>`;
   if (art.type === 'emoji') return `<div class="bs-card-artwork"><div class="bs-card-aura" style="${auraStyle}"></div><div class="bs-card-artwork-emoji">${_esc(art.value)}</div></div>`;
@@ -154,10 +154,10 @@ function _bsRenderLibraryBody() {
   const pageItems = filtered.slice(pageStart, pageStart + BS_PAGE_SIZE);
 
   const cards = pageItems.map(boss => {
-    const cardAccent = boss.visual?.cardAccent || '#d0bcff';
-    const cardTheme  = boss.visual?.themeColor  || '#8b5cf6';
+    const cardAccent = _cssColor(boss.visual?.cardAccent, '#d0bcff');
+    const cardTheme  = _cssColor(boss.visual?.themeColor, '#8b5cf6');
     const hasRage    = boss.rageArtwork?.value;
-    return `<div class="bs-boss-card ${_bsView==='list'?'list-card':''}" onclick="bsOpenPreview('${_esc(boss.id)}')" style="border-color:${cardTheme}55;--bs-card-accent:${cardAccent};--bs-card-glow:${boss.visual?.auraColor||'#EC4899'}55">
+    return `<div class="bs-boss-card ${_bsView==='list'?'list-card':''}" onclick="bsOpenPreview('${_esc(boss.id)}')" style="border-color:${cardTheme}55;--bs-card-accent:${cardAccent};--bs-card-glow:${_cssColor(boss.visual?.auraColor, '#EC4899')}55">
       ${_bsBossCardArtwork(boss)}
       ${hasRage ? `<div class="bs-card-rage-badge" title="Rage artwork configured">🔥</div>` : ''}
       <button class="bs-card-preview-btn" onclick="event.stopPropagation();bsOpenPreview('${_esc(boss.id)}')" title="Full encounter preview"><span class="material-symbols-outlined">visibility</span>Preview</button>
@@ -264,9 +264,9 @@ window.bsOpenPreview = function (id) {
   const boss = bsGet(id);
   if (!boss) return;
   _bsPreview = boss;
-  const theme = boss.visual?.themeColor || BS_DEFAULT_THEME;
-  const aura  = boss.visual?.auraColor  || BS_DEFAULT_AURA;
-  const accent = boss.visual?.cardAccent || BS_DEFAULT_ACCENT;
+  const theme = _cssColor(boss.visual?.themeColor, BS_DEFAULT_THEME);
+  const aura  = _cssColor(boss.visual?.auraColor, BS_DEFAULT_AURA);
+  const accent = _cssColor(boss.visual?.cardAccent, BS_DEFAULT_ACCENT);
   const animSlots = boss.animations || {};
   const slotRows = ['idle', 'cast', 'hit', 'rage'].map(s => {
     const preset = animSlots[s] && typeof window._alGet === 'function' ? window._alGet(animSlots[s]) : null;
@@ -373,7 +373,7 @@ window.bsDuplicate = function (id) {
   clone.updatedAt = Date.now();
   // Clear IDB references — clone doesn't own them; artwork remains as-is in memory for this session
   bsUpsert(clone); bsLoad();
-  toast(`⧉ "${clone.name}" duplicated!`);
+  toast(`⧉ "${_esc(clone.name)}" duplicated!`);
   _bsRefreshLibrary();
 };
 

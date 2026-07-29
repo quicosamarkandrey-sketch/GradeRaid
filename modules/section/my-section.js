@@ -174,7 +174,7 @@ function _mySectionStudentCardHTML(c, i, st, titles) {
   const isMe = st && c.id === st.id;
   const rank = i + 1;
   const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null;
-  const color = c.color || '#8b5cf6';
+  const color = _cssColor(c.color);
   const avatarInner = c.profilePicUrl
     ? `<img src="${c.profilePicUrl}" alt="${_esc(c.init || '')}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.remove()">`
     : _esc(c.init || (c.displayName || '?')[0]);

@@ -977,7 +977,7 @@ function _cbStudentChip(student, isAssigned, log) {
       draggable="${isAssigned?'false':'true'}"
       data-student-id="${_esc(student.id)}"
       title="${isAssigned?'Already seated — drag them off their seat on the canvas to unseat':'Drag to a seat'}">
-      <div class="cb-chip-avatar" style="background:${student.color||'#8b5cf6'}">${_esc(student.init||'?')}</div>
+      <div class="cb-chip-avatar" style="background:${_cssColor(student.color)}">${_esc(student.init||'?')}</div>
       <div class="cb-chip-info">
         <div class="cb-chip-name">${_esc(student.name||student.displayName||student.id)}</div>
         <div class="cb-chip-status">${statusText}</div>

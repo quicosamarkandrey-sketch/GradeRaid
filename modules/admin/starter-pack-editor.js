@@ -197,7 +197,7 @@ function _spRenderTitles(body) {
         ${rows.map((t, i) => `
           <tr>
             <td style="font-size:20px">${t.icon || '🎖️'}</td>
-            <td><strong style="color:${t.textColor || 'inherit'}">${_spEsc(t.name)}</strong></td>
+            <td><strong style="color:${_spToHex(t.textColor)}">${_spEsc(t.name)}</strong></td>
             <td style="font-size:12px;color:var(--text-muted)">${_spEsc(t.description || '')}</td>
             <td>${_spEsc(t.rarity)}</td>
             <td>

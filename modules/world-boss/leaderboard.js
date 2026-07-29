@@ -82,13 +82,13 @@ function wblRenderPodium(sorted) {
       } catch (e) {}
       return `
       <div class="wbl-podium-slot rank${rank}">
-        <div class="wbl-podium-avatar" style="border-color:${p.studentColor};background:${p.studentColor}22;color:${p.studentColor}">
+        <div class="wbl-podium-avatar" style="border-color:${_cssColor(p.studentColor)};background:${_cssColor(p.studentColor)}22;color:${_cssColor(p.studentColor)}">
           <div class="wbl-medal">${medals[i]}</div>
           ${_esc(p.studentInit)}
         </div>
         <div class="wbl-podium-name">${_esc(p.studentName)}</div>
         ${titleBadgeHTML}
-        <div class="wbl-podium-stat" style="color:${p.studentColor}">${(p.totalDamage || 0).toLocaleString()}</div>
+        <div class="wbl-podium-stat" style="color:${_cssColor(p.studentColor)}">${(p.totalDamage || 0).toLocaleString()}</div>
         <div class="wbl-podium-block">#${rank}</div>
       </div>`;
     }).join('')}
@@ -109,7 +109,7 @@ function wblRenderRow(p, rank, statValue, statLabel, statColor) {
   } catch (e) {}
   return `<div class="wbl-row ${rankClass} ${isMe ? 'me' : ''}">
     <div class="wbl-rank-badge ${rankBadgeClass}">${rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank}</div>
-    <div class="wbl-participant-av" style="border:2px solid ${p.studentColor}55;background:${p.studentColor}22;color:${p.studentColor}">${_esc(p.studentInit)}</div>
+    <div class="wbl-participant-av" style="border:2px solid ${_cssColor(p.studentColor)}55;background:${_cssColor(p.studentColor)}22;color:${_cssColor(p.studentColor)}">${_esc(p.studentInit)}</div>
     <div class="wbl-info">
       <div class="wbl-info-name">${_esc(p.studentName)}${isMe ? '<span style="font-size:9px;color:#EC4899;font-family:var(--fm)">YOU</span>' : ''}</div>
       ${titleBadgeHTML}
@@ -189,7 +189,7 @@ window.wblOpenAdminLeaderboard = function (bossIdx, activeTab) {
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
     <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,rgba(255,185,95,0.2),rgba(236,72,153,0.15));border:1px solid rgba(255,185,95,0.35);display:flex;align-items:center;justify-content:center;font-size:22px">🏆</div>
     <div>
-      <div class="modal-h2" style="margin-bottom:2px">Leaderboard — ${boss.name}</div>
+      <div class="modal-h2" style="margin-bottom:2px">Leaderboard — ${_esc(boss.name)}</div>
       <div style="font-size:12px;color:var(--text-muted)">Post-raid rankings and stats</div>
     </div>
     <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="wblExportCSV(${bossIdx})">📥 Export CSV</button>
@@ -392,13 +392,13 @@ function _wbrShowBossVictoryRender(bossIdx, onContinue) {
   const bannerEl = document.getElementById('cbv-banner');
   if (bannerEl) bannerEl.innerHTML = `
     <div class="cbv-banner-label">WORLD BOSS RAID</div>
-    <div class="cbv-banner-title">${vicTitle}</div>
+    <div class="cbv-banner-title">${_esc(vicTitle)}</div>
     <div class="cbv-banner-sub">QUEST COMPLETE</div>`;
 
   const portraitInner = (typeof bveRenderBossArt === 'function')
     ? bveRenderBossArt(boss, { stateClass: 'state-idle' })
     : (bossImg.startsWith('http') || bossImg.startsWith('data:'))
-      ? `<img src="${bossImg}" style="width:100%;height:100%;object-fit:cover;border-radius:14px;" onerror="this.style.display='none';this.insertAdjacentText('afterend','💀')">`
+      ? `<img src="${_esc(bossImg)}" style="width:100%;height:100%;object-fit:cover;border-radius:14px;" onerror="this.style.display='none';this.insertAdjacentText('afterend','💀')">`
       : bossImg;
 
   const cardEl = document.getElementById('cbv-boss-card');
@@ -406,8 +406,8 @@ function _wbrShowBossVictoryRender(bossIdx, onContinue) {
     <div class="cbv-boss-portrait" style="overflow:hidden;display:flex;align-items:center;justify-content:center;">${portraitInner}</div>
     <div class="cbv-boss-meta">
       <div class="cbv-boss-defeated-lbl">DEFEATED</div>
-      <div class="cbv-boss-name">${bossName}</div>
-      ${bossDesc ? `<div class="cbv-boss-desc">${bossDesc}</div>` : ''}
+      <div class="cbv-boss-name">${_esc(bossName)}</div>
+      ${bossDesc ? `<div class="cbv-boss-desc">${_esc(bossDesc)}</div>` : ''}
     </div>`;
 
   const msgEl = document.getElementById('cbv-message');

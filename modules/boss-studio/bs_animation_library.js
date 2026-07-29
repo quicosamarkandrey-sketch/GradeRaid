@@ -288,7 +288,7 @@ window._alSaveForm = function () {
   _alDraft.updatedAt   = Date.now();
   _alUpsert(_alDraft);
   closeModalForce();
-  toast(`✅ Preset "${_alDraft.name}" saved`, '#4edea3');
+  toast(`✅ Preset "${_esc(_alDraft.name)}" saved`, '#4edea3');
   _alDraft = null;
   _alRefreshGrid();
 };

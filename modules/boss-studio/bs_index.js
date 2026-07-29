@@ -290,20 +290,13 @@
   document.body.appendChild(overlay);
 })();
 
-// ── AppStore migration guard ──────────────────────────────────────────────────
-// [SUPABASE MIGRATION] Deferred until AppStore.ready resolves — see the
-// matching note in modules/shop/shop_pos_terminal.js for why this can no
-// longer run synchronously at parse time.
-AppStore.ready.then(function bossMigrateDB() {
-  const current = AppStore.getSlice(s => ({ bossLibrary: s.bossLibrary, animationLibrary: s.animationLibrary }));
-  const missing = ['bossLibrary', 'animationLibrary'].filter(k => !current || !current[k]);
-  if (!missing.length) return; // both already set up — nothing to do
-
-  AppStore.updateState(draft => {
-    if (!draft.bossLibrary)      draft.bossLibrary      = [];
-    if (!draft.animationLibrary) draft.animationLibrary = [];
-  }, { type: 'boss-studio:libraries-initialized', payload: { keys: missing } });
-});
+// [Phase 1 cleanup] The bossLibrary/animationLibrary migration guard that
+// used to live here was removed 2026-07-21 — it was an exact duplicate of
+// bs_storage.js's own AppStore.ready.then() block, which does the same
+// init check plus bsLoad() and the legacy inline-image migration. Both
+// fired on the same AppStore.ready event, so removing this one changes
+// nothing about timing or outcome. See the refactor log's Tier-2
+// debt-review entry for the verification behind this deletion.
 
 // ── Load-order verification ───────────────────────────────────────────────────
 ;(function bossVerifyExports() {

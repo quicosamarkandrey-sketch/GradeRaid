@@ -66,11 +66,13 @@ function _wbmResolveSide(spawnSide) {
   return Math.random() < 0.5 ? 'left' : 'right';
 }
 
-// ── Initialise minion pool ─────────────────────────────────────────────────────
-
-window.wbmEnsureActiveMinions = function (boss) {
-  if (!boss.activeMinions) boss.activeMinions = [];
-};
+// [Phase 1 cleanup] wbmEnsureActiveMinions() used to live here — a small
+// "backfill boss.activeMinions if missing" helper. Removed 2026-07-21: its
+// three call sites (wbmSpawnMinion, wbmPruneExpiredMinions, wbmAnswerMinion)
+// were all rewritten during the Phase 3 AppStore migration to read a fresh
+// AppStore.getSlice() clone with an inline `|| []` fallback instead, making
+// this helper unreachable. Also removed from index.js's load-order
+// verification list. See the refactor log's Tier-2 debt-review entry.
 
 // ── Spawn a minion ─────────────────────────────────────────────────────────────
 
@@ -346,7 +348,7 @@ window.wbmRenderMinionSection = function (bossIdx, sideOverride) {
     <div class="wbm-minion-alert-header">
       <div class="wbm-minion-sprite">${minion.sprite}</div>
       <div class="wbm-minion-info">
-        <div class="wbm-minion-name">⚠️ MINION SPAWNED — ${minion.name.toUpperCase()}</div>
+        <div class="wbm-minion-name">⚠️ MINION SPAWNED — ${_esc(minion.name.toUpperCase())}</div>
         <div class="wbm-minion-threat">Defeat it before time runs out or lose 1 HP!</div>
       </div>
       <div class="wbm-minion-timer-badge" id="wbm-minion-timer-${minion.id}">${Math.ceil(remaining)}s</div>
@@ -537,7 +539,7 @@ function _wbmShowSpawnToast(sprite, name) {
     <div class="wbm-spawn-toast-icon">${sprite}</div>
     <div class="wbm-spawn-toast-text">
       <div class="wbm-spawn-toast-title">⚠️ MINION SPAWNED!</div>
-      <div class="wbm-spawn-toast-sub">${name} has appeared! Answer quickly!</div>
+      <div class="wbm-spawn-toast-sub">${_esc(name)} has appeared! Answer quickly!</div>
     </div>`;
   document.body.appendChild(el);
   WBM.activeSpawnToast = setTimeout(() => { el.remove(); WBM.activeSpawnToast = null; }, 3500);
@@ -566,7 +568,7 @@ window.wbmAdminReviveStudent = function (bossIdx, studentId) {
     if (p) { p.isKO = false; p.hp = 3; p.koTime = 0; p.reviveAt = 0; }
   }, { type: 'world-boss:student-revived', payload: { bossIdx, studentId } });
   const st = (AppStore.getSlice(s => s.students) || []).find(s => s.id === studentId);
-  toast(`✨ ${st ? st.name : 'Student'} has been revived with full HP!`, '#4edea3');
+  toast(`✨ ${st ? _esc(st.name) : 'Student'} has been revived with full HP!`, '#4edea3');
   if (currentUser && currentUser.id === studentId) _wbmRefreshBattleArea(bossIdx);
 };
 
@@ -590,9 +592,9 @@ window.wbmOpenRevivePanel = function (bossIdx) {
         const hp = p.hp !== undefined ? p.hp : 3;
         const isKO = !!p.isKO;
         return `<div class="wbm-revive-student-row ${isKO ? 'ko-row' : ''}">
-      <div style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:12px;border:2px solid ${(p.studentColor||'#8b5cf6')+'55'};background:${(p.studentColor||'#8b5cf6')+'22'};color:${p.studentColor||'#8b5cf6'};flex-shrink:0">${p.studentInit || '?'}</div>
+      <div style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:12px;border:2px solid ${_cssColor(p.studentColor)+'55'};background:${_cssColor(p.studentColor)+'22'};color:${_cssColor(p.studentColor)};flex-shrink:0">${_esc(p.studentInit || '?')}</div>
       <div style="flex:1">
-        <div style="font-size:13px;font-weight:700;color:var(--on-surface)">${p.studentName || 'Student'}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--on-surface)">${_esc(p.studentName || 'Student')}</div>
         <div style="display:flex;align-items:center;gap:4px;margin-top:3px">
           ${Array.from({ length: 3 }, (_, i) => `<span style="font-size:14px;${i >= hp ? 'filter:grayscale(1);opacity:.3' : ''}">❤️</span>`).join('')}
           ${isKO ? `<span style="font-family:var(--fm);font-size:9px;color:#ef4444;margin-left:6px;letter-spacing:.06em">KO</span>` : ''}
@@ -621,7 +623,7 @@ window.wbmOpenMinionSettings = function (bossIdx) {
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
     <div style="width:40px;height:40px;border-radius:10px;background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.35);display:flex;align-items:center;justify-content:center;font-size:22px">👿</div>
     <div>
-      <div class="modal-h2" style="margin-bottom:2px">Minion Settings — ${boss.name}</div>
+      <div class="modal-h2" style="margin-bottom:2px">Minion Settings — ${_esc(boss.name)}</div>
       <div style="font-size:12px;color:var(--text-muted)">Configure minion spawning, HP damage, and question pool</div>
     </div>
   </div>
@@ -710,7 +712,7 @@ window.wbmOpenMinionSettings = function (bossIdx) {
         <label class="form-label">Import from Quest</label>
         <select id="wbm-import-quiz" style="width:100%">
           <option value="">— Pick a quest —</option>
-          ${(AppStore.getSlice(s => s.quizzes) || []).map(q => `<option value="${q.id}">${q.title} (${q.questions.length} Qs)</option>`).join('')}
+          ${(AppStore.getSlice(s => s.quizzes) || []).map(q => `<option value="${q.id}">${_esc(q.title)} (${q.questions.length} Qs)</option>`).join('')}
         </select>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="wbmAdminImportQs()">Import</button>

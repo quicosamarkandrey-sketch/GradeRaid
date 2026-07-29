@@ -86,7 +86,7 @@ window.renderWorldTabs = function () {
   tabs.innerHTML = worlds.map((w, i) =>
     `<button class="world-tab ${i === activeWorld ? 'active' : ''}"
       onclick="switchWorld(${i})"
-      style="${i === activeWorld ? 'color:' + w.color + ';border-bottom-color:' + w.color : ''}">
+      style="${i === activeWorld ? 'color:' + _cssColor(w.color) + ';border-bottom-color:' + _cssColor(w.color) : ''}">
       ${w.icon} ${_esc(w.label)}
     </button>`
   ).join('');
@@ -118,7 +118,7 @@ window.renderStageMap = function (worldIdx) {
   const prog = getMapProgress();
 
   let html = `<div style="text-align:center;margin-bottom:24px">
-    <div style="font-family:var(--fm);font-size:9px;color:${world.color};letter-spacing:.16em;margin-bottom:6px">[WORLD_0${worldIdx + 1}]</div>
+    <div style="font-family:var(--fm);font-size:9px;color:${_cssColor(world.color)};letter-spacing:.16em;margin-bottom:6px">[WORLD_0${worldIdx + 1}]</div>
     <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:var(--on-surface);margin-bottom:4px">${world.icon} ${_esc(world.label)}</div>
     <div style="font-size:13px;color:var(--text-muted)">${_esc(world.desc)}</div>
   </div><div class="stage-path">`;
@@ -140,7 +140,7 @@ window.renderStageMap = function (worldIdx) {
     let connector = '';
     if (i > 0) {
       const prevCleared = isStageCleared(world.stages[i - 1].id);
-      connector = `<div class="stage-connector${isLocked ? ' locked-dots' : ''}" style="--from-color:${prevCleared ? world.color : 'rgba(255,255,255,.08)'};--to-color:${isCleared ? world.color : isActive ? '#8b5cf6' : 'rgba(255,255,255,.08)'}"></div>`;
+      connector = `<div class="stage-connector${isLocked ? ' locked-dots' : ''}" style="--from-color:${prevCleared ? _cssColor(world.color) : 'rgba(255,255,255,.08)'};--to-color:${isCleared ? _cssColor(world.color) : isActive ? '#8b5cf6' : 'rgba(255,255,255,.08)'}"></div>`;
     }
 
     const btn = (isActive || isCleared) ? `<button onclick="event.stopPropagation();launchCampaignStage('${world.id}','${stage.id}')"
@@ -162,7 +162,7 @@ window.renderStageMap = function (worldIdx) {
         </div>
         ${!isLocked ? `<div style="margin-top:10px;font-size:11px;color:var(--text-muted);line-height:1.4">${_esc(((stage.scenes || [])[0] || {}).text?.substring(0, 80) || stage.title)}</div>` : ''}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
-          <div style="font-family:var(--fm);font-size:10px;color:${world.color}">${isLocked ? '???' : '+' + stage.xp + ' XP · 🪙' + stage.coins}</div>
+          <div style="font-family:var(--fm);font-size:10px;color:${_cssColor(world.color)}">${isLocked ? '???' : '+' + stage.xp + ' XP · 🪙' + stage.coins}</div>
           ${btn}
         </div>
       </div>

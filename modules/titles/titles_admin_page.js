@@ -90,7 +90,7 @@ function _buildAdminTitlesList(titles) {
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
             <span class="rarity-pill rarity-${(t.rarity || 'Common').toLowerCase()}" style="font-size:9px">${t.rarity}</span>
             <span style="font-size:9px;color:var(--text-muted);border:1px solid var(--border2);border-radius:6px;padding:2px 7px">${t.frameShape || 'classic'}</span>
-            ${linkedAch ? `<span class="badge-pill bp-primary" style="font-size:9px">🔗 ${_esc(linkedAch.name)}</span>` : `<span class="badge-pill ${assignedIds.length ? 'bp-primary' : 'bp-gray'}" style="font-size:9px" title="${_esc(sectionsLabel)}">🏫 ${assignedIds.length ? sectionsLabel : 'All sections'}</span>`}
+            ${linkedAch ? `<span class="badge-pill bp-primary" style="font-size:9px">🔗 ${_esc(linkedAch.name)}</span>` : `<span class="badge-pill ${assignedIds.length ? 'bp-primary' : 'bp-gray'}" style="font-size:9px" title="${_esc(sectionsLabel)}">🏫 ${assignedIds.length ? _esc(sectionsLabel) : 'All sections'}</span>`}
           </div>
           <div style="display:flex;gap:10px;font-size:11px;margin-bottom:10px">
             <span style="color:var(--text-muted)">Unlocks: <strong style="color:var(--primary)">${unlockCount}</strong></span>

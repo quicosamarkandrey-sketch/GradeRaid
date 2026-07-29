@@ -65,7 +65,7 @@ function _renderStudentWorldBossCore() {
     <div class="wbc-panel" style="text-align:center">
       <div style="font-size:48px;margin-bottom:16px">⚔️</div>
       <div style="font-family:var(--fh);font-size:20px;font-weight:900;margin-bottom:8px;color:var(--on-surface)">Join the Raid!</div>
-      <div style="font-size:14px;color:var(--text-muted);margin-bottom:24px;line-height:1.6">Answer questions to deal damage to <b style="color:#EC4899">${boss.name}</b>. Every correct answer chips away at the boss's HP. Work together with your classmates to defeat it!</div>
+      <div style="font-size:14px;color:var(--text-muted);margin-bottom:24px;line-height:1.6">Answer questions to deal damage to <b style="color:#EC4899">${_esc(boss.name)}</b>. Every correct answer chips away at the boss's HP. Work together with your classmates to defeat it!</div>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:20px">
         <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 18px;text-align:center;min-width:100px">
           <div style="font-family:var(--fh);font-size:18px;font-weight:900;color:#EC4899">${stats.participants}</div>
@@ -155,8 +155,8 @@ function _renderStudentWorldBossCore() {
       <div class="wb-hero-content">
         <div class="wb-hero-left">
           <div class="wb-boss-tag">LIVE RAID</div>
-          <div class="wb-boss-name">${boss.name}</div>
-          <div class="wb-boss-desc">${boss.description || 'A powerful boss has appeared. Work together to defeat it!'}</div>
+          <div class="wb-boss-name">${_esc(boss.name)}</div>
+          <div class="wb-boss-desc">${_esc(boss.description || 'A powerful boss has appeared. Work together to defeat it!')}</div>
           <div class="wb-hero-stats">
             <div class="wb-stat-chip"><div class="v" style="color:#EC4899">${pct}%</div><div class="l">HP Remaining</div></div>
             <div class="wb-stat-chip"><div class="v" style="color:var(--tertiary)">${boss.difficulty || 'Normal'}</div><div class="l">Difficulty</div></div>
@@ -212,7 +212,7 @@ function _renderStudentWorldBossCore() {
               ? Math.round(p.correctAnswers / (p.correctAnswers + p.wrongAnswers) * 100) : 0;
             return `<div class="wb-dmg-rank ${isMe ? 'me' : ''}">
               <div class="wb-dmg-rank-num">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1)}</div>
-              <div class="wb-participant-av" style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:12px;border:2px solid ${p.studentColor + '55'};background:${p.studentColor + '22'};color:${p.studentColor};flex-shrink:0">${_esc(p.studentInit)}</div>
+              <div class="wb-participant-av" style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:12px;border:2px solid ${_cssColor(p.studentColor) + '55'};background:${_cssColor(p.studentColor) + '22'};color:${_cssColor(p.studentColor)};flex-shrink:0">${_esc(p.studentInit)}</div>
               <div class="wb-dmg-rank-info">
                 <div class="wb-dmg-rank-name">${_esc(p.studentName)}${isMe ? ' <span style="font-size:9px;color:#EC4899;font-family:var(--fm)">YOU</span>' : ''}</div>
                 <div class="wb-dmg-rank-sub">✅ ${p.correctAnswers} correct · ❌ ${p.wrongAnswers} wrong · ${acc}% acc</div>
@@ -464,7 +464,7 @@ function _wbcUpdateDmgList(bossIdx) {
       ? Math.round(p.correctAnswers / (p.correctAnswers + p.wrongAnswers) * 100) : 0;
     return `<div class="wb-dmg-rank ${isMe ? 'me' : ''}">
       <div class="wb-dmg-rank-num">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1)}</div>
-      <div class="wb-participant-av" style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:12px;border:2px solid ${p.studentColor + '55'};background:${p.studentColor + '22'};color:${p.studentColor};flex-shrink:0">${_esc(p.studentInit)}</div>
+      <div class="wb-participant-av" style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:12px;border:2px solid ${_cssColor(p.studentColor) + '55'};background:${_cssColor(p.studentColor) + '22'};color:${_cssColor(p.studentColor)};flex-shrink:0">${_esc(p.studentInit)}</div>
       <div class="wb-dmg-rank-info">
         <div class="wb-dmg-rank-name">${_esc(p.studentName)}${isMe ? ' <span style="font-size:9px;color:#EC4899;font-family:var(--fm)">YOU</span>' : ''}</div>
         <div class="wb-dmg-rank-sub">✅ ${p.correctAnswers} correct · ❌ ${p.wrongAnswers} wrong · ${acc}% acc</div>
