@@ -549,4 +549,13 @@ function bootApp(){
   WBC.joined=false; WBC.bossIdx=-1; WBC.qIdx=0; WBC.comboCount=0; WBC.cooldownActive=false;
   if(WBC.refreshInterval){clearInterval(WBC.refreshInterval);WBC.refreshInterval=null;}
   if(typeof refreshAllAvatars==='function')refreshAllAvatars();
+
+  // Event-Driven Communication phase (roadmap Phase 4) — replaces the 7
+  // files that used to monkey-patch window.bootApp. Uses AppStore.emit()
+  // rather than updateState(): bootApp() never mutates DB.* itself (it's
+  // pure UI/navigation orchestration), and it's the single highest-
+  // frequency call in the app (every login, every refresh) — running it
+  // through updateState()'s clone/persist pipeline for a change that never
+  // happened would be pure waste. See state-manager.js's emit() comment.
+  AppStore.emit({ type: 'session:booted', payload: { role: currentRole, userId: currentUser ? currentUser.id : null } });
 }

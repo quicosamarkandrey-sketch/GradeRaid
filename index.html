@@ -1762,7 +1762,6 @@ function startQuiz(qid){
   // unlimited — Phase 60 (Improvement Plan §7) caps scored attempts at 4,
   // gated by eqQuizAttemptStatus() below; the old "no hard lock, just a
   // shrinking reward forever" behavior is gone.
-  DB=loadDB();
   const freshStudent=DB.students.find(s=>s.id===currentUser.id);
   const completedIds=(freshStudent&&freshStudent.completedQuizzes)||[];
   // Phase 4 — chain lock guard (quest_board_report.md §3.8): even if a
@@ -1798,10 +1797,11 @@ function startQuiz(qid){
   // A one-time override is consumed the instant it's actually used to start
   // a new attempt, not just when granted — see eqGrantQuizAttemptOverride().
   if (gate.viaOverride) {
-    if (DB.quizAttemptOverrides && DB.quizAttemptOverrides[currentUser.id]) {
-      delete DB.quizAttemptOverrides[currentUser.id][qid];
-      saveDB();
-    }
+    AppStore.updateState(draft => {
+      if (draft.quizAttemptOverrides && draft.quizAttemptOverrides[currentUser.id]) {
+        delete draft.quizAttemptOverrides[currentUser.id][qid];
+      }
+    }, { type: 'quiz:attempt-override-consumed', payload: { studentId: currentUser.id, quizId: qid } });
   }
   quizFinishing=false;
   quizAnswers=new Array(activeQuiz.questions.length).fill(null);quizCurrent=0;
@@ -2263,11 +2263,11 @@ function useHint(){
   if(qType==='enum' || qType==='match'){ toast('No hints available for this question type.','#ffb4ab'); return; }
   if(qType==='mc' && (!q.opts || q.opts.length<=2)){ toast('No hint available for this question.','#ffb4ab'); return; }
 
-  DB=loadDB();
-  const stIdx=DB.students.findIndex(s=>s.id===currentUser.id);
+  const stIdx = AppStore.getSlice(s => s.students || []).findIndex(s=>s.id===currentUser.id);
   if(stIdx<0) return;
-  if((DB.students[stIdx].coins||0) < HINT_COST){
-    toast(`❌ Need ${HINT_COST} coins for a hint — you have ${DB.students[stIdx].coins||0}.`,'#ffb4ab');
+  const _currentCoins = AppStore.getSlice(s => (s.students||[])[stIdx]?.coins) || 0;
+  if(_currentCoins < HINT_COST){
+    toast(`❌ Need ${HINT_COST} coins for a hint — you have ${_currentCoins}.`,'#ffb4ab');
     return;
   }
 
@@ -2287,10 +2287,12 @@ function useHint(){
 
   // Spend the coins — same local-mutation + server-sync pattern every other
   // spend site in this app uses (shop, mail claim, achievement claim, etc).
-  DB.students[stIdx].coins -= HINT_COST;
+  AppStore.updateState(draft => {
+    const s = (draft.students || []).find(x => x.id === currentUser.id);
+    if (s) s.coins -= HINT_COST;
+  }, { type: 'quiz:hint-purchased', payload: { studentId: currentUser.id } });
   syncStudentStatsToServer(currentUser.id, 0, -HINT_COST);
-  currentUser.coins = DB.students[stIdx].coins;
-  saveDB();
+  currentUser.coins = _currentCoins - HINT_COST;
 
   quizHintsRemaining--;
   quizHintRevealed[quizCurrent]=true;
@@ -2465,8 +2467,6 @@ function abortQuiz(){
   if (quizFinishing || !activeQuiz) { activeQuiz=null; navTo('s-quizzes'); return; }
   quizFinishing = true;
 
-  DB = loadDB();
-  const stIdx = DB.students.findIndex(s=>s.id===currentUser.id);
   const total = activeQuiz.questions.length;
 
   let correct = 0; const results = [];
@@ -2476,26 +2476,35 @@ function abortQuiz(){
   });
   const score = Math.round((correct/total)*100);
 
-  if (!DB.quizHistory) DB.quizHistory = {};
-  if (!DB.quizHistory[currentUser.id]) DB.quizHistory[currentUser.id] = [];
-  // Phase 2 (Quest Board state clarity) — passed is hard-coded false here,
-  // never derived from `score`: Abort & Retry Rules (Phase 1/60, §7) say
-  // "Abort always counts as a loss," full stop, even if a student had
-  // already locked in a passing number of correct answers before bailing.
-  DB.quizHistory[currentUser.id].push({
-    id:'qh_'+uid(), quizId:activeQuiz.id, score, passed:false, completedAt:new Date().toISOString(),
-    date:isoDate(), attempt:quizAttemptNumber, results, aborted:true
-  });
+  // Same synchronous-persist requirement the comment below explains: this
+  // must land before a tab-close/hard-refresh can cut it off, so flushNow()
+  // forces AppStore's normally-debounced persist immediately, right after
+  // committing through the proper draft-based mutation gate.
+  AppStore.updateState(draft => {
+    if (!draft.quizHistory) draft.quizHistory = {};
+    if (!draft.quizHistory[currentUser.id]) draft.quizHistory[currentUser.id] = [];
+    // Phase 2 (Quest Board state clarity) — passed is hard-coded false here,
+    // never derived from `score`: Abort & Retry Rules (Phase 1/60, §7) say
+    // "Abort always counts as a loss," full stop, even if a student had
+    // already locked in a passing number of correct answers before bailing.
+    draft.quizHistory[currentUser.id].push({
+      id:'qh_'+uid(), quizId:activeQuiz.id, score, passed:false, completedAt:new Date().toISOString(),
+      date:isoDate(), attempt:quizAttemptNumber, results, aborted:true
+    });
 
-  // No completedQuizzes credit, no XP/coins, no streak, no level check — an
-  // abort earns nothing, it only logs the attempt against the cap.
-  const hist = DB.quizHistory[currentUser.id];
-  if (hist.length) {
-    const totalScore = hist.reduce((s,e)=>s+e.score,0);
-    DB.students[stIdx].quizAvg = Math.round(totalScore/hist.length);
-  }
-  currentUser = DB.students[stIdx];
-  saveDB();
+    // No completedQuizzes credit, no XP/coins, no streak, no level check — an
+    // abort earns nothing, it only logs the attempt against the cap.
+    const hist = draft.quizHistory[currentUser.id];
+    if (hist.length) {
+      const s = (draft.students || []).find(x => x.id === currentUser.id);
+      if (s) {
+        const totalScore = hist.reduce((sum,e)=>sum+e.score,0);
+        s.quizAvg = Math.round(totalScore/hist.length);
+      }
+    }
+  }, { type: 'quiz:aborted', payload: { studentId: currentUser.id, quizId: activeQuiz.id } });
+  AppStore.flushNow();
+  currentUser = AppStore.getStudent(currentUser.id);
   updateTopbar();
 
   toast('🚩 Quest aborted — counted as a loss.', '#ffb4ab');
@@ -2529,8 +2538,6 @@ function finishQuiz() {
   if (quizFinishing || !activeQuiz) { return; }
   quizFinishing = true;
 
-  const stIdx = DB.students.findIndex(s => s.id === currentUser.id);
-
   let correct = 0;
   // Phase 1/3 — eqGradeAnswer() dispatches by question type and returns a
   // fraction (mc/tf/id = 1 or 0, enum/match = partial-credit ratio), so a
@@ -2559,59 +2566,65 @@ function finishQuiz() {
   const coinGain = Math.round(baseCoinGain * totalMult);
   const isRetry  = quizAttemptNumber > 1;
 
-  // Grant rewards securely
-  DB.students[stIdx].xp += xpGain;
-  DB.students[stIdx].coins += coinGain;
-  // Phase 4 — only the FIRST completion should join completedQuizzes (it's
-  // read as a de-duped "done" set everywhere: the quest board's done/
-  // pending split, achievements' quests_completed trigger, chain-unlock
-  // status). Retries still log a new quizHistory row and grant reward
-  // below; they just don't push a duplicate id here.
-  if (!DB.students[stIdx].completedQuizzes.includes(activeQuiz.id)) {
-    DB.students[stIdx].completedQuizzes.push(activeQuiz.id);
-  }
+  // Grant rewards + log the attempt — all in one AppStore draft so this
+  // commits atomically through the proper mutation gate instead of directly
+  // poking DB.students[]/DB.quizHistory/DB.pointLog and calling saveDB().
+  AppStore.updateState(draft => {
+    const s = (draft.students || []).find(x => x.id === currentUser.id);
+    if (!s) return;
+    s.xp += xpGain;
+    s.coins += coinGain;
+    // Phase 4 — only the FIRST completion should join completedQuizzes (it's
+    // read as a de-duped "done" set everywhere: the quest board's done/
+    // pending split, achievements' quests_completed trigger, chain-unlock
+    // status). Retries still log a new quizHistory row and grant reward
+    // below; they just don't push a duplicate id here.
+    if (!s.completedQuizzes.includes(activeQuiz.id)) {
+      s.completedQuizzes.push(activeQuiz.id);
+    }
 
-  // Store per-quiz score for history
-  if (!DB.quizHistory) DB.quizHistory = {};
-  if (!DB.quizHistory[currentUser.id]) DB.quizHistory[currentUser.id] = [];
-  // Phase 2 — `date` (Asia/Manila calendar day via isoDate()) is what
-  // computeQuestStreak() reads; completedAt stays as the raw ISO timestamp
-  // for display/sorting purposes, unchanged.
-  // Phase 57 — `id` is new: quiz_history now syncs to Supabase via
-  // upsert-by-id (db-service.js), same convention as DB.pointLog's id.
-  // Without it, every save would look like a fresh insert and duplicate
-  // rows server-side; this stamps one once, here, at creation time.
-  // Phase 2 (Quest Board state clarity) — `passed` makes the pass/fail
-  // outcome an explicit, stored fact instead of something re-derived from
-  // `score` ad hoc at render time; renderStudentQuizzes() reads this to
-  // tell a genuinely "completed (passed)" node apart from a "completed
-  // (failed, retry available)" one.
-  DB.quizHistory[currentUser.id].push({ id: 'qh_'+uid(), quizId: activeQuiz.id, score, passed: eqQuizPassed(score), completedAt: new Date().toISOString(), date: isoDate(), attempt: quizAttemptNumber, results });
+    // Store per-quiz score for history
+    if (!draft.quizHistory) draft.quizHistory = {};
+    if (!draft.quizHistory[currentUser.id]) draft.quizHistory[currentUser.id] = [];
+    // Phase 2 — `date` (Asia/Manila calendar day via isoDate()) is what
+    // computeQuestStreak() reads; completedAt stays as the raw ISO timestamp
+    // for display/sorting purposes, unchanged.
+    // Phase 57 — `id` is new: quiz_history now syncs to Supabase via
+    // upsert-by-id (db-service.js), same convention as DB.pointLog's id.
+    // Without it, every save would look like a fresh insert and duplicate
+    // rows server-side; this stamps one once, here, at creation time.
+    // Phase 2 (Quest Board state clarity) — `passed` makes the pass/fail
+    // outcome an explicit, stored fact instead of something re-derived from
+    // `score` ad hoc at render time; renderStudentQuizzes() reads this to
+    // tell a genuinely "completed (passed)" node apart from a "completed
+    // (failed, retry available)" one.
+    draft.quizHistory[currentUser.id].push({ id: 'qh_'+uid(), quizId: activeQuiz.id, score, passed: eqQuizPassed(score), completedAt: new Date().toISOString(), date: isoDate(), attempt: quizAttemptNumber, results });
 
-  // ── FIXED: Safe Quiz Average Calculation (Prevents NaN%) ──
-  const history = DB.quizHistory[currentUser.id];
-  if (history && history.length > 0) {
-    const totalScore = history.reduce((sum, entry) => sum + entry.score, 0);
-    DB.students[stIdx].quizAvg = Math.round(totalScore / history.length);
-  } else {
-    DB.students[stIdx].quizAvg = 0; // Fallback for brand new students
-  }
+    // ── Safe Quiz Average Calculation (Prevents NaN%) ──
+    const history = draft.quizHistory[currentUser.id];
+    if (history && history.length > 0) {
+      const totalScore = history.reduce((sum, entry) => sum + entry.score, 0);
+      s.quizAvg = Math.round(totalScore / history.length);
+    } else {
+      s.quizAvg = 0; // Fallback for brand new students
+    }
 
-  // ── FIXED: Centralized Level Trigger ──
-  window.checkLevelUp(DB.students[stIdx]);
+    // ── Centralized Level Trigger — must run here, inside the draft ──
+    window.checkLevelUp(s);
 
-  // ── FIXED: Real Timestamp & Point Accuracy (Logging XP instead of Coins) ──
-  DB.pointLog.unshift({
-    studentId: currentUser.id,
-    what: `Quest: ${activeQuiz.title} (${score}%)`,
-    pts: xpGain, 
-    when: window.getNowLabel(),
-    id: 'pl_' + uid(),
-    createdAt: new Date().toISOString()
-  });
+    // ── Real Timestamp & Point Accuracy (Logging XP instead of Coins) ──
+    if (!Array.isArray(draft.pointLog)) draft.pointLog = [];
+    draft.pointLog.unshift({
+      studentId: currentUser.id,
+      what: `Quest: ${activeQuiz.title} (${score}%)`,
+      pts: xpGain,
+      when: window.getNowLabel(),
+      id: 'pl_' + uid(),
+      createdAt: new Date().toISOString()
+    });
+  }, { type: 'quiz:finished', payload: { studentId: currentUser.id, quizId: activeQuiz.id, score } });
 
-  currentUser = DB.students[stIdx];
-  saveDB();
+  currentUser = AppStore.getStudent(currentUser.id);
   // Phase 2 — server-authoritative XP/coins sync. Every other grant site in
   // this app (mail, achievements, campaign, recitation, world boss, shop)
   // already calls this right after its local mutation; Quest Board never
@@ -2686,8 +2699,7 @@ function finishQuiz() {
       icon:     pass ? '🏆' : '💀',
       rarity:   rarity,
       source:   'quest',
-      rewards:  rewards,
-      onClose:  () => { DB = loadDB(); }
+      rewards:  rewards
     });
   }
   // Phase 4 — clear activeQuiz only after everything above that reads it
@@ -3247,7 +3259,6 @@ async function saveProfileEdit() {
     saveBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px;animation:skShimmerSlide 1s linear infinite">autorenew</span> Saving…';
   }
 
-  DB = loadDB();
   profInitAll();
 
   // Fix (Phase 49): cosmetic edits — including the profile picture — used
@@ -3267,15 +3278,17 @@ async function saveProfileEdit() {
       if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = saveBtnOriginalHTML; }
       return;
     }
-    DB.admin.firstName = firstName;
-    DB.admin.lastName = lastName;
-    DB.admin.displayName = displayName;
-    DB.admin.name = firstName && lastName ? firstName + ' ' + lastName : displayName;
-    // Critical Fix #6: Actually persist the new username so future logins work
-    DB.admin.id = newId;
-    // Commit any staged picture change
-    if (_profPendingPic !== null) DB.admin.profilePic = _profPendingPic;
-    currentUser = DB.admin;
+    AppStore.updateState(draft => {
+      draft.admin.firstName = firstName;
+      draft.admin.lastName = lastName;
+      draft.admin.displayName = displayName;
+      draft.admin.name = firstName && lastName ? firstName + ' ' + lastName : displayName;
+      // Critical Fix #6: Actually persist the new username so future logins work
+      draft.admin.id = newId;
+      // Commit any staged picture change
+      if (_profPendingPic !== null) draft.admin.profilePic = _profPendingPic;
+    }, { type: 'profile:admin-cosmetic-saved', payload: { newId } });
+    currentUser = AppStore.getSlice(s => s.admin);
 
     syncResult = await syncOwnProfileCosmeticToServer({
       displayName: displayName,
@@ -3313,19 +3326,24 @@ async function saveProfileEdit() {
       profilePic:  _profPendingPic,
     });
   } else {
-    const stIdx = DB.students.findIndex(s => s.id === currentUser.id);
+    const stIdx = AppStore.getSlice(s => s.students || []).findIndex(s => s.id === currentUser.id);
     if (stIdx < 0) {
       if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = saveBtnOriginalHTML; }
       return;
     }
-    DB.students[stIdx].firstName = firstName;
-    DB.students[stIdx].lastName = lastName;
-    DB.students[stIdx].displayName = displayName;
-    DB.students[stIdx].name = firstName && lastName ? firstName + ' ' + lastName : displayName;
-    DB.students[stIdx].init = _makeInit(firstName, lastName, displayName);
-    // Commit any staged picture change
-    if (_profPendingPic !== null) DB.students[stIdx].profilePic = _profPendingPic;
-    currentUser = DB.students[stIdx];
+    const _newInit = _makeInit(firstName, lastName, displayName);
+    AppStore.updateState(draft => {
+      const s = (draft.students || [])[stIdx];
+      if (!s) return;
+      s.firstName = firstName;
+      s.lastName = lastName;
+      s.displayName = displayName;
+      s.name = firstName && lastName ? firstName + ' ' + lastName : displayName;
+      s.init = _newInit;
+      // Commit any staged picture change
+      if (_profPendingPic !== null) s.profilePic = _profPendingPic;
+    }, { type: 'profile:student-cosmetic-saved', payload: { studentId: currentUser.id } });
+    currentUser = AppStore.getStudent(currentUser.id);
 
     // FIX (Phase 49): this is the actual fix for "profile picture doesn't
     // stay permanently" — previously saveDB() below was the only call
@@ -3336,12 +3354,10 @@ async function saveProfileEdit() {
       displayName: displayName,
       firstName:   firstName,
       lastName:    lastName,
-      init:        DB.students[stIdx].init,
+      init:        _newInit,
       profilePic:  _profPendingPic,
     });
   }
-
-  saveDB();
 
   if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = saveBtnOriginalHTML; }
 
@@ -3383,8 +3399,6 @@ function savePassword() {
   if (newPass.length < 4) { showErr('New password must be at least 4 characters.'); return; }
   if (newPass !== confPass) { showErr('Passwords do not match.'); return; }
 
-  DB = loadDB();
-
   // BIGGER GAP FOUND WHILE FIXING THE ROLE SPLIT (not fixed here, flagging
   // clearly rather than silently patching over it): this whole function
   // predates the real Supabase Auth login migration. Login now goes through
@@ -3399,9 +3413,12 @@ function savePassword() {
   // a real auth-flow change, out of scope for this pass, so left as-is
   // below except for the teacher-specific silent-failure fix.
   if (currentRole === 'admin') {
-    if (DB.admin.pass !== curPass) { showErr('Current password is incorrect.'); return; }
-    DB.admin.pass = newPass;
-    currentUser = DB.admin;
+    const _adminPass = AppStore.getSlice(s => s.admin?.pass);
+    if (_adminPass !== curPass) { showErr('Current password is incorrect.'); return; }
+    AppStore.updateState(draft => {
+      draft.admin.pass = newPass;
+    }, { type: 'profile:admin-password-changed', payload: {} });
+    currentUser = AppStore.getSlice(s => s.admin);
   } else if (currentRole === 'teacher') {
     // Role split fix: this branch used to be missing, so a teacher fell into
     // the student branch, DB.students.findIndex() returned -1, and
@@ -3411,14 +3428,18 @@ function savePassword() {
     if (currentUser.pass && currentUser.pass !== curPass) { showErr('Current password is incorrect.'); return; }
     currentUser.pass = newPass;
   } else {
-    const stIdx = DB.students.findIndex(s => s.id === currentUser.id);
+    const stIdx = AppStore.getSlice(s => s.students || []).findIndex(s => s.id === currentUser.id);
     if (stIdx < 0) return;
-    if (DB.students[stIdx].pass !== curPass) { showErr('Current password is incorrect.'); return; }
-    DB.students[stIdx].pass = newPass;
-    currentUser = DB.students[stIdx];
+    const _existing = AppStore.getSlice(s => (s.students||[])[stIdx]?.pass);
+    if (_existing !== curPass) { showErr('Current password is incorrect.'); return; }
+    AppStore.updateState(draft => {
+      const s = (draft.students || [])[stIdx];
+      if (s) s.pass = newPass;
+    }, { type: 'profile:password-changed', payload: { studentId: currentUser.id } });
+    currentUser = AppStore.getStudent(currentUser.id);
   }
 
-  saveDB();
+
   // Clear the fields
   ['prof-cur-pass','prof-new-pass','prof-conf-pass'].forEach(id => {
     const el = document.getElementById(id);
@@ -3441,19 +3462,20 @@ function saveEmail() {
 
   // Check duplicate email (among students)
   if (email) {
-    const duplicate = DB.students.find(s => s.id !== currentUser.id && s.email === email);
+    const duplicate = AppStore.getSlice(s => s.students || []).find(s => s.id !== currentUser.id && s.email === email);
     if (duplicate) {
       if (errEl) { errEl.textContent = 'That email is already in use by another account.'; errEl.style.display = 'block'; }
       return;
     }
   }
 
-  DB = loadDB();
-  const stIdx = DB.students.findIndex(s => s.id === currentUser.id);
+  const stIdx = AppStore.getSlice(s => s.students || []).findIndex(s => s.id === currentUser.id);
   if (stIdx < 0) return;
-  DB.students[stIdx].email = email;
-  currentUser = DB.students[stIdx];
-  saveDB();
+  AppStore.updateState(draft => {
+    const s = (draft.students || [])[stIdx];
+    if (s) s.email = email;
+  }, { type: 'profile:email-saved', payload: { studentId: currentUser.id } });
+  currentUser = AppStore.getStudent(currentUser.id);
   toast('✉️ Email saved!', '#4edea3');
 }
 

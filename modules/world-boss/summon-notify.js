@@ -519,30 +519,23 @@ window.wbsnWriteSignal = function (bossIdx) {
   };
 })();
 
-// ── bootApp patch — auto-show notification on login if a boss is already active ──
+// ── session:booted subscriber — auto-show notification on login if a boss is already active ──
 // RESTORED: this patch was missing entirely. The storage-event listener above
 // only catches the case where a student's tab is ALREADY OPEN at the exact
 // moment the teacher clicks Activate. The far more common case — a student
 // logging in (or refreshing) after the boss was already activated — was never
 // handled, which is why the notification appeared to be "missing" even though
-// the overlay system itself works correctly. Same monkey-patch pattern already
-// used elsewhere in this codebase for bootApp (see modules/achievements,
-// modules/shop, modules/titles) — auth.js's own header comment documents that
-// bootApp is patched by multiple modules and that all such patches should be
-// preserved as-is for now.
-;(function () {
-  const _origBoot = window.bootApp;
-  window.bootApp = function () {
-    if (typeof _origBoot === 'function') _origBoot();
-    if (currentRole !== 'student') return;
-    const found = (typeof wbcGetActiveBoss === 'function') ? wbcGetActiveBoss() : null;
-    if (!found) return;
-    const { idx } = found;
-    if (WBSN.dismissedBosses[idx]) return;
-    // Slight delay so the UI is fully rendered before the overlay appears
-    setTimeout(() => wbsnShow(idx), 800);
-  };
-})();
+// the overlay system itself works correctly.
+AppStore.subscribe('summon-notify-boot-check', function (state, event) {
+  if (event.type !== 'session:booted') return;
+  if (currentRole !== 'student') return;
+  const found = (typeof wbcGetActiveBoss === 'function') ? wbcGetActiveBoss() : null;
+  if (!found) return;
+  const { idx } = found;
+  if (WBSN.dismissedBosses[idx]) return;
+  // Slight delay so the UI is fully rendered before the overlay appears
+  setTimeout(() => wbsnShow(idx), 800);
+});
 
 // ── Polling helpers (optional for environments without storage events) ─────────
 

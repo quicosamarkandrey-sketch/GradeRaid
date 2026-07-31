@@ -605,14 +605,22 @@ window.saveQuiz = async function() {
   if (draftQuiz.startDate && draftQuiz.endDate && draftQuiz.endDate < draftQuiz.startDate) {
     toast('❌ "Available Until" must be on or after "Available From"', '#ffb4ab'); return;
   }
-  const existIdx = DB.quizzes.findIndex(q => q.id === draftQuiz.id);
-  if (existIdx >= 0) {
-    DB.quizzes[existIdx] = draftQuiz;
-    DB.students.forEach(s => { s.completedQuizzes = s.completedQuizzes.filter(id => id !== draftQuiz.id); });
-  } else {
-    DB.quizzes.push(draftQuiz);
-  }
-  saveDB();
+  const existIdx = (AppStore.getSlice(s => s.quizzes) || []).findIndex(q => q.id === draftQuiz.id);
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.quizzes)) draft.quizzes = [];
+    if (existIdx >= 0) {
+      draft.quizzes[existIdx] = draftQuiz;
+      // Editing an existing quest invalidates everyone's "done" status for
+      // it — the questions themselves may have changed, so a stale
+      // completedQuizzes entry would hide it from the quest board forever
+      // even though it's effectively a new quest now.
+      (draft.students || []).forEach(s => {
+        s.completedQuizzes = (s.completedQuizzes || []).filter(id => id !== draftQuiz.id);
+      });
+    } else {
+      draft.quizzes.push(draftQuiz);
+    }
+  }, { type: 'quiz:saved', payload: { quizId: draftQuiz.id, isNew: existIdx < 0 } });
   closeModalForce();
   const quizId = draftQuiz.id;
   const sectionIds = draftQuizSections.slice();
@@ -632,23 +640,26 @@ window.saveQuiz = async function() {
     if (error) {
       toast('⚠️ Quest saved, but section assignment may not have synced: ' + error.message, '#ffb95f');
     } else {
-      if (!DB.quizSectionAssignments) DB.quizSectionAssignments = {};
-      DB.quizSectionAssignments[quizId] = sectionIds; // optimistic — next realtime pull confirms it
+      AppStore.updateState(draft => {
+        if (!draft.quizSectionAssignments) draft.quizSectionAssignments = {};
+        draft.quizSectionAssignments[quizId] = sectionIds; // optimistic — next realtime pull confirms it
+      }, { type: 'quiz:sections-assigned', payload: { quizId, sectionIds } });
     }
   }
 };
 
 window.deleteQuiz = function(id) {
-  const q = DB.quizzes.find(q => q.id === id);
+  const q = (AppStore.getSlice(s => s.quizzes) || []).find(q => q.id === id);
   showModal(`<div style="text-align:center;padding:10px"><div style="font-size:40px;margin-bottom:12px">🗑️</div><div class="modal-h2" style="text-align:center">Delete Quest?</div><div style="color:var(--text-muted);margin-bottom:20px">Remove "${_esc(q?.title)}" permanently?</div><div style="display:flex;gap:10px"><button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button><button class="btn btn-danger" style="flex:1" onclick="confirmDeleteQuiz('${id}')">Delete</button></div></div>`, 'sm');
 };
 
 window.confirmDeleteQuiz = async function(id) {
-  const q = DB.quizzes.find(q => q.id === id);
-  DB.quizzes = DB.quizzes.filter(q => q.id !== id);
-  DB.students.forEach(s => { s.completedQuizzes = s.completedQuizzes.filter(qid => qid !== id); });
-  if (DB.quizSectionAssignments) delete DB.quizSectionAssignments[id];
-  saveDB();
+  const q = (AppStore.getSlice(s => s.quizzes) || []).find(q => q.id === id);
+  AppStore.updateState(draft => {
+    draft.quizzes = (draft.quizzes || []).filter(q => q.id !== id);
+    (draft.students || []).forEach(s => { s.completedQuizzes = (s.completedQuizzes || []).filter(qid => qid !== id); });
+    if (draft.quizSectionAssignments) delete draft.quizSectionAssignments[id];
+  }, { type: 'quiz:deleted', payload: { quizId: id } });
   closeModalForce();
   renderAdminQuizzes();
   toast(`🗑️ "${_esc(q?.title)}" deleted`);

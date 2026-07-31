@@ -199,13 +199,14 @@ window.ordUpdateSidebarBadge = function () {
   }
 };
 
-// ── bootApp patch — show orders badge on login ────────────────────────────────
-;(function () {
-  const _orig = window.bootApp;
-  window.bootApp = function () {
-    if (typeof _orig === 'function') _orig();
-    if (currentRole === 'student') setTimeout(ordUpdateSidebarBadge, 55);
-  };
-})();
+// ── session:booted subscriber — show orders badge on login ────────────────────
+AppStore.subscribe('shop-orders-boot-badge', function (state, event) {
+  if (event.type !== 'session:booted') return;
+  // Re-reads ambient currentRole (not event.payload.role) to match the
+  // original patch's behavior: the 55ms-delayed callback checked role at
+  // fire time, not at boot time — a real difference if role could change
+  // in that window.
+  if (currentRole === 'student') setTimeout(ordUpdateSidebarBadge, 55);
+});
 
 console.log('[EduQuest] shop/orders.js loaded — renderStudentOrders, ord* helpers, ordUpdateSidebarBadge registered.');

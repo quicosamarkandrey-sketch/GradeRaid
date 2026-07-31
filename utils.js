@@ -207,12 +207,6 @@ function syncStudentStatsToServer(studentId, xpDelta, coinsDelta) {
     // real atomic result without waiting for a full reload. Best-effort
     // only — wrapped so a missing DB/AppStore never breaks the caller.
     try {
-      if (typeof DB !== 'undefined' && DB && Array.isArray(DB.students)) {
-        const s = DB.students.find(x => x.id === studentId);
-        if (s) { s.xp = row.xp; s.coins = row.coins; s.level = row.level; s.tier = row.tier; }
-      }
-    } catch (e) { /* best-effort only */ }
-    try {
       if (typeof currentUser !== 'undefined' && currentUser && currentUser.id === studentId) {
         currentUser.xp = row.xp; currentUser.coins = row.coins;
         currentUser.level = row.level; currentUser.tier = row.tier;
@@ -1124,11 +1118,11 @@ window.eqMascotEmotionFor = eqMascotEmotionFor;
 // (see startQuiz() in index.html), so it can't be granted once and quietly
 // remove the cap forever.
 function eqGrantQuizAttemptOverride(studentId, quizId){
-  DB = loadDB();
-  if (!DB.quizAttemptOverrides) DB.quizAttemptOverrides = {};
-  if (!DB.quizAttemptOverrides[studentId]) DB.quizAttemptOverrides[studentId] = {};
-  DB.quizAttemptOverrides[studentId][quizId] = true;
-  saveDB();
+  AppStore.updateState(draft => {
+    if (!draft.quizAttemptOverrides) draft.quizAttemptOverrides = {};
+    if (!draft.quizAttemptOverrides[studentId]) draft.quizAttemptOverrides[studentId] = {};
+    draft.quizAttemptOverrides[studentId][quizId] = true;
+  }, { type: 'quiz:attempt-override-granted', payload: { studentId, quizId } });
 }
 window.eqGrantQuizAttemptOverride = eqGrantQuizAttemptOverride;
 

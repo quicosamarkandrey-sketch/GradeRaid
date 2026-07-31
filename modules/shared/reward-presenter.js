@@ -388,22 +388,16 @@ function _eqrRunParticles(canvasId, rCol){
   setTimeout(()=>{ cancelAnimationFrame(frame); }, 3000);
 }
 
-// ── bootApp patch — refresh mail + achievement sidebar badges on login ────────
-// RESTORED: this patch was missing entirely from the extracted codebase (the
-// mail and achievements modules each only update their OWN badge from their
-// own triggers; this combined refresh on login is what the original had).
-;(function () {
-  const _origBoot = window.bootApp;
-  window.bootApp = function () {
-    if (typeof _origBoot === 'function') _origBoot();
-    if (currentRole === 'student' && currentUser) {
-      setTimeout(() => {
-        mailUpdateSidebarBadge();
-        achUpdateSidebarBadge();
-      }, 400);
-    }
-  };
-})();
+// ── session:booted subscriber — refresh mail + achievement sidebar badges on login ────────
+AppStore.subscribe('reward-presenter-boot-badges', function (state, event) {
+  if (event.type !== 'session:booted') return;
+  if (currentRole === 'student' && currentUser) {
+    setTimeout(() => {
+      mailUpdateSidebarBadge();
+      achUpdateSidebarBadge();
+    }, 400);
+  }
+});
 
 // ── navTo patch — refresh mail + achievement sidebar badges on navigation ─────
 ;(function () {

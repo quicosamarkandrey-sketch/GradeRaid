@@ -35,28 +35,37 @@ window.doAwardPoints = function() {
   const pts = parseInt(document.getElementById('aw-pts').value) || 0;
   const note = document.getElementById('aw-note').value.trim();
   if (pts === 0) { toast('❌ Enter a point value', '#ffb4ab'); return; }
-  const targets = sid === 'all' ? DB.students.map(s => s.id) : [sid];
-  targets.forEach(id => {
-    const idx = DB.students.findIndex(s => s.id === id);
-    if (idx >= 0) {
-      // Critical Fix #4: Apply both positive and negative XP, floor at 0
-      DB.students[idx].xp = Math.max(0, DB.students[idx].xp + pts);
-      syncStudentStatsToServer(id, pts, 0);
-      // Critical Fix #2: Recalculate level/tier after XP change
-      window.checkLevelUp(DB.students[idx]);
-      // Minor fix: real timestamp instead of always 'Just now'
-      // Phase 67: createdAt added — see notification-service.js header comment.
-      DB.pointLog.unshift({ id: 'pl_' + uid(), studentId: id, what: cat + (note ? ': ' + note : ''), pts, when: new Date().toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}), createdAt: new Date().toISOString() });
-    }
-  });
+  const allStudents = AppStore.getSlice(s => s.students) || [];
+  const targets = sid === 'all' ? allStudents.map(s => s.id) : [sid];
+  let awardedName = null;
+  AppStore.updateState(draft => {
+    targets.forEach(id => {
+      const s = (draft.students || []).find(x => x.id === id);
+      if (s) {
+        // Critical Fix #4: Apply both positive and negative XP, floor at 0
+        s.xp = Math.max(0, s.xp + pts);
+        // Critical Fix #2: Recalculate level/tier after XP change — must run
+        // here, inside the draft, not on an already-committed object.
+        window.checkLevelUp(s);
+        // Minor fix: real timestamp instead of always 'Just now'
+        // Phase 67: createdAt added — see notification-service.js header comment.
+        if (!Array.isArray(draft.pointLog)) draft.pointLog = [];
+        draft.pointLog.unshift({ id: 'pl_' + uid(), studentId: id, what: cat + (note ? ': ' + note : ''), pts, when: new Date().toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}), createdAt: new Date().toISOString() });
+        if (id === sid) awardedName = s.name;
+      }
+    });
+  }, { type: 'admin:award-points', payload: { sid, pts } });
+  // syncStudentStatsToServer makes a network RPC call per target — fire
+  // after the local commit above, same "optimistic local update, then
+  // best-effort server reconciliation" pattern the function itself documents.
+  targets.forEach(id => syncStudentStatsToServer(id, pts, 0));
   // Sync currentUser if it was updated
   if (currentRole === 'student') {
-    const updated = DB.students.find(s => s.id === currentUser.id);
+    const updated = AppStore.getStudent(currentUser.id);
     if (updated) currentUser = updated;
   }
-  saveDB();
   closeModalForce();
-  toast(`✅ ${pts > 0 ? '+' : ''}${pts} pts → ${sid === 'all' ? 'Entire Class' : DB.students.find(s => s.id === sid)?.name}`);
+  toast(`✅ ${pts > 0 ? '+' : ''}${pts} pts → ${sid === 'all' ? 'Entire Class' : awardedName}`);
   renderAdminDashboard();
 };
 

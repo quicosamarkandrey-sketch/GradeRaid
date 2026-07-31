@@ -275,7 +275,6 @@ window.hideRegScreen = function() {
 };
 
 window.regCheckField = function(field) {
-  DB = loadDB();
   const val = (document.getElementById('rf-' + field)?.value || '').trim().toLowerCase();
   const icon = document.getElementById('rf-' + field + '-icon');
   const msg  = document.getElementById('rf-' + field + '-msg');
@@ -354,7 +353,6 @@ window.regCheckValidation = function(field) {
 };
 
 window.doRegister = async function() {
-  DB = loadDB();
   const first    = document.getElementById('rf-first')?.value.trim()    || '';
   const last     = document.getElementById('rf-last')?.value.trim()     || '';
   const username = (document.getElementById('rf-username')?.value.trim() || '').toLowerCase();
@@ -524,7 +522,6 @@ function _regAdviserLabel(classId) {
 }
 
 window.renderAdminRegistrations = function() {
-  DB = loadDB();
   const regs    = DB.registrations || [];
   const pending  = regs.filter(r => r.status === 'pending').length;
   const approved = regs.filter(r => r.status === 'approved').length;
@@ -633,7 +630,6 @@ function _regPagination(page, totalPages, totalCount, rangeStart, rangeEnd) {
 }
 
 function _regRenderListHTML() {
-  DB = loadDB();
   const regs = DB.registrations || [];
   let list = regs;
   if (_regAdminFilter !== 'all') list = list.filter(r => r.status === _regAdminFilter);
@@ -701,7 +697,6 @@ function _regRenderListHTML() {
 }
 
 window.regAdminViewDetails = function(regId) {
-  DB = loadDB();
   const r = (DB.registrations || []).find(x => x.id === regId);
   if (!r) return;
   const color = regPickColor(r.username);
@@ -737,8 +732,7 @@ window.regAdminViewDetails = function(regId) {
 };
 
 window.regAdminApprove = async function(regId) {
-  DB = loadDB();
-  const r = (DB.registrations || []).find(x => x.id === regId);
+  const r = (AppStore.getSlice(s => s.registrations) || []).find(x => x.id === regId);
   if (!r) { toast('❌ Registration not found.', '#ffb4ab'); return; }
   if (r.status === 'approved' && r.approvedStudentId) { toast('ℹ️ Already approved.', '#ffb95f'); return; }
 
@@ -762,7 +756,7 @@ window.regAdminApprove = async function(regId) {
     id: p.id, // real Supabase Auth UUID — matches profiles.id everywhere else in the app
     name: p.name, init: p.init, color: p.color,
     xp: p.xp, coins: p.coins, level: p.level, tier: p.tier,
-    rank: DB.students.length + 1,
+    rank: (AppStore.getSlice(s => s.students) || []).length + 1,
     attendance: p.attendance, quizAvg: p.quizAvg,
     completedQuizzes: [],
     firstName: p.firstName, lastName: p.lastName, displayName: p.displayName,
@@ -777,25 +771,28 @@ window.regAdminApprove = async function(regId) {
     addedAt: now.toISOString(),
   };
 
-  DB.students.push(newStudent);
+  AppStore.updateState(draft => {
+    if (!Array.isArray(draft.students)) draft.students = [];
+    draft.students.push(newStudent);
 
-  if (!DB.inventory) DB.inventory = {};
-  DB.inventory[newStudent.id] = [];
+    if (!draft.inventory) draft.inventory = {};
+    draft.inventory[newStudent.id] = [];
 
-  if (!DB.achievementUnlocks) DB.achievementUnlocks = {};
-  DB.achievementUnlocks[newStudent.id] = [];
+    if (!draft.achievementUnlocks) draft.achievementUnlocks = {};
+    draft.achievementUnlocks[newStudent.id] = [];
 
-  if (!DB.stageProgress) DB.stageProgress = {};
-  DB.stageProgress[newStudent.id] = {};
+    if (!draft.stageProgress) draft.stageProgress = {};
+    draft.stageProgress[newStudent.id] = {};
 
-  const idx = DB.registrations.findIndex(x => x.id === regId);
-  if (idx >= 0) {
-    DB.registrations[idx].status = 'approved';
-    DB.registrations[idx].reviewedAt = now.toISOString();
-    DB.registrations[idx].reviewedBy = currentUser?.name || 'Admin';
-    DB.registrations[idx].approvedStudentId = newStudent.id;
-    DB.registrations[idx].rejectionReason = null;
-  }
+    const idx = (draft.registrations || []).findIndex(x => x.id === regId);
+    if (idx >= 0) {
+      draft.registrations[idx].status = 'approved';
+      draft.registrations[idx].reviewedAt = now.toISOString();
+      draft.registrations[idx].reviewedBy = currentUser?.name || 'Admin';
+      draft.registrations[idx].approvedStudentId = newStudent.id;
+      draft.registrations[idx].rejectionReason = null;
+    }
+  }, { type: 'registration:approved', payload: { regId, studentId: newStudent.id } });
 
   // Persists DB.inventory/achievementUnlocks/stageProgress (local-only
   // slices — see file header) and lets the existing isStaffSession-gated
@@ -803,15 +800,13 @@ window.regAdminApprove = async function(regId) {
   // profile row the RPC above already wrote. registrations itself is no
   // longer part of that bulk push (see db-service.js diff) so this can't
   // re-trigger the old plaintext-password upload.
-  saveDB();
 
   toast(`✅ ${_esc(newStudent.name)} approved & account created!`);
   renderAdminRegistrations();
 };
 
 window.regAdminRejectModal = function(regId) {
-  DB = loadDB();
-  const r = (DB.registrations || []).find(x => x.id === regId);
+  const r = (AppStore.getSlice(s => s.registrations) || []).find(x => x.id === regId);
   if (!r) return;
   showModal(`
   <div>
@@ -830,8 +825,7 @@ window.regAdminRejectModal = function(regId) {
 };
 
 window.regAdminConfirmReject = async function(regId) {
-  DB = loadDB();
-  const idx = (DB.registrations || []).findIndex(x => x.id === regId);
+  const idx = (AppStore.getSlice(s => s.registrations) || []).findIndex(x => x.id === regId);
   if (idx < 0) { toast('❌ Not found.', '#ffb4ab'); return; }
   const reason = (document.getElementById('reg-reject-reason')?.value || '').trim();
 
@@ -839,11 +833,14 @@ window.regAdminConfirmReject = async function(regId) {
   if (!result.ok) { toast('❌ ' + (result.error || 'Could not reject registration.'), '#ffb4ab'); return; }
 
   const now = new Date();
-  DB.registrations[idx].status = 'rejected';
-  DB.registrations[idx].reviewedAt = now.toISOString();
-  DB.registrations[idx].reviewedBy = currentUser?.name || 'Admin';
-  DB.registrations[idx].rejectionReason = reason || null;
-  saveDB();
+  AppStore.updateState(draft => {
+    const reg = (draft.registrations || [])[idx];
+    if (!reg) return;
+    reg.status = 'rejected';
+    reg.reviewedAt = now.toISOString();
+    reg.reviewedBy = currentUser?.name || 'Admin';
+    reg.rejectionReason = reason || null;
+  }, { type: 'registration:rejected', payload: { regId } });
   closeModalForce();
   toast('Registration rejected.', '#ffb4ab');
   renderAdminRegistrations();
@@ -858,7 +855,6 @@ window.regAdminConfirmReject = async function(regId) {
 // rows — an already-approved/rejected registration has nothing left to
 // reassign.
 window.regAdminReassignModal = function(regId) {
-  DB = loadDB();
   const r = (DB.registrations || []).find(x => x.id === regId);
   if (!r) return;
   if (currentRole !== 'admin') return; // defense in depth, mirrors every other admin-only screen's guard
@@ -901,14 +897,14 @@ window.regAdminConfirmReassign = async function(regId) {
   const result = await RegistrationService.reassign(regId, newClassId);
   if (!result.ok) { toast('❌ ' + (result.error || 'Could not reassign this registration.'), '#ffb4ab'); return; }
 
-  DB = loadDB();
-  const idx = (DB.registrations || []).findIndex(x => x.id === regId);
-  if (idx >= 0) {
-    DB.registrations[idx].gradeLevel = result.registration.gradeLevel;
-    DB.registrations[idx].section = result.registration.section;
-    DB.registrations[idx].classId = result.registration.classId;
-  }
-  saveDB();
+  AppStore.updateState(draft => {
+    const idx = (draft.registrations || []).findIndex(x => x.id === regId);
+    if (idx >= 0) {
+      draft.registrations[idx].gradeLevel = result.registration.gradeLevel;
+      draft.registrations[idx].section = result.registration.section;
+      draft.registrations[idx].classId = result.registration.classId;
+    }
+  }, { type: 'registration:reassigned', payload: { regId, classId: newClassId } });
   closeModalForce();
   toast('✅ Registration reassigned.');
   renderAdminRegistrations();
@@ -921,7 +917,6 @@ window.regAdminConfirmReassign = async function(regId) {
   const _origAnal2 = renderAnalytics;
   renderAnalytics = function() {
     _origAnal2();
-    DB = loadDB();
     const regs     = DB.registrations || [];
     const pending  = regs.filter(r => r.status === 'pending').length;
     const approved = regs.filter(r => r.status === 'approved').length;

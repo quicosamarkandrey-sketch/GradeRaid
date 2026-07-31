@@ -1,8 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //  EduQuest — modules/recitation/logger.js
 //  Handles the logRecitation() function (called from Scanner admin page).
-//  Patch: on completion, calls achCheckAndAward(sid) via typeof guard
-//         (safe until modules/achievements/ is extracted on Day 6–7).
+//  Cross-module reactivity (achievement checks, etc.) happens via the
+//  AppStore.updateState() event below ({ type: 'recitation:logged', ... }) —
+//  modules/achievements/ach_engine.js subscribes to it. This file has no
+//  direct dependency on the achievements module (Event-Driven Communication
+//  phase, roadmap Phase 4).
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -19,7 +22,9 @@
  *   3. Prepends to recitationLog: { studentId, pts, note, when: nowStr() }
  *   4. Prepends to pointLog:      { studentId, what: 'Recitation[: note]', pts, when: 'Just now' }
  *   5. Calls syncStudentStatsToServer() (RPC reconciliation — see utils.js), toast, renderScanner()
- *   6. (patch) Calls achCheckAndAward(sid) with typeof guard — 400ms delay
+ *   6. Emits 'recitation:logged' as part of the AppStore.updateState() call —
+ *      ach_engine.js's pub/sub subscriber picks this up to run the
+ *      achievement check; no direct call from this file.
  */
 window.logRecitation = function () {
   const sid  = document.getElementById('rec-student').value;
@@ -53,11 +58,6 @@ window.logRecitation = function () {
 
   toast(`🎤 +${pts} pts → ${_esc(student.name)}`);
   renderScanner();
-
-  // Achievement check — typeof guard until modules/achievements/ is extracted (Day 6–7)
-  if (typeof achCheckAndAward === 'function') {
-    setTimeout(() => achCheckAndAward(sid, true), 400);
-  }
 };
 
 console.log('[EduQuest] recitation/logger.js loaded — logRecitation registered.');

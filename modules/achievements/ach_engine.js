@@ -2,8 +2,11 @@
 //  EduQuest — modules/achievements/engine.js
 //  Achievement engine: rarity constants, stats snapshot, trigger evaluation,
 //  check-and-award, claim-time reward granting, sidebar badge, unlock popup,
-//  and all trigger-hook patches (finishQuiz, logAttendance, logRecitation,
-//  wbcApplyDamage, bootApp).
+//  plus the pub/sub subscribers below and the remaining trigger-hook patches
+//  (wbcApplyDamage, bootApp — not yet converted; see the Event-Driven
+//  Communication phase, roadmap Phase 4). finishQuiz and logRecitation were
+//  converted to AppStore.subscribe(); the logAttendance patch was removed
+//  outright as dead code (see the comment where it used to live).
 //
 //  NOTE: confirmBuy patch intentionally OMITTED — shop/store.js already calls
 //  achCheckAndAward() via typeof guard in cartCheckout(). Patching confirmBuy
@@ -358,35 +361,29 @@ window.achShowUnlockPopup = function (ach) {
 // ── Trigger-hook patches ──────────────────────────────────────────────────────
 // These replace the monolith's patch IIFEs. Each wraps an existing global.
 
-// finishQuiz → achCheckAndAward
-;(function () {
-  const _orig = window.finishQuiz;
-  window.finishQuiz = function () {
-    if (typeof _orig === 'function') _orig();
-    if (currentUser && currentRole === 'student') setTimeout(() => achCheckAndAward(currentUser.id), 500);
-  };
-})();
+// finishQuiz → achCheckAndAward: now handled by the dedicated
+// 'ach-engine-quiz-finished' subscriber below (not folded into the shared
+// 'ach-engine-state-sync' handler — that one hardcodes suppressPopup=true,
+// but a quiz is the student's own foreground action, so the original patch
+// left the popup showing. Folding this in would have silently killed it.)
 
-// logAttendance → achCheckAndAward (bulk-safe)
-;(function () {
-  const _orig = window.logAttendance;
-  window.logAttendance = function (status) {
-    if (typeof _orig === 'function') _orig(status);
-    const sid     = document.getElementById('att-student')?.value;
-    const targets = sid === 'all' ? (AppStore.getSlice(s => s.students) || []).map(s => s.id) : [sid];
-    setTimeout(() => targets.forEach(id => achCheckAndAward(id, true)), 400);
-  };
-})();
+// logAttendance → achCheckAndAward: this patch was dead code, not a live
+// conversion target. Nothing in the codebase calls logAttendance() (grepped
+// the whole repo — zero hits outside this file) or emits 'attendance:logged'
+// (same — zero hits). The real, live attendance system
+// (modules/attendance/attendance-service.js) uses a completely different
+// event name, 'attendance:scan-recorded', which this patch never hooked —
+// attendance-triggered achievement checks were silently non-functional,
+// likely since attendance moved to RFID scanning and this patch was never
+// updated to match. That gap is now closed: see the pub/sub subscriber
+// below, which watches 'attendance:scan-recorded'/'attendance:override'.
 
-// logRecitation → achCheckAndAward
-;(function () {
-  const _orig = window.logRecitation;
-  window.logRecitation = function () {
-    if (typeof _orig === 'function') _orig();
-    const sid = document.getElementById('rec-student')?.value;
-    if (sid) setTimeout(() => achCheckAndAward(sid, true), 400);
-  };
-})();
+// logRecitation → achCheckAndAward: now handled entirely by the
+// AppStore.subscribe('ach-engine-state-sync', ...) pub/sub handler below,
+// which watches 'recitation:logged' (see logger.js's AppStore.updateState()
+// call). The monkey-patch that used to live here duplicated that handler —
+// both fired achCheckAndAward(sid, true) on every recitation log. Removed
+// as part of the Event-Driven Communication phase (roadmap Phase 4).
 
 // wbcApplyDamage → achCheckAndAward (world-boss module; typeof guard)
 ;(function () {
@@ -398,35 +395,57 @@ window.achShowUnlockPopup = function (ach) {
   };
 })();
 
-// bootApp → achCheckAndAward on student login
-// bootApp → achCheckAndAward on student login
-;(function () {
-  const _orig = window.bootApp;
-  window.bootApp = function () {
-    if (typeof _orig === 'function') _orig();
-    // Use getCurrentRole() and getCurrentUser() instead of raw globals
-    if (getCurrentRole() === 'student' && getCurrentUser()) {
-       setTimeout(() => achCheckAndAward(getCurrentUser().id), 400);
-    }
-  };
-})();
+// session:booted → achCheckAndAward: dedicated subscriber, not folded into
+// the shared 'ach-engine-state-sync' one — this patch never passed
+// suppressPopup, so a login that pushes a student over an achievement
+// threshold shows the unlock popup (matches the finishQuiz precedent above).
+AppStore.subscribe('ach-engine-session-booted', function (state, event) {
+  if (event.type !== 'session:booted') return;
+  if (getCurrentRole() === 'student' && getCurrentUser()) {
+    setTimeout(() => achCheckAndAward(getCurrentUser().id), 400);
+  }
+});
 
 console.log('[EduQuest] achievements/engine.js loaded — ACH_RARITY, achBuildStats, achCheckAndAward, achGrantRewardsForClaim, achUpdateSidebarBadge, achShowUnlockPopup registered. Trigger hooks patched.');
 
 // ── Pub/Sub: Cross-module reactivity ─────────────────────────────────────────
 AppStore.subscribe('ach-engine-state-sync', function (state, event) {
   const watchedEvents = [
-    'attendance:logged',
     'recitation:logged',
     'loot:claimed',
     'xp:awarded',
     'state:legacy-sync',
+    // Fills the gap left by the removed dead logAttendance patch — these are
+    // the real, live events attendance-service.js emits for the two
+    // attendance-based achievement trigger types (attendance_present,
+    // attendance_pct). attendance:session-closed is deliberately NOT
+    // watched: it's a bulk absence-sweep, and marking someone absent can
+    // only decrease those stats, never newly cross an unlock threshold —
+    // checking there would be a guaranteed no-op every time.
+    'attendance:scan-recorded',
+    'attendance:override',
   ];
   if (!watchedEvents.includes(event.type)) return;
+
+  // A duplicate re-scan (student already logged today) changed nothing —
+  // skip the check rather than fire it for no reason.
+  if (event.type === 'attendance:scan-recorded' && event.payload && event.payload.alreadyRecorded) return;
 
   const studentId = event.payload && event.payload.studentId;
   if (studentId && typeof achCheckAndAward === 'function') {
     setTimeout(function () { achCheckAndAward(studentId, true); }, 400);
   }
   if (typeof achUpdateSidebarBadge === 'function') achUpdateSidebarBadge();
+});
+
+// Separate from the subscriber above on purpose — see the comment where the
+// old finishQuiz monkey-patch used to live. Same 500ms delay and
+// suppressPopup left at its default (shows the unlock popup) as the
+// original patch had.
+AppStore.subscribe('ach-engine-quiz-finished', function (state, event) {
+  if (event.type !== 'quiz:finished') return;
+  const studentId = event.payload && event.payload.studentId;
+  if (studentId && typeof achCheckAndAward === 'function') {
+    setTimeout(function () { achCheckAndAward(studentId); }, 500);
+  }
 });

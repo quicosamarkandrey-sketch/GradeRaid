@@ -421,6 +421,31 @@ window.AppStore = (function () {
   init();
 
   // ─── Expose Public Interface ──────────────────────────────────────────────
+  /**
+   * Broadcast a pub/sub event with NO state change — skips the clone/
+   * mutate/commit/window.DB-refresh/debounced-persist steps updateState()
+   * always runs (see that function's own comment: those happen
+   * unconditionally, even for a no-op draft, at real cost — a full state
+   * clone is ~200KB per [OPT-2]'s comment above). For events that
+   * genuinely don't correspond to any data mutation — bootApp() is the
+   * motivating case: a UI/navigation orchestration function, called on
+   * every single login and page refresh, that never touches DB.* itself —
+   * use this instead of updateState(() => {}, event), which would silently
+   * turn "nothing changed" into a real clone + a real debounced write to
+   * localStorage/Supabase, on the single highest-frequency call in the app.
+   *
+   * @param {object} event  { type, payload } — required (unlike
+   *   updateState()'s event param, there's no state-mutation reason to call
+   *   this without one).
+   */
+  function emit(event) {
+    if (!event || typeof event.type !== 'string') {
+      console.error('[AppStore] emit: event must be an object with a string .type.');
+      return;
+    }
+    _notify(event);
+  }
+
   return {
     ready:          _readyPromise,   // [NEW] await this before first loadDB()/saveDB() call
     updateState:    updateState,
@@ -432,6 +457,7 @@ window.AppStore = (function () {
     subscribe:      subscribe,
     unsubscribe:    unsubscribe,
     flushNow:       flushNow,
+    emit:           emit,
   };
 
 }());

@@ -226,7 +226,7 @@ window.tsOpenTitlesFromProfile = function () {
   };
 })();
 
-// bootApp → AppStore migration guard + initial sidebar/profile refresh on login
+// session:booted → AppStore migration guard + initial sidebar/profile refresh on login
 // [Phase 3 migration note] This duplicates the same titles/titleUnlocks/
 // equippedTitles initialization as titles_index.js's own AppStore.ready.then()
 // block — a pre-existing redundancy predating this migration (both guarded
@@ -234,27 +234,24 @@ window.tsOpenTitlesFromProfile = function () {
 // treatment as the identical duplication found in modules/boss-studio/
 // (bs_index.js vs bs_storage.js) — this is Phase 1 (dead/duplicate code)
 // territory, not this phase's scope.
-;(function () {
-  const _orig = window.bootApp;
-  window.bootApp = function () {
-    if (typeof _orig === 'function') _orig();
-    const current = AppStore.getSlice(s => ({ titles: s.titles, titleUnlocks: s.titleUnlocks, equippedTitles: s.equippedTitles }));
-    const missing = ['titles', 'titleUnlocks', 'equippedTitles'].filter(k => !current || !current[k]);
-    if (missing.length) {
-      AppStore.updateState(draft => {
-        if (!draft.titles)         draft.titles         = [];
-        if (!draft.titleUnlocks)   draft.titleUnlocks   = {};
-        if (!draft.equippedTitles) draft.equippedTitles = {};
-      }, { type: 'titles:libraries-initialized', payload: { keys: missing } });
-    }
-    if (currentRole === 'student' && currentUser) {
-      try { achCheckAndAward(currentUser.id, true); } catch (e) {}
-    }
-    setTimeout(() => {
-      tsRefreshSidebarTitle();
-      if (currentRole === 'student') tsRefreshProfileTitle();
-    }, 300);
-  };
-})();
+AppStore.subscribe('titles-sidebar-refresh-boot', function (state, event) {
+  if (event.type !== 'session:booted') return;
+  const current = AppStore.getSlice(s => ({ titles: s.titles, titleUnlocks: s.titleUnlocks, equippedTitles: s.equippedTitles }));
+  const missing = ['titles', 'titleUnlocks', 'equippedTitles'].filter(k => !current || !current[k]);
+  if (missing.length) {
+    AppStore.updateState(draft => {
+      if (!draft.titles)         draft.titles         = [];
+      if (!draft.titleUnlocks)   draft.titleUnlocks   = {};
+      if (!draft.equippedTitles) draft.equippedTitles = {};
+    }, { type: 'titles:libraries-initialized', payload: { keys: missing } });
+  }
+  if (currentRole === 'student' && currentUser) {
+    try { achCheckAndAward(currentUser.id, true); } catch (e) {}
+  }
+  setTimeout(() => {
+    tsRefreshSidebarTitle();
+    if (currentRole === 'student') tsRefreshProfileTitle();
+  }, 300);
+});
 
 console.log('[EduQuest] titles/sidebar-refresh.js loaded — tsGetEquippedTitle, tsEquipTitle, tsUnlockTitleForStudent, tsRefreshSidebarTitle, tsRefreshProfileTitle registered. Patches: achCheckAndAward, _holGetTitle, renderStudentDashboard, navTo, bootApp.');

@@ -350,14 +350,11 @@ window.invUpdateSidebarBadge = function () {
   }
 };
 
-// ── bootApp patch — show inventory badge on login ─────────────────────────────
-;(function () {
-  const _orig = window.bootApp;
-  window.bootApp = function () {
-    if (typeof _orig === 'function') _orig();
-    if (currentRole === 'student') setTimeout(invUpdateSidebarBadge, 50);
-  };
-})();
+// ── session:booted subscriber — show inventory badge on login ─────────────────
+AppStore.subscribe('shop-inventory-boot-badge', function (state, event) {
+  if (event.type !== 'session:booted') return;
+  if (currentRole === 'student') setTimeout(invUpdateSidebarBadge, 50);
+});
 
 // ── setupSidebar patch — refresh badge after nav rebuild ──────────────────────
 ;(function () {
