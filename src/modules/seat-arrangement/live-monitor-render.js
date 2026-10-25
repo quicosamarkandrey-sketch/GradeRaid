@@ -216,6 +216,7 @@ import { _lmWebNfcSupported } from './live-monitor-webnfc.js';
       const el = document.createElement('div');
       el.className = 'lm-seat';
       el.dataset.seatId = vm.seatId;
+      el.dataset.attendanceStatus = vm.attendanceStatus || 'Unscanned';
       el.dataset.studentId = vm.studentId || '';
       el.style.left = vm.xCoord + 'px';
       el.style.top  = vm.yCoord + 'px';
@@ -242,7 +243,8 @@ import { _lmWebNfcSupported } from './live-monitor-webnfc.js';
         : '';
       el.innerHTML = vm.studentId
         ? `<div class="lm-seat-init${badgeHtml ? ' lm-score-avatar' : ''}" style="background:${studentColor}"><span class="lm-avatar-identity">${photoHtml}${_esc(vm.studentInit || '?')}</span>${badgeHtml}</div>
-           <div class="lm-seat-name">${_esc((vm.studentName||'').split(' ')[0])}</div>`
+           <div class="lm-seat-name">${_esc((vm.studentName||'').split(' ')[0])}</div>
+           <span class="lm-seat-status-tag">${_esc(vm.attendanceStatus || 'Unscanned')}</span>`
         : `<div style="font-size:18px;opacity:.25">🪑</div>`;
 
       // Spatial-block targeting: only seats that could actually win a roll

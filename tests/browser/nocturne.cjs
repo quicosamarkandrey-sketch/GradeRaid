@@ -56,13 +56,13 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Overflow at '+width);
   assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).backgroundImage),'none');
   assert.equal(await page.locator('#s-dashboard .dash-hero').evaluate(el=>getComputedStyle(el).boxShadow),'none');
-  assert.equal(await page.locator('#s-dashboard .quest-btn').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(203, 167, 106)');
-  assert.equal(await page.locator('#s-dashboard .quest-btn').evaluate(el=>getComputedStyle(el).color),'rgb(25, 28, 19)');
+  assert.equal(await page.locator('#s-dashboard .quest-btn').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(242, 242, 242)');
+  assert.equal(await page.locator('#s-dashboard .quest-btn').evaluate(el=>getComputedStyle(el).color),'rgb(17, 17, 17)');
   assert.ok(await page.locator('#s-dashboard .quest-btn').evaluate(el=>el.getBoundingClientRect().height>=44));
   assert.equal(await page.locator('#s-dashboard').evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),false,'Decorative emoji remains');
   await page.locator('#wb-topbar-widget').evaluate(el=>el.style.display='flex');
   assert.ok(await page.locator('#topbar').evaluate(el=>[...el.querySelectorAll('.topbar-right>div,.hamburger,.logo')].filter(n=>n.getBoundingClientRect().width).every(n=>n.getBoundingClientRect().right<=innerWidth+1)),'Header overflow with an active raid at '+width);
-  await page.screenshot({path:`/workspace/nocturne-${width}.png`,fullPage:true});
+  await page.screenshot({path:`/workspace/monochrome-${width}.png`,fullPage:true});
  }
  await page.locator('#s-dashboard .quest-btn').focus();
  assert.equal(await page.locator('#s-dashboard .quest-btn').evaluate(el=>getComputedStyle(el).outlineStyle),'solid');
@@ -70,6 +70,6 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  await page.locator('#s-dashboard .dash-hero-right .btn').click();assert.equal(await page.evaluate(()=>lastNav),'s-store');
  await page.locator('#s-dashboard .dashboard-alert button').click();assert.equal(await page.evaluate(()=>lastNav),'s-badges');
  assert.deepEqual(errors,[]);
- console.log('PASS: Nocturne overview and chrome at 320/390/768/1440px; warm surfaces, local icons, touch targets, quest/Armory/reward actions, no page errors.');
+ console.log('PASS: Nocturne overview and chrome at 320/390/768/1440px; black and white surfaces, local icons, touch targets, quest/Armory/reward actions, no page errors.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(e=>{console.error(e);process.exit(1)});

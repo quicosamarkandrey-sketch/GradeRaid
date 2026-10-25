@@ -256,13 +256,13 @@ export function _navToCore(id){
   document.querySelectorAll('.nav-btn').forEach(b=>{
     b.classList.remove('active');
     b.style.background='none';b.style.color='var(--text-muted)';b.style.transform='none';
-    b.style.borderRight='none';b.style.borderRadius='12px';
+    b.style.borderRight='none';b.style.borderRadius='4px';
   });
   const btn=document.getElementById('nav-'+id);
   if(btn){
     btn.classList.add('active');
-    btn.style.background='rgba(208,188,255,0.12)';btn.style.color='var(--primary)';btn.style.transform='none';
-    btn.style.borderRight='3px solid #8b5cf6';btn.style.borderRadius='12px 0 0 12px';
+    btn.style.background='var(--primary-container)';btn.style.color='var(--primary)';btn.style.transform='none';
+    btn.style.borderRight='2px solid var(--primary)';btn.style.borderRadius='4px';
   }
   if(id==='s-dashboard')renderStudentDashboard();
   else if(id==='s-my-section')renderMySection();

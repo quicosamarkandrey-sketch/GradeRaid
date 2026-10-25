@@ -22,7 +22,7 @@ const root=path.resolve(__dirname,'../..');
    AppStore.updateState(draft=>{
     draft.admin={...draft.admin,id:'fixture-teacher',name:'Morgan Reyes'};
     draft.students=[{id:'fixture-student',name:'Alex Rivera',init:'AR',classId:'fixture-class',tier:'Scholar',level:1,xp:1200,coins:250,color:'#8b5cf6',completedQuizzes:[],attendance:100,quizAvg:85}];
-    draft.classSections=[{id:'fixture-class',label:'Science 10',adviserId:'fixture-teacher',isArchived:false}];
+    draft.classSections=[{id:'fixture-class',label:'Science 10',gradeLevel:'10',sectionName:'Science',adviserId:'fixture-teacher',isArchived:false}];
     draft.classroomLayouts=[{id:'fixture-layout',classId:'fixture-class',name:'Main classroom',roomData:[],seatOverlapFixed:true}];
     draft.seats=[{id:'fixture-seat',layoutId:'fixture-layout',xCoord:240,yCoord:240,rotation:0,isLocked:false}];
     draft.seatAssignments=[{id:'fixture-assignment',layoutId:'fixture-layout',seatId:'fixture-seat',studentId:'fixture-student'}];
@@ -44,8 +44,16 @@ const root=path.resolve(__dirname,'../..');
      assert.ok(await page.locator('#'+id).isVisible(),role+': '+id+' not visible');
      assert.ok(await page.locator('#'+id).evaluate(el=>el.textContent.trim().length>0),id+' empty');
      assert.equal(await page.locator('#sidebar .material-symbols-outlined').evaluateAll(nodes=>nodes.every(el=>el.querySelector('svg'))),true,'Icon-font dependency in navigation');
-     if(id==='a-dashboard'||id==='s-dashboard')await page.screenshot({path:`/workspace/warm-${role}-${width}.png`,fullPage:true});
+     if(id==='a-dashboard'||id==='s-dashboard'){await page.waitForTimeout(400);await page.screenshot({path:`/workspace/monochrome-${role}-${width}.png`,fullPage:true});}
      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),role+' '+id+' overflows at '+width);
+     if(id==='a-classroom-monitor'){
+      const seat=page.locator('.lm-seat').first();
+      assert.equal(await seat.getAttribute('data-attendance-status'),'On Time');
+      assert.equal(await seat.locator('.lm-seat-status-tag').textContent(),'On Time');
+      assert.equal(await seat.evaluate(el=>getComputedStyle(el).borderTopColor),'rgb(237, 237, 237)');
+     }
+     assert.ok(await page.locator('#sidebar .nav-btn.active').evaluateAll(nodes=>nodes.every(el=>{const c=getComputedStyle(el).borderRightColor.match(/\d+/g).map(Number);return c[0]===c[1]&&c[1]===c[2];})),'Navigation tint remains');
+     assert.ok(await page.locator('#topbar').evaluate(el=>{const c=getComputedStyle(el).backgroundColor.match(/\d+/g).map(Number);return c[0]===c[1]&&c[1]===c[2];}),'Header tint remains');
      count++;
     }
    }
@@ -66,11 +74,11 @@ const root=path.resolve(__dirname,'../..');
   assert.equal(await page.locator('#theme-probe img').getAttribute('alt'),'Uploaded photo');
   assert.equal(await page.locator('#theme-probe .avatar').evaluate(el=>el.style.color),'rgb(139, 92, 246)');
   assert.equal(await page.locator('#theme-probe .lm-seat').evaluate(el=>el.style.borderColor),'rgb(78, 222, 163)');
-  await page.waitForFunction(()=>getComputedStyle(document.querySelector('.theme-legacy-probe')).color==='rgb(228, 198, 140)');
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('.theme-legacy-probe')).color==='rgb(238, 238, 238)');
   const before=await page.locator('#theme-probe').innerHTML();
   await page.evaluate(()=>UIPresentation.refresh(document.getElementById('theme-probe')));
   assert.equal(await page.locator('#theme-probe').innerHTML(),before);
   assert.deepEqual(errors,[]);
-  console.log(`PASS: ${count} full-app page visits across admin, teacher, student and two widths; offline SVG navigation; user content and attendance colors preserved; no page errors.`);
+  console.log(`PASS: ${count} full-app page visits across admin, teacher, student and two widths; offline SVG navigation; user content and attendance metadata preserved; no page errors.`);
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exit(1)});

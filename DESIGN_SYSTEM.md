@@ -1,4 +1,4 @@
-# Nocturne — warm charcoal design system
+# Nocturne — black and white design system
 
 The shared presentation now covers student, teacher and admin views. Earlier phases established the student layouts; the current palette and local icon system apply across all roles, including dynamically rendered staff tools and dialogs.
 The entry page enables `theme-nocturne`; `styles/modules/nocturne.css`
@@ -6,8 +6,8 @@ loads last so feature pages can be converted incrementally without deleting
 working layout rules. The classic dashboard, build input, and ESM twin are
 kept in sync.
 
-- Forest charcoal surfaces (#121310 / #1b1d17), warm ivory text, quiet olive
-  borders and restrained amber (#cba76a) primary actions. No global grayscale filter: photos,
+- Near-black surfaces (#090909 / #121212), white text, quiet neutral
+  borders and solid white (#f2f2f2) primary actions. No warm or colored accent. No global grayscale filter: photos,
   artwork and meaningful status colors retain their own rendering.
 - System sans-serif (Inter when available, then Segoe UI / Arial) for headings,
   controls and body text; monospace only for identifiers/numbers. No serif
@@ -26,11 +26,12 @@ kept in sync.
 without altering service APIs or stored records. It batches new DOM subtrees,
 replaces decorative symbols and Material icon-font names with a closed local
 SVG registry, and maps known legacy colors in inline styles and local stylesheets
-onto the warm palette. Source-module and classic-script versions are kept in sync.
+onto the monochrome palette. Source-module and classic-script versions are kept in sync.
 
 No whole-page grayscale filter is used. Editable values, marked user prose,
 profile-name containers, artwork URLs, avatars, custom badge previews, and live
-seat/attendance colors are protected. Original icon metadata in saved records
+seat/attendance data are protected. The interface renders attendance in neutral
+border patterns with visible status text; stored color metadata is unchanged. Original icon metadata in saved records
 is not rewritten. Existing status labels remain visible. Styles loaded later by
 staff tools receive the same treatment; cross-origin font stylesheets are ignored.
 New pages can use `uiIcon(name)` and design tokens directly rather than depend on
@@ -57,7 +58,7 @@ live account data. Screenshots use sample students and rewards.
   and redemption data are left unchanged; these pages render UI pictograms.
 - Progress cards, all five tabs, empty states, milestones and the academic
   showcase share the new surfaces and typography. Calendar dots differ by
-  shape as well as tone, and absent states retain a muted red label.
+  shape as well as tone, and attendance states retain explicit text labels.
 - Inventory details, cart and claim-code displays retain their original
   actions; claim codes wrap safely on narrow screens. No live checkout or
   Supabase write is performed by the fixture browser checks.
@@ -74,3 +75,14 @@ and monitor, settings, and all student navigation destinations. It also verifies
 idempotent decoration, late-injected styles, local SVG navigation, and protected
 profile text, draft values, photos, selected options and attendance colors.
 No live login, purchase, scan hardware or hosted Supabase write is exercised.
+
+## Monochrome refinement
+
+The interface now uses black backgrounds, white actions, finer tonal borders
+and less visual weight in cards. The local SVG icon system and sans-serif
+typography remain. UI color declarations are neutralized without image filters;
+artwork URLs, profile photos, protected custom art, form values and records are
+not rewritten. Live Monitor shows each student's attendance status in text;
+solid, dashed, dotted and double borders distinguish attendance states without
+relying on hue. Classroom selection and locked-seat markers remain visible.
+The full-app check asserts neutral header styling and visible attendance labels.

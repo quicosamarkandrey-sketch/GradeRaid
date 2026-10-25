@@ -168,19 +168,58 @@
   const skip = 'script,style,textarea,input,select,option,svg,canvas,code,pre,[contenteditable], [data-user-content],.mail-body,.message-body,.quiz-q-text,.quest-desc,.store-desc,.student-name,.teacher-name,.lb-name,.dash-hero-name,.mascot-dialogue,[class*="-name"],[class*="-desc"],[class*="-note"],[class*="-message"]';
   const art = '.bsed-stage,.bsed-stage-art,.cbl-boss-core,.boss-art,.boss-sprite,.bs-animation-stage,[data-preserve-art]';
   const palette = new Map([
-    ['208,188,255','228,198,140'],['139,92,246','173,145,93'],['109,40,217','145,117,70'],['124,58,237','173,145,93'],
-    ['78,222,163','170,183,155'],['255,185,95','203,167,106'],['255,209,102','203,167,106'],['255,215,0','203,167,106'],
-    ['35,31,56','27,29,23'],['26,20,56','24,27,19'],['42,40,54','37,41,30'],['19,18,30','18,19,16']
+    ['208,188,255','200,200,200'],['139,92,246','147,147,147'],['109,40,217','120,120,120'],['124,58,237','147,147,147'],
+    ['78,222,163','178,178,178'],['255,185,95','170,170,170'],['255,209,102','170,170,170'],['255,215,0','170,170,170'],
+    ['35,31,56','28,28,28'],['26,20,56','26,26,26'],['42,40,54','39,39,39'],['19,18,30','19,19,19']
   ]);
-  const hex = {'#d0bcff':'#e4c68c','#8b5cf6':'#ad915d','#6d28d9':'#917546','#7c3aed':'#ad915d','#4edea3':'#aab79b','#ffb95f':'#cba76a','#ffd166':'#cba76a','#ffd700':'#cba76a','#231f38':'#1b1d17','#1a1438':'#181b13','#2a2836':'#25291e','#13121e':'#121310','#0f0d1f':'#10130f','#0e0d19':'#10130e','#0f172a':'#182017','#1e293b':'#252c21','#22d3ee':'#aab79b','#06b6d4':'#aab79b','#38bdf8':'#aab79b','#10b981':'#aab79b','#f97316':'#cba76a','#fb923c':'#cba76a','#ec4899':'#c19783','#3b82f6':'#99aba2','#60a5fa':'#a8b9ad','#93c5fd':'#c4cfb8','#ef4444':'#c4877e'};
+  const hex = {
+    "#d0bcff": "#eeeeee",
+    "#8b5cf6": "#bdbdbd",
+    "#6d28d9": "#787878",
+    "#7c3aed": "#939393",
+    "#4edea3": "#dedede",
+    "#ffb95f": "#eeeeee",
+    "#ffd166": "#eeeeee",
+    "#ffd700": "#eeeeee",
+    "#231f38": "#1c1c1c",
+    "#1a1438": "#1a1a1a",
+    "#2a2836": "#272727",
+    "#13121e": "#131313",
+    "#0f0d1f": "#121212",
+    "#0e0d19": "#121212",
+    "#0f172a": "#1e1e1e",
+    "#1e293b": "#2a2a2a",
+    "#22d3ee": "#b2b2b2",
+    "#06b6d4": "#b2b2b2",
+    "#38bdf8": "#b2b2b2",
+    "#10b981": "#b2b2b2",
+    "#f97316": "#aaaaaa",
+    "#fb923c": "#aaaaaa",
+    "#ec4899": "#9e9e9e",
+    "#3b82f6": "#a7a7a7",
+    "#60a5fa": "#b5b5b5",
+    "#93c5fd": "#cbcbcb",
+    "#ef4444": "#c4c4c4"
+};
   // CSSOM serializes most hex colors as rgb(), so cover both spellings.
   const triplet = value => [1,3,5].map(index=>parseInt(value.slice(index,index+2),16)).join(',');
   for (const [before,after] of Object.entries(hex)) palette.set(triplet(before),triplet(after));
-  function warm(value) {
+  function neutralTriplet(r,g,b) {
+    const linear = component => { const x=Number(component)/255; return x<=.04045 ? x/12.92 : ((x+.055)/1.055)**2.4; };
+    const luminance=.2126*linear(r)+.7152*linear(g)+.0722*linear(b);
+    const gray=Math.round(255*(luminance<=.0031308 ? 12.92*luminance : 1.055*luminance**(1/2.4)-.055));
+    return [gray,gray,gray].join(',');
+  }
+  function neutralize(value) {
     if (/url\(/i.test(value)) return value; // uploaded artwork and SVG data URLs
-    return value.replace(/(#[\da-f]{6})([\da-f]{2})?\b/gi, (v,base,alpha) => hex[base.toLowerCase()] ? hex[base.toLowerCase()]+(alpha || '') : v)
+    return value.replace(/(#[\da-f]{6})([\da-f]{2})?\b/gi, (value,base,alpha) => {
+      const channels=[1,3,5].map(index=>parseInt(base.slice(index,index+2),16));
+      const gray=neutralTriplet(...channels).split(',')[0];
+      const fallback='#'+Number(gray).toString(16).padStart(2,'0').repeat(3);
+      return (hex[base.toLowerCase()] || fallback)+(alpha || '');
+    })
       .replace(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/g, (v,r,g,b) => {
-        const replacement = palette.get(`${r},${g},${b}`);
+        const replacement = palette.get(`${r},${g},${b}`) || neutralTriplet(r,g,b);
         return replacement ? v.slice(0,v.indexOf('(')+1)+replacement : v;
       });
   }
@@ -229,9 +268,9 @@
     const elements = [root,...root.querySelectorAll('[style]')];
     for (const el of elements) {
       if (el.closest(skip+','+art+',.cb-seat,.lm-seat,.cal-day,.cal-dot,[class*=avatar],[class*=photo],[class*=ts-badge],[class*=title-preview]')) continue;
-      for (const property of ['color','background','background-color','border-color','box-shadow','text-shadow']) {
+      for (const property of ['color','background','background-color','border','border-color','border-left','border-right','border-top','border-bottom','box-shadow','text-shadow']) {
         const before = el.style.getPropertyValue(property);
-        const after = warm(before);
+        const after = neutralize(before);
         if (after !== before) el.style.setProperty(property,after,el.style.getPropertyPriority(property));
       }
     }
@@ -255,7 +294,7 @@
         if (rule.style) {
           for (const property of ['color','background','background-color','border','border-color','box-shadow','text-shadow','--glow','--rc','--rg']) {
             const before = rule.style.getPropertyValue(property);
-            let after = warm(before);
+            let after = neutralize(before);
             if ((property === 'box-shadow' || property === 'text-shadow') && /^(?:0px|0) (?:0px|0) /.test(before) && after !== before) after = 'none';
             if (after !== before) rule.style.setProperty(property,after,rule.style.getPropertyPriority(property));
           }

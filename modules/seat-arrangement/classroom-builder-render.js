@@ -211,6 +211,7 @@ function _cbRenderCanvas() {
     const el = document.createElement('div');
     el.className  = 'cb-seat' + (seat.isLocked ? ' locked' : '') + (_cbSelectedSeatIds.has(seat.id) ? ' selected' : '');
     el.dataset.seatId = seat.id;
+    el.dataset.attendanceStatus = vm.attendanceStatus || 'Unscanned';
     el.style.left     = seat.xCoord + 'px';
     el.style.top      = seat.yCoord + 'px';
     el.style.transform = `translate(-50%,-50%) rotate(${seat.rotation||0}deg)`;
@@ -304,6 +305,7 @@ function _cbRepaintSeats() {
     const vm     = mapBySeatId[seatId];
     if (!vm) return;
     const col = vm.color || ClassroomService.STATUS_COLORS['_empty'];
+    el.dataset.attendanceStatus = vm.attendanceStatus || 'Unscanned';
     el.style.background   = col.bg;
     el.style.borderColor  = vm.isLocked ? '#ffb95f' : col.border;
 
