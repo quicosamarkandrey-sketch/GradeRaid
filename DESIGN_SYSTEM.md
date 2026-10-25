@@ -1,13 +1,13 @@
-# Nocturne design direction
+# Nocturne — warm charcoal design system
 
-Phases 1–2 establish shared chrome, controls, the student dashboard, My Section, Inventory/Armory, and My Progress.
+The shared presentation now covers student, teacher and admin views. Earlier phases established the student layouts; the current palette and local icon system apply across all roles, including dynamically rendered staff tools and dialogs.
 The entry page enables `theme-nocturne`; `styles/modules/nocturne.css`
 loads last so feature pages can be converted incrementally without deleting
 working layout rules. The classic dashboard, build input, and ESM twin are
 kept in sync.
 
-- Charcoal surfaces (#101112 / #191a1c), quiet structural borders, warm white
-  text and restrained silver emphasis. No global grayscale filter: photos,
+- Forest charcoal surfaces (#121310 / #1b1d17), warm ivory text, quiet olive
+  borders and restrained amber (#cba76a) primary actions. No global grayscale filter: photos,
   artwork and meaningful status colors retain their own rendering.
 - System sans-serif (Inter when available, then Segoe UI / Arial) for headings,
   controls and body text; monospace only for identifiers/numbers. No serif
@@ -20,14 +20,21 @@ kept in sync.
 - Existing phone density rules remain in place. Sidebar collapse and the
   active-raid header stay responsive.
 
-## Next conversion phases
+## Shared presentation boundary
 
-1. Remaining student feature pages, including quest details and dialogs.
-2. Teacher/admin classroom tools and remaining staff pages.
+`modules/shared/presentation.js` applies the shared design to legacy renderers
+without altering service APIs or stored records. It batches new DOM subtrees,
+replaces decorative symbols and Material icon-font names with a closed local
+SVG registry, and maps known legacy colors in inline styles and local stylesheets
+onto the warm palette. Source-module and classic-script versions are kept in sync.
 
-Shared tokens/chrome apply now; the remaining feature pages are not claimed
-as fully converted. Preserve state labels, authorization, reward
-logic, and meaningful user-supplied images during future conversions.
+No whole-page grayscale filter is used. Editable values, marked user prose,
+profile-name containers, artwork URLs, avatars, custom badge previews, and live
+seat/attendance colors are protected. Original icon metadata in saved records
+is not rewritten. Existing status labels remain visible. Styles loaded later by
+staff tools receive the same treatment; cross-origin font stylesheets are ignored.
+New pages can use `uiIcon(name)` and design tokens directly rather than depend on
+legacy adaptation. Layout and role authorization remain owned by their modules.
 
 ## Validation
 
@@ -56,3 +63,14 @@ live account data. Screenshots use sample students and rewards.
   Supabase write is performed by the fixture browser checks.
 - Browser checks now cover inventory details, adding an item to the cart,
   opening the cart and a claim code at 320px, plus the original layout checks.
+
+## Application-wide verification
+
+`node tests/browser/application-theme.cjs` boots the actual app with external
+services blocked, seeds local fixture data, and checks 48 page visits across
+admin, teacher and student at phone/desktop widths. This covers navigation,
+Command Center, Sections, staff store/quest builder, scanner, classroom builder
+and monitor, settings, and all student navigation destinations. It also verifies
+idempotent decoration, late-injected styles, local SVG navigation, and protected
+profile text, draft values, photos, selected options and attendance colors.
+No live login, purchase, scan hardware or hosted Supabase write is exercised.

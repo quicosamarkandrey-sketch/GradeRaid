@@ -15,6 +15,7 @@ import '../modules/core/active-section.js';
 import '../db-migrations.js';
 import '../app-state.js';
 import '../dom.js';
+import '../modules/shared/presentation.js';
 import '../utils.js';
 import '../student-stats.js';
 import '../modules/quest-engine.js';

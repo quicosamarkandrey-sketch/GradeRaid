@@ -25,7 +25,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']});
  try{
  const page=await browser.newPage();await page.emulateMedia({reducedMotion:'reduce'});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.route(baseURL+'/',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html class="theme-nocturne"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${['base','modules/shop','modules/recitation','modules/world-boss','modules/notifications','modules/student-mobile','modules/nocturne'].map(p=>`<link rel="stylesheet" href="/styles/${p}.css">`).join('')}<style>.material-symbols-outlined{display:inline-block;width:20px;flex-shrink:0;font-size:0!important}.material-symbols-outlined::before{content:'◆';font-size:14px}</style></head><body><div id="main-app">${html.slice(html.indexOf('  <!-- TOP BAR -->'),html.indexOf('  <!-- MAIN CONTENT -->'))}<main id="main-content">${['s-dashboard','s-my-section','s-inventory','s-store','s-attendance','s-mail'].map(id=>`<div id="${id}" class="page active"></div>`).join('')}</main></div></body></html>`}));
+ await page.route(baseURL+'/',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html class="theme-nocturne"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${['base','modules/shop','modules/recitation','modules/world-boss','modules/notifications','modules/student-mobile','modules/nocturne'].map(p=>`<link rel="stylesheet" href="/styles/${p}.css">`).join('')}</head><body><div id="main-app">${html.slice(html.indexOf('  <!-- TOP BAR -->'),html.indexOf('  <!-- MAIN CONTENT -->'))}<main id="main-content">${['s-dashboard','s-my-section','s-inventory','s-store','s-attendance','s-mail'].map(id=>`<div id="${id}" class="page active"></div>`).join('')}</main></div></body></html>`}));
  await page.goto(baseURL+'/');
  await page.evaluate(()=>{
  window.currentUser={id:'s1',name:'Alexandra Rivera Santos',init:'AR',color:'#a78bfa',tier:'Scholar',classId:'c1',xp:12345,coins:1500,level:12,attendance:96,quizAvg:88,completedQuizzes:[]};
@@ -39,7 +39,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  window.getLevel=x=>Math.floor(x/1000);window.XP_PER_LEVEL=1000;window.eqTimeAgo=()=> 'Today';window.updateTopbar=()=>{};
  window.getStudentAttendanceRecords=()=>[];window.computeAttendanceStreak=()=>({current:0,longest:0});
  });
- for(const file of ['dom.js','modules/section/my-section.js','modules/shop/shop_store.js','modules/shop/shop_inventory.js','modules/recitation/progress.js'])await page.addScriptTag({path:path.join(root,file)});
+ for(const file of ['dom.js','modules/shared/presentation.js','modules/section/my-section.js','modules/shop/shop_store.js','modules/shop/shop_inventory.js','modules/recitation/progress.js'])await page.addScriptTag({path:path.join(root,file)});
  await page.addScriptTag({content:dashboard});
  await page.evaluate(()=>{
  renderStudentDashboard();renderInventory();renderStudentStore();renderStudentProgress();
@@ -56,8 +56,8 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Overflow at '+width);
   assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).backgroundImage),'none');
   assert.equal(await page.locator('#s-dashboard .dash-hero').evaluate(el=>getComputedStyle(el).boxShadow),'none');
-  assert.equal(await page.locator('#s-dashboard .quest-btn').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(230, 229, 223)');
-  assert.equal(await page.locator('#s-dashboard .quest-btn').evaluate(el=>getComputedStyle(el).color),'rgb(23, 24, 25)');
+  assert.equal(await page.locator('#s-dashboard .quest-btn').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(203, 167, 106)');
+  assert.equal(await page.locator('#s-dashboard .quest-btn').evaluate(el=>getComputedStyle(el).color),'rgb(25, 28, 19)');
   assert.ok(await page.locator('#s-dashboard .quest-btn').evaluate(el=>el.getBoundingClientRect().height>=44));
   assert.equal(await page.locator('#s-dashboard').evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),false,'Decorative emoji remains');
   await page.locator('#wb-topbar-widget').evaluate(el=>el.style.display='flex');
@@ -70,6 +70,6 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  await page.locator('#s-dashboard .dash-hero-right .btn').click();assert.equal(await page.evaluate(()=>lastNav),'s-store');
  await page.locator('#s-dashboard .dashboard-alert button').click();assert.equal(await page.evaluate(()=>lastNav),'s-badges');
  assert.deepEqual(errors,[]);
- console.log('PASS: Nocturne overview and chrome at 320/390/768/1440px; monochrome surfaces, no emoji, touch targets, quest/Armory/reward actions, no page errors.');
+ console.log('PASS: Nocturne overview and chrome at 320/390/768/1440px; warm surfaces, local icons, touch targets, quest/Armory/reward actions, no page errors.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(e=>{console.error(e);process.exit(1)});

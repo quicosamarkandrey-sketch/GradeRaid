@@ -63,8 +63,8 @@ function _qbQuizCard(q) {
     : schedStatus === 'expired' ? `<span class="badge-pill" style="background:rgba(255,180,171,.15);color:#ffb4ab">⌛ Expired ${_esc(q.endDate)}</span>`
     : schedStatus === 'active' && q.endDate ? `<span class="badge-pill" style="background:rgba(255,185,95,.15);color:#ffb95f">⏳ Ends in ${eqDaysUntil(q.endDate)}d</span>`
     : '';
-  return `<div class="glass-card">
-    <div style="display:flex;align-items:center;gap:16px">
+  return `<div class="glass-card admin-quest-card">
+    <div class="admin-quest-card-header" style="display:flex;align-items:center;gap:16px">
       <div style="font-size:36px;width:52px;text-align:center">📝</div>
       <div style="flex:1">
         <div style="font-size:15px;font-weight:700;color:var(--on-surface)">${_esc(q.title)}</div>
@@ -82,7 +82,7 @@ function _qbQuizCard(q) {
           ${schedBadge}
         </div>
       </div>
-      <div style="display:flex;gap:8px;flex-shrink:0">
+      <div class="admin-quest-card-actions" style="display:flex;gap:8px;flex-shrink:0">
         <button class="btn btn-ghost btn-sm" onclick="openQuizAnalytics('${q.id}')" title="Analytics">📊</button>
         <button class="btn btn-ghost btn-sm" onclick="cloneQuiz('${q.id}')" title="Clone this quest">📋 Clone</button>
         <button class="btn btn-ghost btn-sm" onclick="openEditQuiz('${q.id}')">✏️ Edit</button>

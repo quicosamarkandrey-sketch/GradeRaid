@@ -30,10 +30,10 @@ const ROOT = path.join(__dirname, '..');
 
 function main() {
   const split = JSON.parse(fs.readFileSync(path.join(ROOT, 'dist', 'role-split.json'), 'utf8'));
-  const safeDefaultShared = new Set(split.neitherRole);
+  const safeDefaultShared = new Set([...split.neitherRole, 'modules/shared/presentation.js']);
 
   const studentSet = new Set([...split.shared, ...split.studentOnly, ...safeDefaultShared]);
-  const adminSet = new Set([...split.shared, ...split.adminOnly, ...safeDefaultShared]);
+  const adminSet = new Set([...split.shared, ...split.adminOnly, ...safeDefaultShared, 'modules/seat-arrangement/classroom-editor.js']);
 
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const elements = getOrderedScriptElements(html);
