@@ -29,6 +29,9 @@
 //  (A DIFFERENT bootApp patch already exists in
 //  modules/world-boss/summon-notify.js for the boss-spawn notification —
 //  that one is unrelated and is left untouched.)
+//  [Continuation Plan §3, Category A] Both of those two are now
+//  AppStore.subscribe() handlers (session:booted, nav:navigated) rather
+//  than monkey-patches — see each subscriber's own comment below.
 //
 //  LOAD: before modules/mail/* and modules/achievements/* (organizational —
 //  both call sites are inside function bodies, so strict load-before
@@ -399,15 +402,19 @@ AppStore.subscribe('reward-presenter-boot-badges', function (state, event) {
   }
 });
 
-// ── navTo patch — refresh mail + achievement sidebar badges on navigation ─────
-;(function () {
-  const _origNav = window.navTo;
-  window.navTo = function (id) {
-    if (typeof _origNav === 'function') _origNav(id);
-    if (currentRole === 'student') {
-      setTimeout(() => { mailUpdateSidebarBadge(); achUpdateSidebarBadge(); }, 150);
-    }
-  };
-})();
+// ── nav:navigated subscriber — refresh mail + achievement sidebar badges on
+// navigation ─────────────────────────────────────────────────────────────
+// Continuation Plan §3, Category A — replaces the old monkey-patch of
+// window.navTo. Confirmed post-hook/void-return shape, load-order traced
+// (nav.js now emits this after _navToCore() runs — including on its early
+// activeQuiz-abort return, matching the old patch's "always runs after,
+// regardless of internal branch" behavior exactly; see nav.js's emit() call
+// site for the full reasoning).
+AppStore.subscribe('reward-presenter-nav-badges', function (state, event) {
+  if (event.type !== 'nav:navigated') return;
+  if (currentRole === 'student') {
+    setTimeout(() => { mailUpdateSidebarBadge(); achUpdateSidebarBadge(); }, 150);
+  }
+});
 
-console.log('[EduQuest] shared/reward-presenter.js loaded — eqRewardPresent, _eqrRunParticles, EQR_RARITY_COLORS, EQR_SOURCE_LABELS registered. bootApp/navTo badge-refresh patched.');
+console.log('[EduQuest] shared/reward-presenter.js loaded — eqRewardPresent, _eqrRunParticles, EQR_RARITY_COLORS, EQR_SOURCE_LABELS registered. Subscribers: session:booted, nav:navigated (badge refresh).');

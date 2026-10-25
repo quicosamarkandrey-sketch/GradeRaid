@@ -56,7 +56,7 @@ test('logRecitation() has no direct dependency on achCheckAndAward — runs fine
   assert.doesNotThrow(() => win.logRecitation());
 });
 
-test('logRecitation() still calls toast() and renderScanner() as before', () => {
+test('logRecitation() still calls toast() and renderRfidScanner() as before', () => {
   win.logRecitation();
   assert.equal(win.toastCalls.length, 1);
   assert.equal(win.renderScannerCalls, 1);

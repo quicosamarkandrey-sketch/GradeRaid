@@ -177,20 +177,36 @@ window.tsOpenTitlesFromProfile = function () {
 
 // ── Patches ───────────────────────────────────────────────────────────────────
 
-// achCheckAndAward → unlock titles linked to newly earned achievements
-;(function () {
-  const _orig = window.achCheckAndAward;
-  window.achCheckAndAward = function (studentId, suppressPopup) {
-    if (typeof _orig === 'function') _orig(studentId, suppressPopup);
-    if (!studentId) return;
-    const unlockedAchIds = new Set(((AppStore.getSlice(s => s.achievementUnlocks) || {})[studentId] || []).map(u => u.achId));
-    (AppStore.getSlice(s => s.titles) || []).forEach(t => {
-      if (!t.active || !t.achievementId) return;
-      if (tsIsUnlocked(studentId, t.id)) return;
-      if (unlockedAchIds.has(t.achievementId)) tsUnlockTitleForStudent(studentId, t.id, suppressPopup);
-    });
-  };
-})();
+// achievements:check-and-award-ran → unlock titles linked to newly earned
+// achievements
+// Continuation Plan §3, Category A — achCheckAndAward-as-title-hook (the
+// highest-blast-radius item on the list, since achCheckAndAward is called
+// directly from ~8 places across the app, not funneled through one
+// dispatch point like navTo/openBossForm were). Converting it didn't
+// require touching any of those call sites, though — they all call the one
+// global achCheckAndAward, and ach_engine.js's own wrapper is now the only
+// thing that name resolves to, so every caller still reaches this logic
+// exactly as before. Confirmed post-hook/void-return shape, load-order
+// traced (ach_engine.js loads at index.html:807, this file at :817, so the
+// base definition — and its emit — exists before this subscriber is even
+// registered). See ach_engine.js's own emit() call site for why the event
+// fires unconditionally rather than reusing the existing
+// 'achievements:unlocked' event (which only fires when something new was
+// actually unlocked this call — this patch's own logic needs to run even
+// when nothing new unlocked, to catch titles linked to an
+// already-unlocked achievement after the fact).
+AppStore.subscribe('titles-ach-check-and-award', function (state, event) {
+  if (event.type !== 'achievements:check-and-award-ran') return;
+  const studentId = event.payload.studentId;
+  const suppressPopup = event.payload.suppressPopup;
+  if (!studentId) return;
+  const unlockedAchIds = new Set(((AppStore.getSlice(s => s.achievementUnlocks) || {})[studentId] || []).map(u => u.achId));
+  (AppStore.getSlice(s => s.titles) || []).forEach(t => {
+    if (!t.active || !t.achievementId) return;
+    if (tsIsUnlocked(studentId, t.id)) return;
+    if (unlockedAchIds.has(t.achievementId)) tsUnlockTitleForStudent(studentId, t.id, suppressPopup);
+  });
+});
 
 // _holGetTitle → show equipped title name in leaderboard
 ;(function () {
@@ -203,28 +219,53 @@ window.tsOpenTitlesFromProfile = function () {
   };
 })();
 
-// renderStudentDashboard → refresh profile title after dashboard renders
-;(function () {
-  const _orig = window.renderStudentDashboard;
-  window.renderStudentDashboard = function () {
-    if (typeof _orig === 'function') _orig();
-    setTimeout(tsRefreshProfileTitle, 80);
-  };
-})();
+// dashboard:student-rendered → refresh profile title after dashboard renders
+//
+// Was a monkey-patch on window.renderStudentDashboard. Confirmed DEAD via
+// script-load-order tracing: this file's <script> tag (index.html ~817)
+// runs before the inline <script> block that defines the base
+// renderStudentDashboard() (index.html ~900), so `_orig` captured
+// `undefined` at patch time, and the later plain `function
+// renderStudentDashboard(){...}` declaration silently overwrote this
+// patch's wrapper the instant it ran — same recurring pattern as
+// wbcApplyDamage/renderStudentWorldBoss. Effect while dead: the
+// #ts-dash-title badge (inserted by tsRefreshProfileTitle, wiped by every
+// renderStudentDashboard() innerHTML replacement) was only ever restored
+// via navTo's own separate live patch (id === 's-dashboard') and the
+// session:booted subscriber below — the two direct-call sites in
+// modules/perceived-speed.js (mail reward claim onClose) and
+// modules/achievements/ach_student_page.js (achievement claim onClose)
+// silently lost the badge on every claim with no path to get it back.
+// Converted to a real subscriber on the event the base function now emits
+// — this fixes that gap rather than just relocating it, since a subscriber
+// isn't sensitive to script tag order the way a captured `_orig` is.
+AppStore.subscribe('titles-sidebar-dashboard-rendered', function (state, event) {
+  if (event.type !== 'dashboard:student-rendered') return;
+  setTimeout(tsRefreshProfileTitle, 80);
+});
 
-// navTo → refresh sidebar on every navigation; refresh profile on s-dashboard
-;(function () {
-  const _orig = window.navTo;
-  window.navTo = function (id) {
-    if (typeof _orig === 'function') _orig(id);
-    if (currentRole === 'student') {
-      setTimeout(() => {
-        tsRefreshSidebarTitle();
-        if (id === 's-dashboard') tsRefreshProfileTitle();
-      }, 100);
-    }
-  };
-})();
+// nav:navigated → refresh sidebar on every navigation; refresh profile on
+// s-dashboard
+// Continuation Plan §3, Category A — replaces the old monkey-patch of
+// window.navTo. Confirmed post-hook/void-return shape, load-order traced
+// (nav.js now emits this after _navToCore() runs — including on its early
+// activeQuiz-abort return, matching the old patch's "always runs after,
+// regardless of internal branch" behavior exactly; see nav.js's emit() call
+// site for the full reasoning). Deliberately does NOT fold in
+// dashboard:student-rendered's own subscriber above — that event already
+// covers every renderStudentDashboard() call site, not just navigation
+// through s-dashboard (mail/achievement claim popups also trigger it), so
+// keeping them separate avoids double-firing tsRefreshProfileTitle() on a
+// navigation that lands on s-dashboard.
+AppStore.subscribe('titles-sidebar-nav-refresh', function (state, event) {
+  if (event.type !== 'nav:navigated') return;
+  if (currentRole === 'student') {
+    setTimeout(() => {
+      tsRefreshSidebarTitle();
+      if (event.payload.id === 's-dashboard') tsRefreshProfileTitle();
+    }, 100);
+  }
+});
 
 // session:booted → AppStore migration guard + initial sidebar/profile refresh on login
 // [Phase 3 migration note] This duplicates the same titles/titleUnlocks/
@@ -254,4 +295,4 @@ AppStore.subscribe('titles-sidebar-refresh-boot', function (state, event) {
   }, 300);
 });
 
-console.log('[EduQuest] titles/sidebar-refresh.js loaded — tsGetEquippedTitle, tsEquipTitle, tsUnlockTitleForStudent, tsRefreshSidebarTitle, tsRefreshProfileTitle registered. Patches: achCheckAndAward, _holGetTitle, renderStudentDashboard, navTo, bootApp.');
+console.log('[EduQuest] titles/sidebar-refresh.js loaded — tsGetEquippedTitle, tsEquipTitle, tsUnlockTitleForStudent, tsRefreshSidebarTitle, tsRefreshProfileTitle registered. Patches: _holGetTitle. Subscribers: dashboard:student-rendered, session:booted, nav:navigated, achievements:check-and-award-ran.');

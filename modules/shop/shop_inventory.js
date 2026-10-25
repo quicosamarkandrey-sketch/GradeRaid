@@ -1,7 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //  EduQuest — modules/shop/inventory.js
 //  Student Inventory page: items grid, purchase history, use-item flow.
-//  Also owns invUpdateSidebarBadge and the bootApp/setupSidebar patches.
+//  Also owns invUpdateSidebarBadge and its bootApp/setupSidebar event
+//  subscribers ('session:booted' / 'nav:sidebar-rendered' — formerly
+//  monkey-patches, see Phase 4 log and Continuation Plan §3).
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── Category constants ────────────────────────────────────────────────────────
@@ -333,7 +335,10 @@ window.invShowCodes = function (itemId) {
 /**
  * invUpdateSidebarBadge() → void  [window.invUpdateSidebarBadge]
  * Shows total owned quantity on #nav-s-inventory nav button.
- * Called by bootApp patch and setupSidebar patch (both below).
+ * Called by the 'session:booted' subscriber (bootApp) and the
+ * 'nav:sidebar-rendered' subscriber (setupSidebar) below — both were
+ * originally monkey-patches; see Phase 4 log (bootApp) and Continuation
+ * Plan §3 Category A (setupSidebar) for the conversions.
  */
 window.invUpdateSidebarBadge = function () {
   const btn = document.getElementById('nav-s-inventory');
@@ -356,13 +361,15 @@ AppStore.subscribe('shop-inventory-boot-badge', function (state, event) {
   if (currentRole === 'student') setTimeout(invUpdateSidebarBadge, 50);
 });
 
-// ── setupSidebar patch — refresh badge after nav rebuild ──────────────────────
-;(function () {
-  const _orig = window.setupSidebar;
-  window.setupSidebar = function () {
-    if (typeof _orig === 'function') _orig();
-    if (currentRole === 'student') setTimeout(invUpdateSidebarBadge, 20);
-  };
-})();
+// ── nav:sidebar-rendered subscriber — refresh badge after nav rebuild ─────────
+// Continuation Plan §3, Category A — replaces the old monkey-patch of
+// window.setupSidebar. Confirmed post-hook/void-return shape, single site,
+// load-order traced (nav.js's setupSidebar() now emits this event itself,
+// after nav.js defines the base function and before this file's subscriber
+// can possibly run). See nav.js's emit() call site for the full reasoning.
+AppStore.subscribe('shop-inventory-sidebar-badge', function (state, event) {
+  if (event.type !== 'nav:sidebar-rendered') return;
+  if (currentRole === 'student') setTimeout(invUpdateSidebarBadge, 20);
+});
 
 console.log('[EduQuest] shop/inventory.js loaded — renderInventory, inv* helpers, invUpdateSidebarBadge registered.');

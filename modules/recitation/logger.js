@@ -57,7 +57,18 @@ window.logRecitation = function () {
   syncStudentStatsToServer(sid, pts, 0);
 
   toast(`🎤 +${pts} pts → ${_esc(student.name)}`);
-  renderScanner();
+  // Phase 7 (2026-08-10, session 4 dependency-map pass): was `renderScanner()`
+  // — the pre-Phase-1 name, replaced by `renderRfidScanner()` when
+  // att_scanner_rfid.js took over (see that file's own header comment,
+  // and nav.js:221, which was updated correctly at the time). This call
+  // site was missed during that migration; `renderScanner` doesn't exist
+  // anywhere in production, only as a test-harness mock in
+  // tests/unit/helpers/load-globals.js — so this threw an uncaught
+  // ReferenceError on every real recitation-log submission, after the XP/
+  // log mutation and toast had already succeeded (scanner UI just never
+  // refreshed afterward). See EduQuest_Engineering_Refactor_Log.md Phase 7
+  // session 4 entry.
+  renderRfidScanner();
 };
 
 console.log('[EduQuest] recitation/logger.js loaded — logRecitation registered.');

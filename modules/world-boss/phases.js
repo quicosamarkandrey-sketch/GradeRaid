@@ -279,34 +279,45 @@ function _wbpInjectPhaseIndicator(bossIdx) {
   }
 })();
 
-;(function () {
-  const _orig = wbcApplyDamage;
-  window.wbcApplyDamage = async function (bossIdx, damage, studentId, isCrit) {
-    const result = await _orig(bossIdx, damage, studentId, isCrit);
-    if (result !== 'defeated') {
-      wbpCheckPhaseChange(bossIdx);
-    }
-    if (typeof wbrageCheckAndActivate === 'function') {
-      wbrageCheckAndActivate(bossIdx);
-    }
-    return result;
-  };
-})();
-
-;(function () {
-  if (typeof renderStudentWorldBoss === 'function') {
-    const _orig = renderStudentWorldBoss;
-    window.renderStudentWorldBoss = function () {
-      _orig();
-      const found = (typeof wbcGetActiveBoss === 'function') && wbcGetActiveBoss();
-      if (!found) return;
-      const { boss, idx } = found;
-      if (WBP.lastSeenPhase[idx] === undefined) WBP.lastSeenPhase[idx] = wbpGetPhaseNumber(boss);
-      _wbpInjectPhaseIndicator(idx);
-      _wbpUpdateHPBarColor(idx);
-    };
+// world-boss:damage-applied / world-boss:defeated → phase-change + rage
+// checks. Was a monkey-patch that inspected the wrapped function's return
+// value (result !== 'defeated') to decide whether to run the phase-change
+// check — the exact "ordering matters, patch return value" risk the
+// roadmap flagged for wbcApplyDamage. Switching to events resolves it
+// rather than just preserving it: event.type IS that same distinction, so
+// there's no return-value plumbing to get right anymore. Rage check always
+// runs on damage-applied; only runs on defeated too because... actually it
+// always ran unconditionally in the original (no result check gated it) —
+// preserved exactly, including on the killing blow.
+AppStore.subscribe('wbp-boss-damage-phase-check', function (state, event) {
+  if (event.type !== 'world-boss:damage-applied' && event.type !== 'world-boss:defeated') return;
+  const bossIdx = event.payload && event.payload.bossIdx;
+  if (bossIdx === undefined) return;
+  if (event.type !== 'world-boss:defeated') {
+    wbpCheckPhaseChange(bossIdx);
   }
-})();
+  if (typeof wbrageCheckAndActivate === 'function') {
+    wbrageCheckAndActivate(bossIdx);
+  }
+});
+
+// world-boss:student-view-rendered → make sure the phase-indicator strip
+// exists in the DOM after a fresh full-page render (was a monkey-patch of
+// renderStudentWorldBoss — see raid-flow.js's comment on the emit() call).
+// Deliberately does NOT also call wbpCheckPhaseChange()/_wbpUpdateHPBarColor()
+// here — both are already live via the _wbcUpdateHPDisplay patch above and
+// the world-boss:damage-applied subscriber below; duplicating them here
+// would just be redundant work on every render, not a missing behavior.
+AppStore.subscribe('wbp-phase-indicator-view-sync', function (state, event) {
+  if (event.type !== 'world-boss:student-view-rendered') return;
+  const bossIdx = event.payload && event.payload.bossIdx;
+  if (bossIdx === null || bossIdx === undefined) return;
+  if (WBP.lastSeenPhase[bossIdx] === undefined) {
+    const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
+    if (boss) WBP.lastSeenPhase[bossIdx] = wbpGetPhaseNumber(boss);
+  }
+  _wbpInjectPhaseIndicator(bossIdx);
+});
 
 ;(function () {
   if (typeof _wbcStartLiveRefresh === 'function') {
@@ -357,25 +368,32 @@ function _wbpInjectPhaseIndicator(bossIdx) {
   };
 })();
 
-// ── Extend boss edit form to also surface phase config button ────────────────
-;(function () {
-  if (typeof openBossForm !== 'function') return;
-  const _orig = openBossForm;
-  window.openBossForm = function (bossIndex) {
-    _orig(bossIndex);
-    if (bossIndex === null || bossIndex === undefined) return;
-    setTimeout(() => {
-      const actions = document.querySelector('#modal-content .btn-primary');
-      if (!actions) return;
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-ghost';
-      btn.style.cssText = 'border-color:rgba(249,115,22,.3);color:#f97316';
-      btn.innerHTML = '⚡ Phase Config';
-      btn.onclick = () => { closeModalForce(); wbpOpenPhaseConfig(bossIndex); };
-      actions.parentNode.insertBefore(btn, actions);
-    }, 80);
-  };
-})();
+// ── boss-form:opened subscriber — extend boss edit form to also surface the
+// phase config button ─────────────────────────────────────────────────────
+// Continuation Plan §3, Category A — replaces the old monkey-patch of
+// window.openBossForm. Confirmed post-hook/void-return shape, load-order
+// traced (admin-page.js emits this after showModal() renders the form,
+// well before phases.js's subscriber can possibly run — see admin-page.js's
+// emit() call site for the full reasoning). Timing/DOM logic unchanged from
+// the original patch (still relies on the 80ms delay, and still doesn't
+// dedupe by id — the modal's contents are fully rebuilt by showModal() on
+// every openBossForm() call, so this never ran into a duplicate-button
+// case under the old monkey-patch either).
+AppStore.subscribe('wbp-boss-form-button', function (state, event) {
+  if (event.type !== 'boss-form:opened') return;
+  const bossIndex = event.payload.bossIndex;
+  if (bossIndex === null || bossIndex === undefined) return;
+  setTimeout(() => {
+    const actions = document.querySelector('#modal-content .btn-primary');
+    if (!actions) return;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-ghost';
+    btn.style.cssText = 'border-color:rgba(249,115,22,.3);color:#f97316';
+    btn.innerHTML = '⚡ Phase Config';
+    btn.onclick = () => { closeModalForce(); wbpOpenPhaseConfig(bossIndex); };
+    actions.parentNode.insertBefore(btn, actions);
+  }, 80);
+});
 
 // ── Runtime CSS injection (flash/rage/pulse/banner/indicator keyframes) ──────
 ;(function () {

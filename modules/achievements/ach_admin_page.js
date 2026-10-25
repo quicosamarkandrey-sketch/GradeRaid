@@ -91,6 +91,15 @@ window.renderAdminAchievements = function () {
       }).join('')}</tbody>
     </table>
   </div>`}`;
+
+  // Continuation Plan §3, Category A — replaces titles_admin_page.js's
+  // renderAdminAchievements monkey-patch (single confirmed site, load-order
+  // traced: this file loads at index.html:809, the patch's file at :816,
+  // and nothing re-assigns window.renderAdminAchievements after that).
+  // DOM-injection post-hook, void return — straightforward conversion.
+  // Uses emit() rather than updateState(): this is pure page rendering,
+  // never mutates DB.*.
+  AppStore.emit({ type: 'admin:achievements-rendered', payload: null });
 };
 
 // ── Create / Edit form ────────────────────────────────────────────────────────

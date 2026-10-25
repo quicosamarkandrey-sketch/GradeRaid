@@ -1,0 +1,7740 @@
+(() => {
+  var __defProp = Object.defineProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+
+  // src/modules/core/state-manager.js
+  var AppStore = (function() {
+    "use strict";
+    let _state = null;
+    let _subscribers = {};
+    let _persistTimer = null;
+    let _persistDirty = false;
+    let _readyResolve = null;
+    const _DELTA_TRACKED_SLICES = {
+      point_log: { statePath: "pointLog", idField: "id" },
+      notifications: { statePath: "notifications", idField: "id" },
+      orders: { statePath: "orders", idField: "orderId" },
+      // boss_participants: keyed bossParticipants[bossIdx][studentId], not an
+      // array — see 'nested' shape above. Composite dirty id is
+      // "<bossIdx>:<studentId>". This is the first delta-tracked table where
+      // the row a session dirties is genuinely reachable by ANOTHER student's
+      // combat session concurrently (each student answering boss questions
+      // only ever touches their OWN studentId key), unlike point_log/
+      // notifications/orders where every no-clobber test so far modeled "two
+      // different rows," never true concurrent access to one.
+      boss_participants: { statePath: "bossParticipants", shape: "nested" },
+      // inventory: keyed inventory[studentId] = [items...] — see
+      // 'nestedArray' shape above. Composite dirty id is
+      // "<studentId>:<itemId>". The genuinely-different-actor case here is a
+      // teacher running the shop POS terminal (shop_pos_terminal.js writes
+      // into draft.inventory[studentId] on the STUDENT's behalf) at the same
+      // time that student's own device independently purchases something —
+      // two different sessions appending to the same student's item list.
+      inventory: { statePath: "inventory", shape: "nestedArray", innerIdField: "itemId" },
+      // redemptions: flat array, append-only history log (client-generated
+      // orderId per redemption, never edited after creation) — same
+      // low-blast-radius shape as point_log, the very first table converted.
+      // Sixth table, no new mechanism needed.
+      redemptions: { statePath: "redemptions", idField: "orderId" },
+      // titles: flat array, teacher-owned catalog rows (title editor). Same
+      // "whole-row-replacement is fine, just needs to be scoped to the row
+      // this session actually edited" reasoning as every array-shaped table
+      // so far — the risk here isn't a second human so much as the same
+      // teacher's own second open tab autosaving stale data over an edit
+      // made in the first.
+      titles: { statePath: "titles", idField: "id" },
+      // quiz_history: keyed quizHistory[studentId] = [attempts...] — same
+      // 'nestedArray' shape as inventory. Eighth table, and — like
+      // point_log/redemptions — append-only (an attempt's fields are fixed
+      // forever once logged; see finishQuiz()/abortQuiz() in index.html,
+      // neither ever edits an existing entry). Client-generates its own id
+      // ('qh_' + uid()) at creation time, same as every table converted so
+      // far — this is the property boss_events lacks (its id is assigned by
+      // Postgres, not the client, so a brand-new row has nothing to track
+      // dirty by until AFTER its first successful sync — ruled it out as a
+      // delta-sync candidate for that reason, not attempted this session).
+      quiz_history: { statePath: "quizHistory", shape: "nestedArray", innerIdField: "id" },
+      // quizzes: flat array, teacher-owned catalog rows — same pattern as
+      // titles. Ninth table, client-generated id verified at
+      // openQuizBuilder()'s draft-creation time before converting.
+      quizzes: { statePath: "quizzes", idField: "id" },
+      // campaign_worlds: flat array, client-generated id. Tenth table — see
+      // db-service.js's config comment for why THIS one needed an actual code
+      // fix (not just a config addition): sort_order used to be computed from
+      // array position within whatever subset buildRows received, which
+      // delta-filtering would have silently corrupted.
+      campaign_worlds: { statePath: "stageMap", idField: "id" },
+      // profiles: flat array (DB.students), but scoped with `watchFields` —
+      // see _projectWatchFields()'s own comment for why: a student row's
+      // xp/coins/level/tier/etc change constantly via gameplay and are
+      // RPC-owned, never part of this table's own upsert payload, so
+      // diffing the whole row would dirty this table almost every save.
+      // Eleventh table converted, and the one that needed the
+      // upsertRows-return-value contract (db-service.js's _runTableSync)
+      // before it could be delta-tracked safely at all — see that table's
+      // own config comment.
+      profiles: {
+        statePath: "students",
+        idField: "id",
+        watchFields: ["name", "init", "color", "firstName", "lastName", "profilePic", "classId"]
+      },
+      // shop_products / achievements: flat array, teacher-owned catalog rows
+      // — same pattern as titles/quizzes. Twelfth and thirteenth tables,
+      // client-generated ids verified at creation before converting. Every
+      // field either table's buildRows sends is a catalog-definition column
+      // (no per-student unlock/stock state, which stays RPC-only) — no
+      // watchFields scoping needed, unlike profiles.
+      shop_products: { statePath: "store", idField: "id" },
+      achievements: { statePath: "achievements", idField: "id" }
+    };
+    let _dirty = {};
+    function _trackDirty(oldState, newState) {
+      Object.keys(_DELTA_TRACKED_SLICES).forEach(function(table) {
+        const cfg = _DELTA_TRACKED_SLICES[table];
+        if (cfg.shape === "nested") {
+          _trackDirtyNested(table, cfg, oldState, newState);
+          return;
+        }
+        if (cfg.shape === "nestedArray") {
+          _trackDirtyNestedArray(table, cfg, oldState, newState);
+          return;
+        }
+        const oldArr = oldState && Array.isArray(oldState[cfg.statePath]) ? oldState[cfg.statePath] : [];
+        const newArr = newState && Array.isArray(newState[cfg.statePath]) ? newState[cfg.statePath] : [];
+        if (!newArr.length) return;
+        const oldById = {};
+        oldArr.forEach(function(row) {
+          const id = row && row[cfg.idField];
+          if (id !== void 0 && id !== null) oldById[id] = JSON.stringify(_projectWatchFields(row, cfg.watchFields));
+        });
+        newArr.forEach(function(row) {
+          const id = row && row[cfg.idField];
+          if (id === void 0 || id === null) return;
+          const prevJSON = oldById[id];
+          const newJSON = JSON.stringify(_projectWatchFields(row, cfg.watchFields));
+          if (prevJSON === void 0 || prevJSON !== newJSON) {
+            if (!_dirty[table]) _dirty[table] = /* @__PURE__ */ new Set();
+            _dirty[table].add(id);
+          }
+        });
+      });
+    }
+    function _projectWatchFields(row, fields) {
+      if (!fields) return row;
+      const out = {};
+      fields.forEach(function(f) {
+        out[f] = row[f];
+      });
+      return out;
+    }
+    function _trackDirtyNested(table, cfg, oldState, newState) {
+      const oldRoot = oldState && oldState[cfg.statePath] || {};
+      const newRoot = newState && newState[cfg.statePath] || {};
+      Object.keys(newRoot).forEach(function(outerKey) {
+        const oldInner = oldRoot[outerKey] || {};
+        const newInner = newRoot[outerKey] || {};
+        Object.keys(newInner).forEach(function(innerKey) {
+          const id = outerKey + ":" + innerKey;
+          const hadBefore = Object.prototype.hasOwnProperty.call(oldInner, innerKey);
+          const newJSON = JSON.stringify(newInner[innerKey]);
+          if (!hadBefore || JSON.stringify(oldInner[innerKey]) !== newJSON) {
+            if (!_dirty[table]) _dirty[table] = /* @__PURE__ */ new Set();
+            _dirty[table].add(id);
+          }
+        });
+      });
+    }
+    function _trackDirtyNestedArray(table, cfg, oldState, newState) {
+      const oldRoot = oldState && oldState[cfg.statePath] || {};
+      const newRoot = newState && newState[cfg.statePath] || {};
+      Object.keys(newRoot).forEach(function(outerKey) {
+        const oldArr = Array.isArray(oldRoot[outerKey]) ? oldRoot[outerKey] : [];
+        const newArr = Array.isArray(newRoot[outerKey]) ? newRoot[outerKey] : [];
+        if (!newArr.length) return;
+        const oldById = {};
+        oldArr.forEach(function(row) {
+          const innerId = row && row[cfg.innerIdField];
+          if (innerId !== void 0 && innerId !== null) oldById[innerId] = JSON.stringify(row);
+        });
+        newArr.forEach(function(row) {
+          const innerId = row && row[cfg.innerIdField];
+          if (innerId === void 0 || innerId === null) return;
+          const id = outerKey + ":" + innerId;
+          const prevJSON = oldById[innerId];
+          if (prevJSON === void 0 || prevJSON !== JSON.stringify(row)) {
+            if (!_dirty[table]) _dirty[table] = /* @__PURE__ */ new Set();
+            _dirty[table].add(id);
+          }
+        });
+      });
+    }
+    function _persistDirtySnapshot() {
+      if (typeof DBService.writeDirty !== "function") return;
+      const snapshot = {};
+      Object.keys(_dirty).forEach(function(table) {
+        snapshot[table] = Array.from(_dirty[table]);
+      });
+      try {
+        DBService.writeDirty(snapshot);
+      } catch (e) {
+        console.warn("[AppStore] failed to persist dirty-tracking snapshot:", e);
+      }
+    }
+    function _dirtyIdStillExists(cfg, id) {
+      const root = _state && _state[cfg.statePath];
+      if (!root) return false;
+      const shape = cfg.shape || "array";
+      if (shape === "array") {
+        return Array.isArray(root) && root.some(function(row) {
+          return row && String(row[cfg.idField]) === String(id);
+        });
+      }
+      const sep = String(id).indexOf(":");
+      if (sep < 0) return false;
+      const outerKey = String(id).slice(0, sep);
+      const innerKey = String(id).slice(sep + 1);
+      const inner = root[outerKey];
+      if (!inner) return false;
+      if (shape === "nested") {
+        return Object.prototype.hasOwnProperty.call(inner, innerKey);
+      }
+      if (shape === "nestedArray") {
+        return Array.isArray(inner) && inner.some(function(row) {
+          return row && String(row[cfg.innerIdField]) === innerKey;
+        });
+      }
+      return false;
+    }
+    function _restoreDirtyFromStorage() {
+      if (typeof DBService.readDirty !== "function") return;
+      let snapshot = null;
+      try {
+        snapshot = DBService.readDirty();
+      } catch (e) {
+        console.warn("[AppStore] failed to read dirty-tracking snapshot; continuing with none pending.", e);
+        snapshot = null;
+      }
+      if (!snapshot || typeof snapshot !== "object") return;
+      Object.keys(_DELTA_TRACKED_SLICES).forEach(function(table) {
+        const ids = snapshot[table];
+        if (!Array.isArray(ids) || !ids.length) return;
+        const cfg = _DELTA_TRACKED_SLICES[table];
+        const validIds = ids.filter(function(id) {
+          return _dirtyIdStillExists(cfg, id);
+        });
+        if (validIds.length) _dirty[table] = new Set(validIds);
+      });
+    }
+    function _deepClone(obj) {
+      if (obj === null || typeof obj !== "object") return obj;
+      return JSON.parse(JSON.stringify(obj));
+    }
+    function _persist() {
+      _persistDirty = true;
+      if (_persistTimer) clearTimeout(_persistTimer);
+      _persistTimer = setTimeout(_flushNow, 300);
+    }
+    function _flushNow() {
+      if (!_persistDirty || _state === null) return;
+      try {
+        DBService.write(_state);
+        _persistDirty = false;
+        _persistDirtySnapshot();
+      } catch (e) {
+        console.error("[AppStore] _flushNow() failed:", e);
+      }
+      _persistTimer = null;
+    }
+    function _notify(event) {
+      const keys = Object.keys(_subscribers);
+      for (let i = 0; i < keys.length; i++) {
+        try {
+          _subscribers[keys[i]](_state, event || { type: "state:updated", payload: null });
+        } catch (e) {
+          console.error('[AppStore] subscriber "' + keys[i] + '" threw:', e);
+        }
+      }
+    }
+    async function init() {
+      if (typeof DBService.initRemote === "function") {
+        try {
+          await DBService.initRemote();
+        } catch (e) {
+          console.error("[AppStore] DBService.initRemote() failed; continuing with whatever local cache is available.", e);
+        }
+      }
+      try {
+        _state = DBService.read();
+        if (!_state || typeof _state !== "object") {
+          console.warn("[AppStore] init: DBService.read() returned empty; using DEFAULT_DB.");
+          _state = _deepClone(DEFAULT_DB);
+        }
+      } catch (e) {
+        console.error("[AppStore] init: failed to read DB, falling back to DEFAULT_DB.", e);
+        _state = _deepClone(DEFAULT_DB);
+      }
+      try {
+        _restoreDirtyFromStorage();
+      } catch (e) {
+        console.warn("[AppStore] init: failed to restore dirty-tracking snapshot; continuing with none pending.", e);
+      }
+      try {
+        window.DB = _deepClone(_state);
+        window.loadDB = function() {
+          var snapshot = _deepClone(_state);
+          window.DB = snapshot;
+          return snapshot;
+        };
+        window.saveDB = function() {
+          AppStore.syncFromLegacy(window.DB);
+        };
+        document.addEventListener("visibilitychange", function() {
+          if (document.visibilityState === "hidden") _flushNow();
+        });
+        window.addEventListener("pagehide", _flushNow);
+        window.addEventListener("online", function() {
+          _notify({ type: "connectivity:online", payload: null });
+        });
+        window.addEventListener("offline", function() {
+          _notify({ type: "connectivity:offline", payload: null });
+        });
+        console.log("[AppStore] Initialised. State keys:", Object.keys(_state).join(", "));
+      } catch (e) {
+        console.error("[AppStore] init: a setup step after DBService.read() threw. AppStore.ready will still resolve, but bridge/shims may be incomplete:", e);
+      }
+      if (_readyResolve) _readyResolve();
+    }
+    function updateState(mutationFn, event) {
+      if (typeof mutationFn !== "function") {
+        console.error("[AppStore] updateState: mutationFn must be a function.");
+        return;
+      }
+      const draft = _deepClone(_state);
+      mutationFn(draft);
+      _trackDirty(_state, draft);
+      _state = draft;
+      window.DB = _deepClone(_state);
+      _persist();
+      _notify(event || { type: "state:updated", payload: null });
+    }
+    function syncFromLegacy(dbOrEventType, eventType) {
+      var db, evtType;
+      if (dbOrEventType && typeof dbOrEventType === "object") {
+        db = dbOrEventType;
+        evtType = eventType;
+      } else {
+        evtType = dbOrEventType;
+        db = window.DB;
+      }
+      if (!db || typeof db !== "object") return;
+      var merged = _deepClone(db);
+      if (_state && typeof _state === "object") {
+        Object.keys(_state).forEach(function(key) {
+          if (!Object.prototype.hasOwnProperty.call(db, key)) {
+            merged[key] = _deepClone(_state[key]);
+          }
+        });
+      }
+      if (_state && Array.isArray(_state.classSections) && _state.classSections.length && !Object.prototype.hasOwnProperty.call(merged, "classSections")) {
+        console.error("[AppStore] syncFromLegacy: classSections would be wiped by this sync \u2014 regression in the AppStore-only-slice preservation logic. Investigate before this ships.");
+      }
+      _state = merged;
+      window.DB = _deepClone(_state);
+      if (evtType === "state:remote-sync" || evtType === "state:auth-change-sync") {
+        if (typeof DBService !== "undefined" && typeof DBService.mirrorLocalOnly === "function") {
+          DBService.mirrorLocalOnly(_state);
+        }
+      } else {
+        _persist();
+      }
+      _notify({ type: evtType || "state:legacy-sync", payload: null });
+    }
+    function getState() {
+      var snapshot = _deepClone(_state);
+      window.DB = snapshot;
+      return snapshot;
+    }
+    function getSlice(selectorFn) {
+      if (typeof selectorFn !== "function") return _deepClone(_state);
+      const subTree = selectorFn(_state);
+      return _deepClone(subTree);
+    }
+    function getStudent(studentId) {
+      if (!_state || !Array.isArray(_state.students)) return null;
+      const s = _state.students.find(function(st) {
+        return st.id === studentId;
+      });
+      return s ? _deepClone(s) : null;
+    }
+    function getBossEvent(idx) {
+      if (!_state || !Array.isArray(_state.bossEvents)) return null;
+      const b = _state.bossEvents[idx];
+      return b !== void 0 ? _deepClone(b) : null;
+    }
+    function subscribe(key, fn) {
+      if (typeof fn !== "function") {
+        console.error('[AppStore] subscribe: fn must be a function for key "' + key + '".');
+        return;
+      }
+      _subscribers[key] = fn;
+    }
+    function unsubscribe(key) {
+      delete _subscribers[key];
+    }
+    function flushNow() {
+      _flushNow();
+    }
+    function getDirtyIds(table) {
+      if (!_dirty[table]) return [];
+      return Array.from(_dirty[table]);
+    }
+    function clearDirty(table, ids) {
+      if (!_dirty[table] || !Array.isArray(ids)) return;
+      ids.forEach(function(id) {
+        _dirty[table].delete(id);
+      });
+      _persistDirtySnapshot();
+    }
+    const _readyPromise = new Promise(function(resolve) {
+      _readyResolve = resolve;
+    });
+    init();
+    function emit(event) {
+      if (!event || typeof event.type !== "string") {
+        console.error("[AppStore] emit: event must be an object with a string .type.");
+        return;
+      }
+      _notify(event);
+    }
+    return {
+      ready: _readyPromise,
+      // [NEW] await this before first loadDB()/saveDB() call
+      updateState,
+      syncFromLegacy,
+      getState,
+      getSlice,
+      getStudent,
+      getBossEvent,
+      subscribe,
+      unsubscribe,
+      flushNow,
+      emit,
+      getDirtyIds,
+      // [Phase 5B] delta sync — see _DELTA_TRACKED_SLICES above
+      clearDirty,
+      // [Phase 5B]
+      // Test-only seam (Phase 5B, mirrors db-service.js's own `_test.
+      // tableSyncConfigs` seam). Not used by any runtime call site. Exists so
+      // a CI test can assert AppStore's _DELTA_TRACKED_SLICES and
+      // db-service.js's _TABLE_SYNC_CONFIGS' `deltaTracked` entries never
+      // drift out of sync with each other — closes the "nothing enforces
+      // this" gap every Phase 5B log entry has flagged since point_log.
+      _test: {
+        deltaTrackedSlices: _DELTA_TRACKED_SLICES
+      }
+    };
+  })();
+
+  // src/topbar.js
+  function updateTopbar() {
+    if (!currentUser) return;
+    const coins = currentRole === "student" ? currentUser.coins : "-";
+    document.getElementById("topbar-coin-val").textContent = typeof coins === "number" ? coins.toLocaleString() : coins;
+    document.getElementById("topbar-coins").style.display = currentRole === "student" ? "flex" : "none";
+    const av = document.getElementById("topbar-av");
+    const init = currentRole === "student" ? currentUser.init : "MS";
+    const color = currentRole === "student" ? currentUser.color : "#ffb4ab";
+    av.textContent = init;
+    av.style.background = `linear-gradient(135deg,${color}44,${color}22)`;
+    av.style.color = color;
+    if (currentRole === "student") {
+      const st = currentUser;
+      const xpNext = (st.level + 1) * 1e3;
+      const pct = Math.min(100, Math.round(st.xp / xpNext * 100));
+      document.getElementById("sb-avatar").textContent = st.init;
+      document.getElementById("sb-avatar").style.cssText = `width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:14px;flex-shrink:0;border:2px solid ${st.color}55;background:${st.color}22;color:${st.color}`;
+      const nameParts = st.name.split(" ");
+      document.getElementById("sb-name").textContent = nameParts.length >= 2 ? nameParts[0] + " " + nameParts[1] : nameParts[0];
+      document.getElementById("sb-tier").textContent = `${st.tier} \xB7 Level ${st.level}`;
+      document.getElementById("sb-xp-fill").style.width = pct + "%";
+      document.getElementById("sb-xp-label").textContent = `${st.xp.toLocaleString()} XP`;
+      document.getElementById("sb-xp-next").textContent = `+${(xpNext - st.xp).toLocaleString()} to lv${st.level + 1}`;
+    } else {
+      const isAdmin = currentRole === "admin";
+      document.getElementById("sb-avatar").textContent = "MS";
+      document.getElementById("sb-avatar").style.cssText = "width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:14px;flex-shrink:0;border:2px solid rgba(255,180,171,0.3);background:rgba(255,180,171,0.12);color:#ffb4ab";
+      document.getElementById("sb-name").textContent = currentUser.name;
+      document.getElementById("sb-tier").textContent = isAdmin ? "Administrator" : "Teacher";
+      document.getElementById("sb-xp-fill").style.width = "100%";
+      document.getElementById("sb-xp-label").textContent = isAdmin ? "Admin Mode" : "Teacher Mode";
+      document.getElementById("sb-xp-next").textContent = "";
+    }
+    if (typeof wbcUpdateTopbarWidget === "function") wbcUpdateTopbarWidget();
+    if (typeof refreshAllAvatars === "function") refreshAllAvatars();
+    if (typeof NotificationService !== "undefined") NotificationService.refresh();
+  }
+  var SIDEBAR_COLLAPSE_KEY = "eq_sidebar_collapsed";
+  function toggleSidebar() {
+    if (window.innerWidth <= 1024) {
+      document.getElementById("sidebar").classList.toggle("open");
+      return;
+    }
+    const collapsed = document.getElementById("main-app").classList.toggle("sidebar-collapsed");
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSE_KEY, collapsed ? "1" : "0");
+    } catch (e) {
+    }
+  }
+  function restoreSidebarState() {
+    if (window.innerWidth <= 1024) return;
+    let collapsed = false;
+    try {
+      collapsed = localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
+    } catch (e) {
+    }
+    document.getElementById("main-app").classList.toggle("sidebar-collapsed", collapsed);
+  }
+  window.toggleSidebar = toggleSidebar;
+  window.updateTopbar = updateTopbar;
+  window.restoreSidebarState = restoreSidebarState;
+
+  // src/modules/shared/reward-presenter.js
+  (function() {
+    const style = document.createElement("style");
+    style.textContent = `
+
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+   UNIVERSAL REWARD PRESENTATION OVERLAY
+   \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+#eq-reward-overlay {
+  position:fixed;inset:0;z-index:8000;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(4,3,14,0.92);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  animation:eqrFadeIn .3s ease forwards;
+  padding:20px;
+}
+@keyframes eqrFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes eqrFadeOut{from{opacity:1}to{opacity:0}}
+
+.eqr-panel {
+  background:rgba(22,18,40,0.98);
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,0.1);
+  width:100%;max-width:480px;
+  max-height:92vh;
+  position:relative;overflow:hidden;
+  animation:eqrPanelIn .45s cubic-bezier(.17,.67,.34,1.3) forwards;
+  box-shadow:0 0 60px rgba(139,92,246,0.2),0 40px 80px rgba(0,0,0,0.6);
+}
+.eqr-panel-scroll {
+  max-height:88vh;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.08) transparent;
+}
+@keyframes eqrPanelIn{from{transform:scale(.8) translateY(30px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+
+/* Animated top strip */
+.eqr-strip {
+  height:4px;width:100%;
+  background:linear-gradient(90deg,#8b5cf6,#EC4899,#ffb95f,#4edea3,#8b5cf6);
+  background-size:200% 100%;
+  animation:eqrStrip 2s linear infinite;
+}
+@keyframes eqrStrip{0%{background-position:0% 0}100%{background-position:200% 0}}
+
+/* Canvas for particle effects */
+.eqr-canvas {
+  position:absolute;inset:0;width:100%;height:100%;
+  pointer-events:none;z-index:0;border-radius:24px;overflow:hidden;
+}
+
+.eqr-body { position:relative;z-index:1;padding:32px; }
+
+/* Source label */
+.eqr-source-label {
+  font-family:var(--fm);font-size:9px;letter-spacing:.18em;
+  color:rgba(208,188,255,.5);text-transform:uppercase;
+  text-align:center;margin-bottom:16px;
+}
+
+/* Icon area */
+.eqr-icon-wrap {
+  width:80px;height:80px;border-radius:20px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:44px;margin:0 auto 18px;
+  position:relative;
+  animation:eqrIconBounce .6s cubic-bezier(.17,.67,.34,1.4) .2s both;
+}
+@keyframes eqrIconBounce{from{transform:scale(0) rotate(-15deg)}to{transform:scale(1) rotate(0)}}
+
+.eqr-icon-ring {
+  position:absolute;inset:-6px;border-radius:26px;
+  border:2px solid;
+  animation:eqrRingPulse 2s ease-in-out infinite;
+}
+@keyframes eqrRingPulse{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:.8;transform:scale(1.04)}}
+.eqr-icon-ring2 {
+  position:absolute;inset:-14px;border-radius:34px;
+  border:1px solid;
+  opacity:.3;
+  animation:eqrRingPulse 2s ease-in-out .4s infinite;
+}
+
+/* Rarity badge */
+.eqr-rarity-badge {
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 12px;border-radius:20px;
+  font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:.1em;
+  margin:0 auto 12px;
+}
+
+/* Title & subtitle */
+.eqr-title {
+  font-family:var(--fh);font-size:26px;font-weight:900;
+  color:var(--on-surface);text-align:center;
+  line-height:1.2;margin-bottom:6px;letter-spacing:-.5px;
+}
+.eqr-subtitle {
+  font-size:13px;color:var(--text-muted);
+  text-align:center;margin-bottom:24px;line-height:1.5;
+}
+
+/* Divider */
+.eqr-divider {
+  height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);
+  margin-bottom:20px;
+}
+
+/* Rewards section */
+.eqr-rewards-label {
+  font-family:var(--fm);font-size:9px;letter-spacing:.14em;
+  color:rgba(208,188,255,.5);text-align:center;margin-bottom:14px;
+}
+.eqr-rewards-grid {
+  display:flex;gap:10px;justify-content:center;flex-wrap:wrap;
+  margin-bottom:24px;
+  padding:4px 2px;
+}
+.eqr-reward-card {
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:14px;padding:14px 16px;
+  text-align:center;min-width:90px;flex:1;max-width:130px;
+  animation:eqrCardIn .5s cubic-bezier(.17,.67,.34,1.3) both;
+  position:relative;overflow:hidden;
+}
+.eqr-reward-card.eqr-reward-title {
+  min-width:180px;max-width:280px;flex:0 0 auto;
+  background:rgba(236,72,153,.08);
+  border-color:rgba(236,72,153,.3);
+}
+.eqr-reward-card::after {
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(255,255,255,.03),transparent);
+  pointer-events:none;
+}
+@keyframes eqrCardIn{from{transform:translateY(20px) scale(.8);opacity:0}to{transform:none;opacity:1}}
+.eqr-reward-card:nth-child(1){animation-delay:.2s}
+.eqr-reward-card:nth-child(2){animation-delay:.3s}
+.eqr-reward-card:nth-child(3){animation-delay:.4s}
+.eqr-reward-card:nth-child(4){animation-delay:.5s}
+.eqr-reward-card:nth-child(5){animation-delay:.6s}
+
+.eqr-reward-icon {font-size:28px;line-height:1;margin-bottom:8px;display:block}
+.eqr-reward-amount {
+  font-family:var(--fh);font-size:20px;font-weight:900;
+  display:block;margin-bottom:3px;
+}
+.eqr-reward-label {
+  font-size:9px;color:var(--text-muted);font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;
+}
+
+/* "Nothing to claim" state */
+.eqr-no-rewards {
+  text-align:center;padding:8px 0 16px;
+  font-size:13px;color:var(--text-muted);
+  animation:eqrCardIn .5s ease .2s both;
+}
+
+/* Claim button */
+.eqr-claim-btn {
+  width:100%;padding:14px;border-radius:14px;
+  border:none;cursor:pointer;
+  font-family:var(--fh);font-size:15px;font-weight:900;
+  letter-spacing:.04em;color:#fff;
+  transition:all .18s;position:relative;overflow:hidden;
+  animation:eqrCardIn .4s ease .6s both;
+}
+.eqr-claim-btn::after {
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent);
+  transform:translateX(-100%);transition:transform .5s;
+}
+.eqr-claim-btn:hover::after{transform:translateX(100%)}
+.eqr-claim-btn:hover{transform:translateY(-2px);box-shadow:var(--eqr-btn-glow)}
+.eqr-claim-btn:active{transform:translateY(0)}
+
+/* Confetti particle */
+.eqr-confetti {
+  position:absolute;width:8px;height:8px;border-radius:2px;
+  pointer-events:none;z-index:2;
+  animation:eqrConfettiFall linear both;
+}
+@keyframes eqrConfettiFall {
+  0%{transform:translateY(-10px) rotate(0deg);opacity:1}
+  100%{transform:translateY(600px) rotate(720deg);opacity:0}
+}
+
+/* Shine streak on panel */
+.eqr-shine {
+  position:absolute;top:0;left:-60%;width:40%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.04),transparent);
+  transform:skewX(-20deg);pointer-events:none;z-index:2;
+  animation:eqrShine 2.5s ease-in-out 0.8s both;
+}
+@keyframes eqrShine{0%{left:-60%}50%{left:130%}100%{left:130%}}`;
+    document.head.appendChild(style);
+  })();
+  AppStore.subscribe("reward-presenter-boot-badges", function(state, event) {
+    if (event.type !== "session:booted") return;
+    if (currentRole === "student" && currentUser) {
+      setTimeout(() => {
+        mailUpdateSidebarBadge();
+        achUpdateSidebarBadge();
+      }, 400);
+    }
+  });
+  AppStore.subscribe("reward-presenter-nav-badges", function(state, event) {
+    if (event.type !== "nav:navigated") return;
+    if (currentRole === "student") {
+      setTimeout(() => {
+        mailUpdateSidebarBadge();
+        achUpdateSidebarBadge();
+      }, 150);
+    }
+  });
+  console.log("[EduQuest] shared/reward-presenter.js loaded \u2014 eqRewardPresent, _eqrRunParticles, EQR_RARITY_COLORS, EQR_SOURCE_LABELS registered. Subscribers: session:booted, nav:navigated (badge refresh).");
+
+  // src/modules/mail/student-inbox.js
+  var renderStudentMail = function() {
+    const sid = currentUser.id;
+    const msgs = mailGetForStudent(sid);
+    const unread = msgs.filter((m) => !mailIsRead(m, sid)).length;
+    const unclaimedRewards = msgs.filter((m) => m.hasReward && !mailIsClaimed(m, sid)).length;
+    const mailTypeIcons = { announcement: "\u{1F4E2}", reward: "\u{1F381}", gift: "\u{1F380}", event: "\u{1F389}", title: "\u{1F396}\uFE0F", compensation: "\u{1F48E}", general: "\u{1F4EC}" };
+    console.log("[Mail] Rendering student mail. Total:", msgs.length, "Unread:", unread, "Unclaimed:", unclaimedRewards);
+    msgs.forEach((m, idx) => {
+      console.log(`[Mail] ${idx}: ${m.id} - Claimed: ${mailIsClaimed(m, sid)} - HasReward: ${m.hasReward}`);
+    });
+    document.getElementById("s-mail").innerHTML = `
+  <div class="page-hero" style="background:linear-gradient(135deg,#0d1525,#1a0a2e)">
+    <div class="page-hero-bg"></div>
+    <div style="position:relative;z-index:1">
+      <div class="page-hero-label">\u{1F4EC} INBOX // MESSAGES</div>
+      <h1 style="font-size:30px;font-family:var(--fh);font-weight:900">Mail</h1>
+      <p>Messages from your teacher, including announcements and special rewards.</p>
+      <div class="page-hero-stats">
+        <div class="hero-stat-pill"><div class="val" style="color:var(--primary)">${msgs.length}</div><div class="lbl">Messages</div></div>
+        <div class="hero-stat-pill"><div class="val" style="color:${unread > 0 ? "#EC4899" : "var(--secondary)"}">${unread}</div><div class="lbl">Unread</div></div>
+        <div class="hero-stat-pill"><div class="val" style="color:var(--tertiary)">${unclaimedRewards}</div><div class="lbl">Rewards</div></div>
+      </div>
+    </div>
+  </div>
+
+  ${unclaimedRewards > 0 ? `
+  <div style="background:linear-gradient(135deg,rgba(255,185,95,.1),rgba(236,72,153,.07));border:1px solid rgba(255,185,95,.3);border-radius:14px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <div style="font-size:24px">\u{1F381}</div>
+    <div style="flex:1">
+      <div style="font-family:var(--fh);font-size:14px;font-weight:900;color:var(--tertiary)">${unclaimedRewards} Unclaimed Mail Reward${unclaimedRewards > 1 ? "s" : ""}</div>
+      <div style="font-size:12px;color:var(--text-muted)">Open the mail items below to claim your rewards.</div>
+    </div>
+  </div>` : ""}
+
+  ${msgs.length === 0 ? `
+  <div class="mail-empty">
+    <div class="mail-empty-icon">\u{1F4ED}</div>
+    <div class="mail-empty-title">Your inbox is empty</div>
+    <div class="mail-empty-sub">Messages from your teacher will appear here.</div>
+  </div>` : `
+  <div class="mail-list" id="mail-list">
+    ${msgs.map((m) => {
+      const isRead = mailIsRead(m, sid);
+      const isClaimed = mailIsClaimed(m, sid);
+      const icon = mailTypeIcons[m.type] || "\u{1F4EC}";
+      const timeStr = new Date(m.sentAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      return `<div class="mail-item${isRead ? "" : " unread"}" onclick="mailOpenDetail('${m.id}')">
+        <div class="mail-item-icon">${icon}</div>
+        <div class="mail-item-body">
+          <div class="mail-item-from">
+            <span class="material-symbols-outlined" style="font-size:12px">school</span>
+            ${_esc(m.sender || "Teacher")}
+          </div>
+          <div class="mail-item-subject">${_esc(m.subject)}</div>
+          <div class="mail-item-preview">${_esc((m.body || "").slice(0, 80))}${(m.body || "").length > 80 ? "\u2026" : ""}</div>
+        </div>
+        <div class="mail-item-meta">
+          <span class="mail-item-time">${timeStr}</span>
+          ${m.hasReward && !isClaimed ? '<span class="mail-has-reward">\u{1F381} REWARD</span>' : ""}
+          ${!isRead ? '<div class="mail-unread-dot"></div>' : ""}
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`}`;
+    mailUpdateSidebarBadge();
+  };
+
+  // src/pull-mappers.js
+  var _HISTORY_LIMITS = {
+    point_log: 500,
+    redemptions: 300,
+    recitation_log: 300,
+    attendance_logs: 500,
+    mail_messages: 300,
+    orders: 300,
+    quiz_history: 500,
+    notifications: 100
+  };
+  function _deriveStudents(profilesData, quizHistoryByStudent) {
+    const qh = quizHistoryByStudent || {};
+    return (profilesData || []).filter((p) => p.role === "student").map((p) => ({
+      id: p.id,
+      pass: p.pass,
+      name: p.display_name,
+      init: p.init,
+      color: p.color,
+      xp: p.xp,
+      coins: p.coins,
+      level: p.level,
+      tier: p.tier,
+      attendance: Number(p.attendance_pct) || 0,
+      quizAvg: Number(p.quiz_avg) || 0,
+      firstName: p.first_name,
+      lastName: p.last_name,
+      displayName: p.display_name,
+      profilePic: p.profile_pic_url,
+      joinDate: p.join_date,
+      classId: p.class_id || "default-class",
+      // Phase 63 completedQuizzes — built from the already-shaped
+      // quizHistoryByStudent map (id: [{quizId, aborted, ...}]) rather
+      // than raw quiz_history rows, so this same function works whether
+      // the caller just did a fresh quiz_history pull (full pull) or is
+      // reusing the existing cached quizHistory slice unchanged (scoped
+      // 'profiles' group refresh, where quiz_history itself didn't change).
+      completedQuizzes: Array.from(new Set(
+        (qh[p.id] || []).filter((h) => !h.aborted).map((h) => h.quizId)
+      ))
+    }));
+  }
+  function _deriveAdmin(profilesData, previousAdmin) {
+    const adminRow = (profilesData || []).find((p) => p.role === "admin" || p.role === "teacher");
+    return adminRow ? {
+      id: adminRow.id,
+      name: adminRow.display_name,
+      role: "Teacher",
+      pass: previousAdmin?.pass ?? (typeof DEFAULT_DB !== "undefined" ? DEFAULT_DB.admin?.pass : "admin123")
+    } : previousAdmin ?? (typeof DEFAULT_DB !== "undefined" ? DEFAULT_DB.admin : null);
+  }
+  function _deriveEquippedTitles(profilesData) {
+    const equippedTitles = {};
+    (profilesData || []).forEach((p) => {
+      if (p.role === "student" && p.equipped_title_id) equippedTitles[p.id] = p.equipped_title_id;
+    });
+    return equippedTitles;
+  }
+  function _deriveBossEvents(bossEventsData, lootClaimsData) {
+    const bossIdById = {};
+    const bossEventsArr = (bossEventsData || []).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).map((b, idx) => {
+      bossIdById[b.id] = idx;
+      return {
+        _id: b.id,
+        // kept so writes can map back; never read by legacy code
+        classId: b.class_id || "default-class",
+        // Phase 14: section ownership
+        name: b.name,
+        description: b.description,
+        image: b.image,
+        maxHp: b.max_hp,
+        currentHp: b.current_hp,
+        status: b.status,
+        startDate: b.start_date,
+        endDate: b.end_date,
+        defeatedAt: b.defeated_at ? Date.parse(b.defeated_at) : null,
+        // Phase 26: was raw string, unlike its sibling timestamps
+        endedAt: b.ended_at ? Date.parse(b.ended_at) : null,
+        // Phase 24: was local-only before
+        xpReward: b.xp_reward,
+        coinReward: b.coin_reward,
+        participationReward: b.participation_reward,
+        victoryReward: b.victory_reward,
+        defeatNarrTitle: b.defeat_narr_title,
+        defeatNarrText: b.defeat_narr_text,
+        victoryTitle: b.victory_title,
+        victoryMessage: b.victory_message,
+        lootRewards: b.loot_rewards || [],
+        lootDuration: b.loot_duration_sec,
+        lootStartedAt: b.loot_started_at ? Date.parse(b.loot_started_at) : null,
+        lootFinalizedAt: b.loot_finalized_at ? Date.parse(b.loot_finalized_at) : null,
+        // Phase 46: advanced admin-config fields — previously never left
+        // the browser tab that set them (see phase46_boss_advanced_settings_sync.sql
+        // for the full story). Plain passthrough, same shape the modules
+        // already read/write locally.
+        bossQuestions: b.boss_questions || [],
+        minionSettings: b.minion_settings || {},
+        combatSettings: b.combat_settings || {},
+        skills: b.skills || {},
+        skillFireMode: b.skill_fire_mode || void 0,
+        skillIntervalMin: b.skill_interval_min || void 0,
+        skillIntervalMax: b.skill_interval_max || void 0,
+        rageSettings: b.rage_settings || {},
+        phases: b.phases || [],
+        lootClaims: (lootClaimsData || []).filter((c) => c.boss_id === b.id).map((c) => ({
+          id: c.id,
+          rewardId: c.reward_id,
+          itemName: c.item_name,
+          rarity: c.rarity,
+          studentId: c.student_id,
+          claimedAt: Date.parse(c.claimed_at),
+          classId: c.class_id || "default-class",
+          // Phase 14: section ownership
+          // Phase 44: claim_loot_reward() RPC now actually persists these —
+          // restore them so the claim feed shows real names/colors after a
+          // refresh instead of falling back to "Student" placeholders.
+          studentName: c.student_name,
+          studentInit: c.student_init,
+          studentColor: c.student_color
+        })),
+        createdAt: b.created_at ? Date.parse(b.created_at) : null
+      };
+    });
+    return { bossEventsArr, bossIdById };
+  }
+  function _deriveBossParticipants(bossParticipantsData, bossIdById) {
+    const bossParticipantsObj = {};
+    (bossParticipantsData || []).forEach((row) => {
+      const idx = bossIdById[row.boss_id];
+      if (idx === void 0) return;
+      if (!bossParticipantsObj[idx]) bossParticipantsObj[idx] = {};
+      bossParticipantsObj[idx][row.student_id] = {
+        studentId: row.student_id,
+        classId: row.class_id || "default-class",
+        // Phase 14: section ownership
+        totalDamage: row.total_damage,
+        correctAnswers: row.correct_answers,
+        wrongAnswers: row.wrong_answers,
+        critHits: row.crit_hits,
+        minionsDefeated: row.minions_defeated,
+        joinTime: row.joined_at ? Date.parse(row.joined_at) : null,
+        lastQIdx: row.last_question_idx
+      };
+    });
+    return bossParticipantsObj;
+  }
+  function _deriveAchievements(achievementsData) {
+    return (achievementsData || []).filter((a) => !a.is_starter_template).map((a) => ({
+      id: a.id,
+      ownerTeacherId: a.owner_teacher_id,
+      // Phase 32: catalog owner scoping
+      name: a.name,
+      description: a.description,
+      icon: a.icon,
+      category: a.category,
+      rarity: a.rarity,
+      xpReward: a.xp_reward,
+      coinReward: a.coin_reward,
+      triggerType: a.trigger_type,
+      triggerValue: a.trigger_value,
+      active: a.active
+    }));
+  }
+  function _deriveAchievementUnlocks(userAchievementsData) {
+    const achievementUnlocks = {};
+    (userAchievementsData || []).forEach((u) => {
+      if (!achievementUnlocks[u.student_id]) achievementUnlocks[u.student_id] = [];
+      achievementUnlocks[u.student_id].push({
+        achId: u.achievement_id,
+        unlockedAt: u.unlocked_at,
+        xpGranted: u.xp_granted,
+        coinsGranted: u.coins_granted,
+        claimed: u.claimed,
+        claimedAt: u.claimed_at,
+        classId: u.class_id || "default-class"
+        // Phase 14: section ownership
+      });
+    });
+    return achievementUnlocks;
+  }
+  function _deriveTitles(titlesData) {
+    return (titlesData || []).filter((t) => !t.is_starter_template).map((t) => ({
+      id: t.id,
+      ownerTeacherId: t.owner_teacher_id,
+      // Phase 32: catalog owner scoping
+      name: t.name,
+      description: t.description,
+      icon: t.icon,
+      rarity: t.rarity,
+      active: t.active !== false,
+      achievementId: t.achievement_id,
+      textColor: t.text_color,
+      borderColor: t.border_color,
+      glowColor: t.glow_color,
+      bgColor: t.bg_color,
+      primaryColor: t.primary_color,
+      secondaryColor: t.secondary_color,
+      gradientFrom: t.gradient_from,
+      gradientTo: t.gradient_to,
+      borderStyle: t.border_style,
+      animation: t.animation,
+      particles: t.particles,
+      bgEffect: t.bg_effect,
+      customBorderCSS: t.custom_border_css,
+      customAnimationCSS: t.custom_animation_css,
+      customBgCSS: t.custom_bg_css,
+      createdAt: t.created_at,
+      frameShape: t.frame_shape || "classic",
+      frameStyle: t.frame_style || "none",
+      accentColor: t.accent_color,
+      effect: t.effect || "none",
+      frameTemplate: t.frame_template || "solid"
+    }));
+  }
+  function _deriveTitleUnlocks(titleUnlocksData) {
+    const titleUnlocksObj = {};
+    (titleUnlocksData || []).forEach((u) => {
+      if (!titleUnlocksObj[u.student_id]) titleUnlocksObj[u.student_id] = [];
+      titleUnlocksObj[u.student_id].push(u.title_id);
+    });
+    return titleUnlocksObj;
+  }
+  function _deriveTitleSectionAssignments(titleSectionsData) {
+    const titleSectionAssignments = {};
+    (titleSectionsData || []).forEach((row) => {
+      if (!titleSectionAssignments[row.title_id]) titleSectionAssignments[row.title_id] = [];
+      titleSectionAssignments[row.title_id].push(row.class_id);
+    });
+    return titleSectionAssignments;
+  }
+  function _deriveQuizzes(quizzesData) {
+    return (quizzesData || []).filter((q) => !q.is_starter_template).map((q) => ({
+      id: q.id,
+      ownerTeacherId: q.owner_teacher_id,
+      // Phase 32: catalog owner scoping
+      title: q.title,
+      desc: q.description,
+      xpReward: q.xp_reward,
+      coinReward: q.coin_reward,
+      timeLimit: q.time_limit,
+      rarity: q.rarity || "Common",
+      cadence: q.cadence || "standing",
+      chainId: q.chain_id || null,
+      chainOrder: q.chain_order || 1,
+      chainLabel: q.chain_label || "",
+      startDate: q.start_date || null,
+      endDate: q.end_date || null,
+      stageTimers: Array.isArray(q.stage_timers) ? q.stage_timers : [null, null, null],
+      questions: q.questions || [],
+      active: q.active !== false,
+      createdAt: q.created_at
+    }));
+  }
+  function _deriveCampaignWorlds(campaignWorldsData) {
+    return (campaignWorldsData || []).filter((w) => !w.is_starter_template).map((w) => ({
+      id: w.id,
+      ownerTeacherId: w.owner_teacher_id,
+      // Phase 32: catalog owner scoping
+      label: w.label,
+      icon: w.icon,
+      color: w.color,
+      desc: w.description,
+      stages: w.stages || []
+    }));
+  }
+  function _deriveCampaignSectionAssignments(campaignStageSectionsData, campaignWorldsArr) {
+    const worldIdByStageId = {};
+    (campaignWorldsArr || []).forEach((w) => (w.stages || []).forEach((s) => {
+      worldIdByStageId[s.id] = w.id;
+    }));
+    const campaignSectionAssignments = {};
+    (campaignStageSectionsData || []).forEach((row) => {
+      const worldId = worldIdByStageId[row.stage_id];
+      if (!worldId) return;
+      if (!campaignSectionAssignments[worldId]) campaignSectionAssignments[worldId] = [];
+      if (!campaignSectionAssignments[worldId].includes(row.class_id)) campaignSectionAssignments[worldId].push(row.class_id);
+    });
+    return campaignSectionAssignments;
+  }
+  function _deriveMail(mailMessagesData, profilesData, titlesArr) {
+    const mailByBatch = {};
+    (mailMessagesData || []).forEach((row) => {
+      const batchId = row.batch_id || row.id;
+      if (!mailByBatch[batchId]) {
+        const senderProfile = (profilesData || []).find((p) => p.id === row.sender_teacher_id);
+        const rewards = [];
+        if (row.xp_reward) rewards.push({ type: "xp", amount: row.xp_reward, icon: "\u26A1", label: "XP", color: "var(--primary)" });
+        if (row.coin_reward) rewards.push({ type: "coins", amount: row.coin_reward, icon: "\u{1FA99}", label: "Coins", color: "var(--tertiary)" });
+        if (row.title_reward_id) {
+          const t = (titlesArr || []).find((x) => x.id === row.title_reward_id);
+          rewards.push({ type: "title", amount: 1, icon: t && t.icon || "\u{1F396}\uFE0F", label: t && t.name || "Title", color: "#EC4899", titleId: row.title_reward_id });
+        }
+        mailByBatch[batchId] = {
+          id: batchId,
+          subject: row.subject,
+          body: row.body,
+          type: row.mail_type || "general",
+          sender: senderProfile ? senderProfile.display_name : "Teacher",
+          hasReward: !!(row.xp_reward || row.coin_reward || row.title_reward_id),
+          rewards,
+          to: [],
+          sentAt: row.created_at,
+          readBy: {},
+          claimedBy: {},
+          rowIdBySid: {}
+        };
+      }
+      mailByBatch[batchId].to.push(row.recipient_student_id);
+      mailByBatch[batchId].readBy[row.recipient_student_id] = !!row.read;
+      mailByBatch[batchId].claimedBy[row.recipient_student_id] = !!row.claimed;
+      mailByBatch[batchId].rowIdBySid[row.recipient_student_id] = row.id;
+    });
+    return Object.values(mailByBatch);
+  }
+  function _deriveQuizSectionAssignments(quizSectionsData) {
+    const quizSectionAssignments = {};
+    (quizSectionsData || []).forEach((row) => {
+      if (!quizSectionAssignments[row.quiz_id]) quizSectionAssignments[row.quiz_id] = [];
+      quizSectionAssignments[row.quiz_id].push(row.class_id);
+    });
+    return quizSectionAssignments;
+  }
+  function _deriveAchievementSectionAssignments(achievementSectionsData) {
+    const achievementSectionAssignments = {};
+    (achievementSectionsData || []).forEach((row) => {
+      if (!achievementSectionAssignments[row.achievement_id]) achievementSectionAssignments[row.achievement_id] = [];
+      achievementSectionAssignments[row.achievement_id].push(row.class_id);
+    });
+    return achievementSectionAssignments;
+  }
+  function _deriveInventory(inventoryRowsData) {
+    const inventoryByStudent = {};
+    (inventoryRowsData || []).forEach((row) => {
+      if (!inventoryByStudent[row.student_id]) inventoryByStudent[row.student_id] = [];
+      inventoryByStudent[row.student_id].push({
+        itemId: row.item_id,
+        itemName: row.item_name,
+        emoji: row.emoji,
+        category: row.category,
+        quantity: row.quantity,
+        datePurchased: row.date_purchased,
+        lastPurchased: row.last_purchased,
+        source: row.source,
+        status: row.status,
+        usedAt: row.used_at
+      });
+    });
+    return inventoryByStudent;
+  }
+  function _deriveQuizHistory(quizHistoryRowsData) {
+    const quizHistoryByStudent = {};
+    const completedQuizzesByStudent = {};
+    (quizHistoryRowsData || []).forEach((row) => {
+      if (!quizHistoryByStudent[row.student_id]) quizHistoryByStudent[row.student_id] = [];
+      quizHistoryByStudent[row.student_id].push({
+        id: row.id,
+        quizId: row.quiz_id,
+        score: row.score,
+        attempt: row.attempt,
+        completedAt: row.completed_at,
+        date: row.date_label,
+        results: Array.isArray(row.question_results) ? row.question_results : void 0,
+        aborted: !!row.aborted
+      });
+      if (!row.aborted) {
+        if (!completedQuizzesByStudent[row.student_id]) completedQuizzesByStudent[row.student_id] = /* @__PURE__ */ new Set();
+        completedQuizzesByStudent[row.student_id].add(row.quiz_id);
+      }
+    });
+    return { quizHistoryByStudent, completedQuizzesByStudent };
+  }
+  function _deriveStudentSkills(studentSkillRowsData) {
+    const studentSkillsObj = {};
+    (studentSkillRowsData || []).forEach((row) => {
+      studentSkillsObj[row.student_id] = {
+        hint: row.hint_count || 0,
+        heal: row.heal_count || 0,
+        shield: row.shield_count || 0
+      };
+    });
+    return studentSkillsObj;
+  }
+  function _derivePointLog(pointLogData) {
+    return (pointLogData || []).map((p) => ({
+      id: p.id,
+      studentId: p.student_id,
+      what: p.what,
+      pts: p.pts,
+      when: p.when_label,
+      createdAt: p.created_at
+    }));
+  }
+  function _deriveRedemptions(redemptionsData) {
+    return (redemptionsData || []).map((r) => ({
+      orderId: r.order_id,
+      studentId: r.student_id,
+      itemId: r.item_id,
+      itemName: r.item_name,
+      emoji: r.emoji,
+      item: r.item_label,
+      pts: r.pts,
+      date: r.date_label,
+      time: r.time_label,
+      claimCode: r.claim_code,
+      createdAt: r.created_at
+    }));
+  }
+  function _deriveOrders(ordersData) {
+    return (ordersData || []).map((o) => ({
+      orderId: o.order_id,
+      claimCode: o.claim_code,
+      studentId: o.student_id,
+      studentName: o.student_name,
+      studentInit: o.student_init,
+      studentColor: o.student_color,
+      itemId: o.item_id,
+      itemName: o.item_name,
+      emoji: o.emoji,
+      cost: o.cost,
+      category: o.category,
+      status: o.status,
+      createdAt: o.created_at,
+      createdDateStr: o.created_date_str,
+      claimedAt: o.claimed_at ? Date.parse(o.claimed_at) : null,
+      claimedBy: o.claimed_by,
+      cancelledAt: o.cancelled_at ? Date.parse(o.cancelled_at) : null,
+      cancelReason: o.cancel_reason,
+      cancelledBy: o.cancelled_by
+    }));
+  }
+  function _deriveNotifications(notificationsData) {
+    return (notificationsData || []).map((n) => ({
+      id: n.id,
+      studentId: n.student_id,
+      type: n.type,
+      icon: n.icon,
+      title: n.title,
+      body: n.body,
+      action: n.action,
+      pts: n.pts,
+      sourceId: n.source_id,
+      read: n.read,
+      createdAt: n.created_at
+    }));
+  }
+  function _deriveRecitationLog(recitationLogData) {
+    return (recitationLogData || []).map((r) => ({
+      id: r.id,
+      studentId: r.student_id,
+      pts: r.pts,
+      note: r.note,
+      when: r.when_label,
+      classId: r.class_id || null,
+      createdAt: r.created_at || null
+    }));
+  }
+  function _deriveRecitationSessions(recitationSessionsData) {
+    return (recitationSessionsData || []).map((s) => ({
+      id: s.id,
+      classId: s.class_id,
+      startedBy: s.started_by,
+      startedAt: s.started_at,
+      endedAt: s.ended_at || null,
+      isActive: !!s.is_active
+    }));
+  }
+  function _deriveRfidCards(rfidCardsData) {
+    return (rfidCardsData || []).map((c) => ({
+      id: c.id,
+      tagId: c.tag_id,
+      studentId: c.student_id,
+      isActive: c.is_active,
+      assignedAt: c.assigned_at,
+      revokedAt: c.revoked_at
+    }));
+  }
+  function _deriveAttendanceSchedules(attendanceSchedulesData) {
+    return (attendanceSchedulesData || []).map((s) => ({
+      id: s.id,
+      classId: s.class_id,
+      dayOfWeek: s.day_of_week ?? 0,
+      dayOff: !!s.day_off,
+      openTime: s.open_time,
+      startTime: s.start_time,
+      lateCutoff: s.late_cutoff,
+      closeTime: s.close_time,
+      active: s.active
+    }));
+  }
+  function _deriveAttendanceLogs(attendanceLogsData) {
+    return (attendanceLogsData || []).map((a) => ({
+      id: a.id,
+      studentId: a.student_id,
+      classId: a.class_id,
+      logDate: a.log_date,
+      status: a.status,
+      scannedAt: a.scanned_at,
+      entryMethod: a.entry_method,
+      rfidTag: a.rfid_tag,
+      recordedBy: a.recorded_by,
+      notes: a.notes
+    }));
+  }
+  function _deriveStore(shopProductsData) {
+    return (shopProductsData || []).filter((p) => !p.is_starter_template).map((p) => ({
+      id: p.id,
+      ownerTeacherId: p.owner_teacher_id,
+      name: p.name,
+      emoji: p.emoji,
+      desc: p.description,
+      cat: p.category,
+      cost: p.cost,
+      stock: p.stock,
+      active: p.active,
+      addedAt: p.created_at
+    }));
+  }
+  function _deriveRegistrations(registrationsData) {
+    return (registrationsData || []).sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at)).map((r) => ({
+      id: r.id,
+      firstName: r.first_name,
+      lastName: r.last_name,
+      username: r.username,
+      email: r.email,
+      studentId: r.student_id_text,
+      gradeLevel: r.grade_level,
+      section: r.section,
+      classId: r.class_id,
+      // Phase 33
+      status: r.status,
+      submittedAt: r.submitted_at,
+      reviewedAt: r.reviewed_at,
+      reviewedBy: r.reviewed_by,
+      rejectionReason: r.rejection_reason,
+      approvedStudentId: r.approved_student_id
+    }));
+  }
+
+  // src/realtime-groups.js
+  var _REALTIME_TABLE_GROUPS = {
+    profiles: "profiles",
+    boss_events: "raid",
+    boss_participants: "raid",
+    loot_claims: "raid",
+    achievements: "achievements",
+    user_achievements: "achievements",
+    point_log: "pointLog",
+    recitation_log: "recitationLog",
+    rfid_cards: "rfidCards",
+    attendance_logs: "attendanceLogs",
+    mail_messages: "mail",
+    quiz_sections: "quizSectionAssignments",
+    achievement_sections: "achievementSectionAssignments",
+    titles: "titles",
+    title_unlocks: "titles",
+    title_sections: "titles",
+    quizzes: "quizzes",
+    campaign_worlds: "campaign",
+    campaign_stage_sections: "campaign",
+    orders: "orders",
+    inventory: "inventory",
+    quiz_history: "quizHistory",
+    notifications: "notifications",
+    student_skills: "studentSkills",
+    recitation_sessions: "recitationSessions"
+    // Phase 71
+  };
+  var _REFRESH_GROUPS = {
+    profiles: {
+      fetch: async (client) => ({ profiles: await client.from("profiles").select("*") }),
+      apply: (raw, cache) => ({
+        students: _deriveStudents(raw.profiles.data, cache.quizHistory),
+        admin: _deriveAdmin(raw.profiles.data, cache.admin),
+        equippedTitles: _deriveEquippedTitles(raw.profiles.data)
+      })
+    },
+    raid: {
+      // The plan's documented stress case: a boss-event raid where up to 30
+      // students trigger boss_participants/loot_claims changes in a tight
+      // window. All three tables feed the same two cache keys, so they're
+      // always fetched together — refreshing them separately would just
+      // mean re-deriving bossEvents/bossParticipants 2-3x in a row for no
+      // benefit.
+      fetch: async (client) => {
+        const [bossEvents, bossParticipants, lootClaims] = await Promise.all([
+          client.from("boss_events").select("*"),
+          client.from("boss_participants").select("*"),
+          client.from("loot_claims").select("*")
+        ]);
+        return { bossEvents, bossParticipants, lootClaims };
+      },
+      apply: (raw) => {
+        const { bossEventsArr, bossIdById } = _deriveBossEvents(raw.bossEvents.data, raw.lootClaims.data);
+        return {
+          bossEvents: bossEventsArr,
+          bossParticipants: _deriveBossParticipants(raw.bossParticipants.data, bossIdById),
+          _bossIdById: bossIdById
+        };
+      }
+    },
+    achievements: {
+      fetch: async (client) => {
+        const [achievements, userAchievements] = await Promise.all([
+          client.from("achievements").select("*"),
+          client.from("user_achievements").select("*")
+        ]);
+        return { achievements, userAchievements };
+      },
+      apply: (raw) => ({
+        achievements: _deriveAchievements(raw.achievements.data),
+        achievementUnlocks: _deriveAchievementUnlocks(raw.userAchievements.data)
+      })
+    },
+    pointLog: {
+      fetch: async (client) => ({
+        pointLog: await client.from("point_log").select("*").order("created_at", { ascending: false }).limit(_HISTORY_LIMITS.point_log)
+      }),
+      apply: (raw) => ({ pointLog: _derivePointLog(raw.pointLog.data) })
+    },
+    recitationLog: {
+      fetch: async (client) => ({
+        recitationLog: await client.from("recitation_log").select("*").order("created_at", { ascending: false }).limit(_HISTORY_LIMITS.recitation_log)
+      }),
+      apply: (raw) => ({ recitationLog: _deriveRecitationLog(raw.recitationLog.data) })
+    },
+    rfidCards: {
+      fetch: async (client) => ({ rfidCards: await client.from("rfid_cards").select("*") }),
+      apply: (raw) => ({ rfidCards: _deriveRfidCards(raw.rfidCards.data) })
+    },
+    attendanceLogs: {
+      fetch: async (client) => ({
+        attendanceLogs: await client.from("attendance_logs").select("*").order("log_date", { ascending: false }).limit(_HISTORY_LIMITS.attendance_logs)
+      }),
+      apply: (raw) => ({ attendanceLogs: _deriveAttendanceLogs(raw.attendanceLogs.data) })
+    },
+    mail: {
+      // Needs profiles alongside mail_messages purely to resolve sender
+      // display names (see _deriveMail) — still just 2 tables instead of 27.
+      // Title-reward lookups reuse the already-cached titles slice instead
+      // of re-fetching titles too.
+      fetch: async (client) => {
+        const [mailMessages, profiles] = await Promise.all([
+          client.from("mail_messages").select("*").order("created_at", { ascending: false }).limit(_HISTORY_LIMITS.mail_messages),
+          client.from("profiles").select("*")
+        ]);
+        return { mailMessages, profiles };
+      },
+      apply: (raw, cache) => ({ mail: _deriveMail(raw.mailMessages.data, raw.profiles.data, cache.titles) })
+    },
+    quizSectionAssignments: {
+      fetch: async (client) => ({ quizSections: await client.from("quiz_sections").select("*") }),
+      apply: (raw) => ({ quizSectionAssignments: _deriveQuizSectionAssignments(raw.quizSections.data) })
+    },
+    achievementSectionAssignments: {
+      fetch: async (client) => ({ achievementSections: await client.from("achievement_sections").select("*") }),
+      apply: (raw) => ({ achievementSectionAssignments: _deriveAchievementSectionAssignments(raw.achievementSections.data) })
+    },
+    titles: {
+      // titles + title_unlocks + title_sections grouped together: unlocking
+      // or re-scoping a title routinely touches more than one of these at
+      // once, and all three only ever feed the "titles domain" of the cache.
+      fetch: async (client) => {
+        const [titles, titleUnlocks, titleSections] = await Promise.all([
+          client.from("titles").select("*"),
+          client.from("title_unlocks").select("*"),
+          client.from("title_sections").select("*")
+        ]);
+        return { titles, titleUnlocks, titleSections };
+      },
+      apply: (raw) => ({
+        titles: _deriveTitles(raw.titles.data),
+        titleUnlocks: _deriveTitleUnlocks(raw.titleUnlocks.data),
+        titleSectionAssignments: _deriveTitleSectionAssignments(raw.titleSections.data)
+      })
+    },
+    quizzes: {
+      fetch: async (client) => ({ quizzes: await client.from("quizzes").select("*") }),
+      apply: (raw) => ({ quizzes: _deriveQuizzes(raw.quizzes.data) })
+    },
+    campaign: {
+      fetch: async (client) => {
+        const [campaignWorlds, campaignStageSections] = await Promise.all([
+          client.from("campaign_worlds").select("*").order("sort_order", { ascending: true }),
+          client.from("campaign_stage_sections").select("*")
+        ]);
+        return { campaignWorlds, campaignStageSections };
+      },
+      apply: (raw) => {
+        const campaignWorldsArr = _deriveCampaignWorlds(raw.campaignWorlds.data);
+        return {
+          stageMap: campaignWorldsArr,
+          campaignSectionAssignments: _deriveCampaignSectionAssignments(raw.campaignStageSections.data, campaignWorldsArr)
+        };
+      }
+    },
+    orders: {
+      fetch: async (client) => ({
+        orders: await client.from("orders").select("*").order("created_at", { ascending: false }).limit(_HISTORY_LIMITS.orders)
+      }),
+      apply: (raw) => ({ orders: _deriveOrders(raw.orders.data) })
+    },
+    inventory: {
+      fetch: async (client) => ({ inventory: await client.from("inventory").select("*") }),
+      apply: (raw) => ({ inventory: _deriveInventory(raw.inventory.data) })
+    },
+    quizHistory: {
+      fetch: async (client) => ({
+        quizHistory: await client.from("quiz_history").select("*").order("completed_at", { ascending: false }).limit(_HISTORY_LIMITS.quiz_history)
+      }),
+      apply: (raw, cache) => {
+        const { quizHistoryByStudent, completedQuizzesByStudent } = _deriveQuizHistory(raw.quizHistory.data);
+        const students = (cache.students || []).map((s) => ({
+          ...s,
+          completedQuizzes: Array.from(completedQuizzesByStudent[s.id] || [])
+        }));
+        return { quizHistory: quizHistoryByStudent, students };
+      }
+    },
+    notifications: {
+      fetch: async (client) => ({
+        notifications: await client.from("notifications").select("*").order("created_at", { ascending: false }).limit(_HISTORY_LIMITS.notifications)
+      }),
+      apply: (raw) => ({ notifications: _deriveNotifications(raw.notifications.data) })
+    },
+    studentSkills: {
+      fetch: async (client) => ({ studentSkills: await client.from("student_skills").select("*") }),
+      apply: (raw) => ({ studentSkills: _deriveStudentSkills(raw.studentSkills.data) })
+    },
+    // Phase 71 — cross-device "Start Recitation Session" sync.
+    recitationSessions: {
+      fetch: async (client) => ({ recitationSessions: await client.from("recitation_sessions").select("*") }),
+      apply: (raw) => ({ recitationSessions: _deriveRecitationSessions(raw.recitationSessions.data) })
+    }
+  };
+
+  // src/repository/table-sync.js
+  var TableSyncRepository = (function() {
+    "use strict";
+    const _TABLE_SYNC_CONFIGS = [
+      {
+        // Profiles (students table) — folded into the generic engine in an
+        // earlier session; every line of logic below is preserved VERBATIM
+        // from the standalone block this replaced (same staff-session
+        // double-check, same per-class-id chunking, same warn-not-throw per
+        // chunk, same six-column RPC-ownership exclusion). See db-service.js's
+        // own Refactoring Report entry for the full history of WHY each of
+        // these exists — xp/coins/level/tier (adjust_student_stats RPC) and
+        // attendance_pct/quiz_avg (sync_student_derived_stats RPC) are
+        // deliberately never in `rows` below; this upsert only ever touches
+        // identity/cosmetic columns.
+        //
+        // [Phase 5B] Now `deltaTracked` — this table's own log entry
+        // originally flagged why it couldn't be, safely, with the engine as
+        // it stood then: this upsert is chunked per class_id, and an
+        // out-of-scope or RLS-rejected chunk WARNS AND CONTINUES rather than
+        // throwing, specifically so one bad chunk can't abort every other
+        // table's push this cycle — a blanket "the call didn't throw, so
+        // clear everything" rule (right for a single-batch upsert) would have
+        // cleared dirty ids for students in a chunk that just failed,
+        // permanently losing their retry. That's what `_runTableSync()`'s
+        // upsertRows-return-value contract (see its own comment) exists to
+        // fix: `upsertRows` below now collects and returns exactly the ids
+        // that landed in a chunk that DIDN'T error, so only those get
+        // cleared. Tracked in AppStore via `watchFields` — see
+        // _DELTA_TRACKED_SLICES' `profiles` entry — so an xp/coin/level
+        // change (constant, via gameplay, and none of the RPC-owned columns
+        // ever touch this upsert anyway) never dirties this table; only the
+        // identity/cosmetic columns actually sent here do.
+        table: "profiles",
+        requiresStaffGate: true,
+        getSource: (cache) => cache.students,
+        hasRows: (src) => Array.isArray(src) && src.length > 0,
+        deltaTracked: true,
+        idField: "id",
+        async upsertRows(client, source) {
+          let isStaffSession = false;
+          try {
+            const { data: sessionData } = await client.auth.getSession();
+            if (sessionData && sessionData.session) {
+              isStaffSession = typeof currentUser !== "undefined" && currentUser && (currentUser.role === "admin" || currentUser.role === "teacher");
+            }
+          } catch (e) {
+            console.warn("[DBService] profiles upsert: could not check session, skipping.", e);
+            return;
+          }
+          if (!isStaffSession) return;
+          const isAdmin = typeof currentUser !== "undefined" && currentUser && currentUser.role === "admin";
+          let writableClassIds = null;
+          if (!isAdmin) {
+            const mySections = typeof AppStore !== "undefined" ? AppStore.getSlice((s) => s.classSections) || [] : [];
+            if (mySections.length) {
+              writableClassIds = new Set(
+                mySections.filter(function(s) {
+                  return s.adviserId === currentUser.id;
+                }).map(function(s) {
+                  return s.id;
+                })
+              );
+            }
+          }
+          const allRows = source.map((s) => ({
+            id: s.id,
+            role: "student",
+            display_name: s.name,
+            init: s.init,
+            color: s.color,
+            first_name: s.firstName,
+            last_name: s.lastName,
+            profile_pic_url: s.profilePic,
+            class_id: s.classId || "default-class"
+          }));
+          const rows = writableClassIds ? allRows.filter(function(r) {
+            return writableClassIds.has(r.class_id);
+          }) : allRows;
+          const skipped = allRows.length - rows.length;
+          if (skipped > 0) {
+            console.warn("[DBService] profiles upsert: skipping " + skipped + " student(s) outside this session's advised section(s) \u2014 stale local cache, or a section/adviser reassignment since the last pull.");
+          }
+          const succeededIds = [];
+          if (rows.length) {
+            const byClass = {};
+            rows.forEach(function(r) {
+              (byClass[r.class_id] = byClass[r.class_id] || []).push(r);
+            });
+            for (const classId of Object.keys(byClass)) {
+              const { error } = await client.from("profiles").upsert(byClass[classId], { onConflict: "id" });
+              if (error) {
+                console.warn('[DBService] profiles upsert rejected for class_id "' + classId + '" (' + byClass[classId].length + " student(s) \u2014 not staff for this section server-side, or it has no adviser yet):", error);
+              } else {
+                byClass[classId].forEach(function(r) {
+                  succeededIds.push(r.id);
+                });
+              }
+            }
+          }
+          return succeededIds;
+        }
+      },
+      {
+        // Boss events: upsert by internal _id (created server-side; a brand
+        // new boss drafted offline has no _id yet, so it inserts and the
+        // server assigns one on the next pull). See the per-row logic below
+        // for the isNewRow-conditional field seeding (max_hp/current_hp,
+        // lifecycle timestamps) and the retry-on-23502 stale-_id recovery —
+        // both preserved verbatim from the original block.
+        table: "boss_events",
+        requiresStaffGate: true,
+        getSource: (cache) => cache.bossEvents,
+        hasRows: (src) => Array.isArray(src),
+        async upsertRows(client, source) {
+          for (const b of source) {
+            try {
+              const isNewRow = !b._id;
+              const row = {
+                id: b._id,
+                class_id: b.classId || "default-class",
+                // Phase 14
+                name: b.name,
+                description: b.description,
+                image: b.image,
+                start_date: b.startDate || null,
+                end_date: b.endDate || null,
+                xp_reward: b.xpReward,
+                coin_reward: b.coinReward,
+                participation_reward: b.participationReward,
+                victory_reward: b.victoryReward,
+                defeat_narr_title: b.defeatNarrTitle,
+                defeat_narr_text: b.defeatNarrText,
+                victory_title: b.victoryTitle,
+                victory_message: b.victoryMessage,
+                loot_rewards: b.lootRewards || [],
+                loot_duration_sec: b.lootDuration || 120,
+                // Phase 46: pure admin-config JSON blobs with no RPC of their
+                // own, so this bulk upsert is their only write path.
+                boss_questions: b.bossQuestions || [],
+                minion_settings: b.minionSettings || {},
+                combat_settings: b.combatSettings || {},
+                skills: b.skills || {},
+                skill_fire_mode: b.skillFireMode || null,
+                skill_interval_min: b.skillIntervalMin || null,
+                skill_interval_max: b.skillIntervalMax || null,
+                rage_settings: b.rageSettings || {},
+                phases: b.phases || []
+              };
+              if (isNewRow) {
+                row.max_hp = b.maxHp || 1e4;
+                row.current_hp = b.currentHp !== void 0 && b.currentHp !== null ? b.currentHp : row.max_hp;
+              } else if (b.maxHp !== void 0 && b.maxHp !== null) {
+                row.max_hp = b.maxHp;
+              }
+              if (isNewRow) {
+                row.status = b.status;
+                row.defeated_at = b.defeatedAt ? new Date(b.defeatedAt).toISOString() : null;
+                row.ended_at = b.endedAt ? new Date(b.endedAt).toISOString() : null;
+                row.loot_started_at = b.lootStartedAt ? new Date(b.lootStartedAt).toISOString() : null;
+                row.loot_finalized_at = b.lootFinalizedAt ? new Date(b.lootFinalizedAt).toISOString() : null;
+              }
+              if (!row.id) delete row.id;
+              let { error } = await client.from("boss_events").upsert(row, { onConflict: "id" });
+              if (error && error.code === "23502") {
+                row.max_hp = row.max_hp || b.maxHp || 1e4;
+                row.current_hp = b.currentHp !== void 0 && b.currentHp !== null && b.currentHp > 0 ? b.currentHp : row.max_hp;
+                row.status = row.status || b.status || "draft";
+                row.defeated_at = row.defeated_at || (b.defeatedAt ? new Date(b.defeatedAt).toISOString() : null);
+                row.ended_at = row.ended_at || (b.endedAt ? new Date(b.endedAt).toISOString() : null);
+                row.loot_started_at = row.loot_started_at || (b.lootStartedAt ? new Date(b.lootStartedAt).toISOString() : null);
+                row.loot_finalized_at = row.loot_finalized_at || (b.lootFinalizedAt ? new Date(b.lootFinalizedAt).toISOString() : null);
+                ({ error } = await client.from("boss_events").upsert(row, { onConflict: "id" }));
+              }
+              if (error) throw error;
+            } catch (e) {
+              console.warn('[DBService] boss_events: skipping "' + (b.name || b._id || "unnamed") + '" this cycle \u2014', e);
+            }
+          }
+        }
+      },
+      {
+        // Boss participants: upsert the roster. Same defense-in-depth note as
+        // profiles — RLS still restricts student-initiated writes to their own
+        // row while the boss is active.
+        // [Phase 5B] Fourth table converted to delta sync, and the first one
+        // with a genuine second-actor-same-row clobber risk: combat damage is
+        // ALREADY written through a scoped RPC (apply_boss_damage — see
+        // combat-settings.js's wbcApplyDamage), atomically, per student, in
+        // real time. But this whole-slice push ran on every save cycle
+        // regardless — including every OTHER student's cached roster entries
+        // for that boss, not just the caller's own. Two students fighting the
+        // same boss concurrently: student B lands a hit (RPC updates B's row
+        // on the server instantly), then student A's client — which hasn't
+        // pulled B's update yet — saves for an unrelated reason and bulk-
+        // pushed its whole local bossParticipants[bossIdx], including A's
+        // STALE cached copy of B's row, silently reverting B's just-recorded
+        // damage. Delta-scoping this closes that gap: A only ever re-pushes
+        // rows IT dirtied, which under normal play is only A's own studentId
+        // key (see minions.js/raid-flow.js/student-page.js — every
+        // combat-side write path indexes bossParticipants[bossIdx] by
+        // currentUser.id, never another student's).
+        table: "boss_participants",
+        getSource: (cache) => cache.bossParticipants,
+        hasRows: (src, cache) => !!(src && cache._bossIdById),
+        buildRows(source, cache) {
+          const idToUuid = {};
+          Object.keys(cache._bossIdById).forEach((uuid) => {
+            idToUuid[cache._bossIdById[uuid]] = uuid;
+          });
+          const rows = [];
+          Object.keys(source).forEach((idx) => {
+            const bossUuid = idToUuid[idx];
+            if (!bossUuid) return;
+            const roster = source[idx];
+            Object.keys(roster).forEach((studentId) => {
+              const r = roster[studentId];
+              rows.push({
+                boss_id: bossUuid,
+                student_id: studentId,
+                class_id: r.classId || "default-class",
+                // Phase 14
+                total_damage: r.totalDamage || 0,
+                correct_answers: r.correctAnswers || 0,
+                wrong_answers: r.wrongAnswers || 0,
+                crit_hits: r.critHits || 0,
+                minions_defeated: r.minionsDefeated || 0,
+                last_question_idx: r.lastQIdx || 0
+              });
+            });
+          });
+          return rows;
+        },
+        conflictKey: "boss_id,student_id",
+        deltaTracked: true,
+        // Composite bossIdx->studentId source needs its own filter — plain
+        // idField can't express "dirty" for a two-level keyed object. Also
+        // pre-checks boss-uuid resolvability (same check buildRows makes) so
+        // every id returned here is guaranteed to produce a row — an
+        // unresolved boss's dirty ids are simply left out (and so stay dirty
+        // for a later cycle, once that boss has synced and gained a uuid)
+        // rather than risk clearDirty() on an id buildRows silently dropped.
+        deltaFilterSource(source, dirtySet, cache) {
+          const idToUuid = {};
+          Object.keys(cache._bossIdById || {}).forEach((uuid) => {
+            idToUuid[cache._bossIdById[uuid]] = uuid;
+          });
+          const filtered = {};
+          const ids = [];
+          Object.keys(source).forEach((idx) => {
+            if (!idToUuid[idx]) return;
+            const roster = source[idx] || {};
+            Object.keys(roster).forEach((studentId) => {
+              const id = idx + ":" + studentId;
+              if (dirtySet.has(id)) {
+                if (!filtered[idx]) filtered[idx] = {};
+                filtered[idx][studentId] = roster[studentId];
+                ids.push(id);
+              }
+            });
+          });
+          return { source: filtered, ids };
+        }
+      },
+      {
+        // Shop products: per-teacher catalog (Phase 14). `stock` is
+        // deliberately excluded — owned exclusively by purchase_shop_product()
+        // / restock_shop_product() RPCs, so a plain overwrite here can't
+        // clobber a purchase/restock that happened between pull and push.
+        // [Phase 5B] Twelfth table converted to delta sync. Flat array,
+        // client-generated id (uid(), assigned in shop_admin_store.js's
+        // doAddProduct() at the same line as ownerTeacherId — verified
+        // before converting). `stock` deliberately isn't in buildRows' output
+        // at all ("local/display value only — see RPC call below" in the
+        // original comment), so no watchFields scoping is needed here the
+        // way profiles needed it — nothing this table's diff would react to
+        // is excluded from its own payload.
+        table: "shop_products",
+        requiresStaffGate: true,
+        getSource: (cache) => cache.store,
+        hasRows: (src) => Array.isArray(src) && src.length > 0,
+        buildRows: (src) => src.filter((p) => p.id && p.ownerTeacherId).map((p) => ({
+          id: p.id,
+          owner_teacher_id: p.ownerTeacherId,
+          name: p.name,
+          emoji: p.emoji,
+          description: p.desc,
+          category: p.cat,
+          cost: p.cost,
+          active: p.active !== false
+        })),
+        conflictKey: "id",
+        deltaTracked: true,
+        idField: "id"
+      },
+      {
+        // Achievements (the catalog — Phase 17). isHidden isn't a real column
+        // today, stays local-only. user_achievements (per-student unlock/
+        // claim rows) are NOT pushed from here — RPC-only, same reasoning as
+        // loot_claims/registrations. Phase 32: owner_teacher_id required.
+        //
+        // [Phase 5B] Thirteenth table converted to delta sync. Same
+        // reasoning as shop_products — client-generated id verified at
+        // creation, and every field in buildRows' output is a catalog
+        // definition column; per-student unlock/claim state is explicitly
+        // out of scope for this push path (see comment above), so no
+        // watchFields scoping is needed.
+        table: "achievements",
+        requiresStaffGate: true,
+        getSource: (cache) => cache.achievements,
+        hasRows: (src) => Array.isArray(src) && src.length > 0,
+        buildRows: (src) => src.filter((a) => a.id && a.ownerTeacherId).map((a) => ({
+          id: a.id,
+          owner_teacher_id: a.ownerTeacherId,
+          name: a.name,
+          description: a.description,
+          icon: a.icon,
+          category: a.category,
+          rarity: a.rarity,
+          xp_reward: a.xpReward,
+          coin_reward: a.coinReward,
+          trigger_type: a.triggerType,
+          trigger_value: a.triggerValue,
+          active: a.active !== false
+        })),
+        conflictKey: "id",
+        deltaTracked: true,
+        idField: "id"
+      },
+      {
+        // Titles (the catalog — Phase 18). title_unlocks / equipped_title_id
+        // are NOT pushed from here — RPC-only. Phase 32: owner required.
+        // Phase 52: Designer v3 frame/style/accent/effect columns.
+        // [Phase 5B] Seventh table converted to delta sync. Same reasoning as
+        // redemptions/point_log: whole-row-replacement is fine here (a title
+        // editor saves the full row at once), it just needs to be scoped to
+        // the row this session actually touched — the practical risk isn't
+        // necessarily two different teachers, it's the SAME teacher's own
+        // second open tab autosaving stale catalog data over an edit just
+        // made in the first.
+        table: "titles",
+        requiresStaffGate: true,
+        getSource: (cache) => cache.titles,
+        hasRows: (src) => Array.isArray(src) && src.length > 0,
+        buildRows: (src) => src.filter((t) => t.id && t.ownerTeacherId).map((t) => ({
+          id: t.id,
+          owner_teacher_id: t.ownerTeacherId,
+          name: t.name,
+          description: t.description,
+          icon: t.icon,
+          rarity: t.rarity,
+          active: t.active !== false,
+          achievement_id: t.achievementId,
+          text_color: t.textColor,
+          border_color: t.borderColor,
+          glow_color: t.glowColor,
+          bg_color: t.bgColor,
+          primary_color: t.primaryColor,
+          secondary_color: t.secondaryColor,
+          gradient_from: t.gradientFrom,
+          gradient_to: t.gradientTo,
+          border_style: t.borderStyle,
+          animation: t.animation,
+          particles: t.particles,
+          bg_effect: t.bgEffect,
+          custom_border_css: t.customBorderCSS,
+          custom_animation_css: t.customAnimationCSS,
+          custom_bg_css: t.customBgCSS,
+          frame_shape: t.frameShape,
+          frame_style: t.frameStyle,
+          accent_color: t.accentColor,
+          effect: t.effect,
+          frame_template: t.frameTemplate
+        })),
+        conflictKey: "id",
+        deltaTracked: true,
+        idField: "id"
+      },
+      {
+        // Quizzes (the content catalog — Phase 20). Per-student
+        // completedQuizzes/history and quiz_sections are out of scope here.
+        // Phase 32: owner required. Phases 54/56/58/3: coalesces mirror the
+        // pull-side coalesces so an older quiz saved before a field existed
+        // pushes the same default the pull side already backfills, instead of
+        // clobbering it with a raw undefined/null.
+        // [Phase 5B] Ninth table converted to delta sync. Flat array,
+        // client-generated id (uid(), assigned at draft-creation time in
+        // quiz-builder.js's openQuizBuilder() — verified before converting,
+        // same check that ruled out boss_events last session), same
+        // whole-row-replacement-is-fine reasoning as titles.
+        table: "quizzes",
+        requiresStaffGate: true,
+        getSource: (cache) => cache.quizzes,
+        hasRows: (src) => Array.isArray(src) && src.length > 0,
+        buildRows: (src) => src.filter((q) => q.id && q.ownerTeacherId).map((q) => ({
+          id: q.id,
+          owner_teacher_id: q.ownerTeacherId,
+          title: q.title,
+          description: q.desc,
+          xp_reward: q.xpReward,
+          coin_reward: q.coinReward,
+          time_limit: q.timeLimit,
+          rarity: q.rarity || "Common",
+          cadence: q.cadence || "standing",
+          chain_id: q.chainId || null,
+          chain_order: q.chainOrder || 1,
+          chain_label: q.chainLabel || null,
+          start_date: q.startDate || null,
+          end_date: q.endDate || null,
+          stage_timers: Array.isArray(q.stageTimers) ? q.stageTimers : [null, null, null],
+          questions: q.questions || [],
+          active: q.active !== false
+        })),
+        conflictKey: "id",
+        deltaTracked: true,
+        idField: "id"
+      },
+      {
+        // Campaign worlds (the content catalog — Phase 22). stageProgress
+        // (per-student) is out of scope. sort_order is stamped from each
+        // world's position in cache.stageMap (no reorder-world feature — array
+        // position IS the order). Phase 32: owner required.
+        //
+        // [Phase 5B] Tenth table converted to delta sync — but NOT a plain
+        // config addition like titles/quizzes. buildRows used to compute
+        // sort_order from `.map((w, idx) => ...)`'s own idx — i.e. the row's
+        // position WITHIN THE ARRAY BEING MAPPED. That's correct for a
+        // full-slice push (src IS cache.stageMap), but silently WRONG for a
+        // delta-filtered push: the engine filters `src` down to only the
+        // dirty world(s) before buildRows ever runs, so `idx` would become
+        // the row's position within that small filtered subset — e.g. the
+        // one dirty world sitting at position 5 in the real array would get
+        // pushed with sort_order: 0, corrupting the map order server-side —
+        // instead of just skipping the still-clean worlds around it. Fixed by
+        // computing each world's true position from `cache.stageMap` (the
+        // full, unfiltered array — buildRows always receives `cache` as its
+        // second argument) rather than the `src` argument's own index, which
+        // may or may not be the full array depending on what's dirty this
+        // cycle. `fullOrder` below replicates the ORIGINAL two-step
+        // filter-then-index logic exactly (not raw array position) so a
+        // full-slice push (src === cache.stageMap, nothing filtered) computes
+        // byte-identical sort_order values to the pre-Phase-5B code.
+        table: "campaign_worlds",
+        requiresStaffGate: true,
+        getSource: (cache) => cache.stageMap,
+        hasRows: (src) => Array.isArray(src) && src.length > 0,
+        buildRows(src, cache) {
+          const fullOrder = {};
+          (cache.stageMap || []).filter((w) => w.id && w.ownerTeacherId).forEach((w, idx) => {
+            fullOrder[w.id] = idx;
+          });
+          return src.filter((w) => w.id && w.ownerTeacherId).map((w) => ({
+            id: w.id,
+            owner_teacher_id: w.ownerTeacherId,
+            label: w.label,
+            icon: w.icon,
+            color: w.color,
+            description: w.desc,
+            stages: w.stages || [],
+            sort_order: fullOrder[w.id]
+          }));
+        },
+        conflictKey: "id",
+        deltaTracked: true,
+        idField: "id"
+      },
+      {
+        // Point log: append-only history. Upsert by the client-generated id so
+        // re-pushing a row doesn't insert duplicates.
+        //
+        // [Phase 5B] First table converted to delta/patch sync — see
+        // _runTableSync()'s delta-tracking block below and
+        // modules/core/state-manager.js's _DELTA_TRACKED_SLICES. Picked
+        // deliberately as the doc's "lowest-traffic/lowest-consequence"
+        // starting point: a point_log row's fields are fixed forever once
+        // created (append-only — nothing ever edits an existing entry), so
+        // there's no concurrent-same-row-edit scenario to get wrong while
+        // this plumbing is new, unlike e.g. notifications' read flag or
+        // orders' status. `idField` tells the engine which raw-cache-row
+        // property to match against AppStore's dirty-id set.
+        table: "point_log",
+        getSource: (cache) => cache.pointLog,
+        hasRows: (src) => Array.isArray(src) && src.length > 0,
+        buildRows: (src) => src.filter((p) => p.id).map((p) => ({ id: p.id, student_id: p.studentId, what: p.what, pts: p.pts, when_label: p.when })),
+        conflictKey: "id",
+        deltaTracked: true,
+        idField: "id"
+      },
+      {
+        // Notifications: same upsert-by-id shape as point_log. Unlike
+        // point_log (append-only), these DO get updated in place (mark
+        // read/mark-all-read).
+        // [Phase 5B] Second table converted to delta sync — see
+        // modules/core/state-manager.js's _DELTA_TRACKED_SLICES comment for
+        // why: this is the first delta-tracked table with a field (`read`)
+        // that actually gets mutated after the row is created, so it's the
+        // first real exercise of the clobber this whole phase exists to
+        // prevent (a session with a stale cached copy of a row it never
+        // touched re-pushing that stale value over another session's write).
+        table: "notifications",
+        getSource: (cache) => cache.notifications,
+        hasRows: (src) => Array.isArray(src) && src.length > 0,
+        buildRows: (src) => src.filter((n) => n.id && n.studentId).map((n) => ({
+          id: n.id,
+          student_id: n.studentId,
+          type: n.type,
+          icon: n.icon,
+          title: n.title,
+          body: n.body,
+          action: n.action,
+          pts: n.pts,
+          source_id: n.sourceId,
+          read: !!n.read
+        })),
+        conflictKey: "id",
+        deltaTracked: true,
+        idField: "id"
+      },
+      {
+        // Redemptions: orderId is already a unique client-generated key from
+        // checkout time, reused directly as the upsert conflict target.
+        // [Phase 5B] Sixth table converted to delta sync — append-only, same
+        // low-blast-radius shape as point_log (the very first table
+        // converted): a redemption's fields are fixed forever once created,
+        // so no new mechanism was needed here, just the config addition.
+        table: "redemptions",
+        getSource: (cache) => cache.redemptions,
+        hasRows: (src) => Array.isArray(src) && src.length > 0,
+        buildRows: (src) => src.filter((r) => r.orderId).map((r) => ({
+          order_id: r.orderId,
+          student_id: r.studentId,
+          item_id: r.itemId,
+          item_name: r.itemName,
+          emoji: r.emoji,
+          item_label: r.item,
+          pts: r.pts,
+          date_label: r.date,
+          time_label: r.time,
+          claim_code: r.claimCode
+        })),
+        conflictKey: "order_id",
+        deltaTracked: true,
+        idField: "orderId"
+      },
+      {
+        // Phase 48 — orders: mirrors redemptions' pattern exactly, same
+        // client-generated orderId conflict target. Covers cartCheckout() (new
+        // pending orders), posExecuteClaim()/posExecuteCancel() (staff status
+        // transitions), and ordExecuteCancel() (student self-cancel).
+        //
+        // [Phase 5B] Third table converted to delta sync — see
+        // modules/core/state-manager.js's _DELTA_TRACKED_SLICES comment: this
+        // is the first delta-tracked table where several columns
+        // (status/claimed_at/claimed_by, or cancelled_at/cancel_reason/
+        // cancelled_by) change together as one transition, rather than a
+        // single boolean, so a stale whole-slice push here could revert
+        // multiple related fields on a row at once.
+        table: "orders",
+        getSource: (cache) => cache.orders,
+        hasRows: (src) => Array.isArray(src) && src.length > 0,
+        buildRows: (src) => src.filter((o) => o.orderId).map((o) => ({
+          order_id: o.orderId,
+          student_id: o.studentId,
+          student_name: o.studentName,
+          student_init: o.studentInit,
+          student_color: o.studentColor,
+          item_id: o.itemId,
+          item_name: o.itemName,
+          emoji: o.emoji,
+          cost: o.cost,
+          category: o.category,
+          claim_code: o.claimCode,
+          status: o.status || "pending",
+          created_at: o.createdAt,
+          created_date_str: o.createdDateStr,
+          // claimedAt/cancelledAt are epoch-ms numbers locally — convert to
+          // timestamptz on the way out, mirror of the pull-side Date.parse().
+          claimed_at: o.claimedAt ? new Date(o.claimedAt).toISOString() : null,
+          claimed_by: o.claimedBy,
+          cancelled_at: o.cancelledAt ? new Date(o.cancelledAt).toISOString() : null,
+          cancel_reason: o.cancelReason,
+          cancelled_by: o.cancelledBy
+        })),
+        conflictKey: "order_id",
+        deltaTracked: true,
+        idField: "orderId"
+      },
+      {
+        // Phase 48 — inventory: keyed by (student_id, item_id) rather than a
+        // single id, since DB.inventory is {studentId: [...]}. Flatten that
+        // shape into rows here; the composite PK does the per-item upsert.
+        // [Phase 5B] Fifth table converted to delta sync — first with a
+        // genuinely different HUMAN ROLE (not just a different student) able
+        // to dirty the same list: shop_pos_terminal.js writes into
+        // draft.inventory[studentId] on a student's behalf when a TEACHER
+        // runs the POS terminal, while that student's own device can
+        // independently purchase something at the same time via
+        // shop_store.js. Both append to the same student's item array from
+        // two different sessions — the old whole-slice push meant either
+        // side's stale cached copy of the other's most recent addition could
+        // silently drop it the next time either side saved for an unrelated
+        // reason.
+        table: "inventory",
+        getSource: (cache) => cache.inventory,
+        hasRows: (src) => !!(src && typeof src === "object"),
+        buildRows(src) {
+          const rows = [];
+          Object.keys(src).forEach((sid) => {
+            (src[sid] || []).forEach((item) => {
+              if (!item.itemId) return;
+              rows.push({
+                student_id: sid,
+                item_id: item.itemId,
+                item_name: item.itemName,
+                emoji: item.emoji,
+                category: item.category,
+                quantity: item.quantity || 1,
+                date_purchased: item.datePurchased,
+                last_purchased: item.lastPurchased,
+                source: item.source || "Store",
+                status: item.status || "active",
+                used_at: item.usedAt
+              });
+            });
+          });
+          return rows;
+        },
+        conflictKey: "student_id,item_id",
+        deltaTracked: true,
+        // Composite studentId->[items] source needs its own filter, same
+        // reason as boss_participants: no single idField can express dirtiness
+        // across a nested object-of-arrays shape. No uuid-resolution step
+        // needed here (unlike boss_participants) — inventory rows don't
+        // reference another table's server-generated id.
+        deltaFilterSource(source, dirtySet) {
+          const filtered = {};
+          const ids = [];
+          Object.keys(source).forEach((sid) => {
+            const matched = (source[sid] || []).filter((item) => item.itemId && dirtySet.has(sid + ":" + item.itemId));
+            if (matched.length) {
+              filtered[sid] = matched;
+              matched.forEach((item) => ids.push(sid + ":" + item.itemId));
+            }
+          });
+          return { source: filtered, ids };
+        }
+      },
+      {
+        // Phase 57: quiz_history, append-only per-student attempt log. Upsert
+        // by the client-generated id, same convention as point_log. Entries
+        // from before this phase have no id and are skipped (stay visible
+        // locally; never sync retroactively).
+        // [Phase 5B] Eighth table converted to delta sync. quizHistory
+        // [studentId] = [attempts...] — same 'nestedArray' shape as
+        // inventory. Append-only (finishQuiz()/abortQuiz() in index.html
+        // never edit an existing entry), client-generated id ('qh_' + uid())
+        // at creation, same low-blast-radius shape as point_log/redemptions.
+        table: "quiz_history",
+        getSource: (cache) => cache.quizHistory,
+        hasRows: (src) => !!(src && typeof src === "object"),
+        buildRows(src) {
+          const rows = [];
+          Object.keys(src).forEach((sid) => {
+            (src[sid] || []).forEach((h) => {
+              if (!h.id || !h.quizId) return;
+              rows.push({
+                id: h.id,
+                student_id: sid,
+                quiz_id: h.quizId,
+                score: h.score || 0,
+                attempt: h.attempt || 1,
+                completed_at: h.completedAt,
+                date_label: h.date,
+                // Phase 59: an entry logged before per-question tracking
+                // existed has no `results` array — push null, not [], so it
+                // isn't misread as "0 questions."
+                question_results: Array.isArray(h.results) ? h.results : null,
+                // Phase 63: without this, abortQuiz()'s aborted:true never
+                // left the browser, so a walked-away attempt looked complete.
+                aborted: !!h.aborted
+              });
+            });
+          });
+          return rows;
+        },
+        conflictKey: "id",
+        deltaTracked: true,
+        // Same shape/reasoning as inventory's deltaFilterSource — no
+        // uuid-resolution step needed, quiz_history rows don't reference
+        // another table's server-generated id.
+        deltaFilterSource(source, dirtySet) {
+          const filtered = {};
+          const ids = [];
+          Object.keys(source).forEach((sid) => {
+            const matched = (source[sid] || []).filter((h) => h.id && dirtySet.has(sid + ":" + h.id));
+            if (matched.length) {
+              filtered[sid] = matched;
+              matched.forEach((h) => ids.push(sid + ":" + h.id));
+            }
+          });
+          return { source: filtered, ids };
+        }
+      }
+    ];
+    async function _pushTable(label, fn) {
+      try {
+        await fn();
+      } catch (e) {
+        console.warn("[DBService] remote sync failed for " + label + ", staying on local cache:", e);
+      }
+    }
+    async function _runTableSync(client, cache, isCatalogStaffSession) {
+      for (const cfg of _TABLE_SYNC_CONFIGS) {
+        let source = cfg.getSource(cache);
+        if (!cfg.hasRows(source, cache)) continue;
+        if (cfg.requiresStaffGate && !isCatalogStaffSession) continue;
+        let dirtyIds = null;
+        if (cfg.deltaTracked && typeof AppStore !== "undefined" && typeof AppStore.getDirtyIds === "function") {
+          const d = AppStore.getDirtyIds(cfg.table);
+          if (Array.isArray(d)) dirtyIds = d;
+        }
+        let matchedIdsForClear = null;
+        if (dirtyIds !== null) {
+          if (dirtyIds.length === 0) continue;
+          const dirtySet = new Set(dirtyIds);
+          if (cfg.deltaFilterSource) {
+            const filtered = cfg.deltaFilterSource(source, dirtySet, cache);
+            source = filtered.source;
+            matchedIdsForClear = filtered.ids;
+          } else {
+            source = Array.isArray(source) ? source.filter((row) => dirtySet.has(row[cfg.idField])) : source;
+          }
+        }
+        await _pushTable(cfg.table, async () => {
+          if (cfg.upsertRows) {
+            const succeededIds = await cfg.upsertRows(client, source, cache);
+            if (dirtyIds !== null && typeof AppStore.clearDirty === "function" && Array.isArray(succeededIds) && succeededIds.length) {
+              AppStore.clearDirty(cfg.table, succeededIds);
+            }
+            return;
+          }
+          const rows = cfg.buildRows(source, cache);
+          if (rows.length) {
+            const { error } = await client.from(cfg.table).upsert(rows, { onConflict: cfg.conflictKey });
+            if (error) throw error;
+          }
+          if (dirtyIds !== null && typeof AppStore.clearDirty === "function" && rows.length) {
+            const idsToClear = matchedIdsForClear !== null ? matchedIdsForClear : rows.map((r) => r[cfg.conflictKey]);
+            AppStore.clearDirty(cfg.table, idsToClear);
+          }
+        });
+      }
+    }
+    async function _pushCacheToSupabase(client, cache) {
+      const isCatalogStaffSession = typeof currentUser !== "undefined" && currentUser && (currentUser.role === "admin" || currentUser.role === "teacher");
+      await _runTableSync(client, cache, isCatalogStaffSession);
+    }
+    return {
+      pushCacheToSupabase: _pushCacheToSupabase,
+      tableSyncConfigs: _TABLE_SYNC_CONFIGS
+    };
+  })();
+  window.TableSyncRepository = TableSyncRepository;
+
+  // src/db-service.js
+  var DBService2 = (function() {
+    "use strict";
+    const _STORAGE_KEY = "eduquest_db_v3";
+    const _SCHEMA_VER = 4;
+    const _LAST_SYNCED_UID_KEY = "eduquest_last_synced_uid";
+    const _DIRTY_TRACKING_KEY = "eduquest_dirty_v1";
+    const _meta = {
+      provider: "unresolved",
+      schemaVersion: _SCHEMA_VER,
+      asyncReady: "partial",
+      // [BLOCKER-SYNC] — see file header
+      signalChannelReady: false,
+      // flipped true once Realtime channel subscribes
+      schemaVersioned: true,
+      // [BLOCKER-SCHEMA] resolved
+      authReady: "partial",
+      // [BLOCKER-AUTH] — see file header
+      online: navigator.onLine,
+      lastRemoteSyncAt: null,
+      lastSaveAt: null,
+      lastLoadAt: null,
+      saveCount: 0,
+      loadCount: 0,
+      pendingUploads: 0,
+      // queued local writes not yet confirmed on the server
+      lastError: null
+    };
+    let _cache = null;
+    let _sessionEpoch = 0;
+    const _localStorageProvider = {
+      read: function() {
+        return localStorage.getItem(_STORAGE_KEY);
+      },
+      write: function(raw) {
+        localStorage.setItem(_STORAGE_KEY, raw);
+      },
+      remove: function() {
+        localStorage.removeItem(_STORAGE_KEY);
+      },
+      key: _STORAGE_KEY
+    };
+    function _getClient() {
+      return SupabaseClient.getClient();
+    }
+    function _resolveProvider() {
+      return SupabaseClient.resolveProvider();
+    }
+    let _uploadTimer = null;
+    function _queueUpload() {
+      _meta.pendingUploads++;
+      if (_uploadTimer) clearTimeout(_uploadTimer);
+      const queuedEpoch = _sessionEpoch;
+      _uploadTimer = setTimeout(function() {
+        _flushUpload(queuedEpoch);
+      }, 400);
+    }
+    async function _flushUpload(queuedEpoch) {
+      _uploadTimer = null;
+      if (queuedEpoch !== _sessionEpoch) {
+        _meta.pendingUploads = 0;
+        return;
+      }
+      const client = _getClient();
+      if (!client || !_cache) {
+        _meta.pendingUploads = 0;
+        return;
+      }
+      try {
+        const { data: sessionData } = await client.auth.getSession();
+        if (!sessionData || !sessionData.session) {
+          _meta.pendingUploads = 0;
+          return;
+        }
+      } catch (e) {
+        _meta.pendingUploads = 0;
+        return;
+      }
+      try {
+        await _pushCacheToSupabase(client, _cache);
+        _meta.pendingUploads = 0;
+        _meta.lastRemoteSyncAt = (/* @__PURE__ */ new Date()).toISOString();
+        _meta.online = true;
+      } catch (e) {
+        _meta.lastError = String(e && e.message || e);
+        _meta.online = navigator.onLine;
+        console.warn("[DBService] remote sync failed, staying on local cache:", e);
+      }
+    }
+    async function _pullCacheFromSupabase(client) {
+      const [
+        profiles,
+        bossEvents,
+        bossParticipants,
+        lootClaims,
+        achievements,
+        userAchievements,
+        registrations,
+        pointLog,
+        redemptions,
+        recitationLog,
+        rfidCards,
+        attendanceSchedules,
+        attendanceLogs,
+        shopProducts,
+        mailMessages,
+        quizSections,
+        achievementSections,
+        titles,
+        titleUnlocks,
+        quizzes,
+        titleSections,
+        campaignWorlds,
+        orders,
+        inventoryRows,
+        campaignStageSections,
+        quizHistoryRows,
+        notifications,
+        studentSkillRows,
+        recitationSessions
+      ] = await Promise.all([
+        client.from("profiles").select("*"),
+        client.from("boss_events").select("*"),
+        client.from("boss_participants").select("*"),
+        client.from("loot_claims").select("*"),
+        client.from("achievements").select("*"),
+        client.from("user_achievements").select("*"),
+        client.from("registrations").select("*"),
+        // Priority 2 Fix 2 — bounded history windows on the 8 append-only
+        // tables (see _HISTORY_LIMITS above). "load more" beyond this
+        // default window goes through loadMoreHistory() (public API).
+        client.from("point_log").select("*").order("created_at", { ascending: false }).limit(_HISTORY_LIMITS.point_log),
+        client.from("redemptions").select("*").order("created_at", { ascending: false }).limit(_HISTORY_LIMITS.redemptions),
+        client.from("recitation_log").select("*").order("created_at", { ascending: false }).limit(_HISTORY_LIMITS.recitation_log),
+        client.from("rfid_cards").select("*"),
+        client.from("attendance_schedules").select("*"),
+        client.from("attendance_logs").select("*").order("log_date", { ascending: false }).limit(_HISTORY_LIMITS.attendance_logs),
+        client.from("shop_products").select("*"),
+        // Phase 14
+        client.from("mail_messages").select("*").order("created_at", { ascending: false }).limit(_HISTORY_LIMITS.mail_messages),
+        // Phase 15
+        client.from("quiz_sections").select("*"),
+        // Phase 15
+        client.from("achievement_sections").select("*"),
+        // Phase 16
+        client.from("titles").select("*"),
+        // Phase 18
+        client.from("title_unlocks").select("*"),
+        // Phase 18
+        client.from("quizzes").select("*"),
+        // Phase 20 — quiz content (was local-only; see phase20_quiz_content_sync.sql)
+        client.from("title_sections").select("*"),
+        // Phase 21 — read side of title section-scoping
+        client.from("campaign_worlds").select("*").order("sort_order", { ascending: true }),
+        // Phase 22 — campaign content (was local-only; see phase22_campaign_content_sync.sql)
+        client.from("orders").select("*").order("created_at", { ascending: false }).limit(_HISTORY_LIMITS.orders),
+        // Phase 48
+        client.from("inventory").select("*"),
+        // Phase 48
+        client.from("campaign_stage_sections").select("*"),
+        // Phase 53 — read side of campaign per-section visibility (table existed since Phase 14, never wired up until now)
+        client.from("quiz_history").select("*").order("completed_at", { ascending: false }).limit(_HISTORY_LIMITS.quiz_history),
+        // Phase 57 — was local-only; see phase57_quiz_history_sync.sql
+        client.from("notifications").select("*").order("created_at", { ascending: false }).limit(_HISTORY_LIMITS.notifications),
+        // Phase 67 — student notification bell; see phase67_notifications.sql
+        client.from("student_skills").select("*"),
+        // Phase 7 (Campaign Redesign) — see phase68_campaign_student_skills.sql
+        client.from("recitation_sessions").select("*")
+        // Phase 71 — cross-device "Start Recitation Session" sync; see phase71_recitation_session_sync.sql
+      ]);
+      for (const r of [
+        profiles,
+        bossEvents,
+        bossParticipants,
+        lootClaims,
+        achievements,
+        userAchievements,
+        registrations,
+        pointLog,
+        redemptions,
+        recitationLog,
+        rfidCards,
+        attendanceSchedules,
+        attendanceLogs,
+        shopProducts,
+        mailMessages,
+        quizSections,
+        achievementSections,
+        titles,
+        titleUnlocks,
+        quizzes,
+        titleSections,
+        campaignWorlds,
+        orders,
+        inventoryRows,
+        campaignStageSections,
+        quizHistoryRows,
+        notifications,
+        studentSkillRows,
+        recitationSessions
+      ]) {
+        if (r.error) throw r.error;
+      }
+      const { quizHistoryByStudent } = _deriveQuizHistory(quizHistoryRows.data);
+      const students = _deriveStudents(profiles.data, quizHistoryByStudent);
+      const admin = _deriveAdmin(profiles.data, _cache?.admin);
+      const equippedTitles = _deriveEquippedTitles(profiles.data);
+      const { bossEventsArr, bossIdById } = _deriveBossEvents(bossEvents.data, lootClaims.data);
+      const bossParticipantsObj = _deriveBossParticipants(bossParticipants.data, bossIdById);
+      const titlesArr = _deriveTitles(titles.data);
+      const campaignWorldsArr = _deriveCampaignWorlds(campaignWorlds.data);
+      return {
+        schemaVersion: _SCHEMA_VER,
+        students,
+        // Fall back to the locally-cached admin record (or DEFAULT_DB.admin) when
+        // no admin/teacher profile row exists in Supabase yet (e.g. fresh deployment,
+        // RLS preventing the anon key from reading that row, or Phase-2 auth not yet
+        // set up). Without this, DB.admin is null and doLogin() throws on DB.admin.id.
+        admin,
+        bossEvents: bossEventsArr,
+        bossParticipants: bossParticipantsObj,
+        achievements: _deriveAchievements(achievements.data),
+        achievementUnlocks: _deriveAchievementUnlocks(userAchievements.data),
+        titles: titlesArr,
+        titleUnlocks: _deriveTitleUnlocks(titleUnlocks.data),
+        equippedTitles,
+        // Phase 18
+        titleSectionAssignments: _deriveTitleSectionAssignments(titleSections.data),
+        // Phase 21
+        // Phase 14: shop is per-teacher — RLS on shop_products already scopes
+        // this to (a) products this session's own teacher owns, or (b)
+        // products owned by the adviser of this session's own section, so no
+        // extra client-side filter is needed here, same as every other table.
+        store: _deriveStore(shopProducts.data),
+        // Phase 15 — see _deriveMail's comments.
+        mail: _deriveMail(mailMessages.data, profiles.data, titlesArr),
+        quizSectionAssignments: _deriveQuizSectionAssignments(quizSections.data),
+        achievementSectionAssignments: _deriveAchievementSectionAssignments(achievementSections.data),
+        // Phase 16
+        registrations: _deriveRegistrations(registrations.data),
+        pointLog: _derivePointLog(pointLog.data),
+        redemptions: _deriveRedemptions(redemptions.data),
+        // Phase 48 — mirrors DB.orders[] exactly. See cartCheckout() (creates),
+        // shop_pos_terminal.js (staff claim/cancel), shop_orders.js (student
+        // self-cancel) — all pre-existing client logic, previously local-only.
+        orders: _deriveOrders(orders.data),
+        // Phase 48 — mirrors DB.inventory{} exactly.
+        inventory: _deriveInventory(inventoryRows.data),
+        // Phase 57 — mirrors DB.quizHistory{} exactly.
+        quizHistory: quizHistoryByStudent,
+        // Phase 7 (Campaign Redesign) — mirrors DB.studentSkills{} exactly.
+        studentSkills: _deriveStudentSkills(studentSkillRows.data),
+        // Phase 67 — student notification bell. Rows are written by
+        // notification-service.js (client-side synthesis from pointLog/orders,
+        // never inserted directly at the source — see that file's header
+        // comment), so this pull is a straight passthrough, same shape as
+        // pointLog above.
+        notifications: _deriveNotifications(notifications.data),
+        recitationLog: _deriveRecitationLog(recitationLog.data),
+        // Phase 71 — cross-device "Start Recitation Session" sync. Read-only
+        // passthrough; writes go exclusively through start_recitation_session()/
+        // stop_recitation_session() (recitation-service.js).
+        recitationSessions: _deriveRecitationSessions(recitationSessions.data),
+        // ── Phase 1 RFID/Attendance — READ-ONLY slices ──────────────────────
+        // Every write to these three comes from AttendanceService via
+        // DBService.rpc(), never from this bulk-pull/push path — see
+        // attendance-service.js and the RPC functions in
+        // supabase/phase1_rfid_attendance.sql. Pulling them here just keeps
+        // AppStore's slices fresh for read paths (dashboards, analytics).
+        rfidCards: _deriveRfidCards(rfidCards.data),
+        attendanceSchedules: _deriveAttendanceSchedules(attendanceSchedules.data),
+        attendanceLogs: _deriveAttendanceLogs(attendanceLogs.data),
+        // Fields not yet migrated to relational tables (Phase 2/3 scope — see
+        // migration-strategy.md "What stays on localStorage for now"):
+        quizzes: _deriveQuizzes(quizzes.data),
+        attendanceSessions: _cache?.attendanceSessions || [],
+        // Phase 22: campaign content catalog — see _deriveCampaignWorlds/
+        // _deriveCampaignSectionAssignments. stageProgress (per-student
+        // progress) stays local-cache-only — out of scope for now. quiz
+        // history is NO LONGER in this bucket — see quizHistory above (Phase 57).
+        stageMap: campaignWorldsArr,
+        stageProgress: _cache?.stageProgress || {},
+        campaignSectionAssignments: _deriveCampaignSectionAssignments(campaignStageSections.data, campaignWorldsArr),
+        // Phase 53
+        _bossIdById: bossIdById
+        // internal map, see _pushCacheToSupabase
+      };
+    }
+    const _FULL_PULL_SENTINEL = "__full__";
+    async function _applyScopedRefresh(client, changedTables) {
+      if (!_cache || changedTables.includes(_FULL_PULL_SENTINEL)) {
+        _cache = await _pullCacheFromSupabase(client);
+        return;
+      }
+      const groups = /* @__PURE__ */ new Set();
+      for (const t of changedTables) {
+        const g = _REALTIME_TABLE_GROUPS[t];
+        if (!g) {
+          groups.add(_FULL_PULL_SENTINEL);
+          break;
+        }
+        groups.add(g);
+      }
+      if (groups.has(_FULL_PULL_SENTINEL)) {
+        _cache = await _pullCacheFromSupabase(client);
+        return;
+      }
+      const groupList = Array.from(groups);
+      const results = await Promise.all(groupList.map(async (g) => {
+        const def = _REFRESH_GROUPS[g];
+        const raw = await def.fetch(client);
+        for (const key in raw) {
+          if (raw[key].error) throw raw[key].error;
+        }
+        return def.apply(raw, _cache);
+      }));
+      const merged = { ..._cache };
+      results.forEach((partial) => Object.assign(merged, partial));
+      _cache = merged;
+    }
+    function _pushCacheToSupabase(client, cache) {
+      return TableSyncRepository.pushCacheToSupabase(client, cache);
+    }
+    let _signalChannel = null;
+    let _tableSyncChannel = null;
+    const _signalSubscribers = {};
+    function _setupRealtimeSignals(client) {
+      _signalChannel = client.channel("eduquest-signals");
+      _signalChannel.on("broadcast", { event: "*" }, (msg) => {
+        const handlers = _signalSubscribers[msg.event] || [];
+        handlers.forEach((fn) => {
+          try {
+            fn(msg.payload);
+          } catch (e) {
+            console.error(e);
+          }
+        });
+      });
+      _signalChannel.subscribe((status) => {
+        _meta.signalChannelReady = status === "SUBSCRIBED";
+      });
+      _tableSyncChannel = client.channel("eduquest-table-sync").on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => _schedulePullRefresh("profiles")).on("postgres_changes", { event: "*", schema: "public", table: "boss_events" }, () => _schedulePullRefresh("boss_events")).on("postgres_changes", { event: "*", schema: "public", table: "loot_claims" }, () => _schedulePullRefresh("loot_claims")).on("postgres_changes", { event: "*", schema: "public", table: "user_achievements" }, () => _schedulePullRefresh("user_achievements")).on("postgres_changes", { event: "*", schema: "public", table: "attendance_logs" }, () => _schedulePullRefresh("attendance_logs")).on("postgres_changes", { event: "*", schema: "public", table: "rfid_cards" }, () => _schedulePullRefresh("rfid_cards")).on("postgres_changes", { event: "*", schema: "public", table: "recitation_log" }, () => _schedulePullRefresh("recitation_log")).on("postgres_changes", { event: "*", schema: "public", table: "mail_messages" }, () => _schedulePullRefresh("mail_messages")).on("postgres_changes", { event: "*", schema: "public", table: "quiz_sections" }, () => _schedulePullRefresh("quiz_sections")).on("postgres_changes", { event: "*", schema: "public", table: "achievement_sections" }, () => _schedulePullRefresh("achievement_sections")).on("postgres_changes", { event: "*", schema: "public", table: "achievements" }, () => _schedulePullRefresh("achievements")).on("postgres_changes", { event: "*", schema: "public", table: "titles" }, () => _schedulePullRefresh("titles")).on("postgres_changes", { event: "*", schema: "public", table: "title_unlocks" }, () => _schedulePullRefresh("title_unlocks")).on("postgres_changes", { event: "*", schema: "public", table: "quizzes" }, () => _schedulePullRefresh("quizzes")).on("postgres_changes", { event: "*", schema: "public", table: "title_sections" }, () => _schedulePullRefresh("title_sections")).on("postgres_changes", { event: "*", schema: "public", table: "campaign_worlds" }, () => _schedulePullRefresh("campaign_worlds")).on("postgres_changes", { event: "*", schema: "public", table: "campaign_stage_sections" }, () => _schedulePullRefresh("campaign_stage_sections")).on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => _schedulePullRefresh("orders")).on("postgres_changes", { event: "*", schema: "public", table: "inventory" }, () => _schedulePullRefresh("inventory")).on("postgres_changes", { event: "*", schema: "public", table: "quiz_history" }, () => _schedulePullRefresh("quiz_history")).on("postgres_changes", { event: "*", schema: "public", table: "point_log" }, () => _schedulePullRefresh("point_log")).on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => _schedulePullRefresh("notifications")).on("postgres_changes", { event: "*", schema: "public", table: "student_skills" }, () => _schedulePullRefresh("student_skills")).on("postgres_changes", { event: "*", schema: "public", table: "recitation_sessions" }, () => _schedulePullRefresh("recitation_sessions")).subscribe();
+    }
+    let _pullRefreshTimer = null;
+    let _pendingRefreshTables = /* @__PURE__ */ new Set();
+    function _schedulePullRefresh(table) {
+      _pendingRefreshTables.add(table || _FULL_PULL_SENTINEL);
+      if (_pullRefreshTimer) clearTimeout(_pullRefreshTimer);
+      _pullRefreshTimer = setTimeout(async () => {
+        const changedTables = Array.from(_pendingRefreshTables);
+        _pendingRefreshTables = /* @__PURE__ */ new Set();
+        const client = _getClient();
+        if (!client) return;
+        try {
+          await _applyScopedRefresh(client, changedTables);
+          _localStorageProvider.write(JSON.stringify(_cache));
+          _meta.lastRemoteSyncAt = (/* @__PURE__ */ new Date()).toISOString();
+          if (window.AppStore && typeof window.AppStore.syncFromLegacy === "function") {
+            window.AppStore.syncFromLegacy(_cache, "state:remote-sync");
+          }
+        } catch (e) {
+          console.warn("[DBService] realtime refresh pull failed:", e);
+        }
+      }, 400);
+    }
+    const _HISTORY_TABLE_CONFIG = {
+      pointLog: { table: "point_log", orderCol: "created_at", derive: _derivePointLog },
+      redemptions: { table: "redemptions", orderCol: "created_at", derive: _deriveRedemptions },
+      recitationLog: { table: "recitation_log", orderCol: "created_at", derive: _deriveRecitationLog },
+      attendanceLogs: { table: "attendance_logs", orderCol: "log_date", derive: _deriveAttendanceLogs },
+      orders: { table: "orders", orderCol: "created_at", derive: _deriveOrders },
+      notifications: { table: "notifications", orderCol: "created_at", derive: _deriveNotifications }
+    };
+    async function _loadMoreHistory(cacheKey, pageSize) {
+      const cfg = _HISTORY_TABLE_CONFIG[cacheKey];
+      if (!cfg) {
+        throw new Error(`[DBService] loadMoreHistory: unsupported key "${cacheKey}" (expected one of: ${Object.keys(_HISTORY_TABLE_CONFIG).join(", ")})`);
+      }
+      const client = _getClient();
+      if (!client || !_cache) return { added: 0, exhausted: true };
+      const already = (_cache[cacheKey] || []).length;
+      const limit = pageSize || _HISTORY_LIMITS[cfg.table] || 200;
+      const res = await client.from(cfg.table).select("*").order(cfg.orderCol, { ascending: false }).range(already, already + limit - 1);
+      if (res.error) throw res.error;
+      const newRows = cfg.derive(res.data);
+      _cache = { ..._cache, [cacheKey]: [..._cache[cacheKey] || [], ...newRows] };
+      _localStorageProvider.write(JSON.stringify(_cache));
+      if (window.AppStore && typeof window.AppStore.syncFromLegacy === "function") {
+        window.AppStore.syncFromLegacy(_cache, "state:remote-sync");
+      }
+      return { added: newRows.length, exhausted: newRows.length < limit };
+    }
+    return {
+      /**
+       * initRemote() → Promise<void>
+       * MUST be awaited once, before AppStore.init() runs (i.e. before
+       * state-manager.js's auto-init IIFE — see migration-strategy.md for the
+       * exact index.html change: state-manager.js's auto-init is wrapped so
+       * it waits on a resolved promise instead of running at parse time).
+       * Hydrates _cache from Supabase, or from localStorage if offline/no
+       * Supabase config is present — this is the "No Downtime" fallback.
+       */
+      initRemote: async function() {
+        _meta.provider = _resolveProvider();
+        const client = _getClient();
+        if (!client) {
+          console.warn("[DBService] No Supabase client configured \u2014 running on localStorage only.");
+          _cache = null;
+          return;
+        }
+        try {
+          const { data: sessionData } = await client.auth.getSession();
+          if (!sessionData || !sessionData.session) {
+            console.warn("[DBService] No saved session yet \u2014 loading local cache only; will pull fresh right after login.");
+            _meta.online = false;
+            try {
+              const raw = _localStorageProvider.read();
+              _cache = raw ? JSON.parse(raw) : null;
+            } catch (e2) {
+              _cache = null;
+            }
+            _setupRealtimeSignals(client);
+            return;
+          }
+          const _uid = sessionData.session.user && sessionData.session.user.id;
+          let _localMirror = null;
+          try {
+            const rawMirror = _localStorageProvider.read();
+            const stampedUid = window.localStorage.getItem(_LAST_SYNCED_UID_KEY);
+            if (rawMirror && stampedUid && _uid && stampedUid === _uid) {
+              _localMirror = JSON.parse(rawMirror);
+            }
+          } catch (e3) {
+            _localMirror = null;
+          }
+          if (_localMirror) {
+            _cache = _localMirror;
+            _meta.online = true;
+            _setupRealtimeSignals(client);
+            _pullCacheFromSupabase(client).then(function(fresh) {
+              _cache = fresh;
+              _localStorageProvider.write(JSON.stringify(_cache));
+              if (_uid) window.localStorage.setItem(_LAST_SYNCED_UID_KEY, _uid);
+              _meta.lastRemoteSyncAt = (/* @__PURE__ */ new Date()).toISOString();
+              _meta.online = true;
+              if (window.AppStore && typeof window.AppStore.syncFromLegacy === "function") {
+                window.AppStore.syncFromLegacy(_cache, "state:remote-sync");
+              }
+            }).catch(function(e4) {
+              console.warn("[DBService] background initial-boot pull failed, staying on cached snapshot:", e4);
+              _meta.lastError = String(e4 && e4.message || e4);
+            });
+            return;
+          }
+          _cache = await _pullCacheFromSupabase(client);
+          _localStorageProvider.write(JSON.stringify(_cache));
+          if (_uid) window.localStorage.setItem(_LAST_SYNCED_UID_KEY, _uid);
+          _meta.lastRemoteSyncAt = (/* @__PURE__ */ new Date()).toISOString();
+          _meta.online = true;
+          _setupRealtimeSignals(client);
+        } catch (e) {
+          console.error("[DBService] initial Supabase pull failed, falling back to local cache:", e);
+          _meta.lastError = String(e && e.message || e);
+          _meta.online = false;
+          try {
+            const raw = _localStorageProvider.read();
+            _cache = raw ? JSON.parse(raw) : null;
+          } catch (e2) {
+            _cache = null;
+          }
+        }
+      },
+      /**
+       * refreshAfterAuthChange() → Promise<void>
+       * Re-pulls the full dataset under whichever Supabase Auth session is
+       * CURRENTLY active, overwrites the in-memory cache + localStorage
+       * mirror, and pushes the fresh data to AppStore so already-rendered UI
+       * updates immediately.
+       *
+       * MUST be called right after every successful doLogin() (see auth.js),
+       * before bootApp() renders the dashboard. Without this, whatever was
+       * pulled during the LAST initRemote() call (e.g. under a previous
+       * account's session, or no session at all) just keeps sitting in
+       * memory — signInWithPassword() only changes which account can WRITE
+       * and which RLS rows are visible on the NEXT query; it does not
+       * retroactively re-scope data that's already sitting in the client-side
+       * cache.
+       *
+       * This is what caused a teacher account to see a *different* teacher's
+       * (or admin's) full roster after switching accounts in the same browser
+       * without an intervening full page reload — see
+       * REPORT_cross_account_data_and_template_row.md, Part 5. RLS itself was
+       * never broken; the cache was just stale.
+       */
+      refreshAfterAuthChange: async function() {
+        const client = _getClient();
+        if (!client) return;
+        _sessionEpoch++;
+        if (_uploadTimer) {
+          clearTimeout(_uploadTimer);
+          _uploadTimer = null;
+        }
+        try {
+          _cache = await _pullCacheFromSupabase(client);
+          _localStorageProvider.write(JSON.stringify(_cache));
+          try {
+            const { data: sd } = await client.auth.getSession();
+            const uid2 = sd && sd.session && sd.session.user && sd.session.user.id;
+            if (uid2) window.localStorage.setItem(_LAST_SYNCED_UID_KEY, uid2);
+          } catch (eStamp) {
+          }
+          _meta.lastRemoteSyncAt = (/* @__PURE__ */ new Date()).toISOString();
+          _meta.online = true;
+          _meta.lastError = null;
+          if (window.AppStore && typeof window.AppStore.syncFromLegacy === "function") {
+            window.AppStore.syncFromLegacy(_cache, "state:auth-change-sync");
+          }
+        } catch (e) {
+          _cache = null;
+          try {
+            _localStorageProvider.remove();
+          } catch (e2) {
+          }
+          _meta.lastError = String(e && e.message || e);
+          _meta.online = false;
+          console.warn("[DBService] refreshAfterAuthChange pull failed, dashboard may show stale data:", e);
+        }
+      },
+      /**
+       * read(defaultValue) → Object   [SYNCHRONOUS — see THE SYNC PROBLEM]
+       * Returns a deep clone of the in-memory cache. If the cache was never
+       * hydrated (initRemote() not called, or both Supabase and localStorage
+       * are empty), returns a deep clone of defaultValue, exactly like v1.
+       *
+       * BUGFIX: defaultValue is optional — every existing call site in the
+       * app calls loadDB() / DBService.read() with NO argument and relies on
+       * DEFAULT_DB already being baked in elsewhere. JSON.stringify(undefined)
+       * returns the bare string "undefined", and JSON.parse("undefined")
+       * throws — so this must check for undefined explicitly rather than
+       * blindly round-tripping whatever was passed in.
+       */
+      read: function(defaultValue) {
+        _meta.loadCount++;
+        _meta.lastLoadAt = (/* @__PURE__ */ new Date()).toISOString();
+        if (_cache) return JSON.parse(JSON.stringify(_cache));
+        try {
+          var raw = _localStorageProvider.read();
+          if (raw) {
+            _cache = JSON.parse(raw);
+            return JSON.parse(JSON.stringify(_cache));
+          }
+        } catch (e) {
+        }
+        if (defaultValue === void 0 || defaultValue === null) return null;
+        return JSON.parse(JSON.stringify(defaultValue));
+      },
+      /**
+       * write(db) → void   [SYNCHRONOUS locally, ASYNC remotely]
+       * Updates the in-memory cache and the localStorage mirror IMMEDIATELY
+       * (so a refresh or network loss never loses the last write), then
+       * queues a debounced push to Supabase.
+       */
+      write: function(db) {
+        _meta.saveCount++;
+        _meta.lastSaveAt = (/* @__PURE__ */ new Date()).toISOString();
+        _cache = db;
+        try {
+          _localStorageProvider.write(JSON.stringify(db));
+        } catch (e) {
+          console.warn("[DBService] localStorage mirror write failed (quota?):", e);
+        }
+        if (_getClient()) _queueUpload();
+      },
+      /**
+       * mirrorLocalOnly(db) → void
+       * BUGFIX (inventory/quiz_history 42501 storm once realtime actually
+       * delivers events): write(db) always queues a push back to Supabase.
+       * That's correct for a genuine LOCAL mutation, but state-manager.js's
+       * syncFromLegacy() also calls into the write path for data that just
+       * arrived FROM Supabase (state:remote-sync / state:auth-change-sync —
+       * see db-service.js's own syncFromLegacy call sites). Pushing that
+       * straight back is a pure echo: it re-upserts every table in the full
+       * cache, including inventory/quiz_history rows for every student in
+       * the system, not just this session's own section (those two tables
+       * never got the per-class_id filtering the profiles upsert above has).
+       * Most of that gets rejected by RLS (42501), and any row that DOES
+       * belong to this session fires its own postgres_changes event,
+       * re-triggering the same pull -> sync -> push cycle indefinitely.
+       * This existed as long as the write path did, but stayed silent until
+       * realtime was actually delivering events (it wasn't, until the
+       * supabase_realtime publication got repaired). Use this instead of
+       * write() for any sync whose data source IS Supabase — update the
+       * local cache/mirror so the UI stays current, but never re-push
+       * something that already reflects the server.
+       */
+      mirrorLocalOnly: function(db) {
+        _meta.saveCount++;
+        _meta.lastSaveAt = (/* @__PURE__ */ new Date()).toISOString();
+        _cache = db;
+        try {
+          _localStorageProvider.write(JSON.stringify(db));
+        } catch (e) {
+          console.warn("[DBService] localStorage mirror write failed (quota?):", e);
+        }
+      },
+      /**
+       * writeDirty(dirtySnapshot) → void
+       * [Phase 5B bugfix] Persists AppStore's delta-sync dirty-id tracking —
+       * see _DIRTY_TRACKING_KEY's own comment for the bug this closes.
+       * `dirtySnapshot` is a plain `{ [table]: string[] }` object (AppStore
+       * serializes its internal Sets before calling this). Synchronous,
+       * localStorage-only — this is small bookkeeping metadata, not app
+       * data, so it deliberately never touches _cache or queues a Supabase
+       * push of its own.
+       */
+      writeDirty: function(dirtySnapshot) {
+        try {
+          localStorage.setItem(_DIRTY_TRACKING_KEY, JSON.stringify(dirtySnapshot));
+        } catch (e) {
+          console.warn("[DBService] dirty-tracking localStorage write failed (quota?):", e);
+        }
+      },
+      /**
+       * readDirty() → { [table]: string[] } | null
+       * [Phase 5B bugfix] Companion to writeDirty() — called once during
+       * AppStore.init() to restore dirty-id tracking across a reload. Returns
+       * null (not throw) on anything unexpected — a missing/corrupt entry
+       * here should degrade to "nothing was pending," never crash boot.
+       */
+      readDirty: function() {
+        try {
+          const raw = localStorage.getItem(_DIRTY_TRACKING_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+          console.warn("[DBService] dirty-tracking localStorage read failed (corrupt entry?):", e);
+          return null;
+        }
+      },
+      /**
+       * teardownRealtime() → void
+       * BUGFIX (orders/inventory/quiz_history 42501 on logout, surviving even
+       * flushPendingUpload()): _setupRealtimeSignals() opens two channels —
+       * 'eduquest-signals' (_signalChannel) and 'eduquest-table-sync'
+       * (_tableSyncChannel) — that live for the whole tab session and were
+       * NEVER unsubscribed anywhere, including on logout. A postgres_changes
+       * event on any watched table (orders/inventory/quiz_history included)
+       * calls _schedulePullRefresh(), which — once its 400ms debounce fires —
+       * calls syncFromLegacy(), which ends in _persist() -> DBService.write()
+       * -> _queueUpload(), queuing a NEW push. If that happens after
+       * doLogout()'s one-time flushPendingUpload() already ran, the new push
+       * is invisible to it and fires later, post-signOut(), 42501-ing exactly
+       * like the original race. Call this — BEFORE flushing/signing out — so
+       * nothing can re-dirty state through this path during that window.
+       * Safe to call even if no channel was ever set up (e.g. offline mode).
+       */
+      teardownRealtime: function() {
+        const client = _getClient();
+        if (client) {
+          try {
+            if (_signalChannel) client.removeChannel(_signalChannel);
+          } catch (e) {
+            console.warn("[DBService] teardownRealtime: removeChannel(_signalChannel) failed:", e);
+          }
+          try {
+            if (_tableSyncChannel) client.removeChannel(_tableSyncChannel);
+          } catch (e) {
+            console.warn("[DBService] teardownRealtime: removeChannel(_tableSyncChannel) failed:", e);
+          }
+        }
+        _signalChannel = null;
+        _tableSyncChannel = null;
+        _meta.signalChannelReady = false;
+        if (_pullRefreshTimer) {
+          clearTimeout(_pullRefreshTimer);
+          _pullRefreshTimer = null;
+        }
+        _pendingRefreshTables = /* @__PURE__ */ new Set();
+      },
+      /**
+       * flushPendingUpload() → Promise<void>
+       * BUGFIX (42501 RLS errors on logout, e.g. orders/quizzes/campaign_worlds/
+       * inventory/point_log/quiz_history/redemptions): _queueUpload()'s 400ms
+       * debounce means a state change made in the moments right before logout
+       * can still be sitting in the timer queue when doLogout() calls
+       * client.auth.signOut(). The timer keeps running during that await; if
+       * it fires (or a push is already mid-flight) around the same moment the
+       * session gets revoked, the upsert calls land with no valid auth.uid()
+       * and every ownership-scoped RLS policy correctly rejects them.
+       *
+       * Call this — and await it — BEFORE signOut(), so any pending push
+       * either completes (or fails loudly) while the session is still valid,
+       * instead of racing teardown. No-op if nothing is queued.
+       */
+      flushPendingUpload: async function() {
+        if (_uploadTimer) {
+          clearTimeout(_uploadTimer);
+          _uploadTimer = null;
+          await _flushUpload(_sessionEpoch);
+        }
+      },
+      /**
+       * remove() → void
+       * Hard-reset: clears local cache + mirror. Does NOT delete remote rows
+       * (that is a destructive admin action, intentionally not exposed here —
+       * use the Supabase dashboard or a dedicated admin RPC).
+       */
+      remove: function() {
+        _cache = null;
+        _sessionEpoch++;
+        if (_uploadTimer) {
+          clearTimeout(_uploadTimer);
+          _uploadTimer = null;
+        }
+        try {
+          _localStorageProvider.remove();
+        } catch (e) {
+        }
+      },
+      get storageKey() {
+        return _localStorageProvider.key;
+      },
+      diagnostics: function() {
+        return Object.assign({}, _meta);
+      },
+      /**
+       * rpc(name, params) → Promise<{data, error}>
+       * Thin pass-through to supabase.rpc(), for the trust-sensitive write
+       * paths that must NOT go through the bulk write() upsert — loot claims
+       * and achievement claims. See migration-strategy.md "Write paths that
+       * MUST use RPCs" for the exact call-site edits in loot-service.js and
+       * ach_engine.js (the only two files that need to change beyond this one
+       * and state-manager.js).
+       */
+      rpc: async function(name, params) {
+        const client = _getClient();
+        if (!client) return { data: null, error: new Error("Supabase client not available (offline).") };
+        return client.rpc(name, params);
+      },
+      /**
+       * uploadPublicFile(bucket, path, blob, contentType) → Promise<{data, error}>
+       * (Pending Fixes Report §2b — Boss Studio artwork storage)
+       *
+       * Narrow, documented crack in the "DBService is the only thing that
+       * touches the Supabase client" rule — same posture as rpc() and
+       * getAuthClient() above, just for Storage instead of Postgres/Auth.
+       * Callers (bs_storage.js) never touch `.storage` directly; they only
+       * ever call this method, so the client stays fully encapsulated here.
+       *
+       * Uploads with upsert:true (re-uploading the same ref is a no-op/replace,
+       * never a duplicate-key error), then resolves the public URL. Returns
+       * { data: { path, publicUrl }, error: null } on success, or
+       * { data: null, error } — callers treat a failure as best-effort and
+       * fall back to whatever local-only behavior existed before this file
+       * existed (see bs_storage.js's _bsUploadArtworkToStorage()).
+       */
+      uploadPublicFile: async function(bucket, path, blob, contentType) {
+        const client = _getClient();
+        if (!client) return { data: null, error: new Error("Supabase client not available (offline).") };
+        try {
+          const { data, error } = await client.storage.from(bucket).upload(path, blob, {
+            contentType: contentType || blob && blob.type || "application/octet-stream",
+            upsert: true
+          });
+          if (error) return { data: null, error };
+          const { data: pub } = client.storage.from(bucket).getPublicUrl(data.path);
+          return { data: { path: data.path, publicUrl: pub.publicUrl }, error: null };
+        } catch (e) {
+          return { data: null, error: e };
+        }
+      },
+      /**
+       * getAuthClient() → SupabaseClient | null
+       * AUTH MIGRATION: exposes the underlying Supabase client SOLELY for
+       * calling its `.auth` namespace (signInWithPassword, signOut, getSession,
+       * onAuthStateChange, etc.) from auth.js and — as of chunk A4, see
+       * recovery.js — from the password-recovery listener/screen, which is
+       * the same category of session-flow code as auth.js, just split into
+       * its own file. This is the one intentional crack in the "DBService is
+       * the only thing that touches the Supabase client" rule — auth state
+       * doesn't belong to the cache/sync model (read/write/rpc) this file
+       * otherwise owns, so it gets its own narrow accessor instead of being
+       * bolted onto rpc(). Callers must still never call .from(...) directly
+       * on this client — that stays exclusively DBService's job. Anything
+       * that is NOT a login/session/recovery flow (e.g. an admin triggering a
+       * reset email for someone else, see sendPasswordResetEmail() below)
+       * goes through a dedicated DBService method instead of this accessor.
+       */
+      getAuthClient: function() {
+        return _getClient();
+      },
+      /**
+       * sendPasswordResetEmail(email, redirectTo) → Promise<{ok, error?}>
+       * (Chunk A4 — Teacher Directory "Send Reset Email" action.)
+       * Narrow, documented crack in the "DBService is the only thing that
+       * touches the Supabase client" rule, same posture as uploadPublicFile()
+       * above — this is the one non-session-flow caller allowed to reach
+       * .auth, because unlike getAuthClient()'s callers (auth.js, recovery.js)
+       * this isn't managing the CALLER's own session; it's an admin asking
+       * Supabase to email a DIFFERENT account a recovery link. Kept out of
+       * TeacherDirectoryService's direct reach of the raw client for that
+       * reason. No RPC involved — resetPasswordForEmail() is a Supabase Auth
+       * (GoTrue) call, not a Postgres one, so this can't be rpc().
+       */
+      sendPasswordResetEmail: async function(email, redirectTo) {
+        const client = _getClient();
+        if (!client) return { ok: false, error: "Supabase client not available (offline)." };
+        const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
+        if (error) return { ok: false, error: error.message || "Could not send the reset email." };
+        return { ok: true };
+      },
+      /**
+       * onSignal(eventName, fn) → void
+       * Subscribe to a realtime broadcast signal (replaces the old
+       * DB.pendingSkill / DB.pendingBossSummon polling fields).
+       */
+      onSignal: function(eventName, fn) {
+        if (!_signalSubscribers[eventName]) _signalSubscribers[eventName] = [];
+        _signalSubscribers[eventName].push(fn);
+      },
+      /**
+       * sendSignal(eventName, payload) → void
+       * Broadcast a one-off signal to all other connected tabs/devices.
+       */
+      sendSignal: function(eventName, payload) {
+        if (_signalChannel) {
+          _signalChannel.send({ type: "broadcast", event: eventName, payload });
+        }
+      },
+      /**
+       * loadMoreHistory(cacheKey, pageSize?) → Promise<{added, exhausted}>
+       * Priority 2 Fix 2 follow-up — pages a bounded-history table (see
+       * _HISTORY_LIMITS) further back than its default window. cacheKey is
+       * one of: pointLog, redemptions, recitationLog, attendanceLogs, orders,
+       * notifications. Not wired into any screen yet; exposed here so a
+       * future "load older…" button is a small UI addition, not a
+       * DBService change. Appends into _cache[cacheKey] and re-syncs
+       * AppStore, same as a realtime refresh would.
+       */
+      loadMoreHistory: async function(cacheKey, pageSize) {
+        return _loadMoreHistory(cacheKey, pageSize);
+      },
+      _meta,
+      // Test-only seam (Phase 5A). Not used by any runtime call site — every
+      // real push still goes through _flushUpload()/_getClient() exactly as
+      // before. Exists so unit tests can drive _pushCacheToSupabase() and the
+      // repository layer directly against a fake Supabase client, to assert
+      // the refactor's upsert payloads are byte-identical to the pre-refactor
+      // hand-written blocks, and (going forward, Phase 5B) to assert the
+      // no-clobber property table-by-table before each is converted to delta
+      // sync.
+      _test: {
+        pushCacheToSupabase: _pushCacheToSupabase,
+        tableSyncConfigs: TableSyncRepository.tableSyncConfigs
+      }
+    };
+  })();
+  window.DBService = DBService2;
+
+  // src/student-stats.js
+  var TIER_THRESHOLDS = [
+    { minLevel: 20, name: "Legend" },
+    { minLevel: 15, name: "Master" },
+    { minLevel: 10, name: "Scholar" },
+    { minLevel: 5, name: "Achiever" },
+    { minLevel: 0, name: "Novice" }
+  ];
+  function recalcStudentStats(student, opts) {
+    if (!student) return;
+    opts = opts || {};
+    window.XP_PER_LEVEL = 1e3;
+    window.getLevel = function(xp) {
+      return Math.floor(xp / XP_PER_LEVEL);
+    };
+    for (const t of TIER_THRESHOLDS) {
+      if (student.level >= t.minLevel) {
+        student.tier = t.name;
+        break;
+      }
+    }
+    const history = (DB.quizHistory || {})[student.id] || [];
+    if (history.length > 0) {
+      const sum = history.reduce((acc, entry) => acc + (entry.score || 0), 0);
+      student.quizAvg = Math.round(sum / history.length);
+    }
+    const logs = (opts.attendanceLogs || DB.attendanceLogs || []).filter((l) => l.studentId === student.id && l.status !== "Excused");
+    if (logs.length > 0) {
+      const present = logs.filter((l) => l.status === "Early" || l.status === "On Time" || l.status === "Late").length;
+      student.attendance = Math.round(present / logs.length * 100);
+    } else {
+      const sessions = (DB.attendanceSessions || []).filter((s) => s.studentId === student.id);
+      if (sessions.length > 0) {
+        const present = sessions.filter((s) => s.status === "present").length;
+        student.attendance = Math.round(present / sessions.length * 100);
+      }
+    }
+  }
+  window.recalcStudentStats = recalcStudentStats;
+  function getStudentAttendanceRecords(sid, opts) {
+    opts = opts || {};
+    const logs = opts.attendanceLogs || DB.attendanceLogs || [];
+    return logs.filter((r) => r.studentId === sid && r.status !== "Excused").map((r) => ({
+      studentId: r.studentId,
+      date: r.logDate,
+      status: r.status === "Early" || r.status === "On Time" || r.status === "Late" ? "present" : "absent"
+    }));
+  }
+  window.getStudentAttendanceRecords = getStudentAttendanceRecords;
+  function computeAttendanceStreak(records) {
+    const presentDays = [...new Set(
+      records.filter((s) => s.status === "present").map((s) => s.date)
+    )].sort();
+    if (!presentDays.length) return { current: 0, longest: 0 };
+    function parseDate(d) {
+      if (!d) return null;
+      const t = new Date(d);
+      return isNaN(t.getTime()) ? null : t;
+    }
+    let longest = 1, cur = 1;
+    for (let i = 1; i < presentDays.length; i++) {
+      const a = parseDate(presentDays[i - 1]), b = parseDate(presentDays[i]);
+      if (a && b) {
+        const diff = Math.round((b - a) / 864e5);
+        if (diff === 1) {
+          cur++;
+          longest = Math.max(longest, cur);
+        } else cur = 1;
+      }
+    }
+    const todayDate = /* @__PURE__ */ new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    let curStreak = 0;
+    const daysCopy = [...presentDays].reverse();
+    let checkDate = new Date(todayDate);
+    for (const d of daysCopy) {
+      const pd = parseDate(d);
+      if (!pd) continue;
+      const diff = Math.round((checkDate - pd) / 864e5);
+      if (diff === 0 || diff === 1) {
+        curStreak++;
+        checkDate = pd;
+      } else if (diff > 1) break;
+    }
+    return { current: curStreak, longest: Math.max(longest, curStreak) };
+  }
+  window.computeAttendanceStreak = computeAttendanceStreak;
+  function syncStudentStatsToServer(studentId, xpDelta, coinsDelta) {
+    if (!studentId) return;
+    xpDelta = xpDelta || 0;
+    coinsDelta = coinsDelta || 0;
+    if (!xpDelta && !coinsDelta) return;
+    if (typeof DBService2 === "undefined" || typeof DBService2.rpc !== "function") return;
+    DBService2.rpc("adjust_student_stats", {
+      p_student_id: studentId,
+      p_xp_delta: xpDelta,
+      p_coins_delta: coinsDelta
+    }).then(function(result) {
+      const error = result && result.error;
+      const data = result && result.data;
+      if (error) {
+        console.warn("[EduQuest] syncStudentStatsToServer: RPC failed for", studentId, error);
+        return;
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row) return;
+      try {
+        if (typeof currentUser !== "undefined" && currentUser && currentUser.id === studentId) {
+          currentUser.xp = row.xp;
+          currentUser.coins = row.coins;
+          currentUser.level = row.level;
+          currentUser.tier = row.tier;
+        }
+      } catch (e) {
+      }
+      try {
+        if (typeof AppStore !== "undefined" && AppStore && typeof AppStore.updateState === "function") {
+          AppStore.updateState((draft) => {
+            const s = (draft.students || []).find((x) => x.id === studentId);
+            if (s) {
+              s.xp = row.xp;
+              s.coins = row.coins;
+              s.level = row.level;
+              s.tier = row.tier;
+            }
+          }, { type: "student:stats-synced", payload: { studentId } });
+        }
+      } catch (e) {
+      }
+    }).catch(function(e) {
+      console.warn("[EduQuest] syncStudentStatsToServer: RPC threw for", studentId, e);
+    });
+  }
+  window.syncStudentStatsToServer = syncStudentStatsToServer;
+  async function syncOwnProfileCosmeticToServer(payload) {
+    payload = payload || {};
+    if (typeof DBService2 === "undefined" || typeof DBService2.rpc !== "function") {
+      return { success: false, error: new Error("Not connected to Supabase (offline).") };
+    }
+    try {
+      const result = await DBService2.rpc("update_own_profile_cosmetic", {
+        p_display_name: payload.displayName !== void 0 ? payload.displayName : null,
+        p_first_name: payload.firstName !== void 0 ? payload.firstName : null,
+        p_last_name: payload.lastName !== void 0 ? payload.lastName : null,
+        p_init: payload.init !== void 0 ? payload.init : null,
+        p_profile_pic_url: payload.profilePic !== void 0 ? payload.profilePic : null
+      });
+      if (result && result.error) {
+        console.warn("[EduQuest] syncOwnProfileCosmeticToServer: RPC failed", result.error);
+        return { success: false, error: result.error };
+      }
+      return { success: true, row: result && result.data };
+    } catch (e) {
+      console.warn("[EduQuest] syncOwnProfileCosmeticToServer: RPC threw", e);
+      return { success: false, error: e };
+    }
+  }
+  window.syncOwnProfileCosmeticToServer = syncOwnProfileCosmeticToServer;
+  function syncStudentDerivedStatsToServer(studentId, attendancePct, quizAvg) {
+    if (!studentId) return;
+    if (attendancePct === void 0 && quizAvg === void 0) return;
+    if (typeof DBService2 === "undefined" || typeof DBService2.rpc !== "function") return;
+    DBService2.rpc("sync_student_derived_stats", {
+      p_student_id: studentId,
+      p_attendance_pct: attendancePct === void 0 || attendancePct === null ? null : attendancePct,
+      p_quiz_avg: quizAvg === void 0 || quizAvg === null ? null : quizAvg
+    }).then(function(result) {
+      const error = result && result.error;
+      if (error) {
+        console.warn("[EduQuest] syncStudentDerivedStatsToServer: RPC failed for", studentId, error);
+      }
+    }).catch(function(e) {
+      console.warn("[EduQuest] syncStudentDerivedStatsToServer: RPC threw for", studentId, e);
+    });
+  }
+  window.syncStudentDerivedStatsToServer = syncStudentDerivedStatsToServer;
+  function syncAchievementUnlockToServer(studentId, achId, xpGranted, coinsGranted, claimed, classId) {
+    if (!studentId || !achId) return;
+    if (typeof DBService2 === "undefined" || typeof DBService2.rpc !== "function") return;
+    DBService2.rpc("award_achievement_to_student", {
+      p_student_id: studentId,
+      p_achievement_id: achId,
+      p_xp_granted: xpGranted || 0,
+      p_coins_granted: coinsGranted || 0,
+      p_claimed: !!claimed,
+      p_class_id: classId || null
+    }).then(function(result) {
+      const error = result && result.error;
+      if (error) console.warn("[EduQuest] syncAchievementUnlockToServer: RPC failed for", studentId, achId, error);
+    }).catch(function(e) {
+      console.warn("[EduQuest] syncAchievementUnlockToServer: RPC threw for", studentId, achId, e);
+    });
+  }
+  window.syncAchievementUnlockToServer = syncAchievementUnlockToServer;
+  function syncAchievementClaimToServer(studentId, achId, xpGranted, coinsGranted) {
+    if (!studentId || !achId) return;
+    if (typeof DBService2 === "undefined" || typeof DBService2.rpc !== "function") return;
+    DBService2.rpc("claim_achievement_reward", {
+      p_student_id: studentId,
+      p_achievement_id: achId,
+      p_xp_granted: xpGranted || 0,
+      p_coins_granted: coinsGranted || 0
+    }).then(function(result) {
+      const error = result && result.error;
+      if (error) console.warn("[EduQuest] syncAchievementClaimToServer: RPC failed for", studentId, achId, error);
+    }).catch(function(e) {
+      console.warn("[EduQuest] syncAchievementClaimToServer: RPC threw for", studentId, achId, e);
+    });
+  }
+  window.syncAchievementClaimToServer = syncAchievementClaimToServer;
+  function syncAchievementRevokeToServer(studentId, achId) {
+    if (!studentId || !achId) return;
+    if (typeof DBService2 === "undefined" || typeof DBService2.rpc !== "function") return;
+    DBService2.rpc("revoke_achievement_from_student", {
+      p_student_id: studentId,
+      p_achievement_id: achId
+    }).then(function(result) {
+      const error = result && result.error;
+      if (error) console.warn("[EduQuest] syncAchievementRevokeToServer: RPC failed for", studentId, achId, error);
+    }).catch(function(e) {
+      console.warn("[EduQuest] syncAchievementRevokeToServer: RPC threw for", studentId, achId, e);
+    });
+  }
+  window.syncAchievementRevokeToServer = syncAchievementRevokeToServer;
+  function syncTitleUnlockToServer(studentId, titleId, classId) {
+    if (!studentId || !titleId) return;
+    if (typeof DBService2 === "undefined" || typeof DBService2.rpc !== "function") return;
+    DBService2.rpc("unlock_title_for_student", {
+      p_student_id: studentId,
+      p_title_id: titleId,
+      p_class_id: classId || null
+    }).then(function(result) {
+      const error = result && result.error;
+      if (error) console.warn("[EduQuest] syncTitleUnlockToServer: RPC failed for", studentId, titleId, error);
+    }).catch(function(e) {
+      console.warn("[EduQuest] syncTitleUnlockToServer: RPC threw for", studentId, titleId, e);
+    });
+  }
+  window.syncTitleUnlockToServer = syncTitleUnlockToServer;
+  function syncTitleRevokeToServer(studentId, titleId) {
+    if (!studentId || !titleId) return;
+    if (typeof DBService2 === "undefined" || typeof DBService2.rpc !== "function") return;
+    DBService2.rpc("revoke_title_from_student", {
+      p_student_id: studentId,
+      p_title_id: titleId
+    }).then(function(result) {
+      const error = result && result.error;
+      if (error) console.warn("[EduQuest] syncTitleRevokeToServer: RPC failed for", studentId, titleId, error);
+    }).catch(function(e) {
+      console.warn("[EduQuest] syncTitleRevokeToServer: RPC threw for", studentId, titleId, e);
+    });
+  }
+  window.syncTitleRevokeToServer = syncTitleRevokeToServer;
+  function syncEquippedTitleToServer(studentId, titleId) {
+    if (!studentId) return;
+    if (typeof DBService2 === "undefined" || typeof DBService2.rpc !== "function") return;
+    DBService2.rpc("set_equipped_title", {
+      p_student_id: studentId,
+      p_title_id: titleId || null
+    }).then(function(result) {
+      const error = result && result.error;
+      if (error) console.warn("[EduQuest] syncEquippedTitleToServer: RPC failed for", studentId, titleId, error);
+    }).catch(function(e) {
+      console.warn("[EduQuest] syncEquippedTitleToServer: RPC threw for", studentId, titleId, e);
+    });
+  }
+  window.syncEquippedTitleToServer = syncEquippedTitleToServer;
+
+  // src/modules/recitation/progress.js
+  (function injectProgressCSS() {
+    if (document.getElementById("recitation-progress-css")) return;
+    const style = document.createElement("style");
+    style.id = "recitation-progress-css";
+    style.textContent = `
+/* \u2500\u2500 PROGRESS PAGE BASE \u2500\u2500 */
+.prog-hero{
+  position:relative;overflow:hidden;border-radius:20px;
+  background:linear-gradient(135deg,#0f0d1f 0%,#1a1438 50%,#0e1a2a 100%);
+  border:1px solid rgba(208,188,255,0.15);
+  padding:36px 40px 32px;margin-bottom:28px;
+}
+.prog-hero::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 75% 50%,rgba(78,222,163,0.10) 0%,transparent 55%),
+             radial-gradient(ellipse at 20% 80%,rgba(208,188,255,0.10) 0%,transparent 50%);
+  pointer-events:none;
+}
+.prog-hero-grid{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center;position:relative;z-index:1}
+.prog-hero-label{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(78,222,163,.7);margin-bottom:6px}
+.prog-hero-name{font-family:var(--fh);font-size:36px;font-weight:900;letter-spacing:-.5px;color:var(--on-surface);line-height:1.1;margin-bottom:4px}
+.prog-hero-sub{font-size:13px;color:var(--text-muted);margin-bottom:18px}
+.prog-stat-strip{display:flex;gap:10px;flex-wrap:wrap}
+.prog-stat-chip{
+  display:flex;flex-direction:column;align-items:center;padding:10px 16px;
+  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);
+  border-radius:12px;min-width:80px;backdrop-filter:blur(8px);
+}
+.prog-stat-chip .v{font-family:var(--fh);font-size:22px;font-weight:900;line-height:1}
+.prog-stat-chip .l{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-top:3px}
+.prog-hero-avatar{
+  width:90px;height:90px;border-radius:18px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--fh);font-size:28px;font-weight:900;
+  box-shadow:0 0 40px rgba(139,92,246,0.3);
+  border:2px solid rgba(208,188,255,0.25);flex-shrink:0;
+}
+
+/* \u2500\u2500 TAB BAR \u2500\u2500 */
+.prog-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:28px;overflow-x:auto}
+.prog-tab{
+  display:flex;align-items:center;gap:7px;padding:12px 22px;
+  font-size:13px;font-weight:700;letter-spacing:.04em;
+  color:var(--text-muted);background:none;border:none;cursor:pointer;
+  border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s;
+  font-family:var(--fb);
+}
+.prog-tab:hover{color:var(--on-surface)}
+.prog-tab.active{color:var(--primary);border-bottom-color:var(--primary-dark)}
+.prog-tab .material-symbols-outlined{font-size:16px}
+.prog-panel{display:none}
+.prog-panel.active{display:block}
+
+/* \u2500\u2500 STREAK CARDS \u2500\u2500 */
+.streak-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:28px}
+.streak-card{
+  position:relative;overflow:hidden;
+  border-radius:16px;padding:22px;
+  background:rgba(35,31,56,0.85);
+  border:1px solid var(--border);
+  backdrop-filter:blur(12px);
+  transition:all .3s;
+}
+.streak-card:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(0,0,0,.4)}
+.streak-card.fire{border-color:rgba(255,185,95,0.35);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(40,25,10,.6))}
+.streak-card.fire::before{content:'';position:absolute;top:-20px;right:-20px;width:100px;height:100px;
+  background:radial-gradient(circle,rgba(255,185,95,.18) 0%,transparent 70%);border-radius:50%}
+.streak-card.crystal{border-color:rgba(78,222,163,0.35);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(10,30,25,.6))}
+.streak-card.crystal::before{content:'';position:absolute;top:-20px;right:-20px;width:100px;height:100px;
+  background:radial-gradient(circle,rgba(78,222,163,.15) 0%,transparent 70%);border-radius:50%}
+.streak-card.violet{border-color:rgba(208,188,255,0.35);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(20,10,40,.6))}
+.streak-card.violet::before{content:'';position:absolute;top:-20px;right:-20px;width:100px;height:100px;
+  background:radial-gradient(circle,rgba(208,188,255,.12) 0%,transparent 70%);border-radius:50%}
+.streak-icon{font-size:36px;margin-bottom:10px;line-height:1;display:block}
+.streak-num{font-family:var(--fh);font-size:48px;font-weight:900;line-height:1;margin-bottom:2px}
+.streak-lbl{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)}
+.streak-sub{font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5}
+.streak-badge{
+  display:inline-flex;align-items:center;gap:5px;margin-top:10px;
+  padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+}
+
+/* \u2500\u2500 CALENDAR \u2500\u2500 */
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.cal-nav-btn{
+  width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.05);
+  border:1px solid var(--border2);cursor:pointer;color:var(--on-surface);
+  display:flex;align-items:center;justify-content:center;transition:all .18s;font-size:16px;
+}
+.cal-nav-btn:hover{background:rgba(208,188,255,.1);border-color:rgba(208,188,255,.3)}
+.cal-month-label{font-family:var(--fh);font-size:18px;font-weight:900;color:var(--on-surface)}
+.cal-grid-wrap{background:rgba(35,31,56,0.8);border:1px solid var(--border);border-radius:16px;overflow:hidden;backdrop-filter:blur(12px)}
+.cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--border)}
+.cal-dow{padding:10px;text-align:center;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.cal-days-grid{display:grid;grid-template-columns:repeat(7,1fr)}
+.cal-day{
+  position:relative;aspect-ratio:1;padding:6px;
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+  cursor:default;transition:all .18s;border-right:1px solid rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.03);
+}
+.cal-day.has-data{cursor:pointer}
+.cal-day.has-data:hover{background:rgba(208,188,255,.07)}
+.cal-day.today .cal-day-num{background:var(--primary-dark);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center}
+.cal-day-num{font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:3px;line-height:1}
+.cal-day.present .cal-day-num{color:var(--secondary)}
+.cal-day.absent .cal-day-num{color:var(--error)}
+.cal-day.empty{opacity:.25}
+.cal-day-dots{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;margin-top:2px}
+.cal-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.cal-dot.present{background:var(--secondary);box-shadow:0 0 4px rgba(78,222,163,.6)}
+.cal-dot.absent{background:var(--error);box-shadow:0 0 4px rgba(255,180,171,.6)}
+.cal-dot.recitation{background:var(--primary);box-shadow:0 0 4px rgba(208,188,255,.6)}
+.cal-dot.quiz{background:var(--tertiary);box-shadow:0 0 4px rgba(255,185,95,.6)}
+.cal-day-detail{
+  background:rgba(28,25,48,0.98);border:1px solid rgba(208,188,255,.2);
+  border-radius:16px;padding:20px;margin-top:16px;
+  box-shadow:0 0 32px rgba(139,92,246,.15);
+  animation:fadeIn .2s ease;display:none;
+}
+.cal-day-detail.open{display:block}
+.cal-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;padding:12px 16px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid var(--border)}
+.cal-leg-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);font-weight:600}
+
+/* \u2500\u2500 RECITATION HISTORY \u2500\u2500 */
+.rec-timeline{display:flex;flex-direction:column;gap:8px;margin-bottom:24px}
+.rec-entry{
+  display:flex;align-items:flex-start;gap:14px;padding:14px 16px;
+  background:rgba(35,31,56,.8);border:1px solid var(--border);border-radius:12px;
+  transition:all .2s;backdrop-filter:blur(8px);position:relative;overflow:hidden;
+}
+.rec-entry::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--secondary);border-radius:3px 0 0 3px}
+.rec-entry.high-pts::before{background:var(--primary)}
+.rec-entry.epic-pts::before{background:var(--tertiary)}
+.rec-entry:hover{border-color:rgba(78,222,163,.25);transform:translateX(2px)}
+.rec-entry-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;background:rgba(78,222,163,.1);border:1px solid rgba(78,222,163,.25)}
+.rec-entry-icon.high{background:rgba(208,188,255,.1);border-color:rgba(208,188,255,.25)}
+.rec-entry-icon.epic{background:rgba(255,185,95,.1);border-color:rgba(255,185,95,.25)}
+.rec-entry-body{flex:1;min-width:0}
+.rec-entry-pts{font-family:var(--fh);font-size:20px;font-weight:900}
+.rec-entry-note{font-size:13px;color:var(--text-muted);margin-top:2px;line-height:1.4}
+.rec-entry-when{font-size:10px;color:rgba(255,255,255,.3);margin-top:4px;font-weight:600;letter-spacing:.04em}
+.rec-entry-rank{font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap;flex-shrink:0;margin-top:4px}
+
+/* \u2500\u2500 MILESTONE CARDS \u2500\u2500 */
+.milestone-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:28px}
+.ms-card{
+  border-radius:14px;padding:18px;
+  background:rgba(35,31,56,.85);border:1px solid var(--border);
+  backdrop-filter:blur(12px);transition:all .3s;position:relative;overflow:hidden;
+}
+.ms-card.unlocked{border-color:rgba(255,185,95,.4);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(30,20,5,.7))}
+.ms-card.unlocked::after{content:'\u2713';position:absolute;top:10px;right:12px;font-size:16px;font-weight:900;color:var(--tertiary)}
+.ms-card.locked{opacity:.55}
+.ms-card:hover:not(.locked){transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.ms-icon{font-size:32px;margin-bottom:8px;display:block;line-height:1}
+.ms-title{font-family:var(--fh);font-size:14px;font-weight:800;color:var(--on-surface);margin-bottom:4px}
+.ms-desc{font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:8px}
+.ms-progress{background:rgba(255,255,255,.06);border-radius:20px;height:4px;overflow:hidden}
+.ms-progress-fill{height:100%;border-radius:20px;transition:width .8s ease}
+
+/* \u2500\u2500 SHOWCASE / TROPHY ROOM \u2500\u2500 */
+.showcase-header{
+  text-align:center;padding:32px;
+  background:linear-gradient(135deg,rgba(25,20,50,.95),rgba(15,25,20,.9));
+  border:1px solid rgba(208,188,255,.15);border-radius:20px;margin-bottom:24px;
+  position:relative;overflow:hidden;
+}
+.showcase-header::before{content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 0%,rgba(208,188,255,.12) 0%,transparent 60%);pointer-events:none}
+.showcase-crown{font-size:56px;display:block;margin-bottom:8px;line-height:1;animation:floatCrown 3s ease-in-out infinite}
+@keyframes floatCrown{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.showcase-title-text{font-family:var(--fm);font-size:22px;font-weight:900;letter-spacing:.1em;
+  background:linear-gradient(135deg,#ffd700,#ffb95f,#d0bcff);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:4px}
+.showcase-sub{font-size:13px;color:var(--text-muted)}
+
+.trophy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:28px}
+.trophy-card{
+  border-radius:16px;padding:20px;
+  background:rgba(35,31,56,.85);border:1px solid var(--border);
+  backdrop-filter:blur(12px);transition:all .3s;
+  display:flex;flex-direction:column;
+}
+.trophy-card.gold{border-color:rgba(255,215,0,.4);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(30,22,5,.7))}
+.trophy-card.silver{border-color:rgba(192,192,192,.35);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(20,20,25,.8))}
+.trophy-card.bronze{border-color:rgba(205,127,50,.35);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(25,15,5,.7))}
+.trophy-card.emerald{border-color:rgba(78,222,163,.4);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(5,25,15,.7))}
+.trophy-card.violet{border-color:rgba(208,188,255,.4);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(20,10,40,.7))}
+.trophy-card:hover{transform:translateY(-4px);box-shadow:0 14px 44px rgba(0,0,0,.5)}
+.trophy-icon-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.trophy-icon{font-size:32px;line-height:1}
+.trophy-grade{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:6px}
+.trophy-card-title{font-family:var(--fh);font-size:15px;font-weight:900;color:var(--on-surface);margin-bottom:4px}
+.trophy-card-value{font-family:var(--fh);font-size:28px;font-weight:900;line-height:1;margin-bottom:2px}
+.trophy-card-sub{font-size:11px;color:var(--text-muted);line-height:1.5;flex:1}
+.trophy-card-footer{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);font-size:11px;color:var(--text-muted)}
+
+/* \u2500\u2500 ATTENDANCE HISTORY TABLE \u2500\u2500 */
+.att-hist-list{display:flex;flex-direction:column;gap:8px}
+.att-hist-row{
+  display:flex;align-items:center;gap:14px;padding:12px 16px;
+  background:rgba(35,31,56,.75);border:1px solid var(--border);border-radius:12px;
+  transition:all .2s;backdrop-filter:blur(8px);
+}
+.att-hist-row:hover{border-color:rgba(255,255,255,.12);transform:translateX(2px)}
+.att-status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.att-status-dot.present{background:var(--secondary);box-shadow:0 0 8px rgba(78,222,163,.5)}
+.att-status-dot.absent{background:var(--error);box-shadow:0 0 8px rgba(255,180,171,.5)}
+
+/* \u2500\u2500 SHARE CARD STYLE \u2500\u2500 */
+.share-card{
+  background:linear-gradient(135deg,#12102a 0%,#1a1438 40%,#0c1a14 100%);
+  border:1px solid rgba(208,188,255,.25);border-radius:20px;
+  padding:28px;position:relative;overflow:hidden;margin-bottom:20px;
+}
+.share-card::before{content:'';position:absolute;top:-30px;right:-30px;width:160px;height:160px;
+  background:radial-gradient(circle,rgba(208,188,255,.12) 0%,transparent 70%);border-radius:50%;pointer-events:none}
+.share-card::after{content:'';position:absolute;bottom:-40px;left:10%;width:120px;height:120px;
+  background:radial-gradient(circle,rgba(78,222,163,.10) 0%,transparent 70%);border-radius:50%;pointer-events:none}
+.share-card-inner{position:relative;z-index:1}
+.share-watermark{font-family:var(--fm);font-size:9px;letter-spacing:.16em;color:rgba(208,188,255,.35);text-transform:uppercase;margin-bottom:16px}
+.share-student-row{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;margin-bottom:18px}
+.share-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.share-stat{text-align:center;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px}
+.share-stat .sv{font-family:var(--fh);font-size:20px;font-weight:900}
+.share-stat .sl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700}
+.share-badges-row{display:flex;gap:8px;flex-wrap:wrap}
+.share-badge-chip{padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;display:flex;align-items:center;gap:4px}
+`;
+    document.head.appendChild(style);
+  })();
+  var PROG_ATTENDANCE_MILESTONES = [
+    { id: "att_1", icon: "\u{1F5D3}\uFE0F", title: "First Attendance", desc: "Log your first attendance session", target: 1, field: "presentCount", color: "#4edea3" },
+    { id: "att_5", icon: "\u{1F4C5}", title: "Week Warrior", desc: "Be present 5 times", target: 5, field: "presentCount", color: "#4edea3" },
+    { id: "att_10", icon: "\u2728", title: "Consistent Scholar", desc: "Be present 10 times", target: 10, field: "presentCount", color: "#8b5cf6" },
+    { id: "att_25", icon: "\u{1F31F}", title: "Dedicated Student", desc: "Be present 25 times", target: 25, field: "presentCount", color: "#ffb95f" },
+    { id: "att_50", icon: "\u{1F3C6}", title: "Attendance Legend", desc: "Be present 50 times", target: 50, field: "presentCount", color: "#ffd700" },
+    { id: "streak_3", icon: "\u{1F525}", title: "3-Day Streak", desc: "Attend 3 consecutive days", target: 3, field: "currentStreak", color: "#f97316" },
+    { id: "streak_7", icon: "\u{1F525}", title: "Weekly Fire", desc: "Attend 7 consecutive days", target: 7, field: "currentStreak", color: "#ef4444" },
+    { id: "streak_14", icon: "\u{1F4AB}", title: "Fortnight Flame", desc: "Maintain a 14-day streak", target: 14, field: "longestStreak", color: "#d0bcff" },
+    { id: "streak_30", icon: "\u2B50", title: "Eternal Flame", desc: "30-day attendance streak", target: 30, field: "longestStreak", color: "#ffd700" },
+    { id: "perfect_month", icon: "\u{1F48E}", title: "Perfect Month", desc: "Zero absences in a whole month", target: 1, field: "perfectMonths", color: "#4edea3" },
+    { id: "perfect_months_3", icon: "\u{1F48E}\u{1F48E}", title: "Diamond Attendance", desc: "3 perfect attendance months", target: 3, field: "perfectMonths", color: "#a78bfa" }
+  ];
+  var PROG_RECITATION_MILESTONES = [
+    { id: "rec_1", icon: "\u{1F3A4}", title: "First Word", desc: "Complete your first recitation", target: 1, field: "sessionCount", color: "#4edea3" },
+    { id: "rec_5", icon: "\u{1F5E3}\uFE0F", title: "Active Participant", desc: "Complete 5 recitations", target: 5, field: "sessionCount", color: "#4edea3" },
+    { id: "rec_10", icon: "\u{1F4E2}", title: "Vocal Scholar", desc: "Complete 10 recitations", target: 10, field: "sessionCount", color: "#8b5cf6" },
+    { id: "rec_25", icon: "\u{1F399}\uFE0F", title: "Voice of Class", desc: "Complete 25 recitations", target: 25, field: "sessionCount", color: "#ffb95f" },
+    { id: "rec_50", icon: "\u{1F451}", title: "Recitation Master", desc: "50 recitation sessions", target: 50, field: "sessionCount", color: "#ffd700" },
+    { id: "rec_pts_50", icon: "\u26A1", title: "50 Points Earned", desc: "Earn 50 recitation points", target: 50, field: "totalPts", color: "#4edea3" },
+    { id: "rec_pts_150", icon: "\u26A1\u26A1", title: "Point Powerhouse", desc: "Earn 150 recitation points", target: 150, field: "totalPts", color: "#8b5cf6" },
+    { id: "rec_pts_500", icon: "\u{1F4A5}", title: "Elite Contributor", desc: "Earn 500 recitation points total", target: 500, field: "totalPts", color: "#ffd700" },
+    { id: "rec_streak_3", icon: "\u{1F3AF}", title: "3 Recitations in a Row", desc: "Recite on 3 consecutive class days", target: 3, field: "streak", color: "#f97316" },
+    { id: "rec_streak_5", icon: "\u{1F3AF}", title: "Consistent Voice", desc: "Recite on 5 consecutive days", target: 5, field: "streak", color: "#ef4444" },
+    { id: "rec_wins", icon: "\u{1F320}", title: "High Scorer", desc: "Earn 15+ pts in a single recitation", target: 1, field: "wins", color: "#ffb95f" },
+    { id: "rec_wins_5", icon: "\u{1F320}\u{1F320}", title: "Consistent Excellence", desc: "Earn 15+ pts 5 times", target: 5, field: "wins", color: "#ffd700" }
+  ];
+  var progCalYear = (/* @__PURE__ */ new Date()).getFullYear();
+  var progCalMonth = (/* @__PURE__ */ new Date()).getMonth();
+  var progActiveTab = "streaks";
+  function progGetAttendanceForStudent(sid) {
+    return getStudentAttendanceRecords(sid);
+  }
+  function progGetRecitationsForStudent(sid) {
+    return (AppStore.getSlice((s) => s.recitationLog) || []).filter((r) => r.studentId === sid);
+  }
+  function progAttStreak(sessions) {
+    return computeAttendanceStreak(sessions);
+  }
+  function progRecStreak(recitations) {
+    const days = [...new Set(
+      recitations.map((r) => (r.when || "").split(" ")[0] || r.when || "").filter(Boolean)
+    )].sort();
+    if (!days.length) return { current: 0, longest: 0 };
+    let longest = 1, cur = 1;
+    function pd(d) {
+      const t = new Date(d);
+      return isNaN(t.getTime()) ? null : t;
+    }
+    for (let i = 1; i < days.length; i++) {
+      const a = pd(days[i - 1]), b = pd(days[i]);
+      if (a && b) {
+        const diff = Math.round((b - a) / 864e5);
+        if (diff <= 1) {
+          cur++;
+          longest = Math.max(longest, cur);
+        } else cur = 1;
+      }
+    }
+    const todayDate = /* @__PURE__ */ new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    let curStreak = 0;
+    const rev = [...days].reverse();
+    let check = new Date(todayDate);
+    for (const d of rev) {
+      const pd2 = pd(d);
+      if (!pd2) continue;
+      const diff = Math.round((check - pd2) / 864e5);
+      if (diff === 0 || diff === 1) {
+        curStreak++;
+        check = pd2;
+      } else if (diff > 1) break;
+    }
+    return { current: curStreak, longest: Math.max(longest, curStreak) };
+  }
+  function progPerfectMonths(sessions) {
+    const byMonth = {};
+    sessions.forEach((s) => {
+      if (!s.date) return;
+      const d = new Date(s.date);
+      if (isNaN(d)) return;
+      const key = d.getFullYear() + "-" + (d.getMonth() + 1);
+      if (!byMonth[key]) byMonth[key] = { present: 0, absent: 0 };
+      s.status === "present" ? byMonth[key].present++ : byMonth[key].absent++;
+    });
+    return Object.values(byMonth).filter((m) => m.absent === 0 && m.present > 0).length;
+  }
+  function progBuildCalendar(sid, year, month) {
+    const attendance = progGetAttendanceForStudent(sid);
+    const recitations = progGetRecitationsForStudent(sid);
+    const quizLog = (AppStore.getSlice((s) => s.pointLog) || []).filter((l) => l.studentId === sid && (l.what || "").startsWith("Quest:"));
+    const data = {};
+    attendance.forEach((a) => {
+      if (!a.date) return;
+      const d = new Date(a.date);
+      if (isNaN(d) || d.getFullYear() !== year || d.getMonth() !== month) return;
+      const key = d.getDate();
+      if (!data[key]) data[key] = { status: null, recitations: [], quizzes: [], rewards: [] };
+      data[key].status = a.status;
+    });
+    recitations.forEach((r) => {
+      if (!r.when) return;
+      const d = new Date(r.when);
+      if (isNaN(d) || d.getFullYear() !== year || d.getMonth() !== month) return;
+      const key = d.getDate();
+      if (!data[key]) data[key] = { status: null, recitations: [], quizzes: [], rewards: [] };
+      data[key].recitations.push(r);
+    });
+    quizLog.forEach((q) => {
+      if (!q.when) return;
+      const d = new Date(q.when);
+      if (isNaN(d) || d.getFullYear() !== year || d.getMonth() !== month) return;
+      const key = d.getDate();
+      if (!data[key]) data[key] = { status: null, recitations: [], quizzes: [], rewards: [] };
+      data[key].quizzes.push(q);
+    });
+    return data;
+  }
+  function progRenderStreaks(st, attendanceSess, recitations, attStreaks, recStreaks, perfectMonths, recStats, presentCount, absentCount, attPct) {
+    const totalSess = attendanceSess.length;
+    const attBar = Math.min(100, attPct);
+    return `
+  <div class="streak-grid">
+    <div class="streak-card fire">
+      <span class="streak-icon">\u{1F525}</span>
+      <div class="streak-num" style="color:#ffb95f">${attStreaks.current}</div>
+      <div class="streak-lbl">Attendance Streak</div>
+      <div class="streak-sub">Consecutive days present<br>Longest ever: <strong style="color:#fff">${attStreaks.longest} days</strong></div>
+      ${attStreaks.current >= 3 ? `<span class="streak-badge" style="background:rgba(255,185,95,.15);border:1px solid rgba(255,185,95,.35);color:#ffb95f">\u{1F525} On Fire</span>` : ""}
+      ${attStreaks.current >= 7 ? `<span class="streak-badge" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.35);color:#f87171;margin-left:4px">\u{1F3C5} Weekly Hero</span>` : ""}
+    </div>
+    <div class="streak-card crystal">
+      <span class="streak-icon">\u{1F3A4}</span>
+      <div class="streak-num" style="color:#4edea3">${recStreaks.current}</div>
+      <div class="streak-lbl">Recitation Streak</div>
+      <div class="streak-sub">Consecutive class days recited<br>Best ever: <strong style="color:#fff">${recStreaks.longest} days</strong></div>
+      ${recStreaks.current >= 3 ? `<span class="streak-badge" style="background:rgba(78,222,163,.15);border:1px solid rgba(78,222,163,.35);color:#4edea3">\u{1F3AF} Active Voice</span>` : ""}
+    </div>
+    <div class="streak-card violet">
+      <span class="streak-icon">\u{1F48E}</span>
+      <div class="streak-num" style="color:#d0bcff">${perfectMonths}</div>
+      <div class="streak-lbl">Perfect Months</div>
+      <div class="streak-sub">Months with zero absences<br>${perfectMonths === 0 ? "Work toward your first!" : "Keep going, you're amazing!"}</div>
+      ${perfectMonths >= 1 ? `<span class="streak-badge" style="background:rgba(208,188,255,.15);border:1px solid rgba(208,188,255,.35);color:#d0bcff">\u{1F48E} Diamond Scholar</span>` : ""}
+    </div>
+  </div>
+
+  <div class="section-header">
+    <span class="material-symbols-outlined">calendar_today</span>
+    <h2>Attendance Overview</h2>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px">
+    <div class="glass-card" style="padding:20px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px">
+        <div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Attendance Rate</div>
+          <div style="font-family:var(--fh);font-size:40px;font-weight:900;color:${attPct >= 90 ? "#4edea3" : attPct >= 75 ? "#ffb95f" : "#ffb4ab"};line-height:1">${attPct}%</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--text-muted)">Present</div>
+          <div style="font-family:var(--fh);font-size:18px;font-weight:900;color:#4edea3">${presentCount}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Absent</div>
+          <div style="font-family:var(--fh);font-size:18px;font-weight:900;color:#ffb4ab">${absentCount}</div>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,.06);border-radius:20px;height:10px;overflow:hidden;margin-bottom:6px">
+        <div style="height:100%;border-radius:20px;width:${attBar}%;background:linear-gradient(90deg,#4edea3,#06b6d4);box-shadow:0 0 10px rgba(78,222,163,.5);transition:width .8s ease"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted)">Total sessions recorded: ${totalSess}</div>
+    </div>
+    <div class="glass-card" style="padding:20px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:14px">Recitation Summary</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${[
+      { v: recStats.sessionCount || recitations.length, l: "Sessions", c: "#d0bcff" },
+      { v: recStats.totalPts || 0, l: "Total Pts", c: "#4edea3" },
+      { v: recStats.streak || recStreaks.longest, l: "Best Streak", c: "#f97316" },
+      { v: recStats.wins || 0, l: "High Scores", c: "#ffd700" }
+    ].map((s) => `
+        <div style="text-align:center;padding:12px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px">
+          <div style="font-family:var(--fh);font-size:28px;font-weight:900;color:${s.c}">${s.v}</div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700">${s.l}</div>
+        </div>`).join("")}
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <span class="material-symbols-outlined">history</span>
+    <h2>Recent Attendance</h2>
+    <span class="badge-pill bp-primary">${attendanceSess.length} records</span>
+  </div>
+  <div class="att-hist-list">
+    ${attendanceSess.length ? attendanceSess.slice(0, 12).map((a) => `
+    <div class="att-hist-row">
+      <div class="att-status-dot ${a.status}"></div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:${a.status === "present" ? "#4edea3" : "#ffb4ab"}">${a.status === "present" ? "\u2705 Present" : "\u274C Absent"}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${a.date || "\u2014"}</div>
+      </div>
+      <div class="badge-pill ${a.status === "present" ? "bp-green" : "bp-red"}">${a.status === "present" ? "+5 coins" : "-5 coins"}</div>
+    </div>`).join("") : `<div style="text-align:center;padding:48px;background:rgba(35,31,56,.7);border:1px solid var(--border);border-radius:16px;color:var(--text-muted)">
+      <div style="font-size:40px;margin-bottom:10px">\u{1F4C5}</div>
+      <div style="font-family:var(--fh);font-weight:800;margin-bottom:4px">No records yet</div>
+      <div style="font-size:13px">Your attendance will appear here once your teacher logs it.</div>
+    </div>`}
+  </div>`;
+  }
+  function progRenderCalendarPanel(st) {
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const calData = progBuildCalendar(st.id, progCalYear, progCalMonth);
+    const firstDay = new Date(progCalYear, progCalMonth, 1).getDay();
+    const daysInMonth = new Date(progCalYear, progCalMonth + 1, 0).getDate();
+    const todayD = /* @__PURE__ */ new Date();
+    const isThisMonth = todayD.getFullYear() === progCalYear && todayD.getMonth() === progCalMonth;
+    let dayCells = "";
+    for (let i = 0; i < firstDay; i++) dayCells += `<div class="cal-day empty"></div>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dayData = calData[d];
+      const hasData = !!(dayData && (dayData.status || dayData.recitations.length || dayData.quizzes.length));
+      const isToday = isThisMonth && d === todayD.getDate();
+      let cls = "cal-day";
+      if (dayData?.status === "present") cls += " present";
+      else if (dayData?.status === "absent") cls += " absent";
+      if (isToday) cls += " today";
+      if (hasData) cls += " has-data";
+      const dots = [];
+      if (dayData?.status === "present") dots.push('<span class="cal-dot present"></span>');
+      else if (dayData?.status === "absent") dots.push('<span class="cal-dot absent"></span>');
+      if (dayData?.recitations?.length) dots.push('<span class="cal-dot recitation"></span>');
+      if (dayData?.quizzes?.length) dots.push('<span class="cal-dot quiz"></span>');
+      dayCells += `<div class="${cls}" ${hasData ? `onclick="progShowCalDay(${d},${progCalYear},${progCalMonth})"` : ""}>
+      <div class="cal-day-num">${d}</div>
+      <div class="cal-day-dots">${dots.join("")}</div>
+    </div>`;
+    }
+    return `
+  <div class="cal-header">
+    <button class="cal-nav-btn" onclick="progCalNav(-1)">\u2039</button>
+    <div class="cal-month-label">${months[progCalMonth]} ${progCalYear}</div>
+    <button class="cal-nav-btn" onclick="progCalNav(1)">\u203A</button>
+  </div>
+  <div class="cal-grid-wrap">
+    <div class="cal-dow-row">
+      ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => `<div class="cal-dow">${d}</div>`).join("")}
+    </div>
+    <div class="cal-days-grid">${dayCells}</div>
+  </div>
+  <div class="cal-legend">
+    <div class="cal-leg-item"><span class="cal-dot present" style="width:8px;height:8px"></span>Present</div>
+    <div class="cal-leg-item"><span class="cal-dot absent" style="width:8px;height:8px"></span>Absent</div>
+    <div class="cal-leg-item"><span class="cal-dot recitation" style="width:8px;height:8px"></span>Recitation</div>
+    <div class="cal-leg-item"><span class="cal-dot quiz" style="width:8px;height:8px"></span>Quiz</div>
+  </div>
+  <div class="cal-day-detail" id="cal-day-detail"></div>
+  `;
+  }
+  function progRenderRecitationPanel(st, recitations, recStats, recStreaks) {
+    const sorted = [...recitations].sort((a, b) => (b.pts || 0) - (a.pts || 0));
+    const topPts = sorted[0]?.pts || 0;
+    return `
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:28px">
+    ${[
+      { v: recStats.sessionCount || recitations.length, l: "Total Sessions", c: "#d0bcff" },
+      { v: recStats.totalPts || 0, l: "Total Points", c: "#4edea3" },
+      { v: recStats.wins || 0, l: "High Scores (15+)", c: "#ffd700" },
+      { v: recStreaks.longest, l: "Best Streak", c: "#f97316" },
+      { v: topPts, l: "Best Single Score", c: "#ffb95f" },
+      { v: recitations.length > 0 ? Math.round((recStats.totalPts || 0) / (recStats.sessionCount || recitations.length)) : 0, l: "Avg Points/Session", c: "#8b5cf6" }
+    ].map((s) => `
+    <div class="glass-card" style="padding:16px;text-align:center">
+      <div style="font-family:var(--fh);font-size:28px;font-weight:900;color:${s.c}">${s.v}</div>
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700;margin-top:4px">${s.l}</div>
+    </div>`).join("")}
+  </div>
+
+  <div class="section-header">
+    <span class="material-symbols-outlined">mic</span>
+    <h2>Recitation Timeline</h2>
+    <span class="badge-pill bp-green">${recitations.length} sessions</span>
+  </div>
+
+  ${recitations.length ? `
+  <div class="rec-timeline">
+    ${[...recitations].sort((a, b) => new Date(b.when || 0) - new Date(a.when || 0)).map((r) => {
+      const pts = r.pts || 0;
+      const tier = pts >= 20 ? "epic" : pts >= 15 ? "high" : "normal";
+      const icon = pts >= 20 ? "\u{1F31F}" : pts >= 15 ? "\u2B50" : "\u{1F3A4}";
+      return `<div class="rec-entry ${tier === "high" ? "high-pts" : ""} ${tier === "epic" ? "epic-pts" : ""}">
+        <div class="rec-entry-icon ${tier}"><span style="font-size:20px">${icon}</span></div>
+        <div class="rec-entry-body">
+          <div class="rec-entry-pts" style="color:${pts >= 20 ? "#ffd700" : pts >= 15 ? "#d0bcff" : "#4edea3"}">+${pts} pts</div>
+          <div class="rec-entry-note">${_esc(r.note || "Recitation session")}</div>
+          <div class="rec-entry-when">\u{1F550} ${r.when || "\u2014"}</div>
+        </div>
+        ${pts >= 20 ? `<span class="badge-pill bp-gold" style="font-size:10px">\u{1F31F} Epic</span>` : pts >= 15 ? `<span class="badge-pill bp-primary" style="font-size:10px">\u2B50 High Score</span>` : ""}
+      </div>`;
+    }).join("")}
+  </div>` : `
+  <div style="text-align:center;padding:64px 20px;background:rgba(35,31,56,.7);border:1px solid var(--border);border-radius:16px">
+    <div style="font-size:48px;margin-bottom:12px">\u{1F3A4}</div>
+    <div style="font-family:var(--fh);font-size:16px;font-weight:800;color:var(--on-surface);margin-bottom:6px">No recitations yet</div>
+    <div style="color:var(--text-muted);font-size:13px">Your recitation history will appear here. Speak up in class!</div>
+  </div>`}`;
+  }
+  function progRenderMilestones(st, presentCount, attStreaks, recStats, perfectMonths) {
+    const attFields = { presentCount, currentStreak: attStreaks.current, longestStreak: attStreaks.longest, perfectMonths };
+    const recFields = { sessionCount: recStats.sessionCount || 0, totalPts: recStats.totalPts || 0, streak: recStats.streak || 0, wins: recStats.wins || 0 };
+    function msCard(ms, fields) {
+      const val = fields[ms.field] || 0;
+      const pct = Math.min(100, Math.round(val / ms.target * 100));
+      const unlocked = val >= ms.target;
+      return `<div class="ms-card ${unlocked ? "unlocked" : "locked"}">
+      <span class="ms-icon">${ms.icon}</span>
+      <div class="ms-title">${ms.title}</div>
+      <div class="ms-desc">${ms.desc}</div>
+      <div class="ms-progress"><div class="ms-progress-fill" style="width:${pct}%;background:${ms.color};box-shadow:0 0 8px ${ms.color}55"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:10px;color:var(--text-muted);font-weight:700">
+        <span>${val} / ${ms.target}</span><span>${pct}%</span>
+      </div>
+    </div>`;
+    }
+    const attUnlocked = PROG_ATTENDANCE_MILESTONES.filter((m) => (attFields[m.field] || 0) >= m.target).length;
+    const recUnlocked = PROG_RECITATION_MILESTONES.filter((m) => (recFields[m.field] || 0) >= m.target).length;
+    const total = PROG_ATTENDANCE_MILESTONES.length + PROG_RECITATION_MILESTONES.length;
+    const totalUnlocked = attUnlocked + recUnlocked;
+    return `
+  <div class="glass-card" style="padding:18px;margin-bottom:24px;display:flex;align-items:center;gap:18px">
+    <div style="font-size:48px">\u{1F3C6}</div>
+    <div style="flex:1">
+      <div style="font-family:var(--fh);font-size:22px;font-weight:900;color:var(--on-surface)">${totalUnlocked} / ${total} Milestones</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Keep pushing \u2014 every achievement counts!</div>
+      <div style="background:rgba(255,255,255,.06);border-radius:20px;height:8px;overflow:hidden">
+        <div style="height:100%;border-radius:20px;width:${Math.round(totalUnlocked / total * 100)}%;background:linear-gradient(90deg,#8b5cf6,#4edea3);box-shadow:0 0 10px rgba(139,92,246,.5)"></div>
+      </div>
+    </div>
+    <div style="text-align:center;padding:12px 20px;background:rgba(255,185,95,.08);border:1px solid rgba(255,185,95,.2);border-radius:12px">
+      <div style="font-family:var(--fh);font-size:32px;font-weight:900;color:#ffd700">${Math.round(totalUnlocked / total * 100)}%</div>
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700">Complete</div>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="material-symbols-outlined">calendar_today</span><h2>Attendance Milestones</h2><span class="badge-pill bp-green">${attUnlocked}/${PROG_ATTENDANCE_MILESTONES.length} unlocked</span></div>
+  <div class="milestone-grid">${PROG_ATTENDANCE_MILESTONES.map((m) => msCard(m, attFields)).join("")}</div>
+
+  <div class="section-header"><span class="material-symbols-outlined">mic</span><h2>Recitation Milestones</h2><span class="badge-pill bp-primary">${recUnlocked}/${PROG_RECITATION_MILESTONES.length} unlocked</span></div>
+  <div class="milestone-grid">${PROG_RECITATION_MILESTONES.map((m) => msCard(m, recFields)).join("")}</div>
+  `;
+  }
+  function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStreaks, perfectMonths, recStats, presentCount, attPct) {
+    const unlocks = (AppStore.getSlice((s) => s.achievementUnlocks) || {})[st.id] || [];
+    const allAchievements = AppStore.getSlice((s) => s.achievements) || [];
+    const earnedAchs = unlocks.map((u) => allAchievements.find((a) => a.id === u.achId)).filter(Boolean);
+    const allTitles = AppStore.getSlice((s) => s.titles) || [];
+    const earnedTitles = (st.unlockedTitles || []).map((tid) => allTitles.find((t) => t.id === tid)).filter(Boolean);
+    const sorted = [...AppStore.getSlice((s) => s.students) || []].sort((a, b) => b.xp - a.xp);
+    const myRank = sorted.findIndex((s) => s.id === st.id) + 1;
+    const trophies = [];
+    if (attPct >= 100) trophies.push({ icon: "\u{1F48E}", grade: "LEGENDARY", gradeColor: "#4edea3", gradeBg: "rgba(78,222,163,.15)", title: "Perfect Attendance", value: `${attPct}%`, sub: "You have never missed a single class. A true legend.", variant: "emerald" });
+    else if (attPct >= 95) trophies.push({ icon: "\u{1F3C6}", grade: "PLATINUM", gradeColor: "#d0bcff", gradeBg: "rgba(208,188,255,.15)", title: "Elite Attendance", value: `${attPct}%`, sub: "Exceptional dedication \u2014 only the most committed scholars achieve this.", variant: "violet" });
+    else if (attPct >= 85) trophies.push({ icon: "\u2B50", grade: "GOLD", gradeColor: "#ffd700", gradeBg: "rgba(255,215,0,.15)", title: "Strong Attendance", value: `${attPct}%`, sub: "A reliable presence that teachers and classmates can count on.", variant: "gold" });
+    else if (attPct > 0) trophies.push({ icon: "\u{1F4C5}", grade: "BRONZE", gradeColor: "#cd7f32", gradeBg: "rgba(205,127,50,.15)", title: "Attendance Record", value: `${attPct}%`, sub: "Building good attendance habits.", variant: "bronze" });
+    if (attStreaks.longest >= 14) trophies.push({ icon: "\u{1F525}", grade: "EPIC", gradeColor: "#ef4444", gradeBg: "rgba(239,68,68,.15)", title: "Attendance Streak Record", value: `${attStreaks.longest} days`, sub: "Your best run of consecutive days present. Incredible discipline.", variant: "gold" });
+    else if (attStreaks.longest >= 7) trophies.push({ icon: "\u{1F525}", grade: "RARE", gradeColor: "#f97316", gradeBg: "rgba(249,115,22,.15)", title: "Week-Long Streak", value: `${attStreaks.longest} days`, sub: "A full week of consecutive attendance. Keep building!", variant: "silver" });
+    else if (attStreaks.longest >= 3) trophies.push({ icon: "\u{1F525}", grade: "COMMON", gradeColor: "#ffb95f", gradeBg: "rgba(255,185,95,.15)", title: "Attendance Streak", value: `${attStreaks.longest} days`, sub: "Your current best streak. Aim higher!", variant: "bronze" });
+    if (perfectMonths >= 3) trophies.push({ icon: "\u{1F48E}", grade: "LEGENDARY", gradeColor: "#a78bfa", gradeBg: "rgba(167,139,250,.15)", title: "Diamond Attendance", value: `${perfectMonths} perfect months`, sub: "Three or more months of flawless attendance. Extraordinary commitment.", variant: "violet" });
+    else if (perfectMonths >= 1) trophies.push({ icon: "\u{1F31F}", grade: "GOLD", gradeColor: "#ffd700", gradeBg: "rgba(255,215,0,.15)", title: "Perfect Month", value: `${perfectMonths} month${perfectMonths > 1 ? "s" : ""}`, sub: "Zero absences for an entire month. Outstanding achievement!", variant: "gold" });
+    const sessCount = recStats.sessionCount || recitations.length;
+    if (sessCount >= 25) trophies.push({ icon: "\u{1F451}", grade: "EPIC", gradeColor: "#ffd700", gradeBg: "rgba(255,215,0,.15)", title: "Recitation Master", value: `${sessCount} sessions`, sub: "25+ recitation sessions. A true voice of the classroom.", variant: "gold" });
+    else if (sessCount >= 10) trophies.push({ icon: "\u{1F399}\uFE0F", grade: "RARE", gradeColor: "#4edea3", gradeBg: "rgba(78,222,163,.15)", title: "Vocal Scholar", value: `${sessCount} sessions`, sub: "10+ recitations completed. Your voice matters!", variant: "emerald" });
+    else if (sessCount >= 1) trophies.push({ icon: "\u{1F3A4}", grade: "COMMON", gradeColor: "#4edea3", gradeBg: "rgba(78,222,163,.15)", title: "Active Participant", value: `${sessCount} sessions`, sub: "You've started your recitation journey. Keep it up!", variant: "silver" });
+    const totalRecPts = recStats.totalPts || 0;
+    if (totalRecPts >= 500) trophies.push({ icon: "\u{1F4A5}", grade: "LEGENDARY", gradeColor: "#ffd700", gradeBg: "rgba(255,215,0,.15)", title: "Recitation Elite", value: `${totalRecPts} pts`, sub: "500+ recitation points earned. An academic force to be reckoned with.", variant: "gold" });
+    else if (totalRecPts >= 150) trophies.push({ icon: "\u26A1", grade: "GOLD", gradeColor: "#d0bcff", gradeBg: "rgba(208,188,255,.15)", title: "Point Powerhouse", value: `${totalRecPts} pts`, sub: "150+ points through recitation. Your contributions truly shine.", variant: "violet" });
+    if (myRank === 1) trophies.push({ icon: "\u{1F947}", grade: "LEGENDARY", gradeColor: "#ffd700", gradeBg: "rgba(255,215,0,.15)", title: "Class Champion", value: "Rank #1", sub: "Top of the entire class leaderboard. The undisputed champion.", variant: "gold" });
+    else if (myRank <= 3) trophies.push({ icon: "\u{1F3C5}", grade: "EPIC", gradeColor: "#ffd700", gradeBg: "rgba(255,215,0,.15)", title: `Top ${myRank} Leaderboard`, value: `Rank #${myRank}`, sub: `Among the top 3 students in your class. Elite performance.`, variant: "gold" });
+    else if (myRank <= 5) trophies.push({ icon: "\u2B50", grade: "RARE", gradeColor: "#ffb95f", gradeBg: "rgba(255,185,95,.15)", title: "Top 5 Scholar", value: `Rank #${myRank}`, sub: "Inside the top 5 in class rankings. A strong competitor.", variant: "silver" });
+    const topRecSession = recitations.length ? Math.max(...recitations.map((r) => r.pts || 0)) : 0;
+    return `
+  <div class="showcase-header">
+    <span class="showcase-crown">\u{1F451}</span>
+    <div class="showcase-title-text">ACADEMIC SHOWCASE</div>
+    <div class="showcase-sub" style="position:relative;z-index:1">${_esc(st.name)} \xB7 ${st.tier} \xB7 Level ${st.level}</div>
+  </div>
+
+  <div class="section-header">
+    <span class="material-symbols-outlined">share</span>
+    <h2>Your Highlight Card</h2>
+  </div>
+  <div class="share-card">
+    <div class="share-card-inner">
+      <div class="share-watermark">EduQuest \xB7 Academic Achievement Profile</div>
+      <div class="share-student-row">
+        <div style="width:96px;height:96px;border-radius:50%;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:32px;font-weight:900;background:${_cssColor(st.color) + "33"};color:${_cssColor(st.color)};border:3px solid ${_cssColor(st.color) + "55"};box-shadow:0 0 30px ${_cssColor(st.color) + "33"}">${st.profilePic ? `<img src="${_esc(st.profilePic)}" alt="${_esc(st.init)}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.remove()">` : _esc(st.init)}</div>
+        <div>
+          <div style="font-family:var(--fh);font-size:22px;font-weight:900;color:var(--on-surface)">${_esc(st.name)}</div>
+          <div style="font-size:13px;color:var(--text-muted)">${st.tier} \xB7 Level ${st.level} \xB7 Rank #${myRank}</div>
+        </div>
+      </div>
+      <div class="share-stats-grid">
+        ${[
+      { sv: `${attPct}%`, sl: "Attendance", c: "#4edea3" },
+      { sv: attStreaks.longest, sl: "Best Streak", c: "#f97316" },
+      { sv: sessCount, sl: "Recitations", c: "#d0bcff" },
+      { sv: perfectMonths, sl: "Perfect Months", c: "#ffd700" },
+      { sv: totalRecPts, sl: "Rec Points", c: "#4edea3" },
+      { sv: topRecSession, sl: "Best Score", c: "#ffb95f" }
+    ].map((s) => `<div class="share-stat"><div class="sv" style="color:${s.c}">${s.sv}</div><div class="sl">${s.sl}</div></div>`).join("")}
+      </div>
+      <div class="share-badges-row">
+        ${attPct >= 90 ? `<span class="share-badge-chip" style="background:rgba(78,222,163,.15);border:1px solid rgba(78,222,163,.3);color:#4edea3">\u{1F4C5} ${attPct}% Attendance</span>` : ""}
+        ${attStreaks.longest >= 7 ? `<span class="share-badge-chip" style="background:rgba(255,185,95,.15);border:1px solid rgba(255,185,95,.3);color:#ffb95f">\u{1F525} ${attStreaks.longest}-Day Streak</span>` : ""}
+        ${perfectMonths > 0 ? `<span class="share-badge-chip" style="background:rgba(208,188,255,.15);border:1px solid rgba(208,188,255,.3);color:#d0bcff">\u{1F48E} Perfect Month</span>` : ""}
+        ${myRank <= 3 ? `<span class="share-badge-chip" style="background:rgba(255,215,0,.15);border:1px solid rgba(255,215,0,.3);color:#ffd700">\u{1F947} Top ${myRank}</span>` : ""}
+        ${earnedTitles.length > 0 ? `<span class="share-badge-chip" style="background:rgba(236,72,153,.15);border:1px solid rgba(236,72,153,.3);color:#EC4899">\u{1F396}\uFE0F ${earnedTitles[0].name}</span>` : ""}
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header" style="margin-top:24px">
+    <span class="material-symbols-outlined">emoji_events</span>
+    <h2>Trophy Room</h2>
+    <span class="badge-pill bp-gold">${trophies.length} trophies</span>
+  </div>
+  ${trophies.length ? `
+  <div class="trophy-grid">
+    ${trophies.map((t) => `
+    <div class="trophy-card ${t.variant || ""}">
+      <div class="trophy-icon-row">
+        <span class="trophy-icon">${t.icon}</span>
+        <span class="trophy-grade" style="color:${t.gradeColor};background:${t.gradeBg};border:1px solid ${t.gradeColor}33">${t.grade}</span>
+      </div>
+      <div class="trophy-card-title">${t.title}</div>
+      <div class="trophy-card-value" style="color:${t.gradeColor}">${t.value}</div>
+      <div class="trophy-card-sub">${t.sub}</div>
+    </div>`).join("")}
+  </div>` : `
+  <div style="text-align:center;padding:56px 20px;background:rgba(35,31,56,.7);border:1px solid var(--border);border-radius:16px;margin-bottom:24px">
+    <div style="font-size:48px;margin-bottom:12px">\u{1F3C6}</div>
+    <div style="font-family:var(--fh);font-size:16px;font-weight:800;margin-bottom:6px">No trophies yet</div>
+    <div style="color:var(--text-muted);font-size:13px">Attend class, recite, and earn perfect months to fill your trophy room!</div>
+  </div>`}
+
+  ${earnedAchs.length ? `
+  <div class="section-header" style="margin-top:24px">
+    <span class="material-symbols-outlined">workspace_premium</span>
+    <h2>Achievements Earned</h2>
+    <span class="badge-pill bp-primary">${earnedAchs.length} unlocked</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:28px">
+    ${earnedAchs.map((a) => `
+    <div class="glass-card" style="padding:16px;text-align:center;border-color:rgba(255,185,95,.25)">
+      <div style="font-size:32px;margin-bottom:8px">${a.icon || "\u{1F3C6}"}</div>
+      <div style="font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface);margin-bottom:4px">${_esc(a.name)}</div>
+      <div style="font-size:11px;color:var(--text-muted)">${_esc(a.description)}</div>
+    </div>`).join("")}
+  </div>` : ""}
+
+  ${earnedTitles.length ? `
+  <div class="section-header">
+    <span class="material-symbols-outlined">military_tech</span>
+    <h2>Titles Earned</h2>
+    <span class="badge-pill bp-gold">${earnedTitles.length} titles</span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:28px">
+    ${earnedTitles.map((t) => `
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:${_cssColor(t.bgColor, "rgba(255,215,0,.1)")};border:2px solid ${_cssColor(t.borderColor, "rgba(255,215,0,.4)")};font-family:var(--fh);font-size:14px;font-weight:800;color:${_cssColor(t.textColor, "#ffd700")}">
+      ${t.icon || "\u{1F396}\uFE0F"} ${_esc(t.name)}
+    </div>`).join("")}
+  </div>` : ""}
+  `;
+  }
+  var renderStudentProgress = function() {
+    const st = currentUser;
+    if (!st) {
+      document.getElementById("s-attendance").innerHTML = '<div class="page" style="padding:40px;text-align:center;color:var(--text-muted)">Not logged in</div>';
+      return;
+    }
+    const attendanceSess = progGetAttendanceForStudent(st.id);
+    const recitations = progGetRecitationsForStudent(st.id);
+    const presentCount = attendanceSess.filter((a) => a.status === "present").length;
+    const absentCount = attendanceSess.filter((a) => a.status === "absent").length;
+    const totalSess = attendanceSess.length;
+    const attPct = totalSess > 0 ? Math.round(presentCount / totalSess * 100) : 0;
+    const attStreaks = progAttStreak(attendanceSess);
+    const recStreaks = progRecStreak(recitations);
+    const perfectMonths = progPerfectMonths(attendanceSess);
+    const recStats = typeof eqlComputeRecitation === "function" ? eqlComputeRecitation(st.id) : { totalPts: 0, sessionCount: recitations.length, streak: 0, wins: 0 };
+    document.getElementById("s-attendance").innerHTML = `
+  <div class="prog-hero">
+    <div class="prog-hero-grid">
+      <div>
+        <div class="prog-hero-label">\u{1F4CA} Academic Progress</div>
+        <div class="prog-hero-name">${_esc(st.name)}</div>
+        <div class="prog-hero-sub">${_esc(st.tier)} \xB7 Level ${st.level} \xB7 <span style="color:var(--primary)">Your Complete Record</span></div>
+        <div class="prog-stat-strip">
+          <div class="prog-stat-chip"><span class="v" style="color:#4edea3">${attPct}%</span><span class="l">Attendance</span></div>
+          <div class="prog-stat-chip"><span class="v" style="color:#f97316">${attStreaks.current}</span><span class="l">Current Streak</span></div>
+          <div class="prog-stat-chip"><span class="v" style="color:#d0bcff">${recStats.sessionCount || recitations.length}</span><span class="l">Recitations</span></div>
+          <div class="prog-stat-chip"><span class="v" style="color:#ffd700">${perfectMonths}</span><span class="l">Perfect Months</span></div>
+        </div>
+      </div>
+      <div class="prog-hero-avatar" style="background:${_cssColor(st.color) + "22"};color:${_cssColor(st.color)};border-color:${_cssColor(st.color) + "44"};box-shadow:0 0 40px ${_cssColor(st.color) + "44"}">${_esc(st.init)}</div>
+    </div>
+  </div>
+
+  <div class="prog-tabs">
+    <button class="prog-tab ${progActiveTab === "streaks" ? "active" : ""}" onclick="progSwitchTab('streaks')"><span class="material-symbols-outlined">local_fire_department</span>Streaks &amp; Stats</button>
+    <button class="prog-tab ${progActiveTab === "calendar" ? "active" : ""}" onclick="progSwitchTab('calendar')"><span class="material-symbols-outlined">calendar_month</span>Attendance Calendar</button>
+    <button class="prog-tab ${progActiveTab === "recitation" ? "active" : ""}" onclick="progSwitchTab('recitation')"><span class="material-symbols-outlined">mic</span>Recitation History</button>
+    <button class="prog-tab ${progActiveTab === "milestones" ? "active" : ""}" onclick="progSwitchTab('milestones')"><span class="material-symbols-outlined">emoji_events</span>Milestones</button>
+    <button class="prog-tab ${progActiveTab === "showcase" ? "active" : ""}" onclick="progSwitchTab('showcase')"><span class="material-symbols-outlined">workspace_premium</span>Academic Showcase</button>
+  </div>
+
+  <div class="prog-panel ${progActiveTab === "streaks" ? "active" : ""}" id="prog-panel-streaks">
+    ${progRenderStreaks(st, attendanceSess, recitations, attStreaks, recStreaks, perfectMonths, recStats, presentCount, absentCount, attPct)}
+  </div>
+  <div class="prog-panel ${progActiveTab === "calendar" ? "active" : ""}" id="prog-panel-calendar">
+    ${progRenderCalendarPanel(st)}
+  </div>
+  <div class="prog-panel ${progActiveTab === "recitation" ? "active" : ""}" id="prog-panel-recitation">
+    ${progRenderRecitationPanel(st, recitations, recStats, recStreaks)}
+  </div>
+  <div class="prog-panel ${progActiveTab === "milestones" ? "active" : ""}" id="prog-panel-milestones">
+    ${progRenderMilestones(st, presentCount, attStreaks, recStats, perfectMonths)}
+  </div>
+  <div class="prog-panel ${progActiveTab === "showcase" ? "active" : ""}" id="prog-panel-showcase">
+    ${progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStreaks, perfectMonths, recStats, presentCount, attPct)}
+  </div>
+  `;
+  };
+  console.log("[EduQuest] recitation/progress.js loaded \u2014 renderStudentProgress, progSwitchTab, progCalNav, progShowCalDay registered.");
+
+  // src/modules/attendance/attendance-service.js
+  var AttendanceService = (function() {
+    "use strict";
+    function _upsertLogIntoDraft(draft, log) {
+      if (!log) return;
+      if (!Array.isArray(draft.attendanceLogs)) draft.attendanceLogs = [];
+      const idx = draft.attendanceLogs.findIndex(
+        (l) => log.id && l.id === log.id || l.studentId === log.studentId && l.classId === log.classId && l.logDate === log.logDate
+      );
+      const row = {
+        id: log.id,
+        studentId: log.student_id || log.studentId,
+        classId: log.class_id || log.classId,
+        logDate: log.log_date || log.logDate,
+        status: log.status,
+        scannedAt: log.scanned_at || log.scannedAt,
+        entryMethod: log.entry_method || log.entryMethod,
+        rfidTag: log.rfid_tag ?? log.rfidTag ?? null,
+        recordedBy: log.recorded_by ?? log.recordedBy ?? null,
+        notes: log.notes ?? null
+      };
+      if (idx >= 0) draft.attendanceLogs[idx] = row;
+      else draft.attendanceLogs.unshift(row);
+    }
+    async function assignCard(studentId, rfidTag) {
+      const tagId = String(rfidTag || "").trim();
+      if (!studentId || !tagId) {
+        return { ok: false, error: "Student and card tag are both required." };
+      }
+      const { data, error } = await DBService2.rpc("assign_rfid_card", {
+        p_student_id: studentId,
+        p_tag_id: tagId
+      });
+      if (error) {
+        console.error("[AttendanceService] assignCard failed:", error);
+        return { ok: false, error: error.message || "Could not assign card." };
+      }
+      AppStore.updateState((draft) => {
+        if (!Array.isArray(draft.rfidCards)) draft.rfidCards = [];
+        draft.rfidCards.forEach((c) => {
+          if ((c.studentId === studentId || c.tagId === tagId) && c.isActive && c.id !== data.id) {
+            c.isActive = false;
+            c.revokedAt = (/* @__PURE__ */ new Date()).toISOString();
+          }
+        });
+        const idx = draft.rfidCards.findIndex((c) => c.id === data.id);
+        const row = {
+          id: data.id,
+          tagId: data.tag_id,
+          studentId: data.student_id,
+          isActive: data.is_active,
+          assignedAt: data.assigned_at,
+          revokedAt: data.revoked_at
+        };
+        if (idx >= 0) draft.rfidCards[idx] = row;
+        else draft.rfidCards.unshift(row);
+      }, { type: "attendance:card-assigned", payload: { studentId, tagId } });
+      return { ok: true, card: data };
+    }
+    async function assignStudentToClass(studentId, classId) {
+      if (!studentId || !classId) return { ok: false, error: "Student and class are both required." };
+      const { error } = await DBService2.rpc("set_student_class", {
+        p_student_id: studentId,
+        p_class_id: classId
+      });
+      if (error) {
+        console.error("[AttendanceService] assignStudentToClass failed:", error);
+        return { ok: false, error: error.message || "Could not update class assignment." };
+      }
+      AppStore.updateState((draft) => {
+        const s = (draft.students || []).find((st) => st.id === studentId);
+        if (s) s.classId = classId;
+      }, { type: "attendance:student-class-changed", payload: { studentId, classId } });
+      return { ok: true };
+    }
+    async function upsertSchedule(classId, times, dayOfWeek, dayOff) {
+      const { openTime, startTime, lateCutoff, closeTime } = times || {};
+      const dow = dayOfWeek === void 0 || dayOfWeek === null ? 0 : dayOfWeek;
+      const isDayOff = !!dayOff;
+      if (!classId || !openTime || !startTime || !lateCutoff || !closeTime) {
+        return { ok: false, error: "classId, openTime, startTime, lateCutoff, and closeTime are all required." };
+      }
+      const { data, error } = await DBService2.rpc("upsert_attendance_schedule", {
+        p_class_id: classId,
+        p_open_time: openTime,
+        p_start_time: startTime,
+        p_late_cutoff: lateCutoff,
+        p_close_time: closeTime,
+        p_day_of_week: dow,
+        p_day_off: isDayOff
+      });
+      if (error) {
+        console.error("[AttendanceService] upsertSchedule failed:", error);
+        return { ok: false, error: error.message || "Could not save schedule." };
+      }
+      AppStore.updateState((draft) => {
+        if (!Array.isArray(draft.attendanceSchedules)) draft.attendanceSchedules = [];
+        const idx = draft.attendanceSchedules.findIndex((s) => s.classId === classId && (s.dayOfWeek || 0) === dow);
+        const row = {
+          id: data.id,
+          classId: data.class_id,
+          dayOfWeek: data.day_of_week ?? dow,
+          dayOff: !!data.day_off,
+          openTime: data.open_time,
+          startTime: data.start_time,
+          lateCutoff: data.late_cutoff,
+          closeTime: data.close_time,
+          active: data.active
+        };
+        if (idx >= 0) draft.attendanceSchedules[idx] = row;
+        else draft.attendanceSchedules.push(row);
+      }, { type: "attendance:schedule-updated", payload: { classId, dayOfWeek: dow, dayOff: isDayOff } });
+      return { ok: true, schedule: data };
+    }
+    async function setDayOff(classId, dayOfWeek) {
+      if (!dayOfWeek || dayOfWeek < 1 || dayOfWeek > 7) {
+        return { ok: false, error: "dayOfWeek must be between 1 (Monday) and 7 (Sunday)." };
+      }
+      return upsertSchedule(classId, { openTime: "00:00", startTime: "00:00", lateCutoff: "00:00", closeTime: "00:00" }, dayOfWeek, true);
+    }
+    async function clearScheduleOverride(classId, dayOfWeek) {
+      if (!classId) return { ok: false, error: "classId is required." };
+      if (!dayOfWeek || dayOfWeek < 1 || dayOfWeek > 7) {
+        return { ok: false, error: "dayOfWeek must be between 1 (Monday) and 7 (Sunday)." };
+      }
+      const { data, error } = await DBService2.rpc("clear_attendance_schedule_override", {
+        p_class_id: classId,
+        p_day_of_week: dayOfWeek
+      });
+      if (error) {
+        console.error("[AttendanceService] clearScheduleOverride failed:", error);
+        return { ok: false, error: error.message || "Could not clear that day's override." };
+      }
+      AppStore.updateState((draft) => {
+        draft.attendanceSchedules = (draft.attendanceSchedules || []).filter((s) => !(s.classId === classId && (s.dayOfWeek || 0) === dayOfWeek));
+      }, { type: "attendance:schedule-override-cleared", payload: { classId, dayOfWeek } });
+      return { ok: true, removed: !!data };
+    }
+    function getEffectiveSchedule(classId, opts) {
+      opts = opts || {};
+      if (!classId) return null;
+      const all = AppStore.getSlice((s) => s.attendanceSchedules) || [];
+      const mine = all.filter((s) => s.classId === classId && s.active !== false);
+      if (!mine.length) return null;
+      const d = opts.date || /* @__PURE__ */ new Date();
+      const manilaDowLabel = d.toLocaleDateString("en-US", { timeZone: "Asia/Manila", weekday: "short" });
+      const isoDow = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }[manilaDowLabel] || 1;
+      const override = mine.find((s) => (s.dayOfWeek || 0) === isoDow);
+      if (override) return override;
+      return mine.find((s) => (s.dayOfWeek || 0) === 0) || null;
+    }
+    async function processScan(rfidTag, classId) {
+      const tagId = String(rfidTag || "").trim();
+      if (!tagId) return { ok: false, error: "empty_scan", message: "No card data received." };
+      if (!classId) return { ok: false, error: "no_class", message: "No class selected for this scanner." };
+      const { data, error } = await DBService2.rpc("process_attendance_scan", {
+        p_tag_id: tagId,
+        p_class_id: classId
+      });
+      if (error) {
+        console.error("[AttendanceService] processScan RPC failed:", error);
+        return { ok: false, error: "network", message: error.message || "Scan failed \u2014 try again." };
+      }
+      if (!data || data.ok === false) {
+        return { ok: false, error: data && data.error || "unknown", message: data && data.message || "Scan rejected." };
+      }
+      AppStore.updateState((draft) => {
+        _upsertLogIntoDraft(draft, data.log);
+        const student2 = (draft.students || []).find((s) => s.id === data.student_id);
+        if (student2) {
+          recalcStudentStats(student2, { attendanceLogs: draft.attendanceLogs });
+          syncStudentDerivedStatsToServer(student2.id, student2.attendance, student2.quizAvg);
+        }
+      }, { type: "attendance:scan-recorded", payload: { studentId: data.student_id, status: data.status, alreadyRecorded: !!data.already_recorded } });
+      const student = AppStore.getStudent(data.student_id);
+      return {
+        ok: true,
+        alreadyRecorded: !!data.already_recorded,
+        studentId: data.student_id,
+        status: data.status,
+        studentName: student ? student.name || student.displayName : data.student_id
+      };
+    }
+    async function overrideAttendance(studentId, classId, status, opts) {
+      opts = opts || {};
+      if (!studentId || !classId || !status) {
+        return { ok: false, error: "studentId, classId, and status are all required." };
+      }
+      const recordedBy = typeof currentUser !== "undefined" && currentUser ? currentUser.id : null;
+      const rpcParams = {
+        p_student_id: studentId,
+        p_class_id: classId,
+        p_status: status,
+        p_recorded_by: recordedBy,
+        p_notes: opts.notes || null
+      };
+      if (opts.logDate) rpcParams.p_log_date = opts.logDate;
+      const { data, error } = await DBService2.rpc("override_attendance", rpcParams);
+      if (error) {
+        console.error("[AttendanceService] overrideAttendance failed:", error);
+        return { ok: false, error: error.message || "Could not save override." };
+      }
+      if (data && data.ok === false) {
+        return { ok: false, error: data.message || "Override rejected." };
+      }
+      AppStore.updateState((draft) => {
+        if (data.removed) {
+          const logDate = opts.logDate || isoDate();
+          draft.attendanceLogs = (draft.attendanceLogs || []).filter(
+            (l) => !(l.studentId === studentId && l.classId === classId && l.logDate === logDate)
+          );
+        } else {
+          _upsertLogIntoDraft(draft, data.log);
+        }
+        const student = (draft.students || []).find((s) => s.id === studentId);
+        if (student) {
+          recalcStudentStats(student, { attendanceLogs: draft.attendanceLogs });
+          syncStudentDerivedStatsToServer(student.id, student.attendance, student.quizAvg);
+        }
+      }, { type: "attendance:override", payload: { studentId, classId, status } });
+      return data.removed ? { ok: true, removed: true } : { ok: true, log: data.log };
+    }
+    async function closeAttendanceSession(classId, logDate) {
+      if (!classId) return { ok: false, error: "classId is required." };
+      const day = logDate || isoDate();
+      const { data, error } = await DBService2.rpc("close_attendance_session", {
+        p_class_id: classId,
+        p_log_date: day
+      });
+      if (error) {
+        console.error("[AttendanceService] closeAttendanceSession failed:", error);
+        return { ok: false, error: error.message || "Could not close session." };
+      }
+      AppStore.updateState((draft) => {
+        if (!Array.isArray(draft.attendanceLogs)) draft.attendanceLogs = [];
+        const already = new Set(
+          draft.attendanceLogs.filter((l) => l.classId === classId && l.logDate === day).map((l) => l.studentId)
+        );
+        const sweptStudentIds = [];
+        (draft.students || []).filter((s) => (s.classId || "default-class") === classId && !already.has(s.id)).forEach((s) => {
+          draft.attendanceLogs.unshift({
+            id: null,
+            studentId: s.id,
+            classId,
+            logDate: day,
+            status: "Absent",
+            scannedAt: (/* @__PURE__ */ new Date()).toISOString(),
+            entryMethod: "Manual",
+            rfidTag: null,
+            recordedBy: null,
+            notes: null
+          });
+          sweptStudentIds.push(s.id);
+        });
+        sweptStudentIds.forEach((id) => {
+          const student = (draft.students || []).find((s) => s.id === id);
+          if (student) {
+            recalcStudentStats(student, { attendanceLogs: draft.attendanceLogs });
+            syncStudentDerivedStatsToServer(student.id, student.attendance, student.quizAvg);
+          }
+        });
+      }, { type: "attendance:session-closed", payload: { classId, logDate: day, absencesRecorded: data.absences_recorded } });
+      return { ok: true, absencesRecorded: data.absences_recorded };
+    }
+    return {
+      assignCard,
+      assignStudentToClass,
+      upsertSchedule,
+      clearScheduleOverride,
+      getEffectiveSchedule,
+      processScan,
+      overrideAttendance,
+      closeAttendanceSession
+    };
+  })();
+  console.log("[EduQuest] attendance/attendance-service.js loaded \u2014 AttendanceService registered.");
+
+  // src/modules/attendance/att_scanner_rfid.js
+  var _rfidFocusInterval = null;
+  var _rfidScanBuffer = "";
+  var _rfidInactivityTimer = null;
+  var _rfidScannerMounted = false;
+  var _rfidScanMode = "attendance";
+  var _rfidAssignTargetStudentId = null;
+  var _rfidSelectedClassId = "default-class";
+  var _rfidClockInterval = null;
+  var _rfidScheduleTimerInterval = null;
+  var _rfidWebNfcActive = false;
+  var _rfidKioskMode = false;
+  var renderRfidScanner = function() {
+    _rfidScannerMounted = true;
+    _rfidSelectedClassId = _rfidSelectedClassId || "default-class";
+    _rfidKioskMode = false;
+    document.body.classList.remove("rfid-kiosk-mode");
+    const state = typeof AppStore !== "undefined" ? AppStore.getState() : {};
+    const classIds = window.getActiveClassIds ? window.getActiveClassIds(state) : Array.from(new Set((state.students || []).map((s) => s.classId || "default-class"))).sort();
+    if (!classIds.includes(_rfidSelectedClassId)) _rfidSelectedClassId = classIds[0] || "default-class";
+    document.getElementById("a-scanner").innerHTML = `
+    <div class="kiosk-page">
+      <input id="rfid-capture-input" autocomplete="off" inputmode="none"
+             style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" />
+
+      <div class="kiosk-status-eyebrow" id="kiosk-status-eyebrow"></div>
+      <div class="kiosk-clock-corner" id="kiosk-clock-corner"></div>
+
+      <div class="kiosk-topstrip">
+        <select id="rfid-class-select" class="kiosk-class-select" onchange="_rfidOnClassChange(this.value)">
+          ${classIds.map((c) => `<option value="${_esc(c)}" ${c === _rfidSelectedClassId ? "selected" : ""}>${_esc(_rfidClassOptionLabel(c, state))}</option>`).join("")}
+        </select>
+        <button class="kiosk-fullscreen-btn${_rfidKioskMode ? " active" : ""}" id="rfid-fullscreen-btn"
+          onclick="_rfidToggleKioskMode()"
+          title="${_rfidKioskMode ? "Exit fullscreen" : "Fill the screen for scanning/kiosk display"}">
+          ${_rfidKioskMode ? "\u2922 Exit" : "\u26F6 Fullscreen"}
+        </button>
+        <button class="kiosk-icon-btn" title="Settings \u2014 schedule, assign card, close session" onclick="_rfidOpenSettings()">\u2699\uFE0F</button>
+        ${_rfidWebNfcSupported() ? `
+        <button class="kiosk-icon-btn${_rfidWebNfcActive ? " active" : ""}" id="rfid-webnfc-btn"
+          title="${_rfidWebNfcActive ? "Stop using this phone as an NFC reader" : "Use this phone as an NFC reader \u2014 tap to arm, then hold cards to the back of the phone"}"
+          onclick="_rfidToggleWebNfc()">
+          ${_rfidWebNfcActive ? "\u{1F4F1} NFC On" : "\u{1F4F1} Use Phone as Reader"}
+        </button>` : ""}
+        <!-- BUGFIX (report \xA74): true fullscreen hides the whole app shell
+             (topbar + sidebar) so students scanning cards don't see admin
+             nav, but nothing was left in its place to get back out \u2014 the
+             only way out was the browser Back button. This calls the same
+             navTo() every other nav link uses, which already tears down
+             kiosk mode via unmountRfidScanner() in nav.js. Only shown while
+             actually fullscreen \u2014 the sidebar already covers this otherwise. -->
+        ${_rfidKioskMode ? `<button class="kiosk-icon-btn" id="rfid-exit-kiosk-btn" title="Exit kiosk \u2014 back to admin dashboard" onclick="navTo('a-dashboard')">\u23FB</button>` : ""}
+      </div>
+
+      <div class="kiosk-columns">
+        <div class="kiosk-spotlight" id="kiosk-spotlight"></div>
+
+        <div class="kiosk-activity">
+          <div class="kiosk-activity-header">Recent Activity</div>
+          <div class="kiosk-schedule-timer" id="kiosk-schedule-timer"></div>
+          <div class="kiosk-roster-stats" id="kiosk-roster-stats"></div>
+          <div class="kiosk-activity-summary" id="kiosk-activity-summary"></div>
+          <div class="kiosk-activity-list" id="kiosk-activity-list"></div>
+        </div>
+      </div>
+    </div>`;
+    _rfidRenderSpotlight("idle");
+    _rfidRenderActivity();
+    _rfidUpdateStatusEyebrow();
+    _rfidStartCapture();
+    _rfidStartClock();
+    _rfidStartScheduleTimer();
+    AppStore.subscribe("rfid-scanner", function(state2, event) {
+      if (!_rfidScannerMounted) return;
+      if (!event || event.type === "state:updated" || event.type.indexOf("attendance:") === 0 || event.type === "state:remote-sync") {
+        _rfidRenderActivity();
+        _rfidRefreshClassSelectCounts();
+        _rfidUpdateStatusEyebrow();
+      }
+    });
+  };
+  function _rfidUpdateStatusEyebrow() {
+    const el = document.getElementById("kiosk-status-eyebrow");
+    if (!el) return;
+    const state = typeof AppStore !== "undefined" ? AppStore.getState() : {};
+    const label = window.getClassLabel ? window.getClassLabel(_rfidSelectedClassId, state) : _rfidSelectedClassId;
+    const info = _rfidNextScheduleMilestone(_rfidSelectedClassId);
+    const statusText = info.tone === "closed" ? "Closed" : info.tone === "late" ? "Late window" : "Scanning";
+    el.innerHTML = `<span class="dot"></span><span>${_esc(label)} \xB7 ${_esc(statusText)}</span>`;
+  }
+  function _rfidClassOptionLabel(classId, state) {
+    const label = window.getClassLabel ? window.getClassLabel(classId, state) : classId;
+    const enrolled = (state.students || []).filter((s) => (s.classId || "default-class") === classId).length;
+    const today = _rfidTodayISO();
+    const scannedToday = (state.attendanceLogs || []).filter((l) => l.classId === classId && l.logDate === today).length;
+    return `${label} (${scannedToday}/${enrolled})`;
+  }
+  function _rfidRefreshClassSelectCounts() {
+    const select = document.getElementById("rfid-class-select");
+    if (!select) return;
+    const state = AppStore.getState();
+    Array.from(select.options).forEach((opt) => {
+      opt.textContent = _rfidClassOptionLabel(opt.value, state);
+    });
+  }
+  function _rfidTickClock() {
+    const el = document.getElementById("kiosk-clock-corner");
+    if (!el) return;
+    const now = /* @__PURE__ */ new Date();
+    const time = now.toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" });
+    const date = now.toLocaleDateString("en-PH", { weekday: "short", month: "short", day: "numeric" });
+    const blinkTime = _esc(time).replace(":", '<span class="kiosk-clock-blink">:</span>');
+    el.innerHTML = `<div class="kiosk-clock-time">${blinkTime}</div><div class="kiosk-clock-date">${_esc(date)}</div>`;
+  }
+  function _rfidStartClock() {
+    if (_rfidClockInterval) clearInterval(_rfidClockInterval);
+    _rfidTickClock();
+    _rfidClockInterval = setInterval(_rfidTickClock, 1e3 * 15);
+  }
+  function _rfidScheduleFor(classId) {
+    const sched = typeof AttendanceService !== "undefined" && AttendanceService.getEffectiveSchedule ? AttendanceService.getEffectiveSchedule(classId) : AppStore.getSlice((s) => (s.attendanceSchedules || []).find((x) => x.classId === classId && (x.dayOfWeek || 0) === 0));
+    return sched || { openTime: "07:00", startTime: "07:30", lateCutoff: "07:45", closeTime: "08:30" };
+  }
+  function _rfidTimeStrToDate(hhmm, base) {
+    const parts = (hhmm || "00:00").split(":").map(Number);
+    const d = new Date(base);
+    d.setHours(parts[0] || 0, parts[1] || 0, 0, 0);
+    return d;
+  }
+  function _rfidNextScheduleMilestone(classId) {
+    const sched = _rfidScheduleFor(classId);
+    const now = /* @__PURE__ */ new Date();
+    const open = _rfidTimeStrToDate(sched.openTime, now);
+    const late = _rfidTimeStrToDate(sched.lateCutoff, now);
+    const close = _rfidTimeStrToDate(sched.closeTime, now);
+    if (now < open) return { label: "Opens in", target: open, tone: "open" };
+    if (now < late) return { label: "Late in", target: late, tone: "late" };
+    if (now < close) return { label: "Closes in", target: close, tone: "close" };
+    return { label: "Session closed", target: null, tone: "closed" };
+  }
+  function _rfidFormatCountdown(ms) {
+    const totalSec = Math.max(0, Math.floor(ms / 1e3));
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor(totalSec % 3600 / 60);
+    const s = totalSec % 60;
+    return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+  }
+  function _rfidTickScheduleTimer() {
+    _rfidUpdateStatusEyebrow();
+    const el = document.getElementById("kiosk-schedule-timer");
+    if (!el) return;
+    const info = _rfidNextScheduleMilestone(_rfidSelectedClassId);
+    if (!info.target) {
+      el.innerHTML = `<div class="kiosk-timer-chip kiosk-timer-closed"><span class="kiosk-timer-label">\u{1F512} Session closed</span></div>`;
+      return;
+    }
+    const remaining = _rfidFormatCountdown(info.target - /* @__PURE__ */ new Date());
+    const icons = { open: "\u{1F6AA}", late: "\u23F0", close: "\u{1F512}" };
+    el.innerHTML = `
+    <div class="kiosk-timer-chip kiosk-timer-${info.tone}">
+      <span class="kiosk-timer-icon">${icons[info.tone] || "\u23F1"}</span>
+      <span class="kiosk-timer-label">${_esc(info.label)}</span>
+      <span class="kiosk-timer-value">${_esc(remaining)}</span>
+    </div>`;
+  }
+  function _rfidStartScheduleTimer() {
+    if (_rfidScheduleTimerInterval) clearInterval(_rfidScheduleTimerInterval);
+    _rfidTickScheduleTimer();
+    _rfidScheduleTimerInterval = setInterval(_rfidTickScheduleTimer, 1e3);
+  }
+  function _rfidStartCapture() {
+    const input = document.getElementById("rfid-capture-input");
+    if (!input) return;
+    input.value = "";
+    _rfidScanBuffer = "";
+    input.focus();
+    if (_rfidFocusInterval) clearInterval(_rfidFocusInterval);
+    _rfidFocusInterval = setInterval(function() {
+      if (!_rfidScannerMounted) return;
+      const active = document.activeElement;
+      const isRealInput = active && active !== input && (active.tagName === "INPUT" || active.tagName === "SELECT" || active.tagName === "TEXTAREA");
+      if (!isRealInput && document.getElementById("rfid-capture-input")) {
+        document.getElementById("rfid-capture-input").focus();
+      }
+    }, 600);
+    input.addEventListener("keydown", function(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        _rfidFinalizeScan(input.value);
+        return;
+      }
+      if (_rfidInactivityTimer) clearTimeout(_rfidInactivityTimer);
+      _rfidInactivityTimer = setTimeout(function() {
+        if (input.value) _rfidFinalizeScan(input.value);
+      }, 120);
+    });
+  }
+  function _rfidWebNfcSupported() {
+    return typeof window !== "undefined" && "NDEFReader" in window;
+  }
+  function _rfidNormalizeTagId(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return "";
+    if (/^[0-9a-fA-F]{2}([:\-][0-9a-fA-F]{2})+$/.test(s)) {
+      const hexBytes = s.split(/[:\-]/);
+      const reversedHex = hexBytes.slice().reverse().join("");
+      try {
+        const asDecimal = BigInt("0x" + reversedHex).toString();
+        return hexBytes.length === 4 ? asDecimal.padStart(10, "0") : asDecimal;
+      } catch (e) {
+        return s.replace(/[:\-]/g, "").toUpperCase();
+      }
+    }
+    return s;
+  }
+  function _rfidFinalizeScan(rawValue) {
+    const input = document.getElementById("rfid-capture-input");
+    const tagId = _rfidNormalizeTagId(rawValue);
+    if (input) input.value = "";
+    if (_rfidInactivityTimer) {
+      clearTimeout(_rfidInactivityTimer);
+      _rfidInactivityTimer = null;
+    }
+    if (!tagId) return;
+    if (_rfidScanMode === "assign") {
+      _rfidHandleAssignScan(tagId);
+    } else {
+      _rfidHandleAttendanceScan(tagId);
+    }
+  }
+  async function _rfidHandleAttendanceScan(tagId) {
+    _rfidRenderSpotlight("loading", { text: "Checking card\u2026" });
+    const result = await AttendanceService.processScan(tagId, _rfidSelectedClassId);
+    if (!result.ok) {
+      if (result.error === "closed") {
+        _rfidRenderSpotlight("closed", { message: result.message });
+        return;
+      }
+      const messages = {
+        unknown_card: "Unknown card \u2014 not registered to any student.",
+        no_schedule: "No schedule configured for this class.",
+        not_open: "Attendance has not opened yet.",
+        wrong_section: result.message || "This student is enrolled in a different section and cannot be scanned here."
+      };
+      _rfidRenderSpotlight("error", {
+        message: messages[result.error] || result.message || "Scan failed.",
+        rawTag: result.error === "unknown_card" ? tagId : null
+      });
+      return;
+    }
+    const student = AppStore.getStudent(result.studentId);
+    _rfidRenderSpotlight("profile", {
+      student,
+      status: result.status,
+      alreadyRecorded: result.alreadyRecorded,
+      fallbackName: result.studentName
+    });
+    _rfidRenderActivity();
+  }
+  async function _rfidHandleAssignScan(tagId) {
+    if (!_rfidAssignTargetStudentId) {
+      _rfidRenderSpotlight("message", { icon: "\u26A0\uFE0F", text: "Pick a student in Settings before scanning.", color: "#ffd166" });
+      return;
+    }
+    _rfidRenderSpotlight("loading", { text: "Assigning card\u2026" });
+    const result = await AttendanceService.assignCard(_rfidAssignTargetStudentId, tagId);
+    if (!result.ok) {
+      _rfidRenderSpotlight("message", { icon: "\u274C", text: result.error || "Could not assign card.", color: "#ffb4ab", rawTag: tagId });
+      return;
+    }
+    const student = AppStore.getStudent(_rfidAssignTargetStudentId);
+    _rfidRenderSpotlight("message", { icon: "\u{1FAAA}", text: `Card assigned to ${student ? student.name : _rfidAssignTargetStudentId}.`, color: "#4edea3", rawTag: tagId });
+  }
+  function _rfidSpotlightIdleHtml() {
+    if (_rfidScanMode === "assign") {
+      const target = _rfidAssignTargetStudentId ? AppStore.getStudent(_rfidAssignTargetStudentId) : null;
+      return `
+      <div class="kiosk-spotlight-idle">
+        <div class="kiosk-spotlight-idle-icon">\u{1FAAA}</div>
+        <div class="kiosk-spotlight-idle-text">Ready to assign a card</div>
+        <div class="kiosk-spotlight-idle-sub">${target ? `Tap a card for ${_esc(target.name)}` : "Pick a student in Settings first"}</div>
+      </div>`;
+    }
+    return `
+    <div class="kiosk-spotlight-idle">
+      <div class="kiosk-spotlight-idle-icon">\u{1F4F6}</div>
+      <div class="kiosk-spotlight-idle-text">Waiting for a card\u2026</div>
+      <div class="kiosk-spotlight-idle-sub">Class: ${_esc(_rfidSelectedClassId)}</div>
+    </div>`;
+  }
+  function _rfidWelcomeMessage(name, status, streak, alreadyRecorded) {
+    const firstName = _esc(String(name || "Student").trim().split(/\s+/)[0]);
+    if (alreadyRecorded) return `You're already logged in for today, ${firstName}. See you in class!`;
+    if (status === "Late") return `You're logged in, ${firstName} \u2014 try to beat the bell tomorrow!`;
+    if (streak && streak.current >= 3) return `Welcome back, ${firstName}! That's a ${streak.current}-day streak \u2014 keep up the great work!`;
+    if (status === "Early") return `Welcome back, ${firstName}! Great to see you here early!`;
+    return `Welcome back, ${firstName}! Keep up the great work!`;
+  }
+  function _rfidLevelProgress(student) {
+    if (!student) return null;
+    const lvl = student.level || 0;
+    const xp = student.xp || 0;
+    const xpNext = (lvl + 1) * 1e3;
+    const pct = Math.min(100, Math.round(xp / xpNext * 100));
+    return { lvl, xp, xpNext, pct };
+  }
+  function _rfidClassRank(student) {
+    if (!student) return null;
+    const classmates = AppStore.getSlice((s) => (s.students || []).filter(
+      (x) => (x.classId || "default-class") === (student.classId || "default-class")
+    )) || [];
+    if (classmates.length < 2) return null;
+    const sorted = classmates.slice().sort((a, b) => (b.xp || 0) - (a.xp || 0));
+    const idx = sorted.findIndex((s) => s.id === student.id);
+    return idx === -1 ? null : { rank: idx + 1, of: sorted.length };
+  }
+  function _rfidProfileCardHtml(student, status, alreadyRecorded, fallbackName) {
+    const icons = { "Early": "\u{1F305}", "On Time": "\u2705", "Late": "\u23F0" };
+    const colors = { "Early": "#7fd8ff", "On Time": "#4edea3", "Late": "#ffd166" };
+    const badgeColor = colors[status] || "#4edea3";
+    const name = student ? student.name || student.displayName : fallbackName;
+    const initials = student && student.init || String(name || "?").trim().slice(0, 2).toUpperCase();
+    const avatarColor = _cssColor(student && student.color);
+    const pct = student ? Math.round(Number(student.attendance) || 0) : null;
+    const pctColor = pct === null ? "var(--text-muted)" : pct >= 90 ? "#4edea3" : pct >= 75 ? "#ffd166" : "#ffb4ab";
+    const streak = student ? computeAttendanceStreak(getStudentAttendanceRecords(student.id)) : null;
+    const showAbsenceWarning = pct !== null && pct < 75;
+    const ringDeg = pct !== null ? Math.round(pct / 100 * 360) : 0;
+    const lvlInfo = _rfidLevelProgress(student);
+    const rankInfo = _rfidClassRank(student);
+    const equippedTitle = student && typeof tsGetEquippedTitle === "function" ? tsGetEquippedTitle(student.id) : null;
+    const hasStatsPanel = student && student.coins != null || rankInfo;
+    return `
+    <div class="kiosk-dashboard">
+      <div class="kiosk-welcome-banner">
+        <div class="kiosk-welcome-icon">${!alreadyRecorded ? "\u2705" : "\u{1F44B}"}</div>
+        <div class="kiosk-welcome-copy">
+          <div class="kiosk-welcome-kicker">${!alreadyRecorded ? "Scan Successful" : "Already Checked In"}</div>
+          <div class="kiosk-welcome-text">${_rfidWelcomeMessage(name, status, streak, alreadyRecorded)}</div>
+        </div>
+      </div>
+
+      <div class="kiosk-dashboard-grid${pct === null ? " kiosk-dashboard-grid-single" : ""}">
+        <div class="kiosk-panel kiosk-identity-panel">
+          ${student && student.profilePic ? `<img class="kiosk-profile-avatar" src="${_esc(student.profilePic)}" alt="" />` : `<div class="kiosk-profile-avatar" style="background:${avatarColor}22;color:${avatarColor};border-color:${avatarColor}44">${_esc(initials)}</div>`}
+          <div class="kiosk-identity-info">
+            <div class="kiosk-profile-name">${_esc(name || "Student")}</div>
+            <div class="kiosk-name-accent"></div>
+            ${student ? `<div class="kiosk-profile-section">Section: ${_esc(typeof getClassLabel === "function" ? getClassLabel(student.classId) : student.classId)}</div>` : ""}
+            <div>
+              <div class="kiosk-status-badge" style="background:${badgeColor}22;color:${badgeColor};border:2px solid ${badgeColor}55">
+                ${icons[status] || "\u2705"} ${_esc(status)}${alreadyRecorded ? " \xB7 already logged today" : ""}
+              </div>
+              ${streak && streak.current > 0 ? `<div class="kiosk-streak-pill">\u{1F525} ${streak.current}-day streak</div>` : ""}
+            </div>
+            ${lvlInfo ? `
+            <div class="kiosk-level-block">
+              <div class="kiosk-level-label"><span>Level ${lvlInfo.lvl}</span><span>${lvlInfo.xp.toLocaleString()} / ${lvlInfo.xpNext.toLocaleString()} XP</span></div>
+              <div class="kiosk-level-track"><div class="kiosk-level-fill" style="width:${lvlInfo.pct}%"></div></div>
+              ${equippedTitle ? `<div class="kiosk-equipped-title"><div class="kiosk-equipped-label">Equipped Title</div>${tsBuildBadgeHTML(equippedTitle, { noParticles: true })}</div>` : ""}
+            </div>` : ""}
+          </div>
+        </div>
+
+        ${pct !== null ? `
+        <div class="kiosk-panel kiosk-attendance-panel" style="--ring-color:${pctColor}">
+          <div class="kiosk-ring" style="--ring-deg:${ringDeg}deg;--ring-color:${pctColor}">
+            <div class="kiosk-ring-inner">
+              <div class="kiosk-ring-pct">${pct}<span>%</span></div>
+              <div class="kiosk-ring-label">Cumulative<br>Attendance</div>
+            </div>
+          </div>
+          ${showAbsenceWarning ? `<div class="kiosk-absence-warning">\u26A0\uFE0F Below 75% \u2014 worth checking in with this student.</div>` : ""}
+        </div>` : ""}
+
+        ${pct !== null && hasStatsPanel ? `
+        <div class="kiosk-panel kiosk-stats-panel">
+          ${student && student.coins != null ? `
+          <div class="kiosk-stat-chip kiosk-stat-chip-coins">
+            <div class="kiosk-stat-label">Coins</div>
+            <div class="kiosk-stat-value">\u{1FA99} ${Number(student.coins || 0).toLocaleString()}</div>
+          </div>` : ""}
+          ${rankInfo ? `
+          <div class="kiosk-stat-chip kiosk-stat-chip-rank">
+            <div class="kiosk-stat-label">Class Rank</div>
+            <div class="kiosk-stat-value">#${rankInfo.rank} <span>of ${rankInfo.of}</span></div>
+          </div>` : ""}
+        </div>` : ""}
+      </div>
+    </div>`;
+  }
+  function _rfidRenderSpotlight(mode, data) {
+    const el = document.getElementById("kiosk-spotlight");
+    if (!el) return;
+    data = data || {};
+    clearTimeout(window._rfidSpotlightResetTimer);
+    if (mode === "idle") {
+      el.innerHTML = _rfidSpotlightIdleHtml();
+      return;
+    }
+    if (mode === "loading") {
+      el.innerHTML = `
+      <div class="kiosk-spotlight-idle">
+        <div class="kiosk-spotlight-idle-icon">\u23F3</div>
+        <div class="kiosk-spotlight-idle-text">${_esc(data.text || "Checking card\u2026")}</div>
+      </div>`;
+      return;
+    }
+    if (mode === "message") {
+      el.innerHTML = `
+      <div class="kiosk-spotlight-idle">
+        <div class="kiosk-spotlight-idle-icon">${_esc(data.icon || "\u2139\uFE0F")}</div>
+        <div class="kiosk-spotlight-idle-text" style="color:${data.color || "inherit"}">${_esc(data.text || "")}</div>
+        ${data.rawTag ? `<div class="kiosk-spotlight-raw-tag">Raw ID read: <code>${_esc(data.rawTag)}</code></div>` : ""}
+      </div>`;
+      window._rfidSpotlightResetTimer = setTimeout(function() {
+        _rfidRenderSpotlight("idle");
+      }, 5200);
+      return;
+    }
+    if (mode === "error") {
+      el.innerHTML = `
+      <div class="kiosk-spotlight-error">
+        <div class="kiosk-spotlight-error-icon">\u{1F6AB}</div>
+        <div class="kiosk-spotlight-error-text">${_esc(data.message || "Scan failed.")}</div>
+        ${data.rawTag ? `<div class="kiosk-spotlight-raw-tag">Raw ID read: <code>${_esc(data.rawTag)}</code></div>` : ""}
+      </div>`;
+      window._rfidSpotlightResetTimer = setTimeout(function() {
+        _rfidRenderSpotlight("idle");
+      }, 3200);
+      return;
+    }
+    if (mode === "closed") {
+      el.innerHTML = `
+      <div class="kiosk-spotlight-closed">
+        <div class="kiosk-spotlight-closed-icon">\u{1F512}</div>
+        <div class="kiosk-spotlight-closed-text">Attendance Window Closed</div>
+        <div class="kiosk-spotlight-closed-sub">${_esc(data.message || "Use the Manual Override on the Live Classroom Monitor instead.")}</div>
+      </div>`;
+      window._rfidSpotlightResetTimer = setTimeout(function() {
+        _rfidRenderSpotlight("idle");
+      }, 3200);
+      return;
+    }
+    if (mode === "profile") {
+      el.innerHTML = _rfidProfileCardHtml(data.student, data.status, data.alreadyRecorded, data.fallbackName);
+      window._rfidSpotlightResetTimer = setTimeout(function() {
+        _rfidRenderSpotlight("idle");
+      }, 5e3);
+      return;
+    }
+  }
+  function _rfidTodayISO() {
+    return isoDate();
+  }
+  function _rfidRenderActivity() {
+    const statsEl = document.getElementById("kiosk-roster-stats");
+    const summaryEl = document.getElementById("kiosk-activity-summary");
+    const listEl = document.getElementById("kiosk-activity-list");
+    if (!summaryEl || !listEl) return;
+    const today = _rfidTodayISO();
+    const students = AppStore.getSlice((s) => s.students) || [];
+    const todaysLogs = AppStore.getSlice((s) => (s.attendanceLogs || []).filter(
+      (l) => l.classId === _rfidSelectedClassId && l.logDate === today
+    ));
+    const by = { "Early": 0, "On Time": 0, "Late": 0, "Absent": 0, "Excused": 0 };
+    todaysLogs.forEach((l) => {
+      if (by[l.status] !== void 0) by[l.status]++;
+    });
+    const colors = { "Early": "#7fd8ff", "On Time": "#4edea3", "Late": "#ffd166", "Absent": "#ffb4ab", "Excused": "#c4b5fd" };
+    if (statsEl) {
+      const enrolledCount = students.filter((s) => (s.classId || "default-class") === _rfidSelectedClassId).length;
+      const presentCount = by["Early"] + by["On Time"];
+      const lateCount = by["Late"];
+      const loggedCount = todaysLogs.length;
+      const notCheckedInCount = Math.max(0, enrolledCount - loggedCount);
+      statsEl.innerHTML = `
+      <div class="kiosk-roster-stat">
+        <div class="kiosk-roster-stat-value">${enrolledCount}</div>
+        <div class="kiosk-roster-stat-label">Total</div>
+      </div>
+      <div class="kiosk-roster-stat kiosk-roster-stat-present">
+        <div class="kiosk-roster-stat-value">${presentCount}</div>
+        <div class="kiosk-roster-stat-label">Present</div>
+      </div>
+      <div class="kiosk-roster-stat kiosk-roster-stat-late">
+        <div class="kiosk-roster-stat-value">${lateCount}</div>
+        <div class="kiosk-roster-stat-label">Late</div>
+      </div>
+      <div class="kiosk-roster-stat kiosk-roster-stat-pending">
+        <div class="kiosk-roster-stat-value">${notCheckedInCount}</div>
+        <div class="kiosk-roster-stat-label">Not Checked In</div>
+      </div>`;
+    }
+    summaryEl.innerHTML = ["Early", "On Time", "Late", "Absent", "Excused"].filter((k) => by[k] > 0).map((k) => `<span style="color:${colors[k]};font-weight:800">${by[k]}</span> ${_esc(k)}`).join(' <span style="opacity:.35">\xB7</span> ') || "No scans yet today";
+    const last10 = todaysLogs.slice().sort((a, b) => new Date(b.scannedAt) - new Date(a.scannedAt)).slice(0, 10);
+    listEl.innerHTML = last10.length ? last10.map((l) => {
+      const student = students.find((s) => s.id === l.studentId);
+      const name = student ? student.name || student.displayName : l.studentId;
+      const initials = student && student.init || String(name || "?").trim().slice(0, 2).toUpperCase();
+      const avatarColor = _cssColor(student && student.color);
+      const color = colors[l.status] || "var(--text-muted)";
+      return `
+      <div class="kiosk-activity-item">
+        ${student && student.profilePic ? `<img class="kiosk-activity-avatar" src="${_esc(student.profilePic)}" alt="" />` : `<div class="kiosk-activity-avatar" style="background:${avatarColor}22;color:${avatarColor}">${_esc(initials)}</div>`}
+        <div class="kiosk-activity-main">
+          <div class="kiosk-activity-name">${_esc(name)}</div>
+          <div class="kiosk-activity-meta" style="color:${color}">${_esc(l.status)}${l.entryMethod === "Manual" ? " \xB7 manual" : ""}</div>
+        </div>
+        <div class="kiosk-activity-time">${_esc(new Date(l.scannedAt).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }))}</div>
+      </div>`;
+    }).join("") : `<div class="kiosk-activity-empty">No scans yet today</div>`;
+  }
+  console.log("[EduQuest] attendance/att_scanner_rfid.js loaded \u2014 renderRfidScanner, unmountRfidScanner registered (Phase 4 kiosk).");
+  window._rfidNormalizeTagId = _rfidNormalizeTagId;
+
+  // src/modules/attendance/attendance-recitation-log.js
+  var _talSection = "all";
+  var _talType = "all";
+  var _talRange = "all";
+  var _talSearch = "";
+  var _talPage = 1;
+  var _TAL_PAGE_SIZE = 20;
+  var _TAL_SUBSCRIBER_KEY = "recitation-attendance-log";
+  var _TAL_STATUS_COLORS = { "Early": "#7fd8ff", "On Time": "#4edea3", "Late": "#ffd166", "Absent": "#ffb4ab", "Excused": "#c4b5fd" };
+  var _TAL_STATUS_ICONS = { "Early": "\u{1F305}", "On Time": "\u2705", "Late": "\u23F0", "Absent": "\u274C", "Excused": "\u{1F4DD}" };
+  var renderRecitationAttendanceLog = function() {
+    const el = document.getElementById("a-class-logs");
+    if (!el) return;
+    if (typeof AppStore !== "undefined" && AppStore.subscribe) {
+      AppStore.subscribe(_TAL_SUBSCRIBER_KEY, (state, event) => {
+        const type = event && event.type;
+        if (type === "attendance:scan-recorded" || type === "attendance:override" || type === "attendance:session-closed" || type && type.indexOf("recitation:") === 0 || type && type.indexOf("sections:") === 0 || type === "state:remote-sync" || type === "state:legacy-sync") {
+          if (document.getElementById("a-class-logs")) _talPaint();
+        }
+      });
+    }
+    _talPaint();
+  };
+  function _talPaint() {
+    const el = document.getElementById("a-class-logs");
+    if (!el) return;
+    const state = AppStore.getState();
+    const allEntries = _talBuildEntries(state);
+    const scopedEntries = _talApplyNonSectionFilters(allEntries, state);
+    const sectionOptions = _talSectionOptions(state, allEntries);
+    const visibleEntries = scopedEntries.filter((e) => _talMatchesSection(e));
+    el.innerHTML = `
+  <div class="page-hero">
+    <div class="page-hero-bg"></div>
+    <div style="position:relative;z-index:1">
+      <div class="page-hero-label">\u{1F5D2}\uFE0F Class Records</div>
+      <h1 style="font-family:var(--fh);font-size:32px;font-weight:900;color:var(--on-surface);margin-bottom:8px">Recitation &amp; Attendance Log</h1>
+      <p style="font-size:14px;color:var(--text-muted)">${typeof getMySectionsLabel === "function" ? _esc(getMySectionsLabel(state)) : "All Sections"} \xB7 every recitation point and attendance scan, in one place</p>
+    </div>
+  </div>
+
+  ${_talOverviewStatGrid(scopedEntries)}
+  ${_talFilterBar(sectionOptions)}
+  ${_talSection === "all" ? _talSectionOverviewGrid(state, scopedEntries, sectionOptions) : _talSectionHeader(state, sectionOptions)}
+  ${_talTable(visibleEntries, state)}
+  `;
+  }
+  function _talMySectionIds(state) {
+    const uid2 = typeof currentUser !== "undefined" && currentUser ? currentUser.id : null;
+    const isAdmin = typeof currentRole !== "undefined" && currentRole === "admin";
+    const ids = /* @__PURE__ */ new Set();
+    (state.classSections || []).forEach((s) => {
+      if (s.archived) return;
+      if (isAdmin || uid2 && s.adviserId === uid2) ids.add(s.id);
+    });
+    (state.attendanceLogs || []).forEach((a) => {
+      if (a.classId) ids.add(a.classId);
+    });
+    (state.recitationLog || []).forEach((r) => {
+      if (r.classId) ids.add(r.classId);
+    });
+    (state.students || []).forEach((s) => {
+      ids.add(s.classId || "default-class");
+    });
+    if (!ids.size && typeof getActiveClassIds === "function") {
+      getActiveClassIds(state).forEach((id) => ids.add(id));
+    }
+    return Array.from(ids);
+  }
+  function _talSectionLabel(classId, state) {
+    if (!classId) return "Unassigned / Legacy";
+    if (typeof getClassLabel === "function") return getClassLabel(classId, state);
+    return classId;
+  }
+  function _talBuildEntries(state) {
+    const studentsById = {};
+    (state.students || []).forEach((s) => {
+      studentsById[s.id] = s;
+    });
+    const nameFor = (sid) => {
+      const s = studentsById[sid];
+      return s ? s.name || s.displayName || sid : sid;
+    };
+    const attendance = (state.attendanceLogs || []).map((a) => {
+      const dt = a.scannedAt ? new Date(a.scannedAt) : a.logDate ? /* @__PURE__ */ new Date(a.logDate + "T00:00:00+08:00") : null;
+      return {
+        type: "attendance",
+        id: "att_" + (a.id || a.studentId + "_" + a.logDate),
+        studentId: a.studentId,
+        studentName: nameFor(a.studentId),
+        classId: a.classId || null,
+        date: a.logDate || (dt ? _talDateKey(dt) : null),
+        dt,
+        sortKey: dt ? dt.getTime() : 0,
+        status: a.status,
+        entryMethod: a.entryMethod,
+        detail: a.notes || ""
+      };
+    });
+    const recitation = (state.recitationLog || []).map((r) => {
+      const dt = r.createdAt ? new Date(r.createdAt) : null;
+      return {
+        type: "recitation",
+        id: "rec_" + (r.id || r.studentId + "_" + r.when),
+        studentId: r.studentId,
+        studentName: nameFor(r.studentId),
+        classId: r.classId || null,
+        date: dt ? _talDateKey(dt) : null,
+        dt,
+        sortKey: dt ? dt.getTime() : 0,
+        pts: r.pts,
+        detail: r.note || ""
+      };
+    });
+    return attendance.concat(recitation).sort((a, b) => b.sortKey - a.sortKey);
+  }
+  function _talSectionOptions(state, allEntries) {
+    const ids = _talMySectionIds(state);
+    const opts = ids.map((id) => ({ id, label: _talSectionLabel(id, state) })).sort((a, b) => a.label.localeCompare(b.label));
+    const hasUnassigned = allEntries.some((e) => !e.classId);
+    if (hasUnassigned) opts.push({ id: "__unassigned__", label: "Unassigned / Legacy" });
+    return opts;
+  }
+  function _talMatchesSection(e) {
+    if (_talSection === "all") return true;
+    if (_talSection === "__unassigned__") return !e.classId;
+    return e.classId === _talSection;
+  }
+  function _talApplyNonSectionFilters(entries, state) {
+    const today = typeof isoDate === "function" ? isoDate() : null;
+    const q = _talSearch.toLowerCase();
+    return entries.filter((e) => {
+      if (_talType !== "all" && e.type !== _talType) return false;
+      if (_talRange === "today") {
+        if (!e.date || e.date !== today) return false;
+      } else if (_talRange === "7" || _talRange === "30") {
+        if (!e.sortKey) return false;
+        const days = _talRange === "7" ? 7 : 30;
+        if (Date.now() - e.sortKey > days * 864e5) return false;
+      }
+      if (q && !(e.studentName || "").toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }
+  function _talOverviewStatGrid(scopedEntries) {
+    const attendance = scopedEntries.filter((e) => e.type === "attendance");
+    const recitation = scopedEntries.filter((e) => e.type === "recitation");
+    const totalPts = recitation.reduce((a, e) => a + (e.pts || 0), 0);
+    const presentCount = attendance.filter((e) => e.status === "Early" || e.status === "On Time").length;
+    return `
+  <div class="stat-grid">
+    <div class="stat-card"><div class="val" style="color:#d0bcff">${scopedEntries.length}</div><div class="lbl">Total Entries</div></div>
+    <div class="stat-card"><div class="val" style="color:#4edea3">${attendance.length}</div><div class="lbl">Attendance Logged</div></div>
+    <div class="stat-card"><div class="val" style="color:#ffb95f">${recitation.length}</div><div class="lbl">Recitation Entries</div></div>
+    <div class="stat-card"><div class="val" style="color:#7fd8ff">${totalPts.toLocaleString()}</div><div class="lbl">Recitation Points</div></div>
+  </div>
+  <div style="font-size:11px;color:var(--text-muted);margin:-16px 0 20px">\u2705 ${presentCount} present-on-time entries in the current filter</div>`;
+  }
+  function _talFilterBar(sectionOptions) {
+    const sectionOpts = sectionOptions.map(
+      (s) => `<option value="${_esc(s.id)}" ${_talSection === s.id ? "selected" : ""}>${_esc(s.label)}</option>`
+    ).join("");
+    const hasFilters = _talSection !== "all" || _talType !== "all" || _talRange !== "all" || _talSearch;
+    return `
+  <div class="glass-card" style="padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+    <div>
+      <label style="display:block;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Section</label>
+      <select id="tal-section-filter" style="width:auto;min-width:210px" onchange="talSetSection(this.value)">
+        <option value="all" ${_talSection === "all" ? "selected" : ""}>\u{1F3EB} All My Sections</option>
+        ${sectionOpts}
+      </select>
+    </div>
+    <div>
+      <label style="display:block;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Type</label>
+      <select id="tal-type-filter" style="width:auto;min-width:140px" onchange="talSetType(this.value)">
+        <option value="all" ${_talType === "all" ? "selected" : ""}>All Types</option>
+        <option value="attendance" ${_talType === "attendance" ? "selected" : ""}>\u{1F4C5} Attendance</option>
+        <option value="recitation" ${_talType === "recitation" ? "selected" : ""}>\u{1F3A4} Recitation</option>
+      </select>
+    </div>
+    <div>
+      <label style="display:block;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">When</label>
+      <select id="tal-range-filter" style="width:auto;min-width:130px" onchange="talSetRange(this.value)">
+        <option value="all" ${_talRange === "all" ? "selected" : ""}>All Time</option>
+        <option value="today" ${_talRange === "today" ? "selected" : ""}>Today</option>
+        <option value="7" ${_talRange === "7" ? "selected" : ""}>Last 7 Days</option>
+        <option value="30" ${_talRange === "30" ? "selected" : ""}>Last 30 Days</option>
+      </select>
+    </div>
+    <div style="flex:1;min-width:160px">
+      <label style="display:block;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Search student</label>
+      <input id="tal-search" type="text" placeholder="Search by name\u2026" value="${_esc(_talSearch)}" oninput="talSetSearch(this.value)">
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="talExportCsv()">\u2B07\uFE0F Export CSV</button>
+    ${hasFilters ? `<button class="btn btn-ghost btn-sm" onclick="talClearFilters()">Clear filters</button>` : ""}
+  </div>`;
+  }
+  function _talSectionOverviewGrid(state, scopedEntries, sectionOptions) {
+    const ids = _talMySectionIds(state);
+    const cards = ids.map((id) => {
+      const secEntries = scopedEntries.filter((e) => (e.classId || null) === id);
+      return _talSectionSummary(id, _talSectionLabel(id, state), secEntries);
+    });
+    const unassigned = scopedEntries.filter((e) => !e.classId);
+    if (unassigned.length) cards.push(_talSectionSummary("__unassigned__", "Unassigned / Legacy", unassigned));
+    if (!cards.length) {
+      return `<div class="glass-card" style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px">No sections found yet. Create a section under Sections to get started.</div>`;
+    }
+    return `
+  <div class="section-header"><span class="material-symbols-outlined">grid_view</span><h2>Sections Overview</h2></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:24px">
+    ${cards.map((c) => `
+    <div class="glass-card" style="padding:16px;cursor:pointer;transition:transform .15s" onclick="talSetSection('${_esc(c.id)}')" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+      <div style="font-weight:800;font-size:14px;color:var(--on-surface);margin-bottom:10px">${_esc(c.label)}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-bottom:8px">
+        <span style="color:${_TAL_STATUS_COLORS["On Time"]}">\u2705 ${c.present}</span>
+        <span style="color:${_TAL_STATUS_COLORS["Late"]}">\u23F0 ${c.late}</span>
+        <span style="color:${_TAL_STATUS_COLORS["Absent"]}">\u274C ${c.absent}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted)">\u{1F3A4} ${c.recitationCount} entries \xB7 <span style="color:#ffb95f;font-weight:700">${c.totalPts} pts</span></div>
+    </div>`).join("")}
+  </div>`;
+  }
+  function _talSectionSummary(id, label, entries) {
+    const attendance = entries.filter((e) => e.type === "attendance");
+    const recitation = entries.filter((e) => e.type === "recitation");
+    return {
+      id,
+      label,
+      present: attendance.filter((e) => e.status === "Early" || e.status === "On Time").length,
+      late: attendance.filter((e) => e.status === "Late").length,
+      absent: attendance.filter((e) => e.status === "Absent").length,
+      recitationCount: recitation.length,
+      totalPts: recitation.reduce((a, e) => a + (e.pts || 0), 0)
+    };
+  }
+  function _talSectionHeader(state, sectionOptions) {
+    const opt = sectionOptions.find((s) => s.id === _talSection);
+    const label = opt ? opt.label : _talSectionLabel(_talSection === "__unassigned__" ? null : _talSection, state);
+    return `
+  <div class="section-header">
+    <span class="material-symbols-outlined">meeting_room</span>
+    <h2>${_esc(label)}</h2>
+    <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="talSetSection('all')">\u2190 All Sections</button>
+  </div>`;
+  }
+  function _talTable(entries, state) {
+    if (!entries.length) {
+      return `<div class="glass-card" style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px">No log entries match the current filters.</div>`;
+    }
+    const cols = "100px 80px 1.2fr 160px 110px 1.3fr";
+    const totalPages = Math.max(1, Math.ceil(entries.length / _TAL_PAGE_SIZE));
+    if (_talPage > totalPages) _talPage = totalPages;
+    const start = (_talPage - 1) * _TAL_PAGE_SIZE;
+    const shown = entries.slice(start, start + _TAL_PAGE_SIZE);
+    return `
+  <div class="section-header"><span class="material-symbols-outlined">receipt_long</span><h2>Log Entries</h2></div>
+  <div class="glass-card" style="padding:0;overflow:hidden">
+    <div style="display:grid;grid-template-columns:${cols};gap:10px;align-items:center;padding:10px 16px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border2)">
+      <span>Date</span><span>Time</span><span>Who</span><span>Section</span><span>Type</span><span>Detail</span>
+    </div>
+    ${shown.map((e) => _talRow(e, state)).join("")}
+  </div>
+  ${_talPagination(_talPage, totalPages, entries.length, start + 1, start + shown.length)}`;
+  }
+  function _talPagination(page, totalPages, totalCount, rangeStart, rangeEnd) {
+    if (totalPages <= 1) {
+      return `<div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text-muted)">Showing all ${totalCount} entries</div>`;
+    }
+    const nums = /* @__PURE__ */ new Set([1, totalPages, page, page - 1, page + 1, page - 2, page + 2]);
+    const pages = Array.from(nums).filter((n) => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+    let btns = "";
+    let prevN = 0;
+    pages.forEach((n) => {
+      if (n - prevN > 1) btns += `<span style="padding:0 6px;color:var(--text-muted);font-size:11px">\u2026</span>`;
+      btns += `<button class="btn btn-ghost btn-sm" style="${n === page ? "background:var(--primary);color:#fff;font-weight:800" : ""}" onclick="talGoToPage(${n})">${n}</button>`;
+      prevN = n;
+    });
+    return `
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:14px">
+    <button class="btn btn-ghost btn-sm" ${page <= 1 ? "disabled" : ""} onclick="talPrevPage()">\u2190 Prev</button>
+    ${btns}
+    <button class="btn btn-ghost btn-sm" ${page >= totalPages ? "disabled" : ""} onclick="talNextPage()">Next \u2192</button>
+  </div>
+  <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--text-muted)">Showing ${rangeStart}\u2013${rangeEnd} of ${totalCount} entries</div>`;
+  }
+  function _talRow(e, state) {
+    const dateStr = _talFormatDisplayDate(e.date);
+    const timeStr = e.dt ? _talFormatTime(e.dt) : "\u2014";
+    const sectionLabel = _talSectionLabel(e.classId, state);
+    let typeBadge, detail;
+    if (e.type === "attendance") {
+      const color = _TAL_STATUS_COLORS[e.status] || "var(--text-muted)";
+      const icon = _TAL_STATUS_ICONS[e.status] || "\u{1F4C5}";
+      typeBadge = `<span class="btn btn-xs" style="width:fit-content;pointer-events:none;background:${color}22;color:${color};border:1px solid ${color}55">${icon} ${_esc(e.status || "\u2014")}</span>`;
+      detail = `${e.entryMethod ? `<div style="font-size:10px;color:var(--text-muted)">via ${_esc(e.entryMethod)}</div>` : ""}${e.detail ? `<div style="font-size:11px;color:var(--on-surface)">${_esc(e.detail)}</div>` : ""}`;
+    } else {
+      const pts = e.pts || 0;
+      const color = pts >= 0 ? "#4edea3" : "#ffb4ab";
+      typeBadge = `<span class="btn btn-xs" style="width:fit-content;pointer-events:none;background:${color}22;color:${color};border:1px solid ${color}55">\u{1F3A4} ${pts >= 0 ? "+" : ""}${pts} pts</span>`;
+      detail = e.detail ? `<div style="font-size:11px;color:var(--on-surface)">${_esc(e.detail)}</div>` : `<div style="font-size:11px;color:var(--text-muted)">\u2014</div>`;
+    }
+    return `
+  <div style="display:grid;grid-template-columns:100px 80px 1.2fr 160px 110px 1.3fr;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border2)">
+    <div style="font-size:11px;color:var(--text-muted)">${_esc(dateStr)}</div>
+    <div style="font-size:11px;color:var(--text-muted)">${_esc(timeStr)}</div>
+    <div style="font-size:13px;font-weight:700;color:var(--on-surface)">${_esc(e.studentName)}</div>
+    <div style="font-size:12px;color:var(--on-surface)">${_esc(sectionLabel)}</div>
+    <div>${typeBadge}</div>
+    <div>${detail}</div>
+  </div>`;
+  }
+  function _talDateKey(d) {
+    try {
+      return d.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    } catch (e) {
+      return null;
+    }
+  }
+  function _talFormatDisplayDate(dateKey) {
+    if (!dateKey) return "\u2014";
+    try {
+      const d = /* @__PURE__ */ new Date(dateKey + "T00:00:00+08:00");
+      if (isNaN(d.getTime())) return dateKey;
+      return d.toLocaleDateString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric" });
+    } catch (e) {
+      return dateKey;
+    }
+  }
+  function _talFormatTime(d) {
+    try {
+      return d.toLocaleTimeString("en-US", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", hour12: true });
+    } catch (e) {
+      return "\u2014";
+    }
+  }
+  console.log("[EduQuest] attendance/attendance-recitation-log.js loaded \u2014 renderRecitationAttendanceLog registered.");
+
+  // src/modules/mail/admin-compose.js
+  var renderAdminMail = function() {
+    const students = AppStore.getSlice((s) => s.students) || [];
+    const mails = [...AppStore.getSlice((s) => s.mail) || []].sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
+    const totalSent = mails.length;
+    const withRewards = mails.filter((m) => m.hasReward).length;
+    const totalRecipients = mails.reduce((s, m) => s + (m.to === "all" ? students.length : (m.to || []).length), 0);
+    document.getElementById("a-mail").innerHTML = `
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div style="font-family:var(--fm);font-size:10px;color:var(--primary);letter-spacing:.16em;margin-bottom:6px">ADMIN // MAIL_SYSTEM</div>
+      <div style="font-family:var(--fh);font-size:26px;font-weight:900">\u{1F4EC} Mail System</div>
+      <div style="color:var(--text-muted);font-size:13px;margin-top:4px">Send announcements, rewards, and gifts to students</div>
+    </div>
+    <button class="btn btn-primary" onclick="mailAdminOpenCompose()">
+      <span class="material-symbols-outlined" style="font-size:16px">edit</span>
+      Compose Mail
+    </button>
+  </div>
+
+  <div class="ach-stats-bar" style="margin-bottom:24px">
+    <div class="ach-stat-card"><div class="ach-stat-val" style="color:var(--primary)">${totalSent}</div><div class="ach-stat-lbl">Sent</div></div>
+    <div class="ach-stat-card"><div class="ach-stat-val" style="color:var(--tertiary)">${withRewards}</div><div class="ach-stat-lbl">With Rewards</div></div>
+    <div class="ach-stat-card"><div class="ach-stat-val" style="color:var(--secondary)">${totalRecipients}</div><div class="ach-stat-lbl">Total Recipients</div></div>
+  </div>
+
+  ${mails.length === 0 ? `
+  <div class="mail-empty">
+    <div class="mail-empty-icon">\u{1F4EE}</div>
+    <div class="mail-empty-title">No mail sent yet</div>
+    <div class="mail-empty-sub">Compose your first message to get started.</div>
+    <button class="btn btn-primary" style="margin-top:16px" onclick="mailAdminOpenCompose()">Compose Mail</button>
+  </div>` : mails.map((m) => {
+      const recipientLabel = m.to === "all" ? `All Students (${students.length})` : Array.isArray(m.to) ? m.to.map((sid) => {
+        const s = students.find((x) => x.id === sid);
+        return s ? s.name : sid;
+      }).join(", ") : m.to;
+      const timeStr = new Date(m.sentAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      const claimsCount = Array.isArray(m.to) ? m.to.filter((sid) => mailIsClaimed(m, sid)).length : m.to === "all" ? students.filter((s) => mailIsClaimed(m, s.id)).length : 0;
+      const readCount = Array.isArray(m.to) ? m.to.filter((sid) => mailIsRead(m, sid)).length : m.to === "all" ? students.filter((s) => mailIsRead(m, s.id)).length : 0;
+      const totalTo = m.to === "all" ? students.length : Array.isArray(m.to) ? m.to.length : 1;
+      const mailTypeIcons = { announcement: "\u{1F4E2}", reward: "\u{1F381}", gift: "\u{1F380}", event: "\u{1F389}", title: "\u{1F396}\uFE0F", compensation: "\u{1F48E}", general: "\u{1F4EC}" };
+      return `<div class="admin-mail-row">
+      <div class="admin-mail-row-icon">${mailTypeIcons[m.type] || "\u{1F4EC}"}</div>
+      <div class="admin-mail-row-body">
+        <div class="admin-mail-row-subject">${_esc(m.subject)}</div>
+        <div class="admin-mail-row-meta">
+          To: ${_esc(recipientLabel)} \xB7 ${timeStr}
+          \xB7 \u{1F441} ${readCount}/${totalTo} read
+          ${m.hasReward ? ` \xB7 \u{1F381} ${claimsCount}/${totalTo} claimed` : ""}
+          ${m.hasReward ? ` <span class="badge-pill bp-gold" style="font-size:9px;margin-left:4px">Reward</span>` : ""}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${_esc((m.body || "").slice(0, 100))}${(m.body || "").length > 100 ? "\u2026" : ""}</div>
+      </div>
+      <div class="admin-mail-row-actions">
+        <button class="btn btn-ghost btn-xs" onclick="mailAdminOpenCompose('${m.id}')">\u270F\uFE0F</button>
+        <button class="btn btn-danger btn-xs" onclick="mailAdminDelete('${m.id}')">\u{1F5D1}</button>
+      </div>
+    </div>`;
+    }).join("")}`;
+  };
+
+  // src/nav.js
+  var NAV_STUDENT = [
+    { id: "s-dashboard", label: "Dashboard", icon: "home" },
+    { id: "s-my-section", label: "My Section", icon: "groups" },
+    { id: "s-quizzes", label: "Quest Board", icon: "swords" },
+    { id: "s-world-boss", label: "World Boss", icon: "local_fire_department" },
+    { id: "s-store", label: "The Armory", icon: "storefront" },
+    { id: "s-inventory", label: "My Inventory", icon: "backpack" },
+    { id: "s-orders", label: "My Orders", icon: "receipt_long" },
+    { id: "s-leaderboard", label: "Hall of Fame", icon: "military_tech" },
+    { id: "s-badges", label: "Achievements", icon: "workspace_premium" },
+    { id: "s-mail", label: "Mail", icon: "mail" },
+    { id: "s-attendance", label: "My Progress", icon: "calendar_month" }
+  ];
+  var NAV_ADMIN = [
+    { id: "a-dashboard", label: "Command Center", icon: "home" },
+    { id: "a-scanner", label: "Scanner & Records", icon: "qr_code_scanner" },
+    { id: "a-store", label: "Manage Store", icon: "inventory_2" },
+    { id: "a-pos", label: "Reward POS", icon: "point_of_sale" },
+    { id: "a-quizzes", label: "Quest Builder", icon: "edit_note" },
+    { id: "a-stagemap", label: "Stage Map Editor", icon: "map" },
+    { id: "a-bossevents", label: "Boss Events", icon: "local_fire_department" },
+    { id: "a-boss-studio", label: "Boss Studio", icon: "smart_toy" },
+    { id: "a-achievements", label: "Achievement Mgmt", icon: "emoji_events" },
+    { id: "a-titles", label: "Titles & Badges", icon: "workspace_premium" },
+    { id: "a-promotions", label: "Store Promotions", icon: "campaign" },
+    { id: "a-sections", label: "Sections", icon: "meeting_room" },
+    { id: "a-enrollment", label: "Card Enrollment", icon: "badge" },
+    { id: "a-registrations", label: "Student Registrations", icon: "person_add" },
+    { id: "a-mail", label: "Mail System", icon: "mail" },
+    { id: "a-analytics", label: "Analytics", icon: "insights" },
+    { id: "a-class-logs", label: "Recitation & Attendance", icon: "history_edu" },
+    { id: "a-nav-manager", label: "Navigation Manager", icon: "tune" },
+    { id: "a-classroom", label: "Seating Layout", icon: "chair" },
+    { id: "a-classroom-monitor", label: "Live Monitor", icon: "monitoring" },
+    { id: "a-hall-of-fame", label: "Hall of Fame", icon: "military_tech" },
+    { id: "a-leaderboard", label: "Leaderboard Admin", icon: "leaderboard" },
+    { id: "a-teachers", label: "Teacher Directory", icon: "groups" },
+    { id: "a-starter-pack", label: "Starter Pack", icon: "redeem" },
+    { id: "a-settings", label: "School Settings", icon: "settings" },
+    { id: "a-content-oversight", label: "Content Oversight", icon: "travel_explore" },
+    { id: "a-mascot-lines", label: "Mascot Lines", icon: "theater_comedy" },
+    { id: "a-audit-log", label: "Audit Log", icon: "fact_check" },
+    { id: "a-system-health", label: "System Health", icon: "monitor_heart" }
+  ];
+  var ADMIN_ONLY_NAV_IDS = ["a-nav-manager", "a-teachers", "a-starter-pack", "a-settings", "a-content-oversight", "a-mascot-lines", "a-audit-log", "a-system-health"];
+  function setupSidebar() {
+    const tabs = currentRole === "admin" ? dsmGetAdminNav() : currentRole === "teacher" ? dsmGetTeacherNav() : dsmGetStudentNav();
+    document.getElementById("sidebar-nav").innerHTML = tabs.map((t) => {
+      const cfg = t._cfg || {};
+      const isGroup = t._group;
+      if (isGroup) {
+        return `<div class="nav-group-label" style="padding:8px 14px 4px;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:rgba(240,238,255,.3);margin-top:6px">${t.label}</div>`;
+      }
+      let badge = "";
+      if (cfg.status === "coming_soon") badge = `<span class="nav-badge" style="margin-left:auto;font-size:8px;padding:2px 6px;background:rgba(255,185,95,.15);border:1px solid rgba(255,185,95,.3);color:#ffb95f;border-radius:6px;font-weight:800;letter-spacing:.04em">SOON</span>`;
+      else if (cfg.status === "event_only") badge = `<span class="nav-badge" style="margin-left:auto;font-size:8px;padding:2px 6px;background:rgba(236,72,153,.15);border:1px solid rgba(236,72,153,.3);color:#EC4899;border-radius:6px;font-weight:800;letter-spacing:.04em">EVENT</span>`;
+      else if (cfg.locked) badge = `<span class="material-symbols-outlined nav-badge" style="margin-left:auto;font-size:14px;color:rgba(240,238,255,.3)">lock</span>`;
+      return `<button class="nav-btn" id="nav-${t.id}" onclick="navTo('${t.id}')" title="${t.label}" ${cfg.locked || cfg.status === "coming_soon" || cfg.disabled ? "disabled" : ""} style="${cfg.locked || cfg.status === "coming_soon" || cfg.disabled ? "opacity:0.5;cursor:not-allowed;pointer-events:none" : ""}">${t.icon ? `<span class="material-symbols-outlined">${t.icon}</span>` : ""}<span class="nav-label">${t.label}</span>${badge}</button>`;
+    }).join("");
+    document.querySelectorAll(".nav-btn").forEach((b) => {
+      b.style.cssText = "display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer;background:none;border:none;width:100%;text-align:left;transition:all .2s;letter-spacing:.02em;margin-bottom:2px;font-family:var(--fb)";
+      b.onmouseover = function() {
+        if (!this.classList.contains("active")) {
+          this.style.background = "rgba(255,255,255,0.06)";
+          this.style.color = "var(--on-surface)";
+          this.style.transform = "translateX(3px)";
+        }
+      };
+      b.onmouseout = function() {
+        if (!this.classList.contains("active")) {
+          this.style.background = "none";
+          this.style.color = "var(--text-muted)";
+          this.style.transform = "none";
+        }
+      };
+    });
+    AppStore.emit({ type: "nav:sidebar-rendered", payload: { role: currentRole } });
+  }
+  function dsmGetStudentNav() {
+    return NAV_STUDENT;
+  }
+  function dsmGetAdminNav() {
+    return NAV_ADMIN;
+  }
+  function dsmGetTeacherNav() {
+    return NAV_ADMIN.filter((t) => ADMIN_ONLY_NAV_IDS.indexOf(t.id) === -1);
+  }
+  function _navToCore(id) {
+    if (typeof activeQuiz !== "undefined" && activeQuiz && typeof quizFinishing !== "undefined" && !quizFinishing) {
+      abortQuiz();
+      return;
+    }
+    if (ADMIN_ONLY_NAV_IDS.indexOf(id) !== -1 && currentRole !== "admin") {
+      console.warn("[EduQuest] blocked non-admin navigation to admin-only page:", id);
+      id = currentRole === "teacher" ? "a-dashboard" : "s-dashboard";
+    }
+    if (id !== "s-store") {
+      const f = document.getElementById("cart-fab");
+      if (f) f.remove();
+    }
+    if (id !== "a-store" && _adminStoreInterval) {
+      clearInterval(_adminStoreInterval);
+      _adminStoreInterval = null;
+    }
+    if (id !== "a-system-health" && typeof shStopCountsRefresh === "function") {
+      shStopCountsRefresh();
+    }
+    if (id !== "a-scanner" && typeof unmountRfidScanner === "function") {
+      unmountRfidScanner();
+    }
+    if (id !== "a-pos" && typeof unmountPosPayCapture === "function") {
+      unmountPosPayCapture();
+    }
+    if (id !== "a-classroom" && typeof unmountClassroomBuilder === "function") {
+      unmountClassroomBuilder();
+    }
+    if (id !== "a-classroom-monitor" && typeof unmountClassroomMonitor === "function") {
+      unmountClassroomMonitor();
+    }
+    if (id !== "a-sections" && typeof unmountSectionMaker === "function") {
+      unmountSectionMaker();
+    }
+    if (id !== "a-enrollment" && typeof unmountEnrollmentHub === "function") {
+      unmountEnrollmentHub();
+    }
+    if (id !== "a-content-oversight" && typeof unmountContentOversight === "function") {
+      unmountContentOversight();
+    }
+    if (id !== "a-class-logs" && typeof unmountRecitationAttendanceLog === "function") {
+      unmountRecitationAttendanceLog();
+    }
+    if (id !== "a-dashboard" && typeof unmountCommandCenter === "function") {
+      unmountCommandCenter();
+    }
+    document.querySelectorAll(".nav-btn").forEach((b) => {
+      b.classList.remove("active");
+      b.style.background = "none";
+      b.style.color = "var(--text-muted)";
+      b.style.transform = "none";
+      b.style.borderRight = "none";
+      b.style.borderRadius = "12px";
+    });
+    const btn = document.getElementById("nav-" + id);
+    if (btn) {
+      btn.classList.add("active");
+      btn.style.background = "rgba(208,188,255,0.12)";
+      btn.style.color = "var(--primary)";
+      btn.style.transform = "none";
+      btn.style.borderRight = "3px solid #8b5cf6";
+      btn.style.borderRadius = "12px 0 0 12px";
+    }
+    if (id === "s-dashboard") renderStudentDashboard();
+    else if (id === "s-my-section") renderMySection();
+    else if (id === "s-quizzes") renderStudentQuizzes();
+    else if (id === "s-world-boss") renderStudentWorldBoss();
+    else if (id === "s-store") renderStudentStore();
+    else if (id === "s-inventory") renderInventory();
+    else if (id === "s-orders") renderStudentOrders();
+    else if (id === "s-leaderboard") renderLeaderboard();
+    else if (id === "s-badges") renderBadges();
+    else if (id === "s-mail") renderStudentMail();
+    else if (id === "s-attendance") renderStudentProgress();
+    else if (id === "a-dashboard") renderAdminDashboard();
+    else if (id === "a-scanner") renderRfidScanner();
+    else if (id === "a-store") renderAdminStore();
+    else if (id === "a-pos") renderPOS();
+    else if (id === "a-quizzes") renderAdminQuizzes();
+    else if (id === "a-analytics") renderAnalytics();
+    else if (id === "a-class-logs") renderRecitationAttendanceLog();
+    else if (id === "a-stagemap") renderAdminStageMap();
+    else if (id === "a-bossevents") renderAdminBossEvents();
+    else if (id === "a-achievements") renderAdminAchievements();
+    else if (id === "a-titles") renderAdminTitles();
+    else if (id === "a-promotions") renderAdminPromotions();
+    else if (id === "a-sections") renderSectionMaker();
+    else if (id === "a-enrollment") renderEnrollmentHub();
+    else if (id === "a-registrations") renderAdminRegistrations();
+    else if (id === "a-mail") renderAdminMail();
+    else if (id === "a-nav-manager") renderNavManager();
+    else if (id === "a-boss-studio") renderBossStudio();
+    else if (id === "a-classroom") {
+      if (typeof unmountClassroomBuilder === "function") unmountClassroomBuilder();
+      renderClassroomBuilder();
+    } else if (id === "a-classroom-monitor") {
+      if (typeof unmountClassroomMonitor === "function") unmountClassroomMonitor();
+      renderClassroomMonitor();
+    } else if (id === "a-hall-of-fame") renderLeaderboard();
+    else if (id === "a-leaderboard") renderAdminLeaderboards();
+    else if (id === "a-teachers") renderTeacherDirectory();
+    else if (id === "a-starter-pack") renderStarterPackEditor();
+    else if (id === "a-settings") renderSchoolSettings();
+    else if (id === "a-content-oversight") renderContentOversight();
+    else if (id === "a-mascot-lines") renderMascotLines();
+    else if (id === "a-audit-log") renderAuditLog();
+    else if (id === "a-system-health") renderSystemHealth();
+    showPage(id);
+    saveLastVisitedPage(id);
+    if (window.innerWidth <= 1024) document.getElementById("sidebar").classList.remove("open");
+  }
+  var navTo2 = function(id) {
+    _navToCore(id);
+    AppStore.emit({ type: "nav:navigated", payload: { id } });
+  };
+  function showPage(id) {
+    document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.add("active");
+      el.classList.add("fade-in");
+      el.scrollTop = 0;
+    }
+  }
+  var LAST_PAGE_KEY = "eq_last_page";
+  function saveLastVisitedPage(id) {
+    try {
+      localStorage.setItem(LAST_PAGE_KEY, id);
+    } catch (e) {
+    }
+  }
+  function getLastVisitedPage(role) {
+    let id = null;
+    try {
+      id = localStorage.getItem(LAST_PAGE_KEY);
+    } catch (e) {
+      return null;
+    }
+    if (!id) return null;
+    const wantsAdminPrefix = role === "admin" || role === "teacher";
+    if (wantsAdminPrefix && id.indexOf("a-") !== 0) return null;
+    if (!wantsAdminPrefix && id.indexOf("s-") !== 0) return null;
+    return id;
+  }
+  window.showPage = showPage;
+  window.setupSidebar = setupSidebar;
+  window.getLastVisitedPage = getLastVisitedPage;
+  window.NAV_STUDENT = NAV_STUDENT;
+  window.NAV_ADMIN = NAV_ADMIN;
+  window.ADMIN_ONLY_NAV_IDS = ADMIN_ONLY_NAV_IDS;
+
+  // src/inline2.js
+  var inline2_exports = {};
+  __export(inline2_exports, {
+    HINT_COST: () => HINT_COST,
+    MAX_HINTS_PER_QUEST: () => MAX_HINTS_PER_QUEST,
+    QUEST_TIER_ORDER: () => QUEST_TIER_ORDER,
+    _eqQuestHintText: () => _eqQuestHintText,
+    _makeInit: () => _makeInit,
+    _mascotAmbientEmotion: () => _mascotAmbientEmotion,
+    _mascotCloudTimer: () => _mascotCloudTimer,
+    _mascotLinesHydrated: () => _mascotLinesHydrated,
+    _mascotLowTimeWarnedFor: () => _mascotLowTimeWarnedFor,
+    _profAccountHTML: () => _profAccountHTML,
+    _profEditHTML: () => _profEditHTML,
+    _profOverviewHTML: () => _profOverviewHTML,
+    _profPendingPic: () => _profPendingPic,
+    _profRenderHero: () => _profRenderHero,
+    _profRenderStats: () => _profRenderStats,
+    _profShowPicUnsaved: () => _profShowPicUnsaved,
+    _questRarityStyle: () => _questRarityStyle,
+    _quizAdvanceNow: () => _quizAdvanceNow,
+    _quizShowRevealThenAdvance: () => _quizShowRevealThenAdvance,
+    abortQuiz: () => abortQuiz2,
+    activeQuiz: () => activeQuiz2,
+    closeProfile: () => closeProfile,
+    confirmAbortQuiz: () => confirmAbortQuiz,
+    eqHydrateMascotLines: () => eqHydrateMascotLines,
+    finishQuiz: () => finishQuiz,
+    fireMascotEvent: () => fireMascotEvent,
+    getAvatarHTML: () => getAvatarHTML,
+    handleProfilePicUpload: () => handleProfilePicUpload,
+    openProfile: () => openProfile,
+    profEnsureFields: () => profEnsureFields,
+    profGetCurrent: () => profGetCurrent,
+    profInitAll: () => profInitAll,
+    profileAvatarClick: () => profileAvatarClick,
+    profileOverlayClick: () => profileOverlayClick,
+    quizAdvanceTimer: () => quizAdvanceTimer,
+    quizAnswerRevealEvent: () => quizAnswerRevealEvent,
+    quizAnswers: () => quizAnswers,
+    quizAttemptNumber: () => quizAttemptNumber,
+    quizCombo: () => quizCombo,
+    quizComboLastEvent: () => quizComboLastEvent,
+    quizComboMax: () => quizComboMax,
+    quizComboMilestoneHit: () => quizComboMilestoneHit,
+    quizCurrent: () => quizCurrent,
+    quizEliminated: () => quizEliminated,
+    quizFinishing: () => quizFinishing2,
+    quizHintRevealed: () => quizHintRevealed,
+    quizHintsRemaining: () => quizHintsRemaining,
+    quizLastAnnouncedStage: () => quizLastAnnouncedStage,
+    quizLocked: () => quizLocked,
+    quizMatchShuffle: () => quizMatchShuffle,
+    quizNext: () => quizNext,
+    quizPrev: () => quizPrev,
+    quizStreakSnapshot: () => quizStreakSnapshot,
+    quizTimeLeft: () => quizTimeLeft,
+    quizTimeout: () => quizTimeout,
+    quizTimer: () => quizTimer,
+    refreshAllAvatars: () => refreshAllAvatars2,
+    removeProfilePic: () => removeProfilePic,
+    renderAvatarEl: () => renderAvatarEl,
+    renderChainSection: () => renderChainSection,
+    renderChainStepCard: () => renderChainStepCard,
+    renderQuestCard: () => renderQuestCard,
+    renderQuizQuestion: () => renderQuizQuestion,
+    renderQuizTimerDisplay: () => renderQuizTimerDisplay,
+    renderStudentDashboard: () => renderStudentDashboard2,
+    renderStudentQuizzes: () => renderStudentQuizzes2,
+    renderTopQuestersPanel: () => renderTopQuestersPanel,
+    saveEmail: () => saveEmail,
+    savePassword: () => savePassword,
+    saveProfileEdit: () => saveProfileEdit,
+    selectOpt: () => selectOpt,
+    startQuestionTimer: () => startQuestionTimer,
+    startQuiz: () => startQuiz,
+    submitEnumAnswer: () => submitEnumAnswer,
+    submitIdAnswer: () => submitIdAnswer,
+    submitMatchAnswer: () => submitMatchAnswer,
+    switchProfileTab: () => switchProfileTab,
+    updateMascotAmbientMood: () => updateMascotAmbientMood,
+    useHint: () => useHint
+  });
+  function renderStudentDashboard2() {
+    const st = currentUser;
+    st.level = window.getLevel(st.xp);
+    const xpCurrentLevelBase = st.level * window.XP_PER_LEVEL;
+    const xpInCurrentLevel = st.xp - xpCurrentLevelBase;
+    const xpPct = Math.min(100, Math.round(xpInCurrentLevel / window.XP_PER_LEVEL * 100));
+    const xpNext = (st.level + 1) * window.XP_PER_LEVEL;
+    const activityFeed = [
+      ...DB.pointLog.filter((l) => l.studentId === st.id).map((l) => {
+        const c = typeof eqClassifyActivity === "function" ? eqClassifyActivity(l) : { icon: "\u2B50" };
+        return { icon: c.icon, label: l.what, pts: l.pts, createdAt: l.createdAt };
+      }),
+      ...(DB.orders || []).filter((o) => o.studentId === st.id).map((o) => ({
+        icon: o.emoji || "\u{1F6CD}\uFE0F",
+        label: `Purchased ${o.itemName}`,
+        pts: -(o.cost || 0),
+        createdAt: o.createdAt
+      }))
+    ].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 8);
+    const dashSectionAssignments = DB.quizSectionAssignments || {};
+    const dashMyClassId = st.classId || "default-class";
+    const dashInMySection = (q) => {
+      const assigned = dashSectionAssignments[q.id];
+      return !assigned || assigned.length === 0 || assigned.includes(dashMyClassId);
+    };
+    const pending = DB.quizzes.filter((q) => !st.completedQuizzes.includes(q.id) && dashInMySection(q));
+    const sorted = [...DB.students].sort((a, b) => b.xp - a.xp);
+    const myRank = sorted.findIndex((s) => s.id === st.id) + 1;
+    const r = 44, circ = 2 * Math.PI * r, dashOff = circ - circ * (xpPct / 100);
+    const qrIdx = DB.students.indexOf(st);
+    document.getElementById("s-dashboard").innerHTML = `
+  <!-- HERO CARD (primary focal element \u2014 XP/level progress + academic snapshot combined, per Design Discovery) -->
+  <div class="dash-hero" id="dash-hero">
+    <canvas class="dash-hero-canvas" id="dash-hero-canvas"></canvas>
+    <div class="dash-hero-inner">
+      <div class="dash-xp-ring" style="position:relative;flex-shrink:0">
+        <svg width="110" height="110" style="transform:rotate(-90deg)">
+          <circle cx="55" cy="55" r="${r}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="7"/>
+          <circle cx="55" cy="55" r="${r}" fill="none" stroke="url(#xpG)" stroke-width="7" stroke-linecap="round"
+            stroke-dasharray="${circ}" stroke-dashoffset="${dashOff}" style="transition:stroke-dashoffset .8s"/>
+          <defs><linearGradient id="xpG" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#4edea3"/>
+          </linearGradient></defs>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+          <div style="width:54px;height:54px;border-radius:50%;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:17px;background:${st.color + "33"};color:${st.color};border:2px solid ${st.color + "55"}">${st.profilePic ? `<img src="${st.profilePic}" alt="${st.init}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.remove()">` : st.init}</div>
+        </div>
+        <div class="level-badge">LVL ${st.level}</div>
+      </div>
+      <div class="dash-hero-info">
+        <div class="dash-hero-name">${st.name}</div>
+        <div class="dash-hero-sub" style="margin-bottom:14px">${st.tier} &nbsp;\xB7&nbsp; <span style="color:var(--primary)">Rank #${myRank}</span> &nbsp;\xB7&nbsp; Level ${st.level} \u2192 ${st.level + 1}</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <div class="stat-bar" id="dash-xp-bar" style="flex:1">
+            <div class="stat-bar-fill"></div>
+          </div>
+          <span style="font-size:12px;color:var(--primary);font-weight:700;white-space:nowrap">${xpPct}%</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted)">${(xpNext - st.xp).toLocaleString()} XP to next level</div>
+      </div>
+      <div class="dash-hero-right">
+        <div class="coin-display">
+          <div class="val float">\u{1FA99} ${st.coins.toLocaleString()}</div>
+          <div class="lbl">Coins Available</div>
+        </div>
+        <button class="btn btn-orange btn-block" onclick="navTo('s-store')">\u{1F6CD}\uFE0F Visit Armory</button>
+      </div>
+    </div>
+    <!-- Combined academic snapshot \u2014 same focal card as the XP ring above, not a separate stat-grid -->
+    <div class="dash-hero-stats">
+      <div class="dash-hero-stat-chip"><div class="val" style="color:#d0bcff">${st.xp.toLocaleString()}</div><div class="lbl">Total XP</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" style="color:#4edea3">${st.attendance}%</div><div class="lbl">Attendance</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" style="color:#fb923c">${st.quizAvg}%</div><div class="lbl">Quiz Avg</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" style="color:#ffb95f">#${myRank}</div><div class="lbl">Class Rank</div></div>
+    </div>
+  </div>
+
+  <!-- ATTENTION PANEL: unclaimed achievements + unread mail -->
+  ${(() => {
+      const unlocks = (DB.achievementUnlocks || {})[st.id] || [];
+      const unclaimed = unlocks.filter((u) => !u.claimed).length;
+      const mails = (DB.mail || []).filter((m) => m.to === "all" || Array.isArray(m.to) && m.to.includes(st.id));
+      const unread = mails.filter((m) => !(m.readBy || {})[st.id]).length;
+      const unclaimedMailRewards = mails.filter((m) => m.hasReward && !(m.claimedBy || {})[st.id]).length;
+      const notifs = [];
+      if (unclaimed > 0) notifs.push({ icon: "\u{1F381}", color: "#d0bcff", bg: "rgba(208,188,255,.07)", border: "rgba(208,188,255,.25)", title: unclaimed + " Achievement Reward" + (unclaimed > 1 ? "s" : "") + " Ready to Claim", sub: "Go to Achievements to collect your rewards.", action: "navTo('s-badges')", btnLabel: "Claim Now", btnColor: "#8b5cf6" });
+      if (unclaimedMailRewards > 0) notifs.push({ icon: "\u{1F4EC}", color: "#ffb95f", bg: "rgba(255,185,95,.07)", border: "rgba(255,185,95,.25)", title: unclaimedMailRewards + " Mail Reward" + (unclaimedMailRewards > 1 ? "s" : "") + " Unclaimed", sub: "Your teacher sent you rewards. Open your mail to claim them.", action: "navTo('s-mail')", btnLabel: "Open Mail", btnColor: "#f59e0b" });
+      else if (unread > 0) notifs.push({ icon: "\u{1F4E8}", color: "rgba(255,185,95,.7)", bg: "rgba(255,185,95,.04)", border: "rgba(255,185,95,.18)", title: unread + " Unread Message" + (unread > 1 ? "s" : ""), sub: "Your teacher sent you a message.", action: "navTo('s-mail')", btnLabel: "Read Mail", btnColor: "#ca8a04" });
+      if (!notifs.length) return "";
+      return `<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px">` + notifs.map((n) => `<div style="background:${n.bg};border:1px solid ${n.border};border-radius:14px;padding:13px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="font-size:24px;flex-shrink:0;animation:achBadgePulse 2s ease-in-out infinite">${n.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:var(--fh);font-size:14px;font-weight:900;color:${n.color}">${n.title}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${n.sub}</div>
+        </div>
+        <button class="btn btn-sm" style="background:${n.btnColor}22;border:1px solid ${n.btnColor}55;color:${n.btnColor};font-weight:800;flex-shrink:0;white-space:nowrap" onclick="${n.action}">${n.btnLabel} \u2192</button>
+      </div>`).join("") + `</div>`;
+    })()}
+
+  <div class="dash-lower-grid">
+    <div>
+      <!-- ACTIVE QUESTS -->
+      ${pending.length ? `
+      <div class="section-header">
+        <span class="material-symbols-outlined">swords</span>
+        <h2>Active Quests</h2>
+        <span class="badge-pill bp-green">${pending.length} available</span>
+      </div>
+      <div class="quest-grid" style="margin-bottom:24px">
+        ${pending.slice(0, 2).map((q, qi) => `
+        <div class="quest-card" onclick="startQuiz('${q.id}')">
+          <div class="quest-img-wrap">
+            <div class="quest-img-placeholder">${["\u{1F9EC}", "\u{1F522}", "\u{1F30D}", "\u2697\uFE0F", "\u{1F4BB}"][qi % 5]}</div>
+            ${qi === 0 ? '<div class="quest-badge hot">\u{1F525} Active</div>' : '<div class="quest-badge new">\u2728 New</div>'}
+          </div>
+          <div class="quest-body">
+            <div class="quest-title">${q.title}</div>
+            <div class="quest-desc">${q.desc}</div>
+            <div class="quest-meta">
+              <div class="quest-rewards">
+                <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
+                <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${q.coinReward}</div>
+              </div>
+              <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
+            </div>
+            <button class="quest-btn primary">\u2694 Begin Quest</button>
+          </div>
+        </div>`).join("")}
+      </div>` : `
+      <div class="section-header"><span class="material-symbols-outlined">swords</span><h2>Active Quests</h2></div>
+      <div style="text-align:center;padding:48px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;margin-bottom:24px;backdrop-filter:blur(12px)">
+        <div style="font-size:48px;margin-bottom:12px">\u{1F3C6}</div>
+        <div style="font-family:var(--fh);font-size:16px;font-weight:800;margin-bottom:6px">All Quests Complete!</div>
+        <div style="color:var(--text-muted);font-size:13px">Check back when new quests are posted.</div>
+      </div>`}
+
+      <!-- OVERALL ACTIVITY (Phase 67 \u2014 was "Point Activity"; now merges every
+           reward/purchase source, not just DB.pointLog, and shows a live
+           relative time via window.eqTimeAgo() instead of a frozen string) -->
+      <div class="section-header"><span class="material-symbols-outlined">receipt_long</span><h2>Overall Activity</h2></div>
+      <div class="glass-card" style="padding:16px">
+        <div class="pt-events">
+          ${activityFeed.length ? activityFeed.map((e) => `
+          <div class="pt-event">
+            <div class="pt-icon" style="font-size:18px">${e.icon || "\u2B50"}</div>
+            <div class="pt-delta" style="color:${e.pts > 0 ? "#4edea3" : e.pts < 0 ? "#ffb4ab" : "var(--text-muted)"}">${e.pts > 0 ? "+" : ""}${e.pts || 0}</div>
+            <div class="pt-info"><div class="pt-what">${e.label}</div><div class="pt-when">${window.eqTimeAgo(e.createdAt)}</div></div>
+          </div>`).join("") : '<div style="color:var(--text-muted);text-align:center;padding:16px;font-size:13px">No activity yet</div>'}
+        </div>
+      </div>
+    </div>
+
+    <!-- SIDEBAR COL -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <!-- LEADERBOARD MINI -->
+      <div class="section-header"><span class="material-symbols-outlined">military_tech</span><h2>Rankings</h2></div>
+      <div class="glass-card" style="padding:16px">
+        ${sorted.slice(0, 5).map((s, i) => {
+      const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}", "4.", "5."];
+      const isMe = s.id === st.id;
+      return `<div class="lb-row" style="padding:8px 10px;background:${isMe ? "rgba(208,188,255,0.08)" : "transparent"};border:${isMe ? "1px solid rgba(208,188,255,0.2)" : "1px solid transparent"};margin-bottom:6px">
+            <div class="lb-rank">${i < 3 ? medals[i] : `<span style="font-size:12px;font-weight:700;color:var(--text-muted)">${medals[i]}</span>`}</div>
+            <div class="lb-av" style="background:${s.color + "22"};color:${s.color};border-color:${s.color + "44"}">${s.init}</div>
+            <div class="lb-name">${s.name.split(" ")[0]}${isMe ? ` <span class="badge-pill bp-primary" style="font-size:9px;padding:1px 6px">You</span>` : ""}</div>
+            <div class="lb-xp">${s.xp.toLocaleString()}</div>
+          </div>`;
+    }).join("")}
+        <button class="btn btn-ghost btn-block btn-sm" style="margin-top:8px" onclick="navTo('s-leaderboard')">Full Rankings \u2192</button>
+      </div>
+
+      <!-- QR CODE -->
+      <div class="glass-card">
+        <h3>\u{1F532} Your QR Code</h3>
+        <div class="qr-card">
+          <div class="qr-svg-wrap">
+            <svg width="82" height="82" viewBox="0 0 80 80">
+              <rect x="4" y="4" width="26" height="26" rx="3" fill="none" stroke="#d0bcff" stroke-width="2.5"/>
+              <rect x="10" y="10" width="14" height="14" fill="#d0bcff"/>
+              <rect x="50" y="4" width="26" height="26" rx="3" fill="none" stroke="#d0bcff" stroke-width="2.5"/>
+              <rect x="56" y="10" width="14" height="14" fill="#d0bcff"/>
+              <rect x="4" y="50" width="26" height="26" rx="3" fill="none" stroke="#d0bcff" stroke-width="2.5"/>
+              <rect x="10" y="56" width="14" height="14" fill="#d0bcff"/>
+              <rect x="38" y="38" width="6" height="6" fill="#4edea3"/>
+              <rect x="50" y="38" width="6" height="6" fill="#4edea3"/>
+              <rect x="62" y="38" width="6" height="6" fill="#4edea3"/>
+              <rect x="38" y="50" width="6" height="6" fill="#4edea3"/>
+              <rect x="50" y="62" width="6" height="6" fill="#4edea3"/>
+              <rect x="62" y="50" width="6" height="6" fill="#4edea3"/>
+            </svg>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">ID: #SQ-2024-0${qrIdx + 81}</div>
+          <div style="font-size:10px;color:rgba(208,188,255,.8);margin-top:4px;font-weight:700;letter-spacing:.08em">SCAN TO REGISTER</div>
+        </div>
+      </div>
+
+      <!-- GOALS -->
+      <div class="glass-card">
+        <h3>\u{1F3AF} Active Goals</h3>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:12px">Perfect Attendance</span><span class="badge-pill bp-green">${st.attendance}%</span></div>
+          <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden;margin-bottom:14px"><div style="height:100%;border-radius:20px;width:${st.attendance}%;background:linear-gradient(90deg,#4edea3,#06b6d4);box-shadow:0 0 8px rgba(78,222,163,.5)"></div></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:12px">Reach Level ${st.level + 1}</span><span class="badge-pill bp-primary">${xpPct}%</span></div>
+          <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden"><div style="height:100%;border-radius:20px;width:${xpPct}%;background:linear-gradient(90deg,#8b5cf6,#d0bcff);box-shadow:0 0 8px rgba(139,92,246,.5)"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+    updateTopbar();
+    window._eqLastSeenLevel = window._eqLastSeenLevel || {};
+    const _prevLevel = window._eqLastSeenLevel[st.id];
+    const justLeveledUp = typeof _prevLevel === "number" && st.level > _prevLevel;
+    window._eqLastSeenLevel[st.id] = st.level;
+    const xpBarEl = document.getElementById("dash-xp-bar");
+    if (xpBarEl && typeof renderStatBar === "function") {
+      renderStatBar(xpBarEl, { percent: xpPct, tier: "normal", justChanged: justLeveledUp });
+    }
+    if (typeof window._eqDashHeroBackdropStop === "function") {
+      window._eqDashHeroBackdropStop();
+      window._eqDashHeroBackdropStop = null;
+    }
+    const heroCanvas = document.getElementById("dash-hero-canvas");
+    if (heroCanvas && typeof startAmbientBackdrop === "function") {
+      window._eqDashHeroBackdropStop = startAmbientBackdrop(heroCanvas, { count: 55, color: "#d0bcff", alpha: 0.4, dotSize: 2.2 });
+    }
+    window.eqPlayLevelUpMoment = function(displayLevel) {
+      if (typeof runSequence !== "function") return;
+      const heroEl = document.getElementById("dash-hero");
+      runSequence([
+        { delay: 0, run: () => document.body.classList.add("screen-dim") },
+        { delay: 150, run: () => {
+          if (heroEl) heroEl.classList.add("leveling-up");
+        } },
+        { delay: 250, run: () => {
+          const flash = document.createElement("div");
+          flash.className = "dash-level-up-flash";
+          flash.textContent = "LEVEL UP! \u2192 " + displayLevel;
+          document.body.appendChild(flash);
+          requestAnimationFrame(() => flash.classList.add("show"));
+          setTimeout(() => flash.remove(), 1600);
+        } },
+        { delay: 100, run: () => {
+          const badge = heroEl ? heroEl.querySelector(".level-badge") : null;
+          if (badge && typeof burstParticles === "function") burstParticles(badge, 60);
+        } },
+        { delay: 1200, run: () => {
+          document.body.classList.remove("screen-dim");
+          if (heroEl) heroEl.classList.remove("leveling-up");
+        } }
+      ]);
+    };
+    window.eqPreviewLevelUp = function() {
+      window.eqPlayLevelUpMoment(st.level + 1);
+    };
+    if (justLeveledUp) window.eqPlayLevelUpMoment(st.level);
+    AppStore.emit({ type: "dashboard:student-rendered", payload: {} });
+  }
+  function _questRarityStyle(q) {
+    const palette = typeof ACH_RARITY !== "undefined" && ACH_RARITY || {};
+    const r = eqQuizRarity(q);
+    return { rarity: r, ...palette[r] || { color: "#9ca3af", glow: "rgba(156,163,175,0.2)" } };
+  }
+  var QUEST_TIER_ORDER = ["Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"];
+  function renderQuestCard(q, qi, cadenceTag, isNext) {
+    const rs = _questRarityStyle(q);
+    const daysLeft = q.endDate && typeof eqDaysUntil === "function" ? eqDaysUntil(q.endDate) : null;
+    const endingSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 3;
+    const tierIdx = Math.max(0, QUEST_TIER_ORDER.indexOf(rs.rarity));
+    const swordRow = QUEST_TIER_ORDER.slice(0, 5).map((_, i) => `<span class="material-symbols-outlined${i <= tierIdx ? " lit" : ""}">swords</span>`).join("");
+    return `
+    <div class="quest-card state-available${isNext ? " quest-next" : ""}" style="--rc:${rs.color};--rg:${rs.glow}" onclick="startQuiz('${q.id}')">
+      ${isNext ? `<div class="quest-next-flag"><span class="material-symbols-outlined" style="font-size:11px">bolt</span>Start Here</div>` : ""}
+      <div class="quest-img-wrap">
+        <div class="quest-img-placeholder">${["\u{1F9EC}", "\u{1F522}", "\u{1F30D}", "\u2697\uFE0F", "\u{1F4BB}", "\u{1F52D}", "\u{1F4D0}", "\u{1F9A0}"][qi % 8]}</div>
+        <div class="quest-badge">${cadenceTag ? cadenceTag + " \xB7 " : ""}${rs.rarity}</div>
+        ${endingSoon ? `<div class="quest-badge ending-soon">\u23F3 Ends in ${daysLeft === 0 ? "<1" : daysLeft}d</div>` : ""}
+      </div>
+      <div class="quest-body">
+        <div class="quest-title">${q.title}</div>
+        <div class="quest-desc">${q.desc}</div>
+        <div class="quest-difficulty">${swordRow}<span class="tier-label">${rs.rarity}</span></div>
+        <div class="quest-meta">
+          <div class="quest-rewards">
+            <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
+            <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${q.coinReward}</div>
+          </div>
+          <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
+        </div>
+        <button class="quest-btn primary">\u2694 Begin Quest</button>
+      </div>
+    </div>`;
+  }
+  function renderChainStepCard(q, status, stepIndex) {
+    const rs = _questRarityStyle(q);
+    const st = currentUser;
+    const history = (DB.quizHistory || {})[st.id] || [];
+    const entry = status === "done" ? history.filter((h) => h.quizId === q.id).pop() : null;
+    const clickAttr = status === "unlocked" ? `onclick="startQuiz('${q.id}')"` : "";
+    const stateIcon = status === "done" ? "\u2705" : status === "unlocked" ? "\u2694" : "\u{1F512}";
+    return `
+    <div class="quest-card chain-step chain-${status}" style="--rc:${rs.color};--rg:${rs.glow}" ${clickAttr}>
+      <div class="quest-img-wrap">
+        <div class="quest-img-placeholder">${stateIcon}</div>
+        <div class="quest-badge">Part ${stepIndex + 1} \xB7 ${rs.rarity}</div>
+      </div>
+      <div class="quest-body">
+        <div class="quest-title">${q.title}</div>
+        <div class="quest-desc">${status === "locked" ? "Locked \u2014 finish the previous part first." : q.desc}</div>
+        <div class="quest-meta">
+          <div class="quest-rewards">
+            <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
+            <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${q.coinReward}</div>
+          </div>
+          ${status === "done" ? `<div class="quest-time">${entry ? entry.score + "%" : "\u2713"} CLEARED</div>` : `<div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>`}
+        </div>
+        ${status === "unlocked" ? `<button class="quest-btn primary">\u2694 Begin Quest</button>` : status === "done" ? `<button class="quest-btn" disabled>\u2705 Cleared</button>` : `<button class="quest-btn" disabled>\u{1F512} Locked</button>`}
+      </div>
+    </div>`;
+  }
+  function renderChainSection(chain) {
+    const st = currentUser;
+    const completedIds = st.completedQuizzes || [];
+    const doneCount = chain.quizzes.filter((q) => completedIds.includes(q.id)).length;
+    const statuses = chain.quizzes.map((q) => eqChainStatus(chain.quizzes, q.id, completedIds));
+    let firstUnlockedIdx = statuses.indexOf("unlocked");
+    return `
+  <div class="section-header" style="margin-top:12px">
+    <span class="material-symbols-outlined" style="color:var(--tertiary)">link</span>
+    <h2>${_esc(chain.chainLabel)}</h2>
+    <span class="badge-pill bp-primary">${doneCount}/${chain.quizzes.length} parts cleared</span>
+  </div>
+  <div class="chain-row">
+    ${chain.quizzes.map((q, i) => {
+      const card = renderChainStepCard(q, statuses[i], i);
+      if (i === 0) return card;
+      const prevDone = statuses[i - 1] === "done";
+      const trailClass = prevDone ? "chain-trail lit" : "chain-trail";
+      const isNextSegment = firstUnlockedIdx !== -1 && i === firstUnlockedIdx;
+      return `<div class="${trailClass}${isNextSegment ? " next" : ""}"></div>${card}`;
+    }).join("")}
+  </div>`;
+  }
+  function renderTopQuestersPanel() {
+    const st = currentUser;
+    const myClassId = st.classId || "default-class";
+    const top = typeof eqGetTopQuestersThisWeek === "function" ? eqGetTopQuestersThisWeek(myClassId, 5) : [];
+    if (!top.length) return "";
+    const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
+    return `
+  <div class="section-header">
+    <span class="material-symbols-outlined">social_leaderboard</span>
+    <h2>Top Questers This Week</h2>
+  </div>
+  <div class="lb-list" style="margin-bottom:24px">
+    ${top.map((e) => {
+      const isMe = e.student.id === st.id;
+      const init = (e.student.name || "?").trim().charAt(0).toUpperCase();
+      return `<div class="lb-row ${isMe ? "me" : ""}">
+        <div class="lb-rank">${e.rank <= 3 ? medals[e.rank - 1] : `<span>${e.rank}</span>`}</div>
+        <div class="lb-av" style="background:rgba(208,188,255,.15);color:var(--primary);border-color:rgba(208,188,255,.3)">${_esc(init)}</div>
+        <div style="flex:1">
+          <div class="lb-name">${_esc(e.student.name)}${isMe ? `<span class="lb-badge-me">You</span>` : ""}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${e.quizCount} quest${e.quizCount === 1 ? "" : "s"} this week</div>
+        </div>
+        <div style="text-align:right">
+          <div class="lb-xp">${e.academicXP.toLocaleString()} XP</div>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+  }
+  function renderStudentQuizzes2() {
+    const st = currentUser;
+    const sectionAssignments = DB.quizSectionAssignments || {};
+    const myClassId = st.classId || "default-class";
+    const inMySection = (q) => {
+      const assigned = sectionAssignments[q.id];
+      return !assigned || assigned.length === 0 || assigned.includes(myClassId);
+    };
+    const visibleQuizzes = DB.quizzes.filter((q) => inMySection(q) || st.completedQuizzes.includes(q.id));
+    const done = visibleQuizzes.filter((q) => st.completedQuizzes.includes(q.id));
+    const pending = visibleQuizzes.filter((q) => !st.completedQuizzes.includes(q.id));
+    const dailyIds = typeof eqGetDailyQuizIds === "function" ? eqGetDailyQuizIds() : [];
+    const weeklyId = typeof eqGetWeeklyQuizId === "function" ? eqGetWeeklyQuizId() : null;
+    const isChained = (q) => !!eqQuizChain(q).chainId;
+    const isScheduledOut = (q) => {
+      const status = typeof eqQuizScheduleStatus === "function" ? eqQuizScheduleStatus(q) : null;
+      return status === "upcoming" || status === "expired";
+    };
+    const pendingStanding = pending.filter((q) => eqQuizCadence(q) === "standing" && !isChained(q) && !isScheduledOut(q));
+    const pendingDaily = pending.filter((q) => eqQuizCadence(q) === "daily" && dailyIds.includes(q.id) && !isChained(q) && !isScheduledOut(q));
+    const pendingWeekly = pending.filter((q) => eqQuizCadence(q) === "weekly" && q.id === weeklyId && !isChained(q) && !isScheduledOut(q));
+    const availableToday = pendingStanding.length + pendingDaily.length + pendingWeekly.length;
+    const nextUpId = (pendingDaily[0] || pendingWeekly[0] || pendingStanding[0] || {}).id || null;
+    const chains = typeof eqGetQuestChains === "function" ? eqGetQuestChains().map((c) => ({ ...c, quizzes: c.quizzes.filter((q) => visibleQuizzes.includes(q) && (st.completedQuizzes.includes(q.id) || !isScheduledOut(q))) })).filter((c) => c.quizzes.length) : [];
+    const questStreak = computeQuestStreak(st.id);
+    document.getElementById("s-quizzes").innerHTML = `
+  <!-- HERO BANNER -->
+  <div class="page-hero" style="background-image:linear-gradient(135deg,rgba(26,20,56,0.98),rgba(35,25,72,0.95));margin-bottom:32px">
+    <div class="page-hero-bg"></div><div class="page-hero-bg2"></div>
+    <div style="position:relative;z-index:1">
+      <div class="page-hero-label">\u2694\uFE0F Mission Board</div>
+      <h1 style="font-family:var(--fh);font-size:32px;font-weight:900;letter-spacing:-.5px;color:var(--on-surface);margin-bottom:8px">The Quest Board</h1>
+      <p style="font-size:14px;color:var(--text-muted);max-width:480px;line-height:1.6">Sharpen your skills and earn legendary loot. Each completed quest brings you closer to the Master's Tier.</p>
+      <div class="page-hero-stats">
+        <div class="hero-stat-pill">
+          <div class="val" style="color:var(--primary)">${availableToday}</div>
+          <div class="lbl">Available</div>
+        </div>
+        <div class="hero-stat-pill">
+          <div class="val" style="color:var(--secondary)">${done.length}</div>
+          <div class="lbl">Completed</div>
+        </div>
+        <div class="hero-stat-pill" data-streak-tier="${eqStreakFireTier(questStreak.current)}">
+          <div class="val" style="color:var(--tertiary)"><span class="streak-flame">\u{1F525}</span> ${questStreak.current}</div>
+          <div class="lbl">Day Streak</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  ${renderTopQuestersPanel()}
+
+  ${pendingDaily.length ? `
+  <div class="section-header">
+    <span class="material-symbols-outlined">wb_sunny</span>
+    <h2>Daily Quests</h2>
+    <span class="badge-pill bp-primary">${pendingDaily.length} today</span>
+  </div>
+  <div class="quest-grid">
+    ${pendingDaily.map((q, qi) => renderQuestCard(q, qi, "\u2600\uFE0F Daily", q.id === nextUpId)).join("")}
+  </div>` : ""}
+
+  ${pendingWeekly.length ? `
+  <div class="section-header">
+    <span class="material-symbols-outlined">calendar_month</span>
+    <h2>Weekly Quest</h2>
+    <span class="badge-pill bp-primary">${pendingWeekly.length} this week</span>
+  </div>
+  <div class="quest-grid">
+    ${pendingWeekly.map((q, qi) => renderQuestCard(q, qi, "\u{1F5D3}\uFE0F Weekly", q.id === nextUpId)).join("")}
+  </div>` : ""}
+
+  ${pendingStanding.length ? `
+  <div class="section-header">
+    <span class="material-symbols-outlined">explore</span>
+    <h2>Active Quests</h2>
+    <span class="badge-pill bp-primary">${pendingStanding.length} available</span>
+  </div>
+  <div class="quest-grid">
+    ${pendingStanding.map((q, qi) => renderQuestCard(q, qi, null, q.id === nextUpId)).join("")}
+  </div>` : ""}
+
+  ${chains.map((chain) => renderChainSection(chain)).join("")}
+
+  ${!availableToday && !chains.length ? `
+  <div style="text-align:center;padding:64px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;margin-bottom:24px;backdrop-filter:blur(12px)">
+    <div style="font-size:56px;margin-bottom:16px">\u{1F3C6}</div>
+    <div style="font-family:var(--fh);font-size:20px;font-weight:900;margin-bottom:8px">All Quests Complete!</div>
+    <div style="color:var(--text-muted);font-size:14px">Awaiting new missions from your instructor.</div>
+  </div>` : ""}
+
+  ${done.length ? (() => {
+      const historyAll = (DB.quizHistory || {})[st.id] || [];
+      let passedCount = 0, retryCount = 0;
+      done.forEach((q) => {
+        const scored = historyAll.filter((h) => h.quizId === q.id && !h.aborted);
+        const everPassed = scored.some((h) => typeof h.passed === "boolean" ? h.passed : eqQuizPassed(h.score));
+        if (everPassed) passedCount++;
+        else retryCount++;
+      });
+      return `
+  <div class="section-header" style="margin-top:12px">
+    <span class="material-symbols-outlined" style="color:var(--secondary)">verified</span>
+    <h2 style="color:var(--secondary)">Completed Quests</h2>
+    <span class="badge-pill bp-green">${passedCount} cleared</span>
+    ${retryCount ? `<span class="badge-pill" style="background:rgba(255,185,95,.12);color:#ffb95f;border:1px solid rgba(255,185,95,.3)">${retryCount} need a retry</span>` : ""}
+  </div>
+  <div class="completed-list">
+    ${done.map((q) => {
+        const history = (DB.quizHistory || {})[st.id] || [];
+        const attemptsForQuiz = history.filter((h) => h.quizId === q.id);
+        const scoredAttempts = attemptsForQuiz.filter((h) => !h.aborted);
+        const entry = scoredAttempts[scoredAttempts.length - 1];
+        const scoreDisplay = entry ? entry.score + "%" : "\u2713";
+        const gate = typeof eqQuizAttemptStatus === "function" ? eqQuizAttemptStatus(q.id, st.id) : { allowed: true, attemptNumber: attemptsForQuiz.length + 1 };
+        const nextMult = typeof eqRetryMultiplier === "function" ? eqRetryMultiplier(gate.attemptNumber) : 1;
+        const hasEverPerfected = scoredAttempts.some((h) => h.score === 100);
+        const hasEverPassed = scoredAttempts.some((h) => typeof h.passed === "boolean" ? h.passed : eqQuizPassed(h.score));
+        const state = hasEverPerfected ? "perfected" : hasEverPassed ? "passed" : gate.allowed ? "retry" : "locked";
+        const stateMeta = {
+          perfected: { rowClass: "state-perfected", icon: "workspace_premium", badge: "\u2605 PERFECTED \xB7 QUEST COMPLETE" },
+          passed: { rowClass: "state-passed", icon: "military_tech", badge: "\u2713 QUEST CLEARED" },
+          retry: { rowClass: "state-retry", icon: "flag", badge: "\u26A0 RETRY AVAILABLE" },
+          locked: { rowClass: "state-locked", icon: "lock_clock", badge: `\u{1F512} LOCKED \xB7 back in ${eqFormatCooldown(gate.cooldownEndsAt - Date.now())}` }
+        }[state];
+        const retryControl = state === "perfected" ? `<button class="btn btn-ghost btn-sm" style="flex-shrink:0;opacity:.6;cursor:not-allowed" disabled title="Perfect score achieved \u2014 nothing left to earn here">\u2605 Completed</button>` : state === "passed" ? `<button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="event.stopPropagation();startQuiz('${q.id}')" title="Retry for ${Math.round(nextMult * 100)}% reward">\u21BB Retry (${Math.round(nextMult * 100)}%)</button>` : state === "retry" ? `<button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="event.stopPropagation();startQuiz('${q.id}')" title="Retry for ${Math.round(nextMult * 100)}% reward">\u21BB Retry (${Math.round(nextMult * 100)}%)</button>` : `<button class="btn btn-ghost btn-sm" style="flex-shrink:0;opacity:.6;cursor:not-allowed" disabled title="Locked \u2014 back in ${eqFormatCooldown(gate.cooldownEndsAt - Date.now())}, or ask your teacher to unlock it early">\u{1F512} Locked</button>`;
+        const bestScore = scoredAttempts.length ? Math.max(...scoredAttempts.map((h) => h.score)) : 0;
+        const starCount = state === "passed" || state === "perfected" ? eqQuestStars(bestScore) : 0;
+        const starsHtml = state === "passed" || state === "perfected" ? `<div class="quest-stars">${Array.from({ length: 3 }, (_, i) => `<span class="quest-star${i < starCount ? " filled" : ""}">\u2605</span>`).join("")}</div>` : "";
+        return `
+    <div class="completed-row ${stateMeta.rowClass}">
+      <div class="completed-icon"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">${stateMeta.icon}</span></div>
+      <div class="completed-info">
+        <div class="completed-title">${q.title}</div>
+        <div class="completed-sub">${q.desc}</div>
+        <div class="completed-state-badge">${stateMeta.badge}</div>
+        ${starsHtml}
+      </div>
+      <div class="completed-score">
+        <div class="lbl">SCORE</div>
+        <div class="val">${scoreDisplay}</div>
+      </div>
+      ${retryControl}
+    </div>`;
+      }).join("")}
+  </div>`;
+    })() : ""}`;
+  }
+  var activeQuiz2 = null;
+  var quizAnswers = [];
+  var quizCurrent = 0;
+  var quizTimer = null;
+  var quizTimeLeft = 0;
+  var quizLastAnnouncedStage = -1;
+  var HINT_COST = 15;
+  var MAX_HINTS_PER_QUEST = 2;
+  var quizHintsRemaining = 0;
+  var quizEliminated = [];
+  var quizHintRevealed = [];
+  var quizStreakSnapshot = 0;
+  var quizMatchShuffle = [];
+  var quizCombo = 0;
+  var quizComboMax = 0;
+  var quizLocked = [];
+  var quizComboLastEvent = null;
+  var quizComboMilestoneHit = false;
+  var quizAnswerRevealEvent = null;
+  var quizAdvanceTimer = null;
+  var quizAttemptNumber = 1;
+  var quizFinishing2 = false;
+  var _mascotAmbientEmotion = "idle";
+  var _mascotCloudTimer = null;
+  var _mascotLowTimeWarnedFor = null;
+  var _mascotLinesHydrated = false;
+  async function eqHydrateMascotLines() {
+    if (_mascotLinesHydrated) return;
+    _mascotLinesHydrated = true;
+    if (typeof MascotLinesService === "undefined") return;
+    const res = await MascotLinesService.get();
+    window._eqMascotCustomLines = res.ok ? res.customLines || {} : {};
+  }
+  function fireMascotEvent(event, stageIdx) {
+    const figure = document.getElementById("quiz-mascot-figure");
+    const cloud = document.getElementById("quiz-mascot-cloud");
+    const cloudText = document.getElementById("quiz-mascot-cloud-text");
+    const emojiEl = document.getElementById("quiz-mascot-emoji");
+    if (!figure) return;
+    const emotion = typeof eqMascotEmotionFor === "function" ? eqMascotEmotionFor(event, { stageIdx }) : "idle";
+    const stageKey = event === "correct" || event === "wrong" || event === "lowTime" ? stageIdx : event === "stageTransition" ? stageIdx : null;
+    const line = typeof eqMascotLine === "function" ? eqMascotLine(event, stageKey) : "";
+    _mascotAmbientEmotion = emotion;
+    MASCOT_EMOTIONS.forEach((e) => figure.classList.remove("mascot-emotion-" + e));
+    figure.classList.add("mascot-emotion-" + emotion);
+    if (emojiEl && window.MASCOT_EMOJI) emojiEl.textContent = MASCOT_EMOJI[emotion] || "\u{1F432}";
+    figure.classList.remove("mascot-react");
+    void figure.offsetWidth;
+    figure.classList.add("mascot-react");
+    setTimeout(() => figure.classList.remove("mascot-react"), 400);
+    if (cloud && cloudText && line) {
+      clearTimeout(_mascotCloudTimer);
+      cloudText.textContent = line;
+      cloud.classList.add("show");
+      _mascotCloudTimer = setTimeout(() => {
+        cloud.classList.remove("show");
+      }, 2200);
+    }
+  }
+  window.fireMascotEvent = fireMascotEvent;
+  function updateMascotAmbientMood(stageIdx, timeLeft, stageSeconds) {
+    const figure = document.getElementById("quiz-mascot-figure");
+    if (!figure) return;
+    const pct = stageSeconds > 0 ? timeLeft / stageSeconds : 1;
+    let emotion;
+    if (pct <= 0.2) emotion = stageIdx >= 2 ? "scared" : "nervous";
+    else emotion = stageIdx >= 1 ? "confident" : "idle";
+    if (emotion === _mascotAmbientEmotion) return;
+    _mascotAmbientEmotion = emotion;
+    MASCOT_EMOTIONS.forEach((e) => figure.classList.remove("mascot-emotion-" + e));
+    figure.classList.add("mascot-emotion-" + emotion);
+    const emojiEl = document.getElementById("quiz-mascot-emoji");
+    if (emojiEl && window.MASCOT_EMOJI) emojiEl.textContent = MASCOT_EMOJI[emotion] || "\u{1F432}";
+    if (pct <= 0.2 && _mascotLowTimeWarnedFor !== quizCurrent) {
+      _mascotLowTimeWarnedFor = quizCurrent;
+      fireMascotEvent("lowTime", stageIdx);
+    }
+  }
+  window.updateMascotAmbientMood = updateMascotAmbientMood;
+  function startQuiz(qid) {
+    const quiz = DB.quizzes.find((q) => q.id === qid);
+    if (!quiz) return;
+    const freshStudent = DB.students.find((s) => s.id === currentUser.id);
+    const completedIds = freshStudent && freshStudent.completedQuizzes || [];
+    const chainInfo = typeof eqQuizChain === "function" ? eqQuizChain(quiz) : { chainId: null };
+    if (chainInfo.chainId && typeof eqGetQuestChains === "function") {
+      const chain = eqGetQuestChains().find((c) => c.chainId === chainInfo.chainId);
+      const status = chain ? eqChainStatus(chain.quizzes, qid, completedIds) : "locked";
+      if (status === "locked") {
+        toast("\u{1F512} Finish the earlier part of this chain first.", "#ffb4ab");
+        return;
+      }
+    }
+    activeQuiz2 = quiz;
+    const gate = eqQuizAttemptStatus(qid, currentUser.id);
+    if (!gate.allowed) {
+      if (gate.perfected) {
+        toast("\u2605 Quest already perfected \u2014 nothing left to earn here. Ask your teacher if you just want extra practice.", "#ffb95f");
+      } else {
+        toast(`\u{1F512} Quest locked \u2014 you've used all ${QUIZ_MAX_SCORED_ATTEMPTS} scored attempts. Try again in ${eqFormatCooldown(gate.cooldownEndsAt - Date.now())}, or ask your teacher to unlock it early.`, "#ffb4ab");
+      }
+      activeQuiz2 = null;
+      return;
+    }
+    quizAttemptNumber = gate.attemptNumber;
+    if (gate.viaOverride) {
+      AppStore.updateState((draft) => {
+        if (draft.quizAttemptOverrides && draft.quizAttemptOverrides[currentUser.id]) {
+          delete draft.quizAttemptOverrides[currentUser.id][qid];
+        }
+      }, { type: "quiz:attempt-override-consumed", payload: { studentId: currentUser.id, quizId: qid } });
+    }
+    quizFinishing2 = false;
+    quizAnswers = new Array(activeQuiz2.questions.length).fill(null);
+    quizCurrent = 0;
+    quizLastAnnouncedStage = -1;
+    quizHintsRemaining = MAX_HINTS_PER_QUEST;
+    quizEliminated = new Array(activeQuiz2.questions.length).fill(null).map(() => []);
+    quizHintRevealed = new Array(activeQuiz2.questions.length).fill(false);
+    quizStreakSnapshot = computeQuestStreak(currentUser.id).current;
+    quizCombo = 0;
+    quizComboMax = 0;
+    quizLocked = new Array(activeQuiz2.questions.length).fill(false);
+    quizComboLastEvent = null;
+    quizComboMilestoneHit = false;
+    quizMatchShuffle = new Array(activeQuiz2.questions.length).fill(null);
+    eqHydrateMascotLines();
+    _mascotAmbientEmotion = "idle";
+    _mascotLowTimeWarnedFor = null;
+    showPage("s-quiz-active");
+    renderQuizQuestion();
+    fireMascotEvent(quizAttemptNumber > 1 ? "retry" : "start", 0);
+  }
+  function startQuestionTimer() {
+    clearInterval(quizTimer);
+    const stageIdx = eqQuestionStage(activeQuiz2.questions.length, quizCurrent);
+    const stageSeconds = eqQuizStageSeconds(activeQuiz2)[stageIdx];
+    quizTimeLeft = stageSeconds;
+    renderQuizTimerDisplay(stageIdx);
+    updateMascotAmbientMood(stageIdx, quizTimeLeft, stageSeconds);
+    quizTimer = setInterval(() => {
+      quizTimeLeft--;
+      renderQuizTimerDisplay(stageIdx);
+      updateMascotAmbientMood(stageIdx, quizTimeLeft, stageSeconds);
+      if (quizTimeLeft <= 0) {
+        clearInterval(quizTimer);
+        quizTimeout();
+      }
+    }, 1e3);
+  }
+  function renderQuizTimerDisplay(stageIdx) {
+    const el = document.getElementById("quiz-timer");
+    if (!el) return;
+    const t = Math.max(0, quizTimeLeft);
+    el.textContent = t + "s";
+    el.className = "quiz-timer stage-" + stageIdx + (t <= 5 ? " urgent" : "");
+  }
+  function quizTimeout() {
+    if (!activeQuiz2 || quizLocked[quizCurrent]) return;
+    quizLocked[quizCurrent] = true;
+    if (quizAnswers[quizCurrent] === null || quizAnswers[quizCurrent] === void 0) quizAnswers[quizCurrent] = "";
+    if (quizCombo >= 2) {
+      toast("\u{1F4A5} Combo broken \u2014 time's up!", "#ffb4ab");
+      quizComboLastEvent = "break";
+    } else {
+      quizComboLastEvent = null;
+    }
+    quizCombo = 0;
+    toast("\u23F1 Time's up on that one!", "#ffb4ab");
+    fireMascotEvent("wrong", eqQuestionStage(activeQuiz2.questions.length, quizCurrent));
+    quizAnswerRevealEvent = "wrong";
+    _quizShowRevealThenAdvance(1500);
+  }
+  function renderQuizQuestion() {
+    const q = activeQuiz2.questions[quizCurrent];
+    const total = activeQuiz2.questions.length;
+    const fillPct = Math.round((quizCurrent + 1) / total * 100);
+    const comboEvent = quizComboLastEvent;
+    quizComboLastEvent = null;
+    const comboMilestone = quizComboMilestoneHit;
+    quizComboMilestoneHit = false;
+    const revealEvent = quizAnswerRevealEvent;
+    quizAnswerRevealEvent = null;
+    const stageIdx = eqQuestionStage(total, quizCurrent);
+    const stageName = eqStageName(stageIdx);
+    const letters = ["A", "B", "C", "D", "E"];
+    const qType = eqQType(q);
+    const savedAns = quizAnswers[quizCurrent];
+    const isLocked = !!quizLocked[quizCurrent];
+    const revealFrac = isLocked ? eqGradeAnswer(q, savedAns) : null;
+    const revealState = !isLocked ? null : revealFrac >= 1 ? "correct" : revealFrac > 0 ? "partial" : "wrong";
+    const mcGridEligible = (qType === "mc" || qType === "tf") && q.opts && q.opts.length <= 4 && q.opts.every((o) => String(o).length <= 18);
+    const eliminatedForQ = quizEliminated[quizCurrent] || [];
+    const hintUsedForQ = !!quizHintRevealed[quizCurrent];
+    const canHint = !isLocked && quizHintsRemaining > 0 && !hintUsedForQ && (qType === "id" || qType === "mc" && q.opts && q.opts.length > 2);
+    const hintReason = isLocked ? "Question already locked in" : quizHintsRemaining <= 0 ? "No hints left this quest" : hintUsedForQ ? "Hint already used on this question" : qType === "tf" || qType === "enum" || qType === "match" ? "Not available for this question type" : `Reveal a hint for ${HINT_COST} coins`;
+    const idHintText = qType === "id" && hintUsedForQ ? _eqQuestHintText(q) : "";
+    const enumBlanks = qType === "enum" ? Array.isArray(q.answers) ? q.answers.length : 0 : 0;
+    const enumSaved = qType === "enum" ? Array.isArray(savedAns) ? savedAns : new Array(enumBlanks).fill("") : [];
+    const matchPairs = qType === "match" ? Array.isArray(q.pairs) ? q.pairs : [] : [];
+    const matchSaved = qType === "match" ? Array.isArray(savedAns) ? savedAns : new Array(matchPairs.length).fill("") : [];
+    if (qType === "match" && !quizMatchShuffle[quizCurrent]) {
+      const rights = matchPairs.map((p) => p.right);
+      for (let i = rights.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [rights[i], rights[j]] = [rights[j], rights[i]];
+      }
+      quizMatchShuffle[quizCurrent] = rights;
+    }
+    const matchOptions = qType === "match" ? quizMatchShuffle[quizCurrent] || [] : [];
+    const enumMatchFlags = qType === "enum" && isLocked ? (() => {
+      const pool = (Array.isArray(q.answers) ? q.answers.filter((a) => a && String(a).trim()) : []).map(eqNormalizeAnswer);
+      return enumSaved.map((g) => {
+        const ng = eqNormalizeAnswer(g);
+        if (!ng) return false;
+        const idx = pool.indexOf(ng);
+        if (idx !== -1) {
+          pool.splice(idx, 1);
+          return true;
+        }
+        return false;
+      });
+    })() : [];
+    const enumCorrectCount = enumMatchFlags.filter(Boolean).length;
+    const matchRowFlags = qType === "match" && isLocked ? matchPairs.map((p, pi) => eqNormalizeAnswer(matchSaved[pi]) === eqNormalizeAnswer(p.right) && !!matchSaved[pi]) : [];
+    const optionsHTML = qType === "id" ? `<div class="quiz-options${revealEvent ? " just-revealed" : ""}" id="quiz-opts">
+        <input type="text" id="quiz-id-input" class="quiz-id-input${isLocked ? " reveal-" + revealState : ""}" placeholder="Type your answer\u2026" autocomplete="off" spellcheck="false"
+          value="${_esc(typeof savedAns === "string" ? savedAns : "")}" ${isLocked ? "readonly" : ""} oninput="submitIdAnswer(this.value)"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('btn-next')?.click();}">
+        ${idHintText ? `<div class="quiz-hint-reveal">${idHintText}</div>` : ""}
+        ${isLocked ? `<div class="quiz-reveal-banner ${revealState}">${revealState === "correct" ? "\u2705 Correct!" : `\u274C Correct answer: <strong>${_esc(q.answer || "")}</strong>`}</div>` : ""}
+      </div>` : qType === "enum" ? `<div class="quiz-options${revealEvent ? " just-revealed" : ""}" id="quiz-opts">
+        <div class="quiz-enum-hint">Fill in all ${enumBlanks} \u2014 partial credit for each one you get right.</div>
+        ${Array.from({ length: enumBlanks }).map((_, bi) => `
+        <input type="text" class="quiz-id-input quiz-enum-input${isLocked ? " reveal-" + (enumMatchFlags[bi] ? "correct" : "wrong") : ""}" placeholder="Answer ${bi + 1} of ${enumBlanks}" autocomplete="off" spellcheck="false"
+          value="${_esc(enumSaved[bi] || "")}" ${isLocked ? "readonly" : ""} oninput="submitEnumAnswer(${bi},this.value)">`).join("")}
+        ${isLocked ? `<div class="quiz-reveal-banner ${revealState}">${enumCorrectCount}/${enumBlanks} correct${revealState !== "correct" ? ` \u2014 full answer: <strong>${_esc((q.answers || []).join(", "))}</strong>` : ""}</div>` : ""}
+      </div>` : qType === "match" ? `<div class="quiz-options${revealEvent ? " just-revealed" : ""}" id="quiz-opts">
+        <div class="quiz-enum-hint">Match each item on the left with its correct pair \u2014 partial credit per correct match.</div>
+        ${matchPairs.map((p, pi) => `
+        <div class="qb-opt-row" style="align-items:center">
+          <span style="flex:1;font-size:13px;color:var(--on-surface)">${_esc(p.left)}</span>
+          <span style="color:var(--text-muted);flex-shrink:0">\u2192</span>
+          <select class="quiz-id-input${isLocked ? " reveal-" + (matchRowFlags[pi] ? "correct" : "wrong") : ""}" style="flex:1" ${isLocked ? "disabled" : ""} onchange="submitMatchAnswer(${pi},this.value)">
+            <option value="">Select\u2026</option>
+            ${matchOptions.map((opt) => `<option value="${_esc(opt)}" ${matchSaved[pi] === opt ? "selected" : ""}>${_esc(opt)}</option>`).join("")}
+          </select>
+          ${isLocked && !matchRowFlags[pi] ? `<span style="flex-shrink:0;font-size:12px;color:var(--secondary);white-space:nowrap">\u2192 ${_esc(p.right)}</span>` : ""}
+        </div>`).join("")}
+        ${isLocked ? `<div class="quiz-reveal-banner ${revealState}">${matchRowFlags.filter(Boolean).length}/${matchPairs.length} matched correctly</div>` : ""}
+      </div>` : `<div class="quiz-options${mcGridEligible ? " grid-mode" : ""}${revealEvent ? " just-revealed" : ""}" id="quiz-opts">
+        ${q.opts.map((opt, i) => {
+      const isElim = eliminatedForQ.includes(i);
+      const isDisabled = isElim || isLocked;
+      const isCorrectOpt = isLocked && i === q.answer;
+      const isWrongPick = isLocked && i === savedAns && i !== q.answer;
+      const revealCls = isCorrectOpt ? " correct" : isWrongPick ? " wrong" : "";
+      return `
+        <button class="quiz-opt${isElim ? " eliminated" : ""}${revealCls}" id="opt-${i}" ${isDisabled ? "disabled" : ""} onclick="${isDisabled ? "" : "selectOpt(" + i + ")"}">
+          <div class="quiz-opt-letter">${letters[i]}</div>
+          <span class="quiz-opt-text">${opt}</span>
+          ${isElim ? '<span class="quiz-opt-elim-tag">Eliminated</span>' : ""}
+          ${isCorrectOpt ? '<span class="quiz-opt-reveal-tag correct">\u2713 Correct</span>' : ""}
+          ${isWrongPick ? '<span class="quiz-opt-reveal-tag wrong">\u2715 Your pick</span>' : ""}
+        </button>`;
+    }).join("")}
+      </div>`;
+    const comboLevel = quizCombo >= 5 ? 3 : quizCombo >= 3 ? 2 : quizCombo >= 1 ? 1 : 0;
+    const QI_STAGE_CFG = [
+      { color: "#4edea3", count: 16, alpha: 0.12, dotSize: 1.5, speed: 1 },
+      { color: "#ffb95f", count: 24, alpha: 0.16, dotSize: 1.8, speed: 1.8 },
+      { color: "#ffb4ab", count: 32, alpha: 0.2, dotSize: 2.2, speed: 3 }
+    ][stageIdx];
+    document.getElementById("s-quiz-active").innerHTML = `
+  <div class="quiz-arena qi-stage-${stageIdx}${revealEvent === "wrong" ? " qi-shake-wrong" : ""}">
+    <!-- Phase 5 \u2014 intensity chrome (\xA73): ambient drift canvas + vignette
+         ring, both position:absolute/z-index:0 so they sit strictly BEHIND
+         .quiz-arena-content (z-index:1) \u2014 same layering trick as the
+         Dashboard hero band. Pointer-events:none throughout; purely
+         decorative, never intercepts a tap. -->
+    <canvas class="quiz-intensity-canvas" id="quiz-intensity-canvas"></canvas>
+    <div class="quiz-vignette-ring qi-stage-${stageIdx}"></div>
+    <!-- Phase 9 \u2014 Answer Reveal flash: a one-shot full-arena color burst
+         (green/amber/red) the instant a question is graded \u2014 see
+         revealEvent above. Sits ABOVE everything (z-index higher than the
+         content layer) but pointer-events:none, so it's purely a momentary
+         wash of color, never something a student can accidentally tap
+         through or that blocks the next interaction. -->
+    <div class="quiz-reveal-flash${revealEvent ? " flash-" + revealEvent : ""}"></div>
+    <div class="quiz-arena-content">
+    <div class="quiz-title-label">[ ${activeQuiz2.title.toUpperCase().replace(/\s+/g, "_")} ]</div>
+    <!-- Phase 9 \u2014 Widescreen Arena: on landscape/desktop this splits into a
+         persistent HUD rail (progress, timer, stage, streak, hints, mascot
+         companion) plus a generous main column for the question + options,
+         instead of stacking everything into one narrow centered strip.
+         Below 1024px .quiz-hud flattens into a horizontal bar (see CSS). -->
+    <div class="quiz-layout">
+      <aside class="quiz-hud">
+        <!-- Phase 4 \u2014 top strip (\xA79): progress + timer, always visible. -->
+        <div class="quiz-top-strip">
+          <div class="quiz-progress-block">
+            <div class="quiz-progress-bar"><div class="quiz-progress-fill" style="width:${fillPct}%"></div></div>
+            <div class="quiz-progress-labels">
+              <span style="color:var(--text-muted)">Q.${String(quizCurrent + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span>
+              <span style="color:var(--primary)">${fillPct}% COMPLETE</span>
+            </div>
+          </div>
+          <div class="quiz-timer stage-${stageIdx}" id="quiz-timer">--</div>
+        </div>
+        <div class="quiz-hud-divider"></div>
+        <!-- Phase 4 \u2014 meta row: secondary/ambient stats (stage, streak, hints). -->
+        <div class="quiz-meta-row">
+          <div class="quiz-stage-badge stage-${stageIdx}">${stageIdx === 0 ? "\u{1F331}" : stageIdx === 1 ? "\u26A1" : "\u{1F525}"} ${stageName}</div>
+          <div class="quiz-meta-chip">\u{1F525} ${quizStreakSnapshot} Day Streak</div>
+          <div class="quiz-meta-chip${canHint ? " quiz-hint-btn" : " quiz-hint-btn disabled"}" ${canHint ? 'onclick="useHint()"' : ""} title="${hintReason}">\u2728 ${quizHintsRemaining} Hint${quizHintsRemaining === 1 ? "" : "s"} (${HINT_COST}\u{1FA99})</div>
+        </div>
+        <div class="quiz-hud-divider"></div>
+        <!-- Phase 7 \u2014 mascot companion now docks in the HUD rail (was the
+             footer row). The cloud only shows while fireMascotEvent() has
+             an active line (\xA76); between lines the figure keeps acting out
+             updateMascotAmbientMood()'s current pose silently. -->
+        <div class="quiz-mascot-dock" id="quiz-mascot-dock" title="Quest companion">
+          <div class="quiz-mascot-cloud" id="quiz-mascot-cloud"><span id="quiz-mascot-cloud-text"></span></div>
+          <div class="quiz-mascot-figure mascot-emotion-${_mascotAmbientEmotion}" id="quiz-mascot-figure">
+            <span id="quiz-mascot-emoji">${window.MASCOT_EMOJI && window.MASCOT_EMOJI[_mascotAmbientEmotion] || "\u{1F432}"}</span>
+          </div>
+        </div>
+      </aside>
+      <div class="quiz-main">
+        <!-- Question card: centered, generous padding \u2014 the calmest, most
+             stable zone even at max stage intensity (\xA79). Hard rule from \xA73:
+             intensity effects live in the chrome around this card \u2014 its own
+             background/border/text stay stable, only a faint stage-tinted
+             border accent (chrome, not text) is allowed to shift. -->
+        <div class="quiz-question-card${revealEvent ? " card-flash-" + revealEvent : ""}">
+          <div class="quiz-q-label">QUESTION_${String(quizCurrent + 1).padStart(2, "0")} // ${qType === "id" ? "TYPE THE CORRECT ANSWER" : qType === "enum" ? "FILL IN ALL ANSWERS" : qType === "match" ? "MATCH EACH ITEM" : "SELECT CORRECT RESPONSE"}${isLocked ? " \xB7 \u{1F512} LOCKED IN" : ""}</div>
+          <div class="quiz-q-text">${q.q}</div>
+        </div>
+        ${optionsHTML}
+        <div class="quiz-nav">
+          ${quizCurrent > 0 ? `<button class="quiz-nav-prev" onclick="quizPrev()">\u2190 Prev</button>` : ""}
+          <button class="quiz-nav-next" id="btn-next" disabled onclick="quizNext()">
+            ${quizCurrent === total - 1 ? "\u25B6 Submit Quest" : "Next \u2192"}
+          </button>
+        </div>
+        <!-- Abort stays deliberately far from the mascot/companion (now
+             clear across the layout in the HUD rail), same intent as
+             before: leaving should never be near the "fun" elements. -->
+        <div class="quiz-footer-row">
+          <button class="quiz-abort" onclick="confirmAbortQuiz()">\u2715 Abort</button>
+        </div>
+      </div>
+    </div>
+    <!-- Phase 4 \u2014 combo band (\xA79): a floating toast, fixed-position, so it
+         overlaps whatever's beneath it regardless of the HUD/main split. -->
+    <div class="quiz-combo-band combo-level-${comboLevel}${comboEvent === "grow" ? " combo-pop" : comboEvent === "break" ? " combo-shatter" : ""}" id="quiz-combo-band">
+      <span class="quiz-combo-label">COMBO</span>
+      <span class="quiz-combo-value">${quizCombo > 0 ? "x" + quizCombo : "\u2014"}</span>
+      <span class="quiz-combo-mult">${eqComboMultiplier(quizCombo)}\xD7 reward</span>
+    </div>
+    </div>
+  </div>`;
+    if (typeof window._eqQuizIntensityBackdropStop === "function") {
+      window._eqQuizIntensityBackdropStop();
+      window._eqQuizIntensityBackdropStop = null;
+    }
+    const qiCanvas = document.getElementById("quiz-intensity-canvas");
+    if (qiCanvas && typeof startAmbientBackdrop === "function") {
+      window._eqQuizIntensityBackdropStop = startAmbientBackdrop(qiCanvas, QI_STAGE_CFG);
+    }
+    const comboBandEl = document.getElementById("quiz-combo-band");
+    if (window._eqComboToastHideTimer) clearTimeout(window._eqComboToastHideTimer);
+    if (comboBandEl && quizCombo > 0) {
+      requestAnimationFrame(() => comboBandEl.classList.add("combo-toast-show"));
+      window._eqComboToastHideTimer = setTimeout(() => {
+        const el = document.getElementById("quiz-combo-band");
+        if (el) el.classList.remove("combo-toast-show");
+      }, 2200);
+    }
+    if (comboEvent === "grow" && comboMilestone && typeof burstParticles === "function") {
+      if (comboBandEl) burstParticles(comboBandEl, 50);
+    }
+    if (isLocked) {
+      clearInterval(quizTimer);
+      const el = document.getElementById("quiz-timer");
+      if (el) {
+        el.textContent = "\u2014";
+        el.className = "quiz-timer stage-" + stageIdx;
+      }
+    } else {
+      if (stageIdx !== quizLastAnnouncedStage) {
+        if (quizLastAnnouncedStage !== -1) {
+          const stageMsg = stageIdx === 1 ? "\u26A1 Stage 2: Surge!" : stageIdx === 2 ? "\u{1F525} Stage 3: Overdrive!" : "\u{1F331} Stage 1: Warm-Up!";
+          const stageColor = stageIdx === 1 ? "#ffb95f" : stageIdx === 2 ? "#ffb4ab" : "#4EDEA3";
+          toast(stageMsg, stageColor);
+          if (stageIdx >= 1) fireMascotEvent("stageTransition", stageIdx);
+        }
+        quizLastAnnouncedStage = stageIdx;
+      }
+      startQuestionTimer();
+    }
+    if (qType === "id") {
+      const btn = document.getElementById("btn-next");
+      if (btn) btn.disabled = !(typeof savedAns === "string" && savedAns.trim().length);
+      if (!isLocked) document.getElementById("quiz-id-input")?.focus();
+    } else if (qType === "enum") {
+      const btn = document.getElementById("btn-next");
+      if (btn) btn.disabled = !enumSaved.some((v) => v && String(v).trim().length);
+    } else if (qType === "match") {
+      const btn = document.getElementById("btn-next");
+      if (btn) btn.disabled = !matchSaved.some((v) => v && String(v).trim().length);
+    } else if (savedAns !== null && savedAns !== void 0) {
+      selectOpt(savedAns, true);
+    }
+  }
+  function selectOpt(i, restore = false) {
+    if (quizLocked[quizCurrent] && !restore) return;
+    document.querySelectorAll(".quiz-opt").forEach((o) => {
+      o.classList.remove("selected");
+    });
+    document.getElementById("opt-" + i)?.classList.add("selected");
+    quizAnswers[quizCurrent] = i;
+    const btn = document.getElementById("btn-next");
+    if (btn) {
+      btn.disabled = false;
+    }
+  }
+  function _eqQuestHintText(q) {
+    const ans = String(q.answer || "").trim();
+    if (!ans) return "";
+    const letterCount = ans.replace(/\s+/g, "").length;
+    return `\u{1F4A1} Starts with "${ans.charAt(0).toUpperCase()}" \u2014 ${letterCount} letter${letterCount === 1 ? "" : "s"}`;
+  }
+  function useHint() {
+    if (!activeQuiz2) return;
+    const q = activeQuiz2.questions[quizCurrent];
+    const qType = eqQType(q);
+    if (quizHintsRemaining <= 0) {
+      toast("\u26A0\uFE0F No hints left this quest!", "#ffb4ab");
+      return;
+    }
+    if (quizHintRevealed[quizCurrent]) {
+      toast("You already used a hint on this question.", "#ffb4ab");
+      return;
+    }
+    if (qType === "tf") {
+      toast("No hints available for True/False questions.", "#ffb4ab");
+      return;
+    }
+    if (qType === "enum" || qType === "match") {
+      toast("No hints available for this question type.", "#ffb4ab");
+      return;
+    }
+    if (qType === "mc" && (!q.opts || q.opts.length <= 2)) {
+      toast("No hint available for this question.", "#ffb4ab");
+      return;
+    }
+    const stIdx = AppStore.getSlice((s) => s.students || []).findIndex((s) => s.id === currentUser.id);
+    if (stIdx < 0) return;
+    const _currentCoins = AppStore.getSlice((s) => (s.students || [])[stIdx]?.coins) || 0;
+    if (_currentCoins < HINT_COST) {
+      toast(`\u274C Need ${HINT_COST} coins for a hint \u2014 you have ${_currentCoins}.`, "#ffb4ab");
+      return;
+    }
+    if (qType === "id") {
+      if (!q.answer) {
+        toast("No hint available for this question.", "#ffb4ab");
+        return;
+      }
+      toast(_eqQuestHintText(q), "#d0bcff");
+    } else {
+      const already = quizEliminated[quizCurrent] || [];
+      const wrongIdx = q.opts.map((_, i) => i).filter((i) => i !== q.answer && !already.includes(i));
+      if (!wrongIdx.length) {
+        toast("No more wrong options to eliminate.", "#ffb4ab");
+        return;
+      }
+      const pick = wrongIdx[Math.floor(Math.random() * wrongIdx.length)];
+      if (!quizEliminated[quizCurrent]) quizEliminated[quizCurrent] = [];
+      quizEliminated[quizCurrent].push(pick);
+      toast("\u{1F4A1} Eliminated one wrong option!", "#d0bcff");
+    }
+    AppStore.updateState((draft) => {
+      const s = (draft.students || []).find((x) => x.id === currentUser.id);
+      if (s) s.coins -= HINT_COST;
+    }, { type: "quiz:hint-purchased", payload: { studentId: currentUser.id } });
+    syncStudentStatsToServer(currentUser.id, 0, -HINT_COST);
+    currentUser.coins = _currentCoins - HINT_COST;
+    quizHintsRemaining--;
+    quizHintRevealed[quizCurrent] = true;
+    updateTopbar();
+    renderQuizQuestion();
+  }
+  function submitIdAnswer(val) {
+    if (quizLocked[quizCurrent]) return;
+    quizAnswers[quizCurrent] = val;
+    const btn = document.getElementById("btn-next");
+    if (btn) btn.disabled = !(val && val.trim().length);
+  }
+  function submitEnumAnswer(bi, val) {
+    if (quizLocked[quizCurrent]) return;
+    if (!Array.isArray(quizAnswers[quizCurrent])) {
+      const blanks = Array.isArray(activeQuiz2.questions[quizCurrent].answers) ? activeQuiz2.questions[quizCurrent].answers.length : 0;
+      quizAnswers[quizCurrent] = new Array(blanks).fill("");
+    }
+    quizAnswers[quizCurrent][bi] = val;
+    const btn = document.getElementById("btn-next");
+    if (btn) btn.disabled = !quizAnswers[quizCurrent].some((v) => v && String(v).trim().length);
+  }
+  function submitMatchAnswer(pi, val) {
+    if (quizLocked[quizCurrent]) return;
+    if (!Array.isArray(quizAnswers[quizCurrent])) {
+      const pairCount = Array.isArray(activeQuiz2.questions[quizCurrent].pairs) ? activeQuiz2.questions[quizCurrent].pairs.length : 0;
+      quizAnswers[quizCurrent] = new Array(pairCount).fill("");
+    }
+    quizAnswers[quizCurrent][pi] = val;
+    const btn = document.getElementById("btn-next");
+    if (btn) btn.disabled = !quizAnswers[quizCurrent].some((v) => v && String(v).trim().length);
+  }
+  function quizNext() {
+    const ans = quizAnswers[quizCurrent];
+    const unanswered = ans === null || ans === void 0 || typeof ans === "string" && !ans.trim().length || Array.isArray(ans) && !ans.some((v) => v && String(v).trim().length);
+    if (unanswered) return;
+    if (quizLocked[quizCurrent]) {
+      _quizAdvanceNow();
+      return;
+    }
+    quizLocked[quizCurrent] = true;
+    const frac = eqGradeAnswer(activeQuiz2.questions[quizCurrent], ans);
+    quizAnswerRevealEvent = frac >= 1 ? "correct" : frac > 0 ? "partial" : "wrong";
+    const mascotStageIdx = eqQuestionStage(activeQuiz2.questions.length, quizCurrent);
+    if (frac >= 1) {
+      quizCombo++;
+      if (quizCombo > quizComboMax) quizComboMax = quizCombo;
+      quizComboLastEvent = "grow";
+      quizComboMilestoneHit = eqIsComboMilestone(quizCombo);
+      if (quizCombo >= 5) toast(`\u{1F525} COMBO x${quizCombo}! Max multiplier reached!`, "#ffb95f");
+      else if (quizCombo >= 3) toast(`\u26A1 Combo x${quizCombo}!`, "#d0bcff");
+      fireMascotEvent(quizComboMilestoneHit ? "milestone" : "correct", mascotStageIdx);
+    } else if (quizCombo >= 2) {
+      toast("\u{1F4A5} Combo broken!", "#ffb4ab");
+      quizCombo = 0;
+      quizComboLastEvent = "break";
+      fireMascotEvent("wrong", mascotStageIdx);
+    } else {
+      quizCombo = 0;
+      quizComboLastEvent = null;
+      fireMascotEvent("wrong", mascotStageIdx);
+    }
+    _quizShowRevealThenAdvance(frac >= 1 ? 1e3 : 1500);
+  }
+  function _quizShowRevealThenAdvance(delayMs) {
+    clearInterval(quizTimer);
+    renderQuizQuestion();
+    const nextBtn = document.getElementById("btn-next");
+    if (nextBtn) nextBtn.disabled = true;
+    const prevBtn = document.querySelector(".quiz-nav-prev");
+    if (prevBtn) prevBtn.disabled = true;
+    clearTimeout(quizAdvanceTimer);
+    quizAdvanceTimer = setTimeout(_quizAdvanceNow, delayMs);
+  }
+  function _quizAdvanceNow() {
+    if (quizCurrent === activeQuiz2.questions.length - 1) {
+      clearInterval(quizTimer);
+      finishQuiz();
+    } else {
+      quizCurrent++;
+      renderQuizQuestion();
+    }
+  }
+  function quizPrev() {
+    if (quizCurrent > 0) {
+      clearTimeout(quizAdvanceTimer);
+      quizComboLastEvent = null;
+      quizComboMilestoneHit = false;
+      quizCurrent--;
+      renderQuizQuestion();
+    }
+  }
+  function confirmAbortQuiz() {
+    if (!activeQuiz2) return;
+    showModal(`
+    <div style="text-align:center;padding:4px">
+      <div style="font-size:34px;margin-bottom:10px">\u26A0\uFE0F</div>
+      <div class="modal-h2" style="text-align:center">Leave this quest?</div>
+      <div style="color:var(--text-muted);margin-bottom:22px;font-size:13px;line-height:1.6">
+        Leaving now counts as a loss. Your score won't count, and rewards will be reduced if you retry.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-primary" style="width:100%" onclick="closeModalForce()">Stay &amp; Finish</button>
+        <button style="width:100%;background:none;border:none;color:var(--text-muted);font-size:12px;padding:6px;cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="closeModalForce();abortQuiz()">Abort Anyway</button>
+      </div>
+    </div>`, "sm");
+  }
+  function abortQuiz2() {
+    clearInterval(quizTimer);
+    if (typeof window._eqQuizIntensityBackdropStop === "function") {
+      window._eqQuizIntensityBackdropStop();
+      window._eqQuizIntensityBackdropStop = null;
+    }
+    if (quizFinishing2 || !activeQuiz2) {
+      activeQuiz2 = null;
+      navTo2("s-quizzes");
+      return;
+    }
+    quizFinishing2 = true;
+    const total = activeQuiz2.questions.length;
+    let correct = 0;
+    const results = [];
+    activeQuiz2.questions.forEach((q, i) => {
+      const frac = quizLocked[i] ? eqGradeAnswer(q, quizAnswers[i]) : 0;
+      correct += frac;
+      results.push(frac);
+    });
+    const score = Math.round(correct / total * 100);
+    AppStore.updateState((draft) => {
+      if (!draft.quizHistory) draft.quizHistory = {};
+      if (!draft.quizHistory[currentUser.id]) draft.quizHistory[currentUser.id] = [];
+      draft.quizHistory[currentUser.id].push({
+        id: "qh_" + uid(),
+        quizId: activeQuiz2.id,
+        score,
+        passed: false,
+        completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        date: isoDate(),
+        attempt: quizAttemptNumber,
+        results,
+        aborted: true
+      });
+      const hist = draft.quizHistory[currentUser.id];
+      if (hist.length) {
+        const s = (draft.students || []).find((x) => x.id === currentUser.id);
+        if (s) {
+          const totalScore = hist.reduce((sum, e) => sum + e.score, 0);
+          s.quizAvg = Math.round(totalScore / hist.length);
+        }
+      }
+    }, { type: "quiz:aborted", payload: { studentId: currentUser.id, quizId: activeQuiz2.id } });
+    AppStore.flushNow();
+    currentUser = AppStore.getStudent(currentUser.id);
+    updateTopbar();
+    toast("\u{1F6A9} Quest aborted \u2014 counted as a loss.", "#ffb4ab");
+    activeQuiz2 = null;
+    navTo2("s-quizzes");
+  }
+  window.addEventListener("beforeunload", function() {
+    if (activeQuiz2 && !quizFinishing2) {
+      try {
+        abortQuiz2();
+      } catch (e) {
+      }
+    }
+  });
+  function finishQuiz() {
+    clearInterval(quizTimer);
+    if (typeof window._eqQuizIntensityBackdropStop === "function") {
+      window._eqQuizIntensityBackdropStop();
+      window._eqQuizIntensityBackdropStop = null;
+    }
+    if (quizFinishing2 || !activeQuiz2) {
+      return;
+    }
+    quizFinishing2 = true;
+    let correct = 0;
+    const results = [];
+    activeQuiz2.questions.forEach((q, i) => {
+      const frac = eqGradeAnswer(q, quizAnswers[i]);
+      correct += frac;
+      results.push(frac);
+    });
+    const total = activeQuiz2.questions.length;
+    const score = Math.round(correct / total * 100);
+    const baseXpGain = Math.round(activeQuiz2.xpReward * score / 100);
+    const baseCoinGain = Math.round(activeQuiz2.coinReward * score / 100);
+    const correctDisplay = Math.round(correct * 10) / 10;
+    const comboMult = eqComboMultiplier(quizComboMax);
+    const retryMult = eqRetryMultiplier(quizAttemptNumber);
+    const totalMult = comboMult * retryMult;
+    const xpGain = Math.round(baseXpGain * totalMult);
+    const coinGain = Math.round(baseCoinGain * totalMult);
+    const isRetry = quizAttemptNumber > 1;
+    AppStore.updateState((draft) => {
+      const s = (draft.students || []).find((x) => x.id === currentUser.id);
+      if (!s) return;
+      s.xp += xpGain;
+      s.coins += coinGain;
+      if (!s.completedQuizzes.includes(activeQuiz2.id)) {
+        s.completedQuizzes.push(activeQuiz2.id);
+      }
+      if (!draft.quizHistory) draft.quizHistory = {};
+      if (!draft.quizHistory[currentUser.id]) draft.quizHistory[currentUser.id] = [];
+      draft.quizHistory[currentUser.id].push({ id: "qh_" + uid(), quizId: activeQuiz2.id, score, passed: eqQuizPassed(score), completedAt: (/* @__PURE__ */ new Date()).toISOString(), date: isoDate(), attempt: quizAttemptNumber, results });
+      const history = draft.quizHistory[currentUser.id];
+      if (history && history.length > 0) {
+        const totalScore = history.reduce((sum, entry) => sum + entry.score, 0);
+        s.quizAvg = Math.round(totalScore / history.length);
+      } else {
+        s.quizAvg = 0;
+      }
+      window.checkLevelUp(s);
+      if (!Array.isArray(draft.pointLog)) draft.pointLog = [];
+      draft.pointLog.unshift({
+        studentId: currentUser.id,
+        what: `Quest: ${activeQuiz2.title} (${score}%)`,
+        pts: xpGain,
+        when: window.getNowLabel(),
+        id: "pl_" + uid(),
+        createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }, { type: "quiz:finished", payload: { studentId: currentUser.id, quizId: activeQuiz2.id, score } });
+    currentUser = AppStore.getStudent(currentUser.id);
+    syncStudentStatsToServer(currentUser.id, xpGain, coinGain);
+    const pass = eqQuizPassed(score);
+    const rankLetter = score >= 95 ? "S" : score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 60 ? "D" : "F";
+    const _rc = pass ? "var(--secondary)" : "var(--error)";
+    const bonusBits = [];
+    if (comboMult > 1) bonusBits.push(`\u{1F525} Combo x${quizComboMax} bonus (${comboMult}x)`);
+    if (isRetry) bonusBits.push(`\u21BB Attempt #${quizAttemptNumber} (${Math.round(retryMult * 100)}% reward)`);
+    const _resultsMascotEmotion = pass ? "relieved" : "sad";
+    const _resultsMascotLine = typeof eqMascotLine === "function" ? eqMascotLine(pass ? "pass" : "fail") : "";
+    const _resultsMascotEmoji = window.MASCOT_EMOJI && window.MASCOT_EMOJI[_resultsMascotEmotion] || (pass ? "\u{1F60C}" : "\u{1F97A}");
+    const _eqEsc = (s) => {
+      const d = document.createElement("div");
+      d.textContent = s === null || s === void 0 ? "" : String(s);
+      return d.innerHTML;
+    };
+    document.getElementById("s-quiz-active").innerHTML = `
+  <div class="results-wrap fade-in">
+    <div class="results-emoji">${pass ? "\u{1F3C6}" : "\u{1F480}"}</div>
+    <div class="results-title" style="color:${pass ? "#4edea3" : "#ffb4ab"}">${pass ? "Quest Complete!" : "Quest Failed"}</div>
+    <div class="results-sub">${activeQuiz2.title.toUpperCase().replace(/\s+/g, "_")}</div>
+    <div class="results-score-card" style="--rc:${_rc}">
+      <div class="results-rank-badge">${rankLetter}</div>
+      <div class="results-big-score" style="color:${score >= 80 ? "#4edea3" : score >= 60 ? "#ffb95f" : "#ffb4ab"}">${score}<span style="font-size:28px">%</span></div>
+      <div class="results-sub-score">${correctDisplay} / ${total} CORRECT</div>
+      ${bonusBits.length ? `<div class="results-bonus-row">${bonusBits.map((b) => `<span class="results-bonus-chip">${b}</span>`).join("")}</div>` : ""}
+      ${_resultsMascotLine ? `<div class="results-mascot-line"><span class="results-mascot-emoji">${_resultsMascotEmoji}</span><span>${_eqEsc(_resultsMascotLine)}</span></div>` : ""}
+    </div>
+    <div style="display:flex;gap:12px;margin-top:8px">
+      <button class="btn btn-ghost" style="flex:1" onclick="navTo('s-quizzes')">\u2190 Quest Board</button>
+      <button class="btn btn-primary" style="flex:1" onclick="navTo('s-dashboard')">\u{1F3E0} Dashboard</button>
+    </div>
+  </div>`;
+    updateTopbar();
+    const rewards = [];
+    if (xpGain > 0) rewards.push({ type: "xp", amount: xpGain, icon: "\u26A1", label: "XP", color: "var(--primary)" });
+    if (coinGain > 0) rewards.push({ type: "coins", amount: coinGain, icon: "\u{1FA99}", label: "Coins", color: "var(--tertiary)" });
+    const rarity = eqQuizRarity(activeQuiz2);
+    const _present = typeof eqRewardPresent === "function" ? eqRewardPresent : typeof window.eqRewardPresent === "function" ? window.eqRewardPresent : null;
+    const _finishedTitle = activeQuiz2.title;
+    const _finishedSubtitle = `${_finishedTitle} \u2014 ${correctDisplay}/${total} correct (${score}%)${bonusBits.length ? " \xB7 " + bonusBits.join(" \xB7 ") : ""}`;
+    if (_present) {
+      _present({
+        title: pass ? "Quest Complete!" : "Quest Failed",
+        subtitle: _finishedSubtitle,
+        icon: pass ? "\u{1F3C6}" : "\u{1F480}",
+        rarity,
+        source: "quest",
+        rewards
+      });
+    }
+    activeQuiz2 = null;
+  }
+  function profEnsureFields(user) {
+    if (!user) return;
+    if (!user.firstName) {
+      const parts = (user.name || "").split(" ");
+      user.firstName = parts[0] || "";
+      user.lastName = parts.slice(1).join(" ") || "";
+    }
+    if (!user.displayName) user.displayName = user.name || user.id;
+    if (!user.email) user.email = "";
+    if (!user.joinDate) user.joinDate = todayStr();
+    if (!user.profilePic) user.profilePic = "";
+  }
+  function profGetCurrent() {
+    if (!currentUser) return null;
+    if (currentRole === "admin") {
+      profEnsureFields(DB.admin);
+      return DB.admin;
+    }
+    if (currentRole === "teacher") {
+      profEnsureFields(currentUser);
+      return currentUser;
+    }
+    const st = DB.students.find((s) => s.id === currentUser.id);
+    if (st) {
+      profEnsureFields(st);
+      currentUser = st;
+    }
+    return currentUser;
+  }
+  function profInitAll() {
+    profEnsureFields(DB.admin);
+    DB.students.forEach((s) => profEnsureFields(s));
+  }
+  function getAvatarHTML(user, size, radius = "50%") {
+    if (!user) return "";
+    if (user.profilePic) {
+      return `<img class="av-img" src="${user.profilePic}" alt="${user.init || ""}" onerror="this.style.display='none'">`;
+    }
+    return `<span class="av-init">${user.init || (user.name || "?").charAt(0)}</span>`;
+  }
+  function renderAvatarEl(el, user, isSquare) {
+    if (!el || !user) return;
+    if (user.profilePic) {
+      el.innerHTML = `<img class="${isSquare ? "av-img" : "av-img"}" src="${user.profilePic}" alt="${user.init || ""}"
+      style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:${isSquare ? "10px" : "50%"};z-index:2"
+      onerror="this.remove()">`;
+      el.style.position = "relative";
+    } else {
+      const img = el.querySelector("img.av-img");
+      if (img) img.remove();
+      el.textContent = user.init || (user.name || "?").charAt(0);
+    }
+  }
+  function refreshAllAvatars2() {
+    if (!currentUser) return;
+    const user = profGetCurrent();
+    const topAv = document.getElementById("topbar-av");
+    if (topAv) {
+      const init = currentRole === "student" ? user.init : "MS";
+      const color = currentRole === "student" ? user.color : "#ffb4ab";
+      topAv.style.background = `linear-gradient(135deg,${color}44,${color}22)`;
+      topAv.style.color = color;
+      if (user.profilePic) {
+        topAv.innerHTML = `<img class="av-img" src="${user.profilePic}" alt="${init}"
+        style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:50%;z-index:2"
+        onerror="this.remove()">`;
+        topAv.style.position = "relative";
+        topAv.style.overflow = "hidden";
+      } else {
+        const img = topAv.querySelector("img.av-img");
+        if (img) img.remove();
+        topAv.textContent = init;
+      }
+    }
+    const sbAv = document.getElementById("sb-avatar");
+    if (sbAv && currentRole === "student") {
+      sbAv.style.cssText = `width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:14px;flex-shrink:0;border:2px solid ${user.color}55;background:${user.color}22;color:${user.color};position:relative;overflow:hidden`;
+      if (user.profilePic) {
+        sbAv.innerHTML = `<img class="av-img" src="${user.profilePic}" alt="${user.init}"
+        style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:10px;z-index:2"
+        onerror="this.remove()">`;
+      } else {
+        const img = sbAv.querySelector("img.av-img");
+        if (img) img.remove();
+        sbAv.textContent = user.init;
+      }
+    }
+    const sbName = document.getElementById("sb-name");
+    const sbTier = document.getElementById("sb-tier");
+    if (sbName && currentRole === "student") {
+      sbName.textContent = user.displayName || (user.firstName + " " + user.lastName).trim() || user.name;
+    }
+    const coinVal = document.getElementById("topbar-coin-val");
+    if (coinVal && currentRole === "student") {
+      coinVal.textContent = (user.coins || 0).toLocaleString();
+    }
+  }
+  function openProfile() {
+    _profPendingPic = null;
+    profInitAll();
+    const user = profGetCurrent();
+    if (!user) return;
+    _profRenderHero(user);
+    _profRenderStats(user);
+    switchProfileTab("overview");
+    document.getElementById("profile-overlay").classList.add("open");
+  }
+  function closeProfile() {
+    _profPendingPic = null;
+    document.getElementById("profile-overlay").classList.remove("open");
+  }
+  function profileOverlayClick(e) {
+    if (e.target === document.getElementById("profile-overlay")) closeProfile();
+  }
+  function profileAvatarClick() {
+    switchProfileTab("edit");
+    setTimeout(() => {
+      const el = document.getElementById("prof-pic-section");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+  }
+  function _profRenderHero(user) {
+    const av = document.getElementById("prof-avatar");
+    const avInit = document.getElementById("prof-av-init");
+    const color = user.color || "#8b5cf6";
+    av.style.background = `linear-gradient(135deg,${color}44,${color}22)`;
+    av.style.borderColor = color + "88";
+    av.style.color = color;
+    if (user.profilePic) {
+      let img = av.querySelector("img");
+      if (!img) {
+        img = document.createElement("img");
+        img.style.cssText = "width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:50%;z-index:2";
+        img.onerror = function() {
+          this.remove();
+          avInit.style.display = "";
+        };
+        av.appendChild(img);
+      }
+      img.src = user.profilePic;
+      avInit.style.display = "none";
+    } else {
+      const img = av.querySelector("img");
+      if (img) img.remove();
+      avInit.style.display = "";
+      avInit.textContent = user.init || (user.name || "?").charAt(0);
+    }
+    const displayName = user.displayName || user.name || user.id;
+    document.getElementById("prof-display-name").textContent = displayName;
+    document.getElementById("prof-username").textContent = "@" + (user.id || user.username || "");
+    document.getElementById("prof-role-chip").innerHTML = currentRole === "admin" ? '<span class="material-symbols-outlined" style="font-size:13px">shield</span> Administrator' : currentRole === "teacher" ? '<span class="material-symbols-outlined" style="font-size:13px">shield</span> Teacher' : '<span class="material-symbols-outlined" style="font-size:13px">school</span> Student';
+    document.getElementById("prof-join-text").textContent = "Joined " + (user.joinDate || todayStr());
+  }
+  function _profRenderStats(user) {
+    const strip = document.getElementById("prof-stats-strip");
+    if (!strip) return;
+    if (currentRole === "admin" || currentRole === "teacher") {
+      strip.innerHTML = `
+      <div class="profile-stat"><div class="val" style="color:#d0bcff">${DB.students.length}</div><div class="lbl">Students</div></div>
+      <div class="profile-stat"><div class="val" style="color:#ffb95f">${DB.quizzes.length}</div><div class="lbl">Quests</div></div>
+      <div class="profile-stat"><div class="val" style="color:#4edea3">${(DB.bossEvents || []).length}</div><div class="lbl">Bosses</div></div>
+      <div class="profile-stat"><div class="val" style="color:#EC4899">${(DB.redemptions || []).length}</div><div class="lbl">Redemptions</div></div>`;
+      return;
+    }
+    const xpNext = (user.level + 1) * 1200;
+    const xpPct = Math.min(100, Math.round(user.xp / xpNext * 100));
+    strip.innerHTML = `
+    <div class="profile-stat"><div class="val" style="color:var(--primary)">${user.level}</div><div class="lbl">Level</div></div>
+    <div class="profile-stat"><div class="val" style="color:#d0bcff">${user.xp.toLocaleString()}</div><div class="lbl">XP</div></div>
+    <div class="profile-stat"><div class="val" style="color:#ffb95f">${user.coins.toLocaleString()}</div><div class="lbl">Coins</div></div>
+    <div class="profile-stat"><div class="val" style="color:#4edea3">${user.completedQuizzes.length}</div><div class="lbl">Quests Done</div></div>`;
+  }
+  function switchProfileTab(tab) {
+    if (tab !== "edit" && _profPendingPic !== null) {
+      _profPendingPic = null;
+    }
+    document.querySelectorAll(".profile-tab").forEach((t) => t.classList.remove("active"));
+    const btn = document.getElementById("ptab-" + tab);
+    if (btn) btn.classList.add("active");
+    const user = profGetCurrent();
+    const body = document.getElementById("prof-tab-body");
+    if (!body) return;
+    if (tab === "overview") body.innerHTML = _profOverviewHTML(user);
+    else if (tab === "edit") body.innerHTML = _profEditHTML(user);
+    else if (tab === "account") body.innerHTML = _profAccountHTML(user);
+  }
+  function _profOverviewHTML(user) {
+    if (currentRole === "admin" || currentRole === "teacher") {
+      const isAdmin = currentRole === "admin";
+      return `
+    <div class="profile-section-title"><span class="material-symbols-outlined">admin_panel_settings</span>${isAdmin ? "Administrator Account" : "Teacher Account"}</div>
+    <div style="background:rgba(255,180,171,0.07);border:1px solid rgba(255,180,171,0.2);border-radius:14px;padding:18px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="font-size:36px">\u{1F6E1}\uFE0F</div>
+        <div>
+          <div style="font-family:var(--fh);font-size:15px;font-weight:800;color:var(--on-surface);margin-bottom:3px">${user.name}</div>
+          <div style="font-size:12px;color:var(--text-muted)">${isAdmin ? "Full administrative access \xB7 Teacher account" : "Teacher account"}</div>
+        </div>
+      </div>
+    </div>
+    <div class="profile-section-title"><span class="material-symbols-outlined">groups</span>Class Overview</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+      <div class="profile-boss-chip" style="background:rgba(208,188,255,0.08);border-color:rgba(208,188,255,0.2)">
+        <div class="v" style="color:var(--primary)">${DB.students.length}</div>
+        <div class="l">Total Students</div>
+      </div>
+      <div class="profile-boss-chip" style="background:rgba(78,222,163,0.06);border-color:rgba(78,222,163,0.18)">
+        <div class="v" style="color:#4edea3">${DB.quizzes.length}</div>
+        <div class="l">Active Quests</div>
+      </div>
+      <div class="profile-boss-chip" style="background:rgba(255,185,95,0.07);border-color:rgba(255,185,95,0.22)">
+        <div class="v" style="color:var(--tertiary)">${(DB.store || []).length}</div>
+        <div class="l">Store Items</div>
+      </div>
+      <div class="profile-boss-chip" style="background:rgba(236,72,153,0.06);border-color:rgba(236,72,153,0.2)">
+        <div class="v" style="color:#EC4899">${(DB.bossEvents || []).length}</div>
+        <div class="l">Boss Events</div>
+      </div>
+    </div>`;
+    }
+    const allBossParticipants = DB.bossParticipants || {};
+    let totalDmg = 0, totalCorrect = 0, totalCrits = 0, bossCount = 0;
+    Object.values(allBossParticipants).forEach((bossRoster) => {
+      const rec = bossRoster[user.id];
+      if (rec) {
+        totalDmg += rec.totalDamage || 0;
+        totalCorrect += rec.correctAnswers || 0;
+        totalCrits += rec.critHits || 0;
+        bossCount++;
+      }
+    });
+    const earnedUnlocks = (DB.achievementUnlocks || {})[user.id] || [];
+    const achs = earnedUnlocks.map((u) => {
+      const a = (DB.achievements || []).find((x) => x.id === u.achId);
+      return a ? { icon: a.icon || "\u{1F3C5}", label: a.name } : null;
+    }).filter(Boolean).slice(0, 8);
+    if (achs.length === 0) achs.push({ icon: "\u{1F331}", label: "Rising Scholar" });
+    const xpNext = (user.level + 1) * 1200;
+    const xpPct = Math.min(100, Math.round(user.xp / xpNext * 100));
+    const ownProfile = currentRole === "student" && currentUser && currentUser.id === user.id;
+    const unlockedTitles = ownProfile ? tsGetUnlockedTitles(user.id) : [];
+    const _profEquippedTitle = (function() {
+      try {
+        const tid = (DB.equippedTitles || {})[user.id];
+        if (!tid) return "";
+        const t = (DB.titles || []).find((x) => x.id === tid && x.active);
+        if (!t) return "";
+        const badgeHTML = typeof tsBuildBadgeHTML === "function" ? tsBuildBadgeHTML(t) : "";
+        if (!badgeHTML) return "";
+        return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px">Equipped Title</div>
+        ${badgeHTML}
+      </div>`;
+      } catch (e) {
+        return "";
+      }
+    })();
+    const _profTitlePanel = ownProfile ? `<div style="margin-top:14px;padding:16px;background:rgba(208,188,255,0.08);border:1px solid rgba(208,188,255,0.2);border-radius:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+        <div>
+          <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Titles & Achievements</div>
+          <div style="font-size:13px;font-weight:700;color:var(--on-surface)">${unlockedTitles.length} unlocked title${unlockedTitles.length === 1 ? "" : "s"}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="tsOpenTitlesFromProfile()">Manage Titles</button>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.5">
+        ${unlockedTitles.length ? "Equip a title from your Achievements page to show it on your profile and leaderboard." : "Unlock a title by earning achievements, then equip it from the Achievements page."}
+      </div>
+    </div>` : "";
+    return `
+  <div class="profile-section-title"><span class="material-symbols-outlined">person</span>About</div>
+  <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px">Full Name</div><div style="font-size:13px;font-weight:700;color:var(--on-surface)">${user.firstName || ""} ${user.lastName || ""}</div></div>
+      <div><div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px">Username</div><div style="font-size:13px;font-weight:700;color:var(--primary)">@${user.id}</div></div>
+      <div><div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px">Tier</div><div style="font-size:13px;font-weight:700;color:var(--secondary)">${user.tier || "Scholar"}</div></div>
+      <div><div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px">Rank</div><div style="font-size:13px;font-weight:700;color:var(--tertiary)">#${user.rank || "?"}</div></div>
+    </div>
+    ${_profEquippedTitle}
+    ${_profTitlePanel}
+    <div style="margin-top:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span style="font-size:11px;color:var(--text-muted)">XP Progress to Level ${user.level + 1}</span>
+        <span style="font-size:11px;color:var(--primary);font-weight:700">${xpPct}%</span>
+      </div>
+      <div style="background:rgba(255,255,255,0.06);border-radius:20px;height:7px;overflow:hidden">
+        <div style="height:100%;border-radius:20px;background:linear-gradient(90deg,#8b5cf6,#d0bcff);width:${xpPct}%;box-shadow:0 0 8px rgba(139,92,246,0.5)"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:4px">${(xpNext - user.xp).toLocaleString()} XP to next level</div>
+    </div>
+  </div>
+
+  <div class="profile-section-title"><span class="material-symbols-outlined">workspace_premium</span>Achievements <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(${achs.length})</span></div>
+  <div class="profile-achievements">
+    ${achs.map((a) => `<div class="profile-ach-chip">${a.icon} ${a.label}</div>`).join("")}
+  </div>
+
+  <div class="profile-section-title"><span class="material-symbols-outlined">swords</span>Quest Statistics</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+    <div style="background:rgba(208,188,255,0.07);border:1px solid rgba(208,188,255,0.2);border-radius:12px;padding:12px;text-align:center">
+      <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:var(--primary);margin-bottom:3px">${user.completedQuizzes.length}</div>
+      <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">Quests Done</div>
+    </div>
+    <div style="background:rgba(255,185,95,0.07);border:1px solid rgba(255,185,95,0.2);border-radius:12px;padding:12px;text-align:center">
+      <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:var(--tertiary);margin-bottom:3px">${user.quizAvg}%</div>
+      <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">Quiz Avg</div>
+    </div>
+    <div style="background:rgba(78,222,163,0.06);border:1px solid rgba(78,222,163,0.18);border-radius:12px;padding:12px;text-align:center">
+      <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:#4edea3;margin-bottom:3px">${user.attendance}%</div>
+      <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">Attendance</div>
+    </div>
+  </div>
+
+  <div class="profile-section-title"><span class="material-symbols-outlined">local_fire_department</span>Boss Raid Stats</div>
+  <div class="profile-boss-grid">
+    <div class="profile-boss-chip">
+      <div class="v">${bossCount}</div>
+      <div class="l">Raids Joined</div>
+    </div>
+    <div class="profile-boss-chip">
+      <div class="v">${totalDmg.toLocaleString()}</div>
+      <div class="l">Total Damage</div>
+    </div>
+    <div class="profile-boss-chip">
+      <div class="v">${totalCorrect}</div>
+      <div class="l">Correct Hits</div>
+    </div>
+    <div class="profile-boss-chip">
+      <div class="v">${totalCrits}</div>
+      <div class="l">Critical Hits</div>
+    </div>
+    <div class="profile-boss-chip">
+      <div class="v">${user.coins.toLocaleString()}</div>
+      <div class="l">Coins Held</div>
+    </div>
+    <div class="profile-boss-chip">
+      <div class="v">${user.level}</div>
+      <div class="l">Current Level</div>
+    </div>
+  </div>`;
+  }
+  function _profEditHTML(user) {
+    const picHtml = user.profilePic ? `<img src="${user.profilePic}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:50%;" onerror="this.remove()">` : `<span style="font-family:var(--fh);font-weight:900;font-size:18px;color:${user.color || "var(--primary)"}">${user.init || "?"}</span>`;
+    return `
+  <div id="prof-pic-section" class="profile-pic-section">
+    <div class="profile-pic-preview" style="background:${(user.color || "#8b5cf6") + "22"};border-color:${(user.color || "#8b5cf6") + "55"};position:relative;overflow:hidden">
+      ${picHtml}
+    </div>
+    <div>
+      <div style="font-family:var(--fh);font-size:13px;font-weight:700;color:var(--on-surface);margin-bottom:8px">Profile Picture</div>
+      <div class="profile-pic-actions">
+        <button class="btn btn-primary btn-sm" onclick="document.getElementById('profile-pic-input').click()">
+          <span class="material-symbols-outlined" style="font-size:14px">upload</span> Upload Photo
+        </button>
+        ${user.profilePic ? `<button class="btn btn-ghost btn-sm" onclick="removeProfilePic()">
+          <span class="material-symbols-outlined" style="font-size:14px">delete</span> Remove Photo
+        </button>` : ""}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:8px">JPG, PNG, or GIF \xB7 Stored locally</div>
+    </div>
+  </div>
+
+  <div class="profile-section-title"><span class="material-symbols-outlined">badge</span>Display Name</div>
+  <div class="profile-form-group">
+    <label class="form-label">Display Name <span style="color:var(--text-muted);font-size:11px">(shown throughout the app)</span></label>
+    <input type="text" id="prof-displayname" value="${_esc(user.displayName || user.name)}" placeholder="How you appear in the app" style="width:100%">
+  </div>
+
+  <div class="profile-section-title" style="margin-top:18px"><span class="material-symbols-outlined">person</span>Personal Info</div>
+  <div class="profile-form-row">
+    <div class="profile-form-group">
+      <label class="form-label">First Name</label>
+      <input type="text" id="prof-firstname" value="${_esc(user.firstName || "")}" placeholder="First name" style="width:100%">
+    </div>
+    <div class="profile-form-group">
+      <label class="form-label">Last Name</label>
+      <input type="text" id="prof-lastname" value="${_esc(user.lastName || "")}" placeholder="Last name" style="width:100%">
+    </div>
+  </div>
+  <div class="profile-form-group">
+    <label class="form-label">Username <span style="color:var(--text-muted);font-size:11px">(login ID \u2014 must be unique)</span></label>
+    <input type="text" id="prof-newid" value="${_esc(user.id)}" placeholder="username" style="width:100%" ${currentRole === "admin" ? "" : 'readonly style="width:100%;opacity:0.6;cursor:not-allowed"'}>
+    ${currentRole !== "admin" ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">Only admins can change login username</div>` : ""}
+  </div>
+  <div id="prof-edit-err" style="color:#ffb4ab;font-size:13px;display:none;margin-bottom:8px"></div>
+  <div class="profile-save-row">
+    <button class="btn btn-ghost" onclick="closeProfile()">Cancel</button>
+    <button class="btn btn-primary" id="prof-save-btn" onclick="saveProfileEdit()">
+      <span class="material-symbols-outlined" style="font-size:15px">save</span> Save Changes
+    </button>
+  </div>`;
+  }
+  function _profAccountHTML(user) {
+    const isStudent = currentRole === "student";
+    return `
+  ${isStudent ? `
+  <div class="profile-section-title"><span class="material-symbols-outlined">mail</span>Email Address</div>
+  <div class="profile-form-group">
+    <label class="form-label">Email</label>
+    <input type="email" id="prof-email" value="${_esc(user.email || "")}" placeholder="your@email.com" style="width:100%">
+  </div>
+  <div id="prof-email-err" style="color:#ffb4ab;font-size:12px;display:none;margin-top:-10px;margin-bottom:10px"></div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
+    <button class="btn btn-primary btn-sm" onclick="saveEmail()">
+      <span class="material-symbols-outlined" style="font-size:14px">save</span> Save Email
+    </button>
+  </div>
+  <div style="height:1px;background:var(--border);margin-bottom:20px"></div>` : ""}
+
+  <div class="profile-section-title"><span class="material-symbols-outlined">lock</span>Change Password</div>
+  <div class="profile-form-group">
+    <label class="form-label">Current Password <span style="color:#EC4899">*</span></label>
+    <div style="position:relative">
+      <input type="password" id="prof-cur-pass" placeholder="Enter current password" style="width:100%;padding-right:40px">
+      <button type="button" class="reg-pw-toggle-btn" tabindex="-1" aria-label="Show password" onclick="regTogglePasswordVisibility('prof-cur-pass', this)">
+        <span class="material-symbols-outlined" style="font-size:18px">visibility</span>
+      </button>
+    </div>
+  </div>
+  <div class="profile-form-row">
+    <div class="profile-form-group">
+      <label class="form-label">New Password</label>
+      <div style="position:relative">
+        <input type="password" id="prof-new-pass" placeholder="New password" style="width:100%;padding-right:40px">
+        <button type="button" class="reg-pw-toggle-btn" tabindex="-1" aria-label="Show password" onclick="regTogglePasswordVisibility('prof-new-pass', this)">
+          <span class="material-symbols-outlined" style="font-size:18px">visibility</span>
+        </button>
+      </div>
+    </div>
+    <div class="profile-form-group">
+      <label class="form-label">Confirm Password</label>
+      <div style="position:relative">
+        <input type="password" id="prof-conf-pass" placeholder="Confirm new password" style="width:100%;padding-right:40px">
+        <button type="button" class="reg-pw-toggle-btn" tabindex="-1" aria-label="Show password" onclick="regTogglePasswordVisibility('prof-conf-pass', this)">
+          <span class="material-symbols-outlined" style="font-size:18px">visibility</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div id="prof-pass-err" style="color:#ffb4ab;font-size:12px;display:none;margin-top:-10px;margin-bottom:10px"></div>
+  <div style="display:flex;justify-content:flex-end">
+    <button class="btn btn-primary" onclick="savePassword()">
+      <span class="material-symbols-outlined" style="font-size:15px">lock_reset</span> Change Password
+    </button>
+  </div>`;
+  }
+  async function saveProfileEdit() {
+    const errEl = document.getElementById("prof-edit-err");
+    if (errEl) errEl.style.display = "none";
+    const displayName = (document.getElementById("prof-displayname")?.value || "").trim();
+    const firstName = (document.getElementById("prof-firstname")?.value || "").trim();
+    const lastName = (document.getElementById("prof-lastname")?.value || "").trim();
+    if (!displayName) {
+      if (errEl) {
+        errEl.textContent = "Display name cannot be empty.";
+        errEl.style.display = "block";
+      }
+      return;
+    }
+    const saveBtn = document.getElementById("prof-save-btn");
+    const saveBtnOriginalHTML = saveBtn ? saveBtn.innerHTML : null;
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:15px;animation:skShimmerSlide 1s linear infinite">autorenew</span> Saving\u2026';
+    }
+    profInitAll();
+    let syncResult = { success: true };
+    if (currentRole === "admin") {
+      const newId = (document.getElementById("prof-newid")?.value || "").trim().toLowerCase();
+      if (!newId) {
+        if (errEl) {
+          errEl.textContent = "Username is required.";
+          errEl.style.display = "block";
+        }
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = saveBtnOriginalHTML;
+        }
+        return;
+      }
+      AppStore.updateState((draft) => {
+        draft.admin.firstName = firstName;
+        draft.admin.lastName = lastName;
+        draft.admin.displayName = displayName;
+        draft.admin.name = firstName && lastName ? firstName + " " + lastName : displayName;
+        draft.admin.id = newId;
+        if (_profPendingPic !== null) draft.admin.profilePic = _profPendingPic;
+      }, { type: "profile:admin-cosmetic-saved", payload: { newId } });
+      currentUser = AppStore.getSlice((s) => s.admin);
+      syncResult = await syncOwnProfileCosmeticToServer({
+        displayName,
+        firstName,
+        lastName,
+        init: _makeInit(firstName, lastName, displayName),
+        profilePic: _profPendingPic
+        // null = unchanged, '' = cleared, string = new pic
+      });
+    } else if (currentRole === "teacher") {
+      currentUser.firstName = firstName;
+      currentUser.lastName = lastName;
+      currentUser.displayName = displayName;
+      currentUser.name = firstName && lastName ? firstName + " " + lastName : displayName;
+      if (_profPendingPic !== null) currentUser.profilePic = _profPendingPic;
+      syncResult = await syncOwnProfileCosmeticToServer({
+        displayName,
+        firstName,
+        lastName,
+        init: _makeInit(firstName, lastName, displayName),
+        profilePic: _profPendingPic
+      });
+    } else {
+      const stIdx = AppStore.getSlice((s) => s.students || []).findIndex((s) => s.id === currentUser.id);
+      if (stIdx < 0) {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = saveBtnOriginalHTML;
+        }
+        return;
+      }
+      const _newInit = _makeInit(firstName, lastName, displayName);
+      AppStore.updateState((draft) => {
+        const s = (draft.students || [])[stIdx];
+        if (!s) return;
+        s.firstName = firstName;
+        s.lastName = lastName;
+        s.displayName = displayName;
+        s.name = firstName && lastName ? firstName + " " + lastName : displayName;
+        s.init = _newInit;
+        if (_profPendingPic !== null) s.profilePic = _profPendingPic;
+      }, { type: "profile:student-cosmetic-saved", payload: { studentId: currentUser.id } });
+      currentUser = AppStore.getStudent(currentUser.id);
+      syncResult = await syncOwnProfileCosmeticToServer({
+        displayName,
+        firstName,
+        lastName,
+        init: _newInit,
+        profilePic: _profPendingPic
+      });
+    }
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = saveBtnOriginalHTML;
+    }
+    if (!syncResult.success) {
+      toast("\u26A0\uFE0F Saved locally, but failed to sync to the server. Try again or check your connection.", "#ffb95f");
+      console.warn("[Profile] syncOwnProfileCosmeticToServer failed:", syncResult.error);
+    } else {
+      toast("\u2705 Profile updated!", "#4edea3");
+    }
+    _profPendingPic = null;
+    profInitAll();
+    _profRenderHero(currentUser);
+    _profRenderStats(currentUser);
+    refreshAllAvatars2();
+    if (typeof updateTopbar === "function") updateTopbar();
+    switchProfileTab("edit");
+  }
+  function savePassword() {
+    const errEl = document.getElementById("prof-pass-err");
+    if (errEl) errEl.style.display = "none";
+    const curPass = document.getElementById("prof-cur-pass")?.value || "";
+    const newPass = document.getElementById("prof-new-pass")?.value || "";
+    const confPass = document.getElementById("prof-conf-pass")?.value || "";
+    const showErr = (msg) => {
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.style.display = "block";
+      }
+    };
+    if (!curPass) {
+      showErr("Current password is required.");
+      return;
+    }
+    if (!newPass) {
+      showErr("New password cannot be empty.");
+      return;
+    }
+    if (newPass.length < 4) {
+      showErr("New password must be at least 4 characters.");
+      return;
+    }
+    if (newPass !== confPass) {
+      showErr("Passwords do not match.");
+      return;
+    }
+    if (currentRole === "admin") {
+      const _adminPass = AppStore.getSlice((s) => s.admin?.pass);
+      if (_adminPass !== curPass) {
+        showErr("Current password is incorrect.");
+        return;
+      }
+      AppStore.updateState((draft) => {
+        draft.admin.pass = newPass;
+      }, { type: "profile:admin-password-changed", payload: {} });
+      currentUser = AppStore.getSlice((s) => s.admin);
+    } else if (currentRole === "teacher") {
+      if (currentUser.pass && currentUser.pass !== curPass) {
+        showErr("Current password is incorrect.");
+        return;
+      }
+      currentUser.pass = newPass;
+    } else {
+      const stIdx = AppStore.getSlice((s) => s.students || []).findIndex((s) => s.id === currentUser.id);
+      if (stIdx < 0) return;
+      const _existing = AppStore.getSlice((s) => (s.students || [])[stIdx]?.pass);
+      if (_existing !== curPass) {
+        showErr("Current password is incorrect.");
+        return;
+      }
+      AppStore.updateState((draft) => {
+        const s = (draft.students || [])[stIdx];
+        if (s) s.pass = newPass;
+      }, { type: "profile:password-changed", payload: { studentId: currentUser.id } });
+      currentUser = AppStore.getStudent(currentUser.id);
+    }
+    ["prof-cur-pass", "prof-new-pass", "prof-conf-pass"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+    toast("\u{1F512} Password changed successfully!", "#4edea3");
+  }
+  function saveEmail() {
+    const errEl = document.getElementById("prof-email-err");
+    if (errEl) errEl.style.display = "none";
+    const email = (document.getElementById("prof-email")?.value || "").trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      if (errEl) {
+        errEl.textContent = "Please enter a valid email address.";
+        errEl.style.display = "block";
+      }
+      return;
+    }
+    if (email) {
+      const duplicate = AppStore.getSlice((s) => s.students || []).find((s) => s.id !== currentUser.id && s.email === email);
+      if (duplicate) {
+        if (errEl) {
+          errEl.textContent = "That email is already in use by another account.";
+          errEl.style.display = "block";
+        }
+        return;
+      }
+    }
+    const stIdx = AppStore.getSlice((s) => s.students || []).findIndex((s) => s.id === currentUser.id);
+    if (stIdx < 0) return;
+    AppStore.updateState((draft) => {
+      const s = (draft.students || [])[stIdx];
+      if (s) s.email = email;
+    }, { type: "profile:email-saved", payload: { studentId: currentUser.id } });
+    currentUser = AppStore.getStudent(currentUser.id);
+    toast("\u2709\uFE0F Email saved!", "#4edea3");
+  }
+  var _profPendingPic = null;
+  function handleProfilePicUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast("\u26A0\uFE0F Please select an image file.", "#ffb4ab");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast("\u26A0\uFE0F Image must be under 2 MB.", "#ffb4ab");
+      event.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      _profPendingPic = e.target.result;
+      const preview = document.querySelector("#prof-pic-section .profile-pic-preview");
+      if (preview) {
+        preview.innerHTML = `<img src="${_profPendingPic}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:50%;" onerror="this.remove()">`;
+      }
+      const actions = document.querySelector("#prof-pic-section .profile-pic-actions");
+      if (actions && !actions.querySelector(".prof-remove-btn")) {
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "btn btn-ghost btn-sm prof-remove-btn";
+        removeBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">delete</span> Remove Photo';
+        removeBtn.onclick = removeProfilePic;
+        actions.appendChild(removeBtn);
+      }
+      _profShowPicUnsaved(true);
+      event.target.value = "";
+    };
+    reader.readAsDataURL(file);
+  }
+  function removeProfilePic() {
+    _profPendingPic = "";
+    const user = profGetCurrent();
+    const preview = document.querySelector("#prof-pic-section .profile-pic-preview");
+    if (preview) {
+      preview.innerHTML = `<span style="font-family:var(--fh);font-weight:900;font-size:18px;color:${user.color || "var(--primary)"}">${user.init || "?"}</span>`;
+    }
+    const removeBtn = document.querySelector("#prof-pic-section .prof-remove-btn");
+    if (removeBtn) removeBtn.remove();
+    _profShowPicUnsaved(true);
+  }
+  function _profShowPicUnsaved(show) {
+    let note = document.getElementById("prof-pic-unsaved-note");
+    if (show) {
+      if (!note) {
+        note = document.createElement("div");
+        note.id = "prof-pic-unsaved-note";
+        note.style.cssText = "font-size:11px;color:#ffb95f;margin-top:6px;display:flex;align-items:center;gap:4px;";
+        note.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px">info</span> Photo change not saved yet \u2014 click Save Changes below.';
+        const picSection = document.getElementById("prof-pic-section");
+        if (picSection) picSection.after(note);
+      }
+    } else {
+      if (note) note.remove();
+      _profPendingPic = null;
+    }
+  }
+  function _makeInit(firstName, lastName, displayName) {
+    if (firstName && lastName) return (firstName[0] + lastName[0]).toUpperCase();
+    if (firstName) return firstName.slice(0, 2).toUpperCase();
+    if (displayName) return displayName.slice(0, 2).toUpperCase();
+    return "??";
+  }
+  document.getElementById("topbar-av").addEventListener("click", openProfile);
+  window.achUpdateSidebarBadge = achUpdateSidebarBadge;
+  window.achGrantRewardsForClaim = achGrantRewardsForClaim;
+  window.startQuiz = startQuiz;
+  window.useHint = useHint;
+  window.submitIdAnswer = submitIdAnswer;
+  window.submitEnumAnswer = submitEnumAnswer;
+  window.submitMatchAnswer = submitMatchAnswer;
+  window.quizNext = quizNext;
+  window.quizPrev = quizPrev;
+  window.confirmAbortQuiz = confirmAbortQuiz;
+  window.closeProfile = closeProfile;
+  window.profileOverlayClick = profileOverlayClick;
+  window.profileAvatarClick = profileAvatarClick;
+  window.switchProfileTab = switchProfileTab;
+  window.saveProfileEdit = saveProfileEdit;
+  window.savePassword = savePassword;
+  window.saveEmail = saveEmail;
+  window.handleProfilePicUpload = handleProfilePicUpload;
+  window.removeProfilePic = removeProfilePic;
+  window.renderStudentDashboard = renderStudentDashboard2;
+  window.refreshAllAvatars = refreshAllAvatars2;
+  window.activeQuiz = activeQuiz2;
+  window.quizFinishing = quizFinishing2;
+  window.abortQuiz = abortQuiz2;
+  window.renderStudentQuizzes = renderStudentQuizzes2;
+  window.quizTimer = quizTimer;
+  window.profInitAll = profInitAll;
+  window.profGetCurrent = profGetCurrent;
+  window._profRenderHero = _profRenderHero;
+  window._profRenderStats = _profRenderStats;
+  console.log("[EduQuest] Reward Presentation System, Achievement Claim System, and Mail System loaded.");
+
+  // build/test-helpers/inline2-combined-entry.js
+  window.AppStore = AppStore;
+  window.updateTopbar = updateTopbar;
+  window.navTo = navTo2;
+  window.showPage = showPage;
+  window.syncStudentStatsToServer = syncStudentStatsToServer;
+  window.syncOwnProfileCosmeticToServer = syncOwnProfileCosmeticToServer;
+  window.computeAttendanceStreak = computeAttendanceStreak;
+  Object.keys(inline2_exports).forEach((k) => {
+    window[k] = inline2_exports[k];
+  });
+})();

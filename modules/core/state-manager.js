@@ -62,6 +62,345 @@ window.AppStore = (function () {
   let _persistDirty = false;        // true when an unpersisted mutation exists
   let _readyResolve = null;         // resolves AppStore.ready once init() completes
 
+  // ─── Delta-sync dirty tracking (Phase 5B) ──────────────────────────────────
+  // db-service.js's repository layer (Phase 5A) still pushes each synced
+  // table's ENTIRE local slice on every flush cycle — that's the remaining
+  // root-cause risk the Phase 5 doc calls out: two sessions each pushing a
+  // full stale snapshot of the same table can clobber each other's writes.
+  // This is the other half of the fix: updateState() (the sole mutation
+  // gate) now tracks which specific rows were actually dirtied by a given
+  // commit, per table, so the repository layer can push ONLY those rows
+  // instead of the whole slice.
+  //
+  // Rolled out one table at a time, per the doc's own risk-ordering —
+  // `point_log` first (append-only, lowest consequence: a row's fields are
+  // fixed forever once created, so there's no concurrent-same-row-edit
+  // scenario to get wrong while this plumbing is still new). `notifications`
+  // is the second table, added once point_log's mechanism was proven — it's
+  // the first delta-tracked table with a genuinely mutable field (`read`,
+  // toggled by mark-read/mark-all-read), so it's the first real test of the
+  // actual bug shape this whole phase exists to prevent: a session with a
+  // stale local copy of a row it never touched re-pushing that stale value
+  // and clobbering a change some OTHER session already wrote. `orders` is
+  // the third — several mutable fields that change together as one
+  // status-transition bundle (`status`/`claimed_at`/`claimed_by` via
+  // posExecuteClaim/posExecuteCancel, or `cancelled_at`/`cancel_reason`/
+  // `cancelled_by` via a student's own ordExecuteCancel), rather than one
+  // boolean, so it's the first table where a whole-slice push from a stale
+  // session could revert MULTIPLE related columns of a row at once. Adding
+  // another table to delta sync later is a `_DELTA_TRACKED_SLICES` entry
+  // here PLUS that table's `deltaTracked`/`idField` config in
+  // db-service.js's `_TABLE_SYNC_CONFIGS` — not a new mechanism.
+  //
+  // Keyed by the table's POSTGRES name (matching what db-service.js's
+  // `_TABLE_SYNC_CONFIGS[].table` already uses as its isolation label) so
+  // the repository layer never has to know AppStore's local camelCase
+  // slice names — `statePath`/`idField` below are the only place that
+  // mapping lives.
+  //
+  // `shape` (default 'array') controls which diff algorithm applies:
+  //   'array'      — statePath holds an array of rows; `idField` names the
+  //                  property that identifies each row (e.g. pointLog's
+  //                  `id`).
+  //   'nested'     — statePath holds a two-level keyed object, not an array
+  //                  (e.g. bossParticipants[bossIdx][studentId] — there's no
+  //                  flat row list to index by idField). Dirty ids are the
+  //                  composite string `${outerKey}:${innerKey}`. Added for
+  //                  boss_participants — see that entry's own comment for
+  //                  why it's the first delta-tracked table where a
+  //                  genuinely different SESSION (a second student
+  //                  mid-raid) can dirty a row this session never touched.
+  //   'nestedArray'— statePath holds an object keyed by outer key, whose
+  //                  VALUE is an array of rows (e.g. inventory[studentId] =
+  //                  [items...]) — a hybrid of the two shapes above.
+  //                  `innerIdField` names the property on each inner row
+  //                  that identifies it. Dirty ids are the composite string
+  //                  `${outerKey}:${row[innerIdField]}`. Added for
+  //                  inventory — see that entry's own comment for the
+  //                  teacher-POS-terminal-vs-student's-own-device scenario
+  //                  this closes.
+  const _DELTA_TRACKED_SLICES = {
+    point_log: { statePath: 'pointLog', idField: 'id' },
+    notifications: { statePath: 'notifications', idField: 'id' },
+    orders: { statePath: 'orders', idField: 'orderId' },
+    // boss_participants: keyed bossParticipants[bossIdx][studentId], not an
+    // array — see 'nested' shape above. Composite dirty id is
+    // "<bossIdx>:<studentId>". This is the first delta-tracked table where
+    // the row a session dirties is genuinely reachable by ANOTHER student's
+    // combat session concurrently (each student answering boss questions
+    // only ever touches their OWN studentId key), unlike point_log/
+    // notifications/orders where every no-clobber test so far modeled "two
+    // different rows," never true concurrent access to one.
+    boss_participants: { statePath: 'bossParticipants', shape: 'nested' },
+    // inventory: keyed inventory[studentId] = [items...] — see
+    // 'nestedArray' shape above. Composite dirty id is
+    // "<studentId>:<itemId>". The genuinely-different-actor case here is a
+    // teacher running the shop POS terminal (shop_pos_terminal.js writes
+    // into draft.inventory[studentId] on the STUDENT's behalf) at the same
+    // time that student's own device independently purchases something —
+    // two different sessions appending to the same student's item list.
+    inventory: { statePath: 'inventory', shape: 'nestedArray', innerIdField: 'itemId' },
+    // redemptions: flat array, append-only history log (client-generated
+    // orderId per redemption, never edited after creation) — same
+    // low-blast-radius shape as point_log, the very first table converted.
+    // Sixth table, no new mechanism needed.
+    redemptions: { statePath: 'redemptions', idField: 'orderId' },
+    // titles: flat array, teacher-owned catalog rows (title editor). Same
+    // "whole-row-replacement is fine, just needs to be scoped to the row
+    // this session actually edited" reasoning as every array-shaped table
+    // so far — the risk here isn't a second human so much as the same
+    // teacher's own second open tab autosaving stale data over an edit
+    // made in the first.
+    titles: { statePath: 'titles', idField: 'id' },
+    // quiz_history: keyed quizHistory[studentId] = [attempts...] — same
+    // 'nestedArray' shape as inventory. Eighth table, and — like
+    // point_log/redemptions — append-only (an attempt's fields are fixed
+    // forever once logged; see finishQuiz()/abortQuiz() in index.html,
+    // neither ever edits an existing entry). Client-generates its own id
+    // ('qh_' + uid()) at creation time, same as every table converted so
+    // far — this is the property boss_events lacks (its id is assigned by
+    // Postgres, not the client, so a brand-new row has nothing to track
+    // dirty by until AFTER its first successful sync — ruled it out as a
+    // delta-sync candidate for that reason, not attempted this session).
+    quiz_history: { statePath: 'quizHistory', shape: 'nestedArray', innerIdField: 'id' },
+    // quizzes: flat array, teacher-owned catalog rows — same pattern as
+    // titles. Ninth table, client-generated id verified at
+    // openQuizBuilder()'s draft-creation time before converting.
+    quizzes: { statePath: 'quizzes', idField: 'id' },
+    // campaign_worlds: flat array, client-generated id. Tenth table — see
+    // db-service.js's config comment for why THIS one needed an actual code
+    // fix (not just a config addition): sort_order used to be computed from
+    // array position within whatever subset buildRows received, which
+    // delta-filtering would have silently corrupted.
+    campaign_worlds: { statePath: 'stageMap', idField: 'id' },
+    // profiles: flat array (DB.students), but scoped with `watchFields` —
+    // see _projectWatchFields()'s own comment for why: a student row's
+    // xp/coins/level/tier/etc change constantly via gameplay and are
+    // RPC-owned, never part of this table's own upsert payload, so
+    // diffing the whole row would dirty this table almost every save.
+    // Eleventh table converted, and the one that needed the
+    // upsertRows-return-value contract (db-service.js's _runTableSync)
+    // before it could be delta-tracked safely at all — see that table's
+    // own config comment.
+    profiles: {
+      statePath: 'students', idField: 'id',
+      watchFields: ['name', 'init', 'color', 'firstName', 'lastName', 'profilePic', 'classId'],
+    },
+    // shop_products / achievements: flat array, teacher-owned catalog rows
+    // — same pattern as titles/quizzes. Twelfth and thirteenth tables,
+    // client-generated ids verified at creation before converting. Every
+    // field either table's buildRows sends is a catalog-definition column
+    // (no per-student unlock/stock state, which stays RPC-only) — no
+    // watchFields scoping needed, unlike profiles.
+    shop_products: { statePath: 'store', idField: 'id' },
+    achievements: { statePath: 'achievements', idField: 'id' },
+  };
+  let _dirty = {}; // { <postgres table name>: Set<localRowId> }
+
+  // For every tracked slice, diff `oldState[statePath]` (pre-commit) against
+  // `newState[statePath]` (the draft about to become _state) and add any
+  // row that's new OR whose content changed to that table's dirty set. Rows
+  // with no id yet (a brand-new local entry pre-migration/pre-save) are
+  // skipped — same "nothing to sync yet" reasoning db-service.js's own
+  // buildRows() filters already apply, so a row only ever enters the dirty
+  // set once it's actually syncable.
+  //
+  // Runs on every updateState() commit, but only over the (currently small)
+  // tracked-slice list — cheap by construction, not something to worry
+  // about scaling until that list grows much further.
+  function _trackDirty(oldState, newState) {
+    Object.keys(_DELTA_TRACKED_SLICES).forEach(function (table) {
+      const cfg = _DELTA_TRACKED_SLICES[table];
+      if (cfg.shape === 'nested') {
+        _trackDirtyNested(table, cfg, oldState, newState);
+        return;
+      }
+      if (cfg.shape === 'nestedArray') {
+        _trackDirtyNestedArray(table, cfg, oldState, newState);
+        return;
+      }
+      const oldArr = (oldState && Array.isArray(oldState[cfg.statePath])) ? oldState[cfg.statePath] : [];
+      const newArr = (newState && Array.isArray(newState[cfg.statePath])) ? newState[cfg.statePath] : [];
+      if (!newArr.length) return;
+
+      const oldById = {};
+      oldArr.forEach(function (row) {
+        const id = row && row[cfg.idField];
+        if (id !== undefined && id !== null) oldById[id] = JSON.stringify(_projectWatchFields(row, cfg.watchFields));
+      });
+
+      newArr.forEach(function (row) {
+        const id = row && row[cfg.idField];
+        if (id === undefined || id === null) return; // not syncable yet
+        const prevJSON = oldById[id];
+        const newJSON = JSON.stringify(_projectWatchFields(row, cfg.watchFields));
+        if (prevJSON === undefined || prevJSON !== newJSON) {
+          if (!_dirty[table]) _dirty[table] = new Set();
+          _dirty[table].add(id);
+        }
+      });
+    });
+  }
+
+  // [Phase 5B] OPTIONAL narrowing for the 'array' shape diff above: when a
+  // _DELTA_TRACKED_SLICES entry sets `watchFields` (an array of property
+  // names), only THOSE fields are compared — everything else on the row is
+  // ignored for dirty-tracking purposes. Returns the row unchanged when
+  // `watchFields` is absent (every other 'array'-shaped table today), so
+  // this is purely additive.
+  //
+  // profiles is why this exists: DB.students rows carry xp/coins/level/
+  // tier/etc — fields that change constantly via ordinary gameplay and are
+  // never part of this table's own upsert payload anyway (they're
+  // RPC-owned — see db-service.js's `profiles` config comment). Diffing the
+  // whole row would dirty this table on nearly every save, defeating the
+  // point of delta-tracking it at all. `watchFields` scopes the diff to
+  // just the identity/cosmetic columns this table's upsertRows actually
+  // sends.
+  function _projectWatchFields(row, fields) {
+    if (!fields) return row;
+    const out = {};
+    fields.forEach(function (f) { out[f] = row[f]; });
+    return out;
+  }
+
+  // 'nested' shape diff — see _DELTA_TRACKED_SLICES's own comment.
+  // `oldState[statePath]`/`newState[statePath]` are two-level keyed objects
+  // (outerKey -> innerKey -> row), not arrays. Composite dirty id is
+  // "<outerKey>:<innerKey>". Currently only boss_participants uses this.
+  function _trackDirtyNested(table, cfg, oldState, newState) {
+    const oldRoot = (oldState && oldState[cfg.statePath]) || {};
+    const newRoot = (newState && newState[cfg.statePath]) || {};
+    Object.keys(newRoot).forEach(function (outerKey) {
+      const oldInner = oldRoot[outerKey] || {};
+      const newInner = newRoot[outerKey] || {};
+      Object.keys(newInner).forEach(function (innerKey) {
+        const id = outerKey + ':' + innerKey;
+        const hadBefore = Object.prototype.hasOwnProperty.call(oldInner, innerKey);
+        const newJSON = JSON.stringify(newInner[innerKey]);
+        if (!hadBefore || JSON.stringify(oldInner[innerKey]) !== newJSON) {
+          if (!_dirty[table]) _dirty[table] = new Set();
+          _dirty[table].add(id);
+        }
+      });
+    });
+  }
+
+  // 'nestedArray' shape diff — see _DELTA_TRACKED_SLICES's own comment.
+  // `oldState[statePath]`/`newState[statePath]` are objects keyed by outer
+  // key, whose VALUE is an array of rows (e.g. inventory[studentId] =
+  // [items...]). Composite dirty id is "<outerKey>:<row[innerIdField]>".
+  // Currently only inventory uses this.
+  function _trackDirtyNestedArray(table, cfg, oldState, newState) {
+    const oldRoot = (oldState && oldState[cfg.statePath]) || {};
+    const newRoot = (newState && newState[cfg.statePath]) || {};
+    Object.keys(newRoot).forEach(function (outerKey) {
+      const oldArr = Array.isArray(oldRoot[outerKey]) ? oldRoot[outerKey] : [];
+      const newArr = Array.isArray(newRoot[outerKey]) ? newRoot[outerKey] : [];
+      if (!newArr.length) return;
+
+      const oldById = {};
+      oldArr.forEach(function (row) {
+        const innerId = row && row[cfg.innerIdField];
+        if (innerId !== undefined && innerId !== null) oldById[innerId] = JSON.stringify(row);
+      });
+
+      newArr.forEach(function (row) {
+        const innerId = row && row[cfg.innerIdField];
+        if (innerId === undefined || innerId === null) return; // not syncable yet
+        const id = outerKey + ':' + innerId;
+        const prevJSON = oldById[innerId];
+        if (prevJSON === undefined || prevJSON !== JSON.stringify(row)) {
+          if (!_dirty[table]) _dirty[table] = new Set();
+          _dirty[table].add(id);
+        }
+      });
+    });
+  }
+
+  // [Phase 5B bugfix] Persist/restore _dirty across a reload — closes the
+  // gap found in post-implementation review: _dirty previously lived ONLY
+  // in this module-level variable, never surviving a tab close/crash/
+  // offline session that ended before the debounced Supabase push ran. See
+  // db-service.js's _DIRTY_TRACKING_KEY comment for the full mechanism.
+  //
+  // Guarded by `typeof DBService.writeDirty/readDirty === 'function'`
+  // throughout (same convention this file already uses for every other
+  // optional-newer-DBService-method check) so this degrades silently — not
+  // a crash — against an older db-service.js that predates this fix.
+
+  // Serializes _dirty's Sets into a plain {table: string[]} object and
+  // hands it to DBService.writeDirty(). Called both from _flushNow() (new
+  // dirty ids just got added) and from clearDirty() (ids just got removed
+  // by a confirmed push) — NOT only on the debounced _state flush, because
+  // clearDirty() happens outside updateState() entirely (called by
+  // db-service.js's repository layer after a push succeeds) and would
+  // otherwise not get persisted until some unrelated later edit happened to
+  // trigger a flush, leaving a stale (already-synced) id sitting in
+  // storage in the meantime — harmless (an idempotent re-push at worst) but
+  // worth tightening since the write itself is cheap.
+  function _persistDirtySnapshot() {
+    if (typeof DBService.writeDirty !== 'function') return;
+    const snapshot = {};
+    Object.keys(_dirty).forEach(function (table) {
+      snapshot[table] = Array.from(_dirty[table]);
+    });
+    try {
+      DBService.writeDirty(snapshot);
+    } catch (e) {
+      console.warn('[AppStore] failed to persist dirty-tracking snapshot:', e);
+    }
+  }
+
+  // True if `id` (a plain idField value, or a "outer:inner" composite for
+  // 'nested'/'nestedArray' shapes) still refers to something actually
+  // present in the just-loaded _state — restored ids that don't are
+  // dropped rather than kept, so a stale/cross-account id can only ever
+  // cause an extra idempotent no-op, never an incorrect push of real data.
+  function _dirtyIdStillExists(cfg, id) {
+    const root = _state && _state[cfg.statePath];
+    if (!root) return false;
+    const shape = cfg.shape || 'array';
+    if (shape === 'array') {
+      return Array.isArray(root) && root.some(function (row) { return row && String(row[cfg.idField]) === String(id); });
+    }
+    const sep = String(id).indexOf(':');
+    if (sep < 0) return false;
+    const outerKey = String(id).slice(0, sep);
+    const innerKey = String(id).slice(sep + 1);
+    const inner = root[outerKey];
+    if (!inner) return false;
+    if (shape === 'nested') {
+      return Object.prototype.hasOwnProperty.call(inner, innerKey);
+    }
+    if (shape === 'nestedArray') {
+      return Array.isArray(inner) && inner.some(function (row) { return row && String(row[cfg.innerIdField]) === innerKey; });
+    }
+    return false;
+  }
+
+  // Called once from init(), after _state is finalized. Reads back
+  // whatever _persistDirtySnapshot() last wrote and repopulates _dirty,
+  // pruned against the _state that actually just loaded.
+  function _restoreDirtyFromStorage() {
+    if (typeof DBService.readDirty !== 'function') return;
+    let snapshot = null;
+    try {
+      snapshot = DBService.readDirty();
+    } catch (e) {
+      console.warn('[AppStore] failed to read dirty-tracking snapshot; continuing with none pending.', e);
+      snapshot = null;
+    }
+    if (!snapshot || typeof snapshot !== 'object') return;
+    Object.keys(_DELTA_TRACKED_SLICES).forEach(function (table) {
+      const ids = snapshot[table];
+      if (!Array.isArray(ids) || !ids.length) return;
+      const cfg = _DELTA_TRACKED_SLICES[table];
+      const validIds = ids.filter(function (id) { return _dirtyIdStillExists(cfg, id); });
+      if (validIds.length) _dirty[table] = new Set(validIds);
+    });
+  }
+
   // ─── Deep Clone Utility ───────────────────────────────────────────────────
   function _deepClone(obj) {
     if (obj === null || typeof obj !== 'object') return obj;
@@ -84,6 +423,9 @@ window.AppStore = (function () {
     try {
       DBService.write(_state);
       _persistDirty = false;
+      // [Phase 5B bugfix] Keep the dirty-tracking snapshot in lockstep with
+      // every _state persist — see _persistDirtySnapshot()'s own comment.
+      _persistDirtySnapshot();
     } catch (e) {
       console.error('[AppStore] _flushNow() failed:', e);
     }
@@ -135,6 +477,16 @@ window.AppStore = (function () {
     } catch (e) {
       console.error('[AppStore] init: failed to read DB, falling back to DEFAULT_DB.', e);
       _state = _deepClone(DEFAULT_DB);
+    }
+
+    // [Phase 5B bugfix] Restore delta-sync dirty-id tracking now that
+    // _state is finalized (validation needs it). Guarded separately from
+    // the big try block below — a failure here should never cascade into
+    // skipping the legacy-bridge setup that follows.
+    try {
+      _restoreDirtyFromStorage();
+    } catch (e) {
+      console.warn('[AppStore] init: failed to restore dirty-tracking snapshot; continuing with none pending.', e);
     }
 
     // BUGFIX: everything below used to run unguarded. init() is async, and
@@ -218,6 +570,9 @@ window.AppStore = (function () {
     const draft = _deepClone(_state);
     // 2. Let the caller mutate the draft (abort-on-error atomicity)
     mutationFn(draft);
+    // 2b. [Phase 5B] Diff tracked slices BEFORE committing, while _state is
+    // still "old" — see _trackDirty()'s own comment above.
+    _trackDirty(_state, draft);
     // 3. Commit
     _state = draft;
     // 4. Refresh legacy window.DB bridge
@@ -305,6 +660,14 @@ window.AppStore = (function () {
       console.error('[AppStore] syncFromLegacy: classSections would be wiped by this sync — regression in the AppStore-only-slice preservation logic. Investigate before this ships.');
     }
 
+    // [Phase 5B] Deliberately NOT calling _trackDirty() here. Every call
+    // site of syncFromLegacy() is data arriving FROM Supabase (a pull) or a
+    // migration replaying already-persisted data — never a local edit that
+    // needs pushing back out. Marking rows dirty on a pull would make the
+    // repository layer re-push data the server just sent, which is exactly
+    // the echo-loop failure mode this file's own 'inventory/quiz_history
+    // 42501 storm' bugfix comment (below) already had to solve once for the
+    // whole-table push path — don't reintroduce a version of it here.
     _state = merged;
     // Also mirror into window.DB so that window.DB-reading code stays consistent.
     window.DB = _deepClone(_state);
@@ -411,6 +774,44 @@ window.AppStore = (function () {
     _flushNow();
   }
 
+  /**
+   * [Phase 5B] Ids (using that table's configured idField) dirtied by
+   * updateState() since the last clearDirty() for this table, for a table
+   * listed in _DELTA_TRACKED_SLICES. Returns a plain array copy (never the
+   * live Set) so a caller can't mutate tracking state directly. Returns []
+   * for an untracked table name — same "nothing dirty" shape as a tracked
+   * table with no pending changes, so db-service.js's repository layer
+   * doesn't need a separate "is this table even tracked" branch.
+   *
+   * @param {string} table  Postgres table name (matches
+   *   _TABLE_SYNC_CONFIGS[].table in db-service.js).
+   * @returns {Array}
+   */
+  function getDirtyIds(table) {
+    if (!_dirty[table]) return [];
+    return Array.from(_dirty[table]);
+  }
+
+  /**
+   * [Phase 5B] Called by db-service.js's repository layer after a table's
+   * rows have been confirmed written to Supabase (no error) — removes
+   * exactly those ids from the dirty set. Deliberately NOT called on a
+   * failed push: leaving the ids dirty is what makes a failed sync retry
+   * automatically next cycle, the same resiliency contract _pushTable()
+   * already provides for the whole-table push path.
+   *
+   * @param {string} table
+   * @param {Array}  ids
+   */
+  function clearDirty(table, ids) {
+    if (!_dirty[table] || !Array.isArray(ids)) return;
+    ids.forEach(function (id) { _dirty[table].delete(id); });
+    // [Phase 5B bugfix] Persist immediately rather than waiting for the next
+    // unrelated _flushNow() — see _persistDirtySnapshot()'s own comment for
+    // why this matters even though clearDirty() runs outside updateState().
+    _persistDirtySnapshot();
+  }
+
   // ─── Auto-init at parse time ──────────────────────────────────────────────
   // [CHANGED v2→v3] init() is now async (it awaits DBService.initRemote()).
   // We still call it eagerly at parse time — nothing about WHEN it starts
@@ -458,6 +859,18 @@ window.AppStore = (function () {
     unsubscribe:    unsubscribe,
     flushNow:       flushNow,
     emit:           emit,
+    getDirtyIds:    getDirtyIds,   // [Phase 5B] delta sync — see _DELTA_TRACKED_SLICES above
+    clearDirty:     clearDirty,    // [Phase 5B]
+
+    // Test-only seam (Phase 5B, mirrors db-service.js's own `_test.
+    // tableSyncConfigs` seam). Not used by any runtime call site. Exists so
+    // a CI test can assert AppStore's _DELTA_TRACKED_SLICES and
+    // db-service.js's _TABLE_SYNC_CONFIGS' `deltaTracked` entries never
+    // drift out of sync with each other — closes the "nothing enforces
+    // this" gap every Phase 5B log entry has flagged since point_log.
+    _test: {
+      deltaTrackedSlices: _DELTA_TRACKED_SLICES,
+    },
   };
 
 }());

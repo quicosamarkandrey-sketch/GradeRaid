@@ -176,3 +176,46 @@ test('other event types are ignored by the session-booted subscriber', () => {
   win.subscribers['ach-engine-session-booted'](null, { type: 'quiz:finished', payload: { studentId: 's1' } });
   assert.equal(calls.length, 0);
 });
+
+// wbcApplyDamage conversion (roadmap Phase 4) — this patch was dead code
+// (see the comment where it used to live): index.html's load order meant it
+// captured _orig as undefined and then got silently overwritten by
+// combat-settings.js's non-chaining definition, so boss_damage/boss_crits
+// achievements never got checked mid-raid. Restored as a real subscriber.
+test('ach-engine-boss-damage subscriber is registered', () => {
+  assert.equal(typeof win.subscribers['ach-engine-boss-damage'], 'function');
+});
+
+test('world-boss:damage-applied triggers an achievement check after 400ms, without suppressPopup', () => {
+  const calls = [];
+  win.achCheckAndAward = (...args) => calls.push(args);
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    win.subscribers['ach-engine-boss-damage'](null, { type: 'world-boss:damage-applied', payload: { bossIdx: 0, studentId: 's1', damage: 42 } });
+    assert.equal(calls.length, 0, 'should not fire before the delay elapses');
+    mock.timers.tick(400);
+    assert.deepEqual(calls[0], ['s1']); // 1 arg only — popup not suppressed
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('world-boss:defeated ALSO triggers a check — a crit landed as the killing blow should still count', () => {
+  const calls = [];
+  win.achCheckAndAward = (...args) => calls.push(args);
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    win.subscribers['ach-engine-boss-damage'](null, { type: 'world-boss:defeated', payload: { bossIdx: 0, studentId: 's1', damage: 999 } });
+    mock.timers.tick(400);
+    assert.deepEqual(calls[0], ['s1']);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('other event types are ignored by the boss-damage subscriber', () => {
+  const calls = [];
+  win.achCheckAndAward = (...args) => calls.push(args);
+  win.subscribers['ach-engine-boss-damage'](null, { type: 'recitation:logged', payload: { studentId: 's1' } });
+  assert.equal(calls.length, 0);
+});

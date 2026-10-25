@@ -475,3 +475,35 @@ function _wbcUpdateDmgList(bossIdx) {
 }
 
 console.log('[EduQuest] world-boss/student-page.js loaded — renderStudentWorldBoss, wbcAnswer, HP/stats live helpers registered.');
+
+// ── Phase 7 (2026-08-10, session 7): explicit window exports ──
+// These were previously implicit globals (bare top-level declarations,
+// reachable to other files only via classic-script auto-attach-to-window
+// behavior). Made explicit ahead of any real bundle/module scoping change
+// — found by build/audit-window-exports.js, which checks every symbol with
+// a real cross-file consumer, not just ones reachable from onclick markup.
+// See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window._wbcSpawnParticles = _wbcSpawnParticles;
+
+// ── Phase 7 (2026-08-10, session 7): explicit window exports ──
+// These were previously implicit globals (bare top-level declarations,
+// reachable to other files only via classic-script auto-attach-to-window
+// behavior). Made explicit ahead of any real bundle/module scoping change
+// — found by build/audit-window-exports.js, which checks every symbol with
+// a real cross-file consumer, not just ones reachable from onclick markup.
+// See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window._wbcUpdateHPDisplay = _wbcUpdateHPDisplay;
+
+// Phase 7 (2026-08-10, session 8): explicit window export, found ONLY by
+// actually executing the real esbuild bundle (build/verify-full-bundle.js)
+// — the static audit (build/audit-window-exports.js) incorrectly
+// considered this symbol already safe, because modules/world-boss/
+// phases.js (which loads BEFORE this file, at index.html line 884 vs this
+// file's 889) has its own `window._wbcStartLiveRefresh = function(){...}`
+// — but that assignment is inside `if (typeof _wbcStartLiveRefresh ===
+// 'function')`, which is FALSE at the point phases.js runs (this file
+// hasn't declared it yet), so phases.js's patch never actually executes
+// in the real app's current load order either. Static analysis can't see
+// that the guard never fires; only real execution testing caught it. See
+// PHASE7_WINDOW_EXPORT_AUDIT.md's "known limitations" section.
+window._wbcStartLiveRefresh = _wbcStartLiveRefresh;

@@ -198,3 +198,10 @@ window.doSetNewPassword = async function () {
     }
   });
 })();
+
+// ── Phase 7 (2026-08-10, session 2): explicit window export ──
+// These were previously implicit globals (bare top-level function
+// declarations, exposed to window only via classic-script behavior).
+// Made explicit ahead of any real module/bundle scoping change —
+// see PHASE7_IMPLICIT_GLOBALS.md.
+window.recCheckValidation = recCheckValidation;

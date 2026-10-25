@@ -1,0 +1,2442 @@
+{
+  "generatedAt": "2026-09-21T02:38:56.034Z",
+  "unitCount": 136,
+  "parseFailures": [],
+  "multiDeclaredFatal": [],
+  "multiDeclaredReassign": [
+    {
+      "name": "loadDB",
+      "declaredBy": [
+        {
+          "label": "db-schema.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/core/state-manager.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "saveDB",
+      "declaredBy": [
+        {
+          "label": "db-schema.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/core/state-manager.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "DB",
+      "declaredBy": [
+        {
+          "label": "modules/core/state-manager.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "index.html#inline1",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "XP_PER_LEVEL",
+      "declaredBy": [
+        {
+          "label": "student-stats.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "index.html#inline1",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "getLevel",
+      "declaredBy": [
+        {
+          "label": "student-stats.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "index.html#inline1",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "dsmGetStudentNav",
+      "declaredBy": [
+        {
+          "label": "nav.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/admin/dsm-manager.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "dsmGetAdminNav",
+      "declaredBy": [
+        {
+          "label": "nav.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/admin/dsm-manager.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "dsmGetTeacherNav",
+      "declaredBy": [
+        {
+          "label": "nav.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/admin/dsm-manager.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "navTo",
+      "declaredBy": [
+        {
+          "label": "nav.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/enrollment/enrollment-hub.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "renderStudentMail",
+      "declaredBy": [
+        {
+          "label": "modules/mail/student-inbox.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/perceived-speed.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "mailDoClaimRewards",
+      "declaredBy": [
+        {
+          "label": "modules/mail/student-inbox.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/perceived-speed.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "renderAnalytics",
+      "declaredBy": [
+        {
+          "label": "modules/shop/shop_pos_terminal.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/admin/analytics.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "renderBadges",
+      "declaredBy": [
+        {
+          "label": "modules/achievements/ach_student_page.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/titles/titles_student_page.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/perceived-speed.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "achClaimReward",
+      "declaredBy": [
+        {
+          "label": "modules/achievements/ach_student_page.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/achievements/ach_index.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/perceived-speed.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "_tsOpenTitlesTab",
+      "declaredBy": [
+        {
+          "label": "modules/titles/titles_student_page.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/titles/titles_sidebar_refresh.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "_bsRenderFormModal",
+      "declaredBy": [
+        {
+          "label": "modules/boss-studio/bs_library.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/boss-studio/bs_editor.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "wbcUpdateTopbarWidget",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/combat-settings.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/bve-patches.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "_bossEventCardHTML",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/admin-page.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/skills.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/phases.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/rage.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/bve-patches.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "bossActivate",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/admin-page.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/rage.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/summon-notify.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "wblrClaimReward",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/loot-rain.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/perceived-speed.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "wblrRenderStudentLootPage",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/loot-rain.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/perceived-speed.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "wbsStopSkillLoop",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/skills.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/rage.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "wblTrackCrit",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/skills.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/leaderboard.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "wbrShowEncounter",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/skills.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/raid-flow.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "wbmStopSpawnLoop",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/skills.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/minions.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "_wbcStartLiveRefresh",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/phases.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/student-page.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "_wbcFloatDamage",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/student-page.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/bve-patches.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "renderStudentWorldBoss",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/student-page.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/bve-patches.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "wbcAnswer",
+      "declaredBy": [
+        {
+          "label": "modules/world-boss/student-page.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "modules/world-boss/bve-patches.js",
+          "kind": "reassign"
+        }
+      ]
+    },
+    {
+      "name": "_eqMascotCustomLines",
+      "declaredBy": [
+        {
+          "label": "modules/admin/mascot-lines.js",
+          "kind": "reassign"
+        },
+        {
+          "label": "index.html#inline2",
+          "kind": "reassign"
+        }
+      ]
+    }
+  ],
+  "units": [
+    {
+      "label": "error-capture.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 0,
+      "dependsOn": [
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "index.html#inline0",
+      "kind": "inline",
+      "declaresCount": 2,
+      "fanOut": 0,
+      "fanIn": 0,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "supabase-client.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 0,
+      "fanIn": 1,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "repository/table-sync.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 2,
+      "fanIn": 1,
+      "dependsOn": [
+        "index.html#inline1",
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "repository/pull-mappers.js",
+      "kind": "external",
+      "declaresCount": 32,
+      "fanOut": 1,
+      "fanIn": 2,
+      "dependsOn": [
+        "db-schema.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "repository/realtime-groups.js",
+      "kind": "external",
+      "declaresCount": 2,
+      "fanOut": 1,
+      "fanIn": 1,
+      "dependsOn": [
+        "repository/pull-mappers.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "db-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 4,
+      "fanIn": 41,
+      "dependsOn": [
+        "repository/pull-mappers.js",
+        "repository/realtime-groups.js",
+        "repository/table-sync.js",
+        "supabase-client.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "dsm-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 2,
+      "dependsOn": [
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "db-schema.js",
+      "kind": "external",
+      "declaresCount": 5,
+      "fanOut": 3,
+      "fanIn": 8,
+      "dependsOn": [
+        "db-service.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/core/state-manager.js",
+      "kind": "external",
+      "declaresCount": 4,
+      "fanOut": 2,
+      "fanIn": 84,
+      "dependsOn": [
+        "db-schema.js",
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/core/active-section.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 0,
+      "fanIn": 0,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "db-migrations.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 4,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-schema.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "app-state.js",
+      "kind": "external",
+      "declaresCount": 9,
+      "fanOut": 4,
+      "fanIn": 3,
+      "dependsOn": [
+        "db-schema.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "student-stats.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "dom.js",
+      "kind": "external",
+      "declaresCount": 4,
+      "fanOut": 0,
+      "fanIn": 59,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "utils.js",
+      "kind": "external",
+      "declaresCount": 7,
+      "fanOut": 1,
+      "fanIn": 72,
+      "dependsOn": [
+        "dom.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "student-stats.js",
+      "kind": "external",
+      "declaresCount": 15,
+      "fanOut": 3,
+      "fanIn": 17,
+      "dependsOn": [
+        "db-service.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/quest-engine.js",
+      "kind": "external",
+      "declaresCount": 30,
+      "fanOut": 4,
+      "fanIn": 6,
+      "dependsOn": [
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "student-stats.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/quest-mascot-lines.js",
+      "kind": "external",
+      "declaresCount": 6,
+      "fanOut": 0,
+      "fanIn": 1,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/quest-chains.js",
+      "kind": "external",
+      "declaresCount": 5,
+      "fanOut": 4,
+      "fanIn": 2,
+      "dependsOn": [
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/leaderboard/eql-engine.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "nav.js",
+      "kind": "external",
+      "declaresCount": 13,
+      "fanOut": 43,
+      "fanIn": 11,
+      "dependsOn": [
+        "index.html#inline1",
+        "index.html#inline2",
+        "modules/achievements/ach_admin_page.js",
+        "modules/achievements/ach_student_page.js",
+        "modules/admin/analytics.js",
+        "modules/admin/audit-log.js",
+        "modules/admin/command-center.js",
+        "modules/admin/content-oversight.js",
+        "modules/admin/dsm-manager.js",
+        "modules/admin/mascot-lines.js",
+        "modules/admin/quiz-builder.js",
+        "modules/admin/registrations.js",
+        "modules/admin/school-settings.js",
+        "modules/admin/sections.js",
+        "modules/admin/starter-pack-editor.js",
+        "modules/admin/system-health.js",
+        "modules/admin/teacher-directory.js",
+        "modules/attendance/att_scanner_rfid.js",
+        "modules/attendance/attendance-recitation-log.js",
+        "modules/boss-studio/bs_library.js",
+        "modules/campaign/campaign_admin_map_editor.js",
+        "modules/core/state-manager.js",
+        "modules/enrollment/enrollment-hub.js",
+        "modules/leaderboard/admin-leaderboard.js",
+        "modules/leaderboard/hall-of-fame.js",
+        "modules/mail/admin-compose.js",
+        "modules/mail/student-inbox.js",
+        "modules/perceived-speed.js",
+        "modules/recitation/progress.js",
+        "modules/seat-arrangement/classroom_builder.js",
+        "modules/seat-arrangement/live_monitor.js",
+        "modules/section/my-section.js",
+        "modules/shop/shop_admin_store.js",
+        "modules/shop/shop_inventory.js",
+        "modules/shop/shop_orders.js",
+        "modules/shop/shop_pos_terminal.js",
+        "modules/shop/shop_promotions.js",
+        "modules/shop/shop_store.js",
+        "modules/titles/titles_admin_page.js",
+        "modules/titles/titles_student_page.js",
+        "modules/world-boss/admin-page.js",
+        "modules/world-boss/bve-patches.js",
+        "modules/world-boss/student-page.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "topbar.js",
+      "kind": "external",
+      "declaresCount": 4,
+      "fanOut": 5,
+      "fanIn": 8,
+      "dependsOn": [
+        "index.html#inline1",
+        "index.html#inline2",
+        "modules/shared/notification-service.js",
+        "modules/world-boss/bve-patches.js",
+        "modules/world-boss/combat-settings.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shared/button-loading.js",
+      "kind": "external",
+      "declaresCount": 2,
+      "fanOut": 0,
+      "fanIn": 1,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shared/notification-service.js",
+      "kind": "external",
+      "declaresCount": 3,
+      "fanOut": 6,
+      "fanIn": 2,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/enrollment/enrollment-hub.js",
+        "nav.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "auth.js",
+      "kind": "external",
+      "declaresCount": 6,
+      "fanOut": 19,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js",
+        "index.html#inline1",
+        "index.html#inline2",
+        "modules/admin/command-center.js",
+        "modules/admin/dsm-manager.js",
+        "modules/admin/registrations-service.js",
+        "modules/admin/system-health-service.js",
+        "modules/admin/system-health.js",
+        "modules/campaign/campaign_engine.js",
+        "modules/campaign/campaign_stage_map.js",
+        "modules/core/state-manager.js",
+        "modules/enrollment/enrollment-hub.js",
+        "modules/shared/button-loading.js",
+        "modules/world-boss/bve-patches.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/minions.js",
+        "modules/world-boss/skills.js",
+        "nav.js",
+        "topbar.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "recovery.js",
+      "kind": "external",
+      "declaresCount": 3,
+      "fanOut": 3,
+      "fanIn": 0,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "modules/admin/registrations.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "index.html#inline1",
+      "kind": "inline",
+      "declaresCount": 7,
+      "fanOut": 4,
+      "fanIn": 67,
+      "dependsOn": [
+        "auth.js",
+        "db-migrations.js",
+        "dsm-service.js",
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shared/reward-presenter.js",
+      "kind": "external",
+      "declaresCount": 4,
+      "fanOut": 5,
+      "fanIn": 4,
+      "dependsOn": [
+        "index.html#inline1",
+        "modules/achievements/ach_engine.js",
+        "modules/core/state-manager.js",
+        "modules/mail/mail-engine.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shared/stat-bars.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 0,
+      "fanIn": 3,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shared/sequence.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 0,
+      "fanIn": 1,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shared/particles.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 0,
+      "fanIn": 1,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shared/ambient-backdrop.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 0,
+      "fanIn": 1,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shared/quick-jump.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 0,
+      "fanIn": 0,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shared/mascot-lines-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 2,
+      "dependsOn": [
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/mail/mail-engine.js",
+      "kind": "external",
+      "declaresCount": 8,
+      "fanOut": 8,
+      "fanIn": 5,
+      "dependsOn": [
+        "app-state.js",
+        "db-service.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/titles/titles_sidebar_refresh.js",
+        "student-stats.js",
+        "topbar.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/mail/student-inbox.js",
+      "kind": "external",
+      "declaresCount": 3,
+      "fanOut": 6,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/mail/mail-engine.js",
+        "modules/shared/reward-presenter.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/mail/admin-compose.js",
+      "kind": "external",
+      "declaresCount": 8,
+      "fanOut": 6,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/mail/mail-engine.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/mail/index.js",
+      "kind": "external",
+      "declaresCount": 8,
+      "fanOut": 1,
+      "fanIn": 0,
+      "dependsOn": [
+        "modules/mail/mail-engine.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/leaderboard/eql-engine.js",
+      "kind": "external",
+      "declaresCount": 6,
+      "fanOut": 1,
+      "fanIn": 4,
+      "dependsOn": [
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/leaderboard/hall-of-fame-styles.js",
+      "kind": "external",
+      "declaresCount": 0,
+      "fanOut": 0,
+      "fanIn": 0,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/leaderboard/hall-of-fame.js",
+      "kind": "external",
+      "declaresCount": 6,
+      "fanOut": 6,
+      "fanIn": 3,
+      "dependsOn": [
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/leaderboard/eql-engine.js",
+        "modules/titles/titles_badge_renderer.js",
+        "modules/titles/titles_sidebar_refresh.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/leaderboard/admin-leaderboard.js",
+      "kind": "external",
+      "declaresCount": 6,
+      "fanOut": 4,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/leaderboard/eql-engine.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/leaderboard/index.js",
+      "kind": "external",
+      "declaresCount": 2,
+      "fanOut": 0,
+      "fanIn": 0,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/recitation/logger.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 5,
+      "fanIn": 0,
+      "dependsOn": [
+        "dom.js",
+        "modules/attendance/att_scanner_rfid.js",
+        "modules/core/state-manager.js",
+        "student-stats.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/recitation/progress.js",
+      "kind": "external",
+      "declaresCount": 20,
+      "fanOut": 5,
+      "fanIn": 1,
+      "dependsOn": [
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/leaderboard/eql-engine.js",
+        "student-stats.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/recitation/recitation_index.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 0,
+      "fanIn": 0,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/sections-service.js",
+      "kind": "external",
+      "declaresCount": 4,
+      "fanOut": 3,
+      "fanIn": 12,
+      "dependsOn": [
+        "db-service.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/sections.js",
+      "kind": "external",
+      "declaresCount": 42,
+      "fanOut": 7,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/sections-service.js",
+        "modules/admin/teacher-directory-service.js",
+        "modules/attendance/attendance-service.js",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/sections_index.js",
+      "kind": "external",
+      "declaresCount": 3,
+      "fanOut": 2,
+      "fanIn": 0,
+      "dependsOn": [
+        "db-service.js",
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/attendance/attendance-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 5,
+      "fanIn": 4,
+      "dependsOn": [
+        "db-service.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "student-stats.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/attendance/att_scanner_rfid.js",
+      "kind": "external",
+      "declaresCount": 52,
+      "fanOut": 10,
+      "fanIn": 3,
+      "dependsOn": [
+        "dom.js",
+        "modules/admin/sections-service.js",
+        "modules/attendance/attendance-service.js",
+        "modules/core/state-manager.js",
+        "modules/enrollment/enrollment-hub.js",
+        "modules/titles/titles_badge_renderer.js",
+        "modules/titles/titles_sidebar_refresh.js",
+        "nav.js",
+        "student-stats.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/attendance/attendance-recitation-log.js",
+      "kind": "external",
+      "declaresCount": 39,
+      "fanOut": 5,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/sections-service.js",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/attendance/att_index.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 0,
+      "fanIn": 0,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/enrollment/enrollment-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 2,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js",
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/enrollment/enrollment-hub.js",
+      "kind": "external",
+      "declaresCount": 67,
+      "fanOut": 6,
+      "fanIn": 11,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/enrollment/enrollment-service.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/seat-arrangement/classroom-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 4,
+      "fanIn": 4,
+      "dependsOn": [
+        "db-service.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/seat-arrangement/recitation-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 2,
+      "fanIn": 4,
+      "dependsOn": [
+        "db-service.js",
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/seat-arrangement/classroom-builder-render.js",
+      "kind": "external",
+      "declaresCount": 7,
+      "fanOut": 5,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "modules/core/state-manager.js",
+        "modules/seat-arrangement/classroom-service.js",
+        "modules/seat-arrangement/classroom_builder.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/seat-arrangement/classroom_builder.js",
+      "kind": "external",
+      "declaresCount": 76,
+      "fanOut": 7,
+      "fanIn": 4,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/sections-service.js",
+        "modules/core/state-manager.js",
+        "modules/seat-arrangement/classroom-builder-render.js",
+        "modules/seat-arrangement/classroom-service.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/seat-arrangement/classroom_index.js",
+      "kind": "external",
+      "declaresCount": 3,
+      "fanOut": 2,
+      "fanIn": 0,
+      "dependsOn": [
+        "db-service.js",
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/seat-arrangement/live-monitor-render.js",
+      "kind": "external",
+      "declaresCount": 11,
+      "fanOut": 7,
+      "fanIn": 2,
+      "dependsOn": [
+        "modules/core/state-manager.js",
+        "modules/seat-arrangement/classroom-service.js",
+        "modules/seat-arrangement/classroom_builder.js",
+        "modules/seat-arrangement/live-monitor-webnfc.js",
+        "modules/seat-arrangement/live_monitor.js",
+        "modules/seat-arrangement/recitation-service.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/seat-arrangement/live_monitor.js",
+      "kind": "external",
+      "declaresCount": 46,
+      "fanOut": 8,
+      "fanIn": 5,
+      "dependsOn": [
+        "dom.js",
+        "modules/attendance/attendance-service.js",
+        "modules/core/state-manager.js",
+        "modules/seat-arrangement/classroom_builder.js",
+        "modules/seat-arrangement/live-monitor-coldcall.js",
+        "modules/seat-arrangement/live-monitor-recitation.js",
+        "modules/seat-arrangement/live-monitor-render.js",
+        "modules/seat-arrangement/recitation-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/seat-arrangement/live-monitor-recitation.js",
+      "kind": "external",
+      "declaresCount": 8,
+      "fanOut": 6,
+      "fanIn": 2,
+      "dependsOn": [
+        "dom.js",
+        "modules/core/state-manager.js",
+        "modules/seat-arrangement/live-monitor-render.js",
+        "modules/seat-arrangement/live-monitor-webnfc.js",
+        "modules/seat-arrangement/live_monitor.js",
+        "modules/seat-arrangement/recitation-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/seat-arrangement/live-monitor-webnfc.js",
+      "kind": "external",
+      "declaresCount": 5,
+      "fanOut": 4,
+      "fanIn": 2,
+      "dependsOn": [
+        "dom.js",
+        "modules/attendance/att_scanner_rfid.js",
+        "modules/seat-arrangement/live-monitor-recitation.js",
+        "modules/seat-arrangement/live_monitor.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/seat-arrangement/live-monitor-coldcall.js",
+      "kind": "external",
+      "declaresCount": 8,
+      "fanOut": 8,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "modules/core/state-manager.js",
+        "modules/seat-arrangement/classroom-service.js",
+        "modules/seat-arrangement/live_monitor.js",
+        "modules/seat-arrangement/recitation-service.js",
+        "modules/titles/titles_badge_renderer.js",
+        "modules/titles/titles_sidebar_refresh.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shop/shop_store.js",
+      "kind": "external",
+      "declaresCount": 17,
+      "fanOut": 10,
+      "fanIn": 4,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/achievements/ach_engine.js",
+        "modules/core/state-manager.js",
+        "modules/shop/shop_inventory.js",
+        "modules/shop/shop_promotions.js",
+        "student-stats.js",
+        "topbar.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shop/shop_inventory.js",
+      "kind": "external",
+      "declaresCount": 12,
+      "fanOut": 5,
+      "fanIn": 3,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/shop/shop_store.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shop/shop_orders.js",
+      "kind": "external",
+      "declaresCount": 7,
+      "fanOut": 4,
+      "fanIn": 2,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shop/shop_pos_terminal.js",
+      "kind": "external",
+      "declaresCount": 52,
+      "fanOut": 11,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/achievements/ach_engine.js",
+        "modules/core/state-manager.js",
+        "modules/shop/shop_inventory.js",
+        "modules/shop/shop_orders.js",
+        "modules/shop/shop_promotions.js",
+        "modules/shop/shop_store.js",
+        "student-stats.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shop/shop_promotions.js",
+      "kind": "external",
+      "declaresCount": 28,
+      "fanOut": 6,
+      "fanIn": 3,
+      "dependsOn": [
+        "dom.js",
+        "modules/core/state-manager.js",
+        "modules/enrollment/enrollment-hub.js",
+        "modules/shop/shop_store.js",
+        "nav.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shop/shop_admin_store.js",
+      "kind": "external",
+      "declaresCount": 12,
+      "fanOut": 5,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/shop/shop_index.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 0,
+      "dependsOn": [
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/achievements/ach_engine.js",
+      "kind": "external",
+      "declaresCount": 11,
+      "fanOut": 10,
+      "fanIn": 14,
+      "dependsOn": [
+        "app-state.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/enrollment/enrollment-hub.js",
+        "modules/quest-chains.js",
+        "modules/quest-engine.js",
+        "nav.js",
+        "student-stats.js",
+        "topbar.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/achievements/ach_student_page.js",
+      "kind": "external",
+      "declaresCount": 2,
+      "fanOut": 8,
+      "fanIn": 2,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "index.html#inline2",
+        "modules/achievements/ach_engine.js",
+        "modules/core/state-manager.js",
+        "modules/shared/reward-presenter.js",
+        "modules/titles/titles_sidebar_refresh.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/achievements/ach_admin_page.js",
+      "kind": "external",
+      "declaresCount": 16,
+      "fanOut": 8,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/achievements/ach_engine.js",
+        "modules/admin/sections-service.js",
+        "modules/core/state-manager.js",
+        "student-stats.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/achievements/ach_index.js",
+      "kind": "external",
+      "declaresCount": 2,
+      "fanOut": 1,
+      "fanIn": 0,
+      "dependsOn": [
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/titles/titles_badge_renderer.js",
+      "kind": "external",
+      "declaresCount": 12,
+      "fanOut": 1,
+      "fanIn": 10,
+      "dependsOn": [
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/titles/titles_designer.js",
+      "kind": "external",
+      "declaresCount": 23,
+      "fanOut": 8,
+      "fanIn": 0,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/sections-service.js",
+        "modules/core/state-manager.js",
+        "modules/titles/titles_admin_page.js",
+        "modules/titles/titles_badge_renderer.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/titles/titles_student_page.js",
+      "kind": "external",
+      "declaresCount": 10,
+      "fanOut": 6,
+      "fanIn": 2,
+      "dependsOn": [
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/leaderboard/hall-of-fame.js",
+        "modules/titles/titles_badge_renderer.js",
+        "modules/titles/titles_sidebar_refresh.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/titles/titles_admin_page.js",
+      "kind": "external",
+      "declaresCount": 12,
+      "fanOut": 11,
+      "fanIn": 2,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/sections-service.js",
+        "modules/core/state-manager.js",
+        "modules/enrollment/enrollment-hub.js",
+        "modules/titles/titles_badge_renderer.js",
+        "modules/titles/titles_sidebar_refresh.js",
+        "nav.js",
+        "student-stats.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/titles/titles_sidebar_refresh.js",
+      "kind": "external",
+      "declaresCount": 12,
+      "fanOut": 14,
+      "fanIn": 10,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "index.html#inline2",
+        "modules/achievements/ach_engine.js",
+        "modules/achievements/ach_student_page.js",
+        "modules/core/state-manager.js",
+        "modules/enrollment/enrollment-hub.js",
+        "modules/leaderboard/hall-of-fame.js",
+        "modules/perceived-speed.js",
+        "modules/titles/titles_badge_renderer.js",
+        "modules/titles/titles_student_page.js",
+        "nav.js",
+        "student-stats.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/titles/titles_index.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 0,
+      "dependsOn": [
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/section/my-section.js",
+      "kind": "external",
+      "declaresCount": 7,
+      "fanOut": 6,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js",
+        "index.html#inline1",
+        "modules/admin/sections-service.js",
+        "modules/core/state-manager.js",
+        "modules/titles/titles_badge_renderer.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/campaign/campaign_engine.js",
+      "kind": "external",
+      "declaresCount": 32,
+      "fanOut": 11,
+      "fanIn": 5,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/achievements/ach_engine.js",
+        "modules/campaign/campaign-dragdrop-beat.js",
+        "modules/campaign/campaign-reveal-dialogue-beats.js",
+        "modules/campaign/campaign-skills.js",
+        "modules/campaign/campaign_stage_map.js",
+        "modules/core/state-manager.js",
+        "student-stats.js",
+        "topbar.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/campaign/campaign-dragdrop-beat.js",
+      "kind": "external",
+      "declaresCount": 11,
+      "fanOut": 4,
+      "fanIn": 2,
+      "dependsOn": [
+        "modules/campaign/campaign-reveal-dialogue-beats.js",
+        "modules/campaign/campaign-skills.js",
+        "modules/campaign/campaign_engine.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/campaign/campaign-skills.js",
+      "kind": "external",
+      "declaresCount": 12,
+      "fanOut": 5,
+      "fanIn": 3,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/campaign/campaign_engine.js",
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/campaign/campaign-reveal-dialogue-beats.js",
+      "kind": "external",
+      "declaresCount": 16,
+      "fanOut": 4,
+      "fanIn": 2,
+      "dependsOn": [
+        "modules/campaign/campaign-dragdrop-beat.js",
+        "modules/campaign/campaign-skills.js",
+        "modules/campaign/campaign_engine.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/campaign/campaign_stage_map.js",
+      "kind": "external",
+      "declaresCount": 9,
+      "fanOut": 6,
+      "fanIn": 3,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/dsm-manager.js",
+        "modules/campaign/campaign_engine.js",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/campaign/campaign_admin_map_editor.js",
+      "kind": "external",
+      "declaresCount": 67,
+      "fanOut": 7,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/sections-service.js",
+        "modules/campaign/campaign_stage_map.js",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/campaign/campaign_index.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 0,
+      "dependsOn": [
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/boss-studio/bs_storage.js",
+      "kind": "external",
+      "declaresCount": 43,
+      "fanOut": 3,
+      "fanIn": 4,
+      "dependsOn": [
+        "db-service.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/boss-studio/bs_library.js",
+      "kind": "external",
+      "declaresCount": 41,
+      "fanOut": 4,
+      "fanIn": 2,
+      "dependsOn": [
+        "dom.js",
+        "modules/boss-studio/bs_storage.js",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/boss-studio/bs_animation_library.js",
+      "kind": "external",
+      "declaresCount": 29,
+      "fanOut": 3,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/boss-studio/bs_editor.js",
+      "kind": "external",
+      "declaresCount": 33,
+      "fanOut": 4,
+      "fanIn": 0,
+      "dependsOn": [
+        "dom.js",
+        "modules/boss-studio/bs_library.js",
+        "modules/boss-studio/bs_storage.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/boss-studio/bs_bve_engine.js",
+      "kind": "external",
+      "declaresCount": 15,
+      "fanOut": 6,
+      "fanIn": 10,
+      "dependsOn": [
+        "dom.js",
+        "modules/boss-studio/bs_animation_library.js",
+        "modules/boss-studio/bs_storage.js",
+        "modules/core/state-manager.js",
+        "modules/world-boss/combat-settings.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/boss-studio/bs_index.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 0,
+      "fanIn": 0,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/combat-settings.js",
+      "kind": "external",
+      "declaresCount": 11,
+      "fanOut": 8,
+      "fanIn": 15,
+      "dependsOn": [
+        "db-service.js",
+        "index.html#inline1",
+        "modules/achievements/ach_engine.js",
+        "modules/core/state-manager.js",
+        "modules/shared/stat-bars.js",
+        "modules/world-boss/loot-rain.js",
+        "student-stats.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/admin-page.js",
+      "kind": "external",
+      "declaresCount": 36,
+      "fanOut": 12,
+      "fanIn": 6,
+      "dependsOn": [
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/boss-studio/bs_bve_engine.js",
+        "modules/boss-studio/bs_storage.js",
+        "modules/core/state-manager.js",
+        "modules/quest-engine.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/loot-rain.js",
+        "modules/world-boss/minions.js",
+        "modules/world-boss/skills.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/loot-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 3,
+      "fanIn": 2,
+      "dependsOn": [
+        "modules/core/state-manager.js",
+        "modules/world-boss/loot-rain.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/loot-rain.js",
+      "kind": "external",
+      "declaresCount": 55,
+      "fanOut": 16,
+      "fanIn": 8,
+      "dependsOn": [
+        "app-state.js",
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/achievements/ach_engine.js",
+        "modules/boss-studio/bs_bve_engine.js",
+        "modules/core/state-manager.js",
+        "modules/world-boss/admin-page.js",
+        "modules/world-boss/bve-patches.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/leaderboard.js",
+        "modules/world-boss/loot-service.js",
+        "modules/world-boss/raid-flow.js",
+        "modules/world-boss/student-page.js",
+        "topbar.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/skills.js",
+      "kind": "external",
+      "declaresCount": 24,
+      "fanOut": 8,
+      "fanIn": 6,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/boss-studio/bs_bve_engine.js",
+        "modules/core/state-manager.js",
+        "modules/world-boss/admin-page.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/phases.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/phases.js",
+      "kind": "external",
+      "declaresCount": 18,
+      "fanOut": 8,
+      "fanIn": 2,
+      "dependsOn": [
+        "dom.js",
+        "modules/core/state-manager.js",
+        "modules/world-boss/admin-page.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/rage.js",
+        "modules/world-boss/raid-flow.js",
+        "modules/world-boss/student-page.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/rage.js",
+      "kind": "external",
+      "declaresCount": 21,
+      "fanOut": 10,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-schema.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/boss-studio/bs_bve_engine.js",
+        "modules/core/state-manager.js",
+        "modules/world-boss/admin-page.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/minions.js",
+        "modules/world-boss/skills.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/summon-notify.js",
+      "kind": "external",
+      "declaresCount": 11,
+      "fanOut": 9,
+      "fanIn": 0,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/boss-studio/bs_bve_engine.js",
+        "modules/core/state-manager.js",
+        "modules/enrollment/enrollment-hub.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/raid-flow.js",
+        "nav.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/minions.js",
+      "kind": "external",
+      "declaresCount": 37,
+      "fanOut": 7,
+      "fanIn": 5,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/core/state-manager.js",
+        "modules/world-boss/admin-page.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/leaderboard.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/leaderboard.js",
+      "kind": "external",
+      "declaresCount": 23,
+      "fanOut": 11,
+      "fanIn": 4,
+      "dependsOn": [
+        "db-schema.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/boss-studio/bs_bve_engine.js",
+        "modules/core/state-manager.js",
+        "modules/titles/titles_badge_renderer.js",
+        "modules/titles/titles_sidebar_refresh.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/loot-rain.js",
+        "modules/world-boss/raid-flow.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/student-page.js",
+      "kind": "external",
+      "declaresCount": 11,
+      "fanOut": 11,
+      "fanIn": 5,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/boss-studio/bs_bve_engine.js",
+        "modules/core/state-manager.js",
+        "modules/shared/stat-bars.js",
+        "modules/world-boss/bve-patches.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/leaderboard.js",
+        "modules/world-boss/loot-rain.js",
+        "modules/world-boss/skills.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/battle-overlay.js",
+      "kind": "external",
+      "declaresCount": 8,
+      "fanOut": 11,
+      "fanIn": 0,
+      "dependsOn": [
+        "index.html#inline1",
+        "modules/boss-studio/bs_bve_engine.js",
+        "modules/core/state-manager.js",
+        "modules/world-boss/bve-patches.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/loot-rain.js",
+        "modules/world-boss/minions.js",
+        "modules/world-boss/phases.js",
+        "modules/world-boss/skills.js",
+        "modules/world-boss/student-page.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/raid-flow.js",
+      "kind": "external",
+      "declaresCount": 21,
+      "fanOut": 13,
+      "fanIn": 4,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/boss-studio/bs_bve_engine.js",
+        "modules/core/state-manager.js",
+        "modules/perceived-speed.js",
+        "modules/world-boss/bve-patches.js",
+        "modules/world-boss/combat-settings.js",
+        "modules/world-boss/leaderboard.js",
+        "modules/world-boss/loot-rain.js",
+        "modules/world-boss/minions.js",
+        "modules/world-boss/skills.js",
+        "modules/world-boss/student-page.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/bve-patches.js",
+      "kind": "external",
+      "declaresCount": 6,
+      "fanOut": 3,
+      "fanIn": 7,
+      "dependsOn": [
+        "modules/boss-studio/bs_bve_engine.js",
+        "modules/core/state-manager.js",
+        "modules/world-boss/combat-settings.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/world-boss/index.js",
+      "kind": "external",
+      "declaresCount": 2,
+      "fanOut": 0,
+      "fanIn": 0,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/student-manager.js",
+      "kind": "external",
+      "declaresCount": 2,
+      "fanOut": 6,
+      "fanIn": 0,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/command-center.js",
+        "modules/core/state-manager.js",
+        "student-stats.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/command-center.js",
+      "kind": "external",
+      "declaresCount": 26,
+      "fanOut": 5,
+      "fanIn": 3,
+      "dependsOn": [
+        "index.html#inline1",
+        "modules/admin/sections-service.js",
+        "modules/attendance/attendance-service.js",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/analytics.js",
+      "kind": "external",
+      "declaresCount": 18,
+      "fanOut": 5,
+      "fanIn": 1,
+      "dependsOn": [
+        "index.html#inline1",
+        "modules/admin/sections-service.js",
+        "modules/admin/teacher-directory-service.js",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/quiz-builder.js",
+      "kind": "external",
+      "declaresCount": 39,
+      "fanOut": 9,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-schema.js",
+        "db-service.js",
+        "dom.js",
+        "index.html#inline1",
+        "modules/achievements/ach_engine.js",
+        "modules/admin/sections-service.js",
+        "modules/core/state-manager.js",
+        "modules/quest-engine.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/registrations-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 2,
+      "dependsOn": [
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/registrations.js",
+      "kind": "external",
+      "declaresCount": 39,
+      "fanOut": 6,
+      "fanIn": 3,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/registrations-service.js",
+        "modules/admin/teacher-directory-service.js",
+        "modules/core/state-manager.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/teacher-directory-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 6,
+      "dependsOn": [
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/teacher-directory.js",
+      "kind": "external",
+      "declaresCount": 40,
+      "fanOut": 5,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/ownership-service.js",
+        "modules/admin/teacher-directory-service.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/content-oversight-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 2,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js",
+        "modules/admin/audit-log-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/content-oversight.js",
+      "kind": "external",
+      "declaresCount": 61,
+      "fanOut": 9,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/achievements/ach_engine.js",
+        "modules/admin/content-oversight-service.js",
+        "modules/admin/teacher-directory-service.js",
+        "modules/enrollment/enrollment-hub.js",
+        "modules/quest-engine.js",
+        "nav.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/mascot-lines.js",
+      "kind": "external",
+      "declaresCount": 17,
+      "fanOut": 3,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/shared/mascot-lines-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/starter-pack-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/starter-pack-editor.js",
+      "kind": "external",
+      "declaresCount": 39,
+      "fanOut": 5,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "modules/achievements/ach_engine.js",
+        "modules/admin/starter-pack-service.js",
+        "modules/quest-engine.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/teacher-invite-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/teacher-invite.js",
+      "kind": "external",
+      "declaresCount": 10,
+      "fanOut": 3,
+      "fanIn": 0,
+      "dependsOn": [
+        "modules/admin/registrations.js",
+        "modules/admin/teacher-invite-service.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/audit-log-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 2,
+      "dependsOn": [
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/audit-log.js",
+      "kind": "external",
+      "declaresCount": 22,
+      "fanOut": 5,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/audit-log-service.js",
+        "modules/admin/teacher-directory-service.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/system-health-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 2,
+      "dependsOn": [
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/system-health.js",
+      "kind": "external",
+      "declaresCount": 30,
+      "fanOut": 4,
+      "fanIn": 2,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/system-health-service.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/ownership-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/school-settings-service.js",
+      "kind": "external",
+      "declaresCount": 1,
+      "fanOut": 1,
+      "fanIn": 1,
+      "dependsOn": [
+        "db-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/school-settings.js",
+      "kind": "external",
+      "declaresCount": 9,
+      "fanOut": 3,
+      "fanIn": 1,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/admin/school-settings-service.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/dsm-manager.js",
+      "kind": "external",
+      "declaresCount": 40,
+      "fanOut": 4,
+      "fanIn": 3,
+      "dependsOn": [
+        "dom.js",
+        "dsm-service.js",
+        "nav.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/admin/index.js",
+      "kind": "external",
+      "declaresCount": 3,
+      "fanOut": 0,
+      "fanIn": 0,
+      "dependsOn": [],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "index.html#inline2",
+      "kind": "inline",
+      "declaresCount": 88,
+      "fanOut": 21,
+      "fanIn": 6,
+      "dependsOn": [
+        "dom.js",
+        "index.html#inline1",
+        "modules/achievements/ach_engine.js",
+        "modules/core/state-manager.js",
+        "modules/enrollment/enrollment-hub.js",
+        "modules/quest-chains.js",
+        "modules/quest-engine.js",
+        "modules/quest-mascot-lines.js",
+        "modules/shared/ambient-backdrop.js",
+        "modules/shared/mascot-lines-service.js",
+        "modules/shared/notification-service.js",
+        "modules/shared/particles.js",
+        "modules/shared/reward-presenter.js",
+        "modules/shared/sequence.js",
+        "modules/shared/stat-bars.js",
+        "modules/titles/titles_badge_renderer.js",
+        "modules/titles/titles_sidebar_refresh.js",
+        "nav.js",
+        "student-stats.js",
+        "topbar.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    },
+    {
+      "label": "modules/perceived-speed.js",
+      "kind": "external",
+      "declaresCount": 13,
+      "fanOut": 13,
+      "fanIn": 3,
+      "dependsOn": [
+        "db-schema.js",
+        "dom.js",
+        "index.html#inline1",
+        "index.html#inline2",
+        "modules/achievements/ach_engine.js",
+        "modules/core/state-manager.js",
+        "modules/mail/mail-engine.js",
+        "modules/shared/reward-presenter.js",
+        "modules/titles/titles_sidebar_refresh.js",
+        "modules/world-boss/loot-rain.js",
+        "modules/world-boss/loot-service.js",
+        "topbar.js",
+        "utils.js"
+      ],
+      "unresolvedFreeRefs": []
+    }
+  ]
+}

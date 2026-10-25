@@ -202,3 +202,21 @@ function loadDB() {
 function saveDB() {
   DBService.write(DB);
 }
+// ── Phase 7 (2026-08-10, session 7): explicit window exports ──
+// These were previously implicit globals (bare top-level declarations,
+// reachable to other files only via classic-script auto-attach-to-window
+// behavior). Made explicit ahead of any real bundle/module scoping change
+// — found by build/audit-window-exports.js, which checks every symbol with
+// a real cross-file consumer, not just ones reachable from onclick markup.
+// See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window.DEFAULT_DB = DEFAULT_DB;
+
+// ── Phase 7 (2026-08-10, session 7): explicit window exports ──
+// These were previously implicit globals (bare top-level declarations,
+// reachable to other files only via classic-script auto-attach-to-window
+// behavior). Made explicit ahead of any real bundle/module scoping change
+// — found by build/audit-window-exports.js, which checks every symbol with
+// a real cross-file consumer, not just ones reachable from onclick markup.
+// See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window.saveDB = saveDB;
+window.loadDB = loadDB;

@@ -630,6 +630,10 @@
   window.__EDUQUEST_SUPABASE_ANON_KEY__ = 'sb_publishable_Zpty0lLj66Ri4sWqin2QMw_ksF_vBT8';
 </script>
 
+<script src="./supabase-client.js"></script>
+<script src="./repository/table-sync.js"></script>
+<script src="./repository/pull-mappers.js"></script>
+<script src="./repository/realtime-groups.js"></script>
 <script src="./db-service.js"></script>
 <script src="./dsm-service.js"></script>
 <script src="./db-schema.js"></script>
@@ -639,6 +643,10 @@
 <script src="./app-state.js"></script>
 <script src="./dom.js"></script>
 <script src="./utils.js"></script>
+<script src="./student-stats.js"></script>
+<script src="./modules/quest-engine.js"></script>
+<script src="./modules/quest-mascot-lines.js"></script>
+<script src="./modules/quest-chains.js"></script>
 <script src="./nav.js"></script>
 <script src="./topbar.js"></script>
 <!-- Shared button-loading spinner utility — loaded before auth.js since
@@ -715,6 +723,15 @@ AppStore.ready.then(function () {
     });
   }
 });
+
+// Phase 7 (2026-08-10, session 7): explicit window exports — previously
+// implicit globals (bare top-level let/var in this inline block), found
+// by build/audit-window-exports.js. currentUser/currentRole have 51 and
+// 39 real cross-file consumers respectively — the highest of any symbol
+// in the entire codebase. See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window.currentUser = currentUser;
+window.currentRole = currentRole;
+window.selectedLoginRole = selectedLoginRole;
 </script>
 
 <!-- ─────────────────────────────────────────────────────────────────────────
@@ -755,6 +772,7 @@ AppStore.ready.then(function () {
 
 <!-- Leaderboard -->
 <script src="./modules/leaderboard/eql-engine.js"></script>
+<script src="./modules/leaderboard/hall-of-fame-styles.js"></script>
 <script src="./modules/leaderboard/hall-of-fame.js"></script>
 <script src="./modules/leaderboard/admin-leaderboard.js"></script>
 <script src="./modules/leaderboard/index.js"></script>
@@ -790,9 +808,15 @@ AppStore.ready.then(function () {
 <script src="./modules/enrollment/enrollment-hub.js"></script>
 <script src="./modules/seat-arrangement/classroom-service.js"></script>
 <script src="./modules/seat-arrangement/recitation-service.js"></script>
+<script src="./modules/seat-arrangement/classroom-builder-render.js"></script>
 <script src="./modules/seat-arrangement/classroom_builder.js"></script>
+<script src="./modules/seat-arrangement/classroom-editor.js"></script>
 <script src="./modules/seat-arrangement/classroom_index.js"></script>
+<script src="./modules/seat-arrangement/live-monitor-render.js"></script>
 <script src="./modules/seat-arrangement/live_monitor.js"></script>
+<script src="./modules/seat-arrangement/live-monitor-recitation.js"></script>
+<script src="./modules/seat-arrangement/live-monitor-webnfc.js"></script>
+<script src="./modules/seat-arrangement/live-monitor-coldcall.js"></script>
 
 <!-- Shop -->
 <script src="./modules/shop/shop_store.js"></script>
@@ -822,6 +846,9 @@ AppStore.ready.then(function () {
 
 <!-- Campaign -->
 <script src="./modules/campaign/campaign_engine.js"></script>
+<script src="./modules/campaign/campaign-dragdrop-beat.js"></script>
+<script src="./modules/campaign/campaign-skills.js"></script>
+<script src="./modules/campaign/campaign-reveal-dialogue-beats.js"></script>
 <script src="./modules/campaign/campaign_stage_map.js"></script>
 <script src="./modules/campaign/campaign_admin_map_editor.js"></script>
 <script src="./modules/campaign/campaign_index.js"></script>
@@ -1192,6 +1219,24 @@ function renderStudentDashboard(){
   window.eqPreviewLevelUp = function () { window.eqPlayLevelUpMoment(st.level + 1); };
 
   if (justLeveledUp) window.eqPlayLevelUpMoment(st.level);
+
+  // Event-Driven Communication phase (roadmap Phase 4 continuation) —
+  // replaces titles/titles_sidebar_refresh.js's window.renderStudentDashboard
+  // monkey-patch, which was confirmed dead: that script tag loads (line
+  // ~817) before this inline <script> block defines the base function
+  // (line ~900), so the patch's `_orig = window.renderStudentDashboard`
+  // captured `undefined`, and the plain function declaration below silently
+  // overwrote the patch's wrapper the moment this block ran — the same
+  // load-order-discards-earlier-patch bug already found in wbcApplyDamage
+  // and renderStudentWorldBoss. Net effect: the #ts-dash-title badge this
+  // function's innerHTML replacement wipes out on every render was only
+  // ever restored via navTo's own separate (live) patch and the
+  // session:booted subscriber — direct calls from
+  // modules/perceived-speed.js (mail reward claim) and
+  // modules/achievements/ach_student_page.js (achievement claim) never got
+  // it back. No state mutation happens in this function itself, so emit()
+  // rather than updateState() — same reasoning as bootApp().
+  AppStore.emit({ type: 'dashboard:student-rendered', payload: {} });
 }
 
 // ── STUDENT QUIZZES (Quest Board) ──
@@ -3576,6 +3621,48 @@ window.achGrantRewardsForClaim = achGrantRewardsForClaim;
 // NOTE (Phase 3 Day 1): the 8 window.mailX = mailX aliases formerly listed
 // here are now provided by modules/mail/index.js, loaded earlier in the
 // script chain (see <script src> block near the top of this file).
+
+// Phase 7 (2026-08-10, session 2): the 17 lines below were previously
+// implicit globals — bare top-level function declarations in this same
+// inline <script> block, reachable from onclick="..." handlers (both
+// static markup elsewhere in this file and dynamically-generated markup
+// in other modules) purely via classic-script behavior. Made explicit
+// ahead of any real module/bundle scoping change — see
+// PHASE7_IMPLICIT_GLOBALS.md.
+window.startQuiz = startQuiz;
+window.useHint = useHint;
+window.submitIdAnswer = submitIdAnswer;
+window.submitEnumAnswer = submitEnumAnswer;
+window.submitMatchAnswer = submitMatchAnswer;
+window.quizNext = quizNext;
+window.quizPrev = quizPrev;
+window.confirmAbortQuiz = confirmAbortQuiz;
+window.closeProfile = closeProfile;
+window.profileOverlayClick = profileOverlayClick;
+window.profileAvatarClick = profileAvatarClick;
+window.switchProfileTab = switchProfileTab;
+window.saveProfileEdit = saveProfileEdit;
+window.savePassword = savePassword;
+window.saveEmail = saveEmail;
+window.handleProfilePicUpload = handleProfilePicUpload;
+window.removeProfilePic = removeProfilePic;
+
+// Phase 7 (2026-08-10, session 7): explicit window exports — previously
+// implicit globals in this inline block, found by
+// build/audit-window-exports.js (which checks every symbol with a real
+// cross-file consumer, not just onclick-markup-reachable ones like the
+// session 2 pass above). See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window.renderStudentDashboard = renderStudentDashboard;
+window.refreshAllAvatars = refreshAllAvatars;
+window.activeQuiz = activeQuiz;
+window.quizFinishing = quizFinishing;
+window.abortQuiz = abortQuiz;
+window.renderStudentQuizzes = renderStudentQuizzes;
+window.quizTimer = quizTimer;
+window.profInitAll = profInitAll;
+window.profGetCurrent = profGetCurrent;
+window._profRenderHero = _profRenderHero;
+window._profRenderStats = _profRenderStats;
 
 console.log('[EduQuest] Reward Presentation System, Achievement Claim System, and Mail System loaded.');
 </script>

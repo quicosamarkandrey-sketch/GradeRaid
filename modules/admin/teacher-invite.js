@@ -249,3 +249,10 @@ window.hideTeacherInviteScreen = function () {
     console.warn('[teacher-invite] could not parse invite token from URL:', e);
   }
 })();
+
+// ── Phase 7 (2026-08-10, session 2): explicit window export ──
+// These were previously implicit globals (bare top-level function
+// declarations, exposed to window only via classic-script behavior).
+// Made explicit ahead of any real module/bundle scoping change —
+// see PHASE7_IMPLICIT_GLOBALS.md.
+window.teacherInviteCheckValidation = teacherInviteCheckValidation;

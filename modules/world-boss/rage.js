@@ -189,23 +189,22 @@ window.wbrageReset = function (bossIdx) {
 
 // ── Patch IIFEs ───────────────────────────────────────────────────────────────
 
-// renderStudentWorldBoss → rage check after every render
-;(function () {
-  const _orig = window.renderStudentWorldBoss;
-  window.renderStudentWorldBoss = function () {
-    if (typeof _orig === 'function') _orig();
-    if (currentRole !== 'student') return;
-    const found = typeof wbcGetActiveBoss === 'function' ? wbcGetActiveBoss() : null;
-    if (found && found.boss && found.boss.status === 'active') {
-      wbrageCheckAndActivate(found.idx);
-    } else {
-      const keys = Object.keys(WBRAGE.activated);
-      if (keys.length) { keys.forEach(idx => { delete WBRAGE.activated[idx]; }); _wbrageCleanupVisuals(); }
-    }
-  };
-})();
-
-// bossActivate → reset rage state before reactivation
+// world-boss:student-view-rendered → clear stale rage-mode visuals once the
+// boss is no longer active (was a monkey-patch of renderStudentWorldBoss —
+// see raid-flow.js's comment on the emit() call). Deliberately does NOT also
+// call wbrageCheckAndActivate() for the active-boss case here — that's
+// already live via the world-boss:damage-applied/defeated subscriber in
+// phases.js, which fires on every hit; this only needed for the cleanup
+// branch, which nothing else triggers.
+AppStore.subscribe('wbrage-cleanup-view-sync', function (state, event) {
+  if (event.type !== 'world-boss:student-view-rendered') return;
+  if (currentRole !== 'student') return;
+  const found = (typeof wbcGetActiveBoss === 'function') ? wbcGetActiveBoss() : null;
+  if (!(found && found.boss && found.boss.status === 'active')) {
+    const keys = Object.keys(WBRAGE.activated);
+    if (keys.length) { keys.forEach(idx => { delete WBRAGE.activated[idx]; }); _wbrageCleanupVisuals(); }
+  }
+});
 ;(function () {
   const _orig = window.bossActivate;
   window.bossActivate = function (bi) {
@@ -312,27 +311,39 @@ window.wbrageAdminSave = function (bossIdx) {
   };
 })();
 
-// ── Surface the rage button inside the boss edit form too ────────────────────
-;(function () {
-  if (typeof openBossForm !== 'function') return;
-  const _orig = openBossForm;
-  window.openBossForm = function (bossIndex) {
-    _orig(bossIndex);
-    if (bossIndex === null || bossIndex === undefined) return;
-    setTimeout(() => {
-      if (document.getElementById('wbrage-form-btn')) return;
-      const anchor = document.getElementById('wbs-form-btn') || document.querySelector('#modal-content .btn-primary');
-      if (!anchor) return;
-      const btn = document.createElement('button');
-      btn.id = 'wbrage-form-btn';
-      btn.className = 'btn btn-ghost';
-      btn.style.cssText = 'border-color:rgba(239,68,68,.3);color:#ef4444';
-      btn.innerHTML = '🔥 Rage';
-      btn.onclick = () => { closeModalForce(); wbrageOpenConfig(bossIndex); };
-      anchor.parentNode.insertBefore(btn, anchor);
-    }, 100);
-  };
-})();
+// ── boss-form:opened subscriber — surface the rage button inside the boss
+// edit form too ───────────────────────────────────────────────────────────
+// Continuation Plan §3, Category A — replaces the old monkey-patch of
+// window.openBossForm. Confirmed post-hook/void-return shape, load-order
+// traced (admin-page.js emits this after showModal() renders the form,
+// well before rage.js's subscriber can possibly run — see admin-page.js's
+// emit() call site for the full reasoning). Timing/DOM logic unchanged from
+// the original patch, including its dependency on skills.js's button: this
+// still fires after skills.js's 90ms delay (100ms > 90ms), so #wbs-form-btn
+// still exists as the preferred anchor by the time this runs — that ordering
+// was previously guaranteed by script load order (skills.js before rage.js
+// in the monkey-patch chain) and is now guaranteed by AppStore's
+// subscriber-registration order instead (skills.js's subscribe() call still
+// runs before rage.js's at parse time, and _notify() walks subscribers in
+// registration order — see state-manager.js's _notify()), so both
+// subscribers still schedule in the same relative order they always did.
+AppStore.subscribe('wbrage-boss-form-button', function (state, event) {
+  if (event.type !== 'boss-form:opened') return;
+  const bossIndex = event.payload.bossIndex;
+  if (bossIndex === null || bossIndex === undefined) return;
+  setTimeout(() => {
+    if (document.getElementById('wbrage-form-btn')) return;
+    const anchor = document.getElementById('wbs-form-btn') || document.querySelector('#modal-content .btn-primary');
+    if (!anchor) return;
+    const btn = document.createElement('button');
+    btn.id = 'wbrage-form-btn';
+    btn.className = 'btn btn-ghost';
+    btn.style.cssText = 'border-color:rgba(239,68,68,.3);color:#ef4444';
+    btn.innerHTML = '🔥 Rage';
+    btn.onclick = () => { closeModalForce(); wbrageOpenConfig(bossIndex); };
+    anchor.parentNode.insertBefore(btn, anchor);
+  }, 100);
+});
 
 // ── Runtime CSS injection ──────────────────────────────────────────────────────
 // RESTORED: _wbrageShowAura/_wbrageScreenFlash/_wbrageShowBanner/

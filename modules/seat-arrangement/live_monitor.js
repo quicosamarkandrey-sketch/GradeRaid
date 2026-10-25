@@ -29,8 +29,7 @@
 //    never a stale snapshot from when the page first rendered.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-(function () {
-  'use strict';
+'use strict';
 
   // ── Module-level state ──────────────────────────────────────────────────────
   let _lmMounted        = false;
@@ -51,8 +50,17 @@
   let _lmStrategy        = 'pure_random'; // 'pure_random' | 'least_participative' | 'spatial_block' | 'late_only'
   let _lmTargetedSeatIds = new Set();
 
-  const CB_CANVAS_W = 1200;
-  const CB_CANVAS_H = 800;
+  // CB_CANVAS_W / CB_CANVAS_H intentionally NOT redeclared here — they
+  // already exist as top-level globals from classroom_builder.js (loaded
+  // earlier in index.html), and live-monitor-render.js already depends on
+  // reading those same globals (see its own DEPENDENCIES comment). A local
+  // `const CB_CANVAS_W = 1200` here previously collided with that existing
+  // top-level declaration: browsers share ONE lexical scope for top-level
+  // let/const across every <script> tag in a document, so this threw
+  // `SyntaxError: Identifier 'CB_CANVAS_W' has already been declared` the
+  // moment this script tag parsed — which meant nothing below this point
+  // in live_monitor.js ever ran. Found during Phase 7 build validation
+  // (2026-08-09); see EduQuest_Engineering_Refactor_Log.md Phase 7 entry.
   // Seat box size — must mirror CB_SEAT_SIZE in classroom_builder.js. A
   // layout built at one size and viewed at another would visually diverge,
   // and coordinates are stored in the same shared virtual canvas space.
@@ -557,109 +565,11 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
 
   // ── Shell render ─────────────────────────────────────────────────────────────
 
-  function _lmRender(page, classIds, state) {
-    const layouts = (state.classroomLayouts || []).filter(l => l.classId === _lmClassId);
-    const coldCallDisabled = !_lmLayoutId ||
-      (_lmStrategy === 'spatial_block' && _lmTargetedSeatIds.size === 0);
 
-    page.innerHTML = `
-      <div class="lm-page">
-        <div class="lm-toolbar">
-          <span class="lm-toolbar-title">📡 Live Classroom Monitor</span>
-          <select class="cb-class-select" id="lm-class-select" name="lm-class-select" onchange="window._lmOnClassChange(this.value)">${
-            classIds.map(c => `<option value="${_esc(c)}"${c===_lmClassId?' selected':''}>${_esc(window.getClassLabel ? window.getClassLabel(c, state) : c)}</option>`).join('')
-          }</select>
-          <select class="cb-layout-select" id="lm-layout-select" name="lm-layout-select" onchange="window._lmOnLayoutChange(this.value)">${
-            layouts.length
-              ? layouts.map(l => `<option value="${_esc(l.id)}"${l.id===_lmLayoutId?' selected':''}>${_esc(l.name)}</option>`).join('')
-              : `<option value="">— No layout for this class —</option>`
-          }</select>
+// ── Render layer — owned by live-monitor-render.js (Phase 6) ─────────────────
+// _lmRender/_lmScaleCanvas used to live here — moved to their own file, see
+// that file's header. Every call site below is unchanged.
 
-          <div style="margin-left:auto"></div>
-
-          <button class="lm-fullscreen-btn${_lmKioskMode ? ' active' : ''}" id="lm-fullscreen-btn"
-            onclick="window._lmToggleKioskMode()"
-            title="${_lmKioskMode ? 'Exit fullscreen' : 'Fill the screen for projecting/kiosk display'}">
-            ${_lmKioskMode ? '⤢ Exit Fullscreen' : '⛶ Fullscreen'}
-          </button>
-
-          ${_lmRecitationMode ? `
-          <div class="lm-toolbar-sep" style="width:1px;height:28px;background:var(--border)"></div>
-
-          <select class="lm-strategy-select" id="lm-strategy-select" title="Cold Call Strategy"
-            onchange="window._lmOnStrategyChange(this.value)">
-            <option value="pure_random" ${_lmStrategy==='pure_random'?'selected':''}>🎲 Pure Random</option>
-            <option value="least_participative" ${_lmStrategy==='least_participative'?'selected':''}>🤫 Least Participative</option>
-            <option value="late_only" ${_lmStrategy==='late_only'?'selected':''}>⏰ Late Only</option>
-            <option value="spatial_block" ${_lmStrategy==='spatial_block'?'selected':''}>📍 Roll Selected Seats Only</option>
-          </select>
-
-          ${_lmStrategy === 'spatial_block' ? `
-            <span class="lm-target-hint">
-              👆 Tap present/late seats below to target them
-              <span class="lm-target-count">${_lmTargetedSeatIds.size}</span>
-            </span>
-          ` : ''}
-          <button class="lm-coldcall-btn" id="lm-coldcall-btn" onclick="window._lmStartColdCall()"
-            ${coldCallDisabled ? 'disabled' : ''}>
-            🎯 Pick Random Student
-          </button>
-          ` : ''}
-          <button class="lm-recitation-toggle${_lmRecitationMode ? ' active' : ''}" id="lm-recitation-toggle"
-            onclick="window._lmToggleRecitationMode()">
-            ${_lmRecitationMode ? '🎤 Recitation Active' : '🎤 Start Recitation Session'}
-          </button>
-          ${_lmRecitationMode && _lmWebNfcSupported() ? `
-          <button class="lm-recitation-toggle${_lmWebNfcActive ? ' active' : ''}" id="lm-webnfc-toggle"
-            title="${_lmWebNfcActive ? 'Stop using this phone as an NFC reader' : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone'}"
-            onclick="window._lmToggleWebNfc()">
-            ${_lmWebNfcActive ? '📱 NFC On — Roaming' : '📱 Use This Phone as Reader'}
-          </button>
-          ` : ''}
-        </div>
-
-        <div class="lm-workspace">
-          <div class="lm-canvas-wrap" id="lm-canvas-wrap">
-            <div class="lm-canvas" id="lm-canvas"></div>
-          </div>
-          <div class="lm-sidebar" id="lm-sidebar"></div>
-        </div>
-      </div>
-    `;
-
-    _lmRenderCanvas();
-    _lmRenderSidebar();
-    _lmScaleCanvas();
-    if (!_lmResizeListenerAttached) {
-      window.addEventListener('resize', _lmScaleCanvas);
-      _lmResizeListenerAttached = true;
-    }
-  }
-
-  function _lmScaleCanvas() {
-    const wrap   = document.getElementById('lm-canvas-wrap');
-    const canvas = document.getElementById('lm-canvas');
-    if (!wrap || !canvas) return;
-    // Fill the available space instead of capping at native 1200x800 size.
-    // The old `Math.min(1, ...)` cap meant this screen — which exists
-    // specifically to be displayed/projected — could never render any
-    // bigger than its native pixel size, so on a large monitor most of the
-    // screen just sat empty. Scale up (or down) to fit both width and
-    // height of whatever room the container actually has.
-    const scaleW = (wrap.clientWidth  - 24) / CB_CANVAS_W;
-    const scaleH = (wrap.clientHeight - 24) / CB_CANVAS_H;
-    const scale  = scaleH > 0 ? Math.min(scaleW, scaleH) : scaleW;
-    // Same "mounted while the page is still display:none" issue as the
-    // Builder (nav.js renders before showPage() makes the page visible) —
-    // self-heal by retrying next frame instead of committing scale(0)/NaN.
-    if (!isFinite(scale) || scale <= 0) {
-      requestAnimationFrame(_lmScaleCanvas);
-      return;
-    }
-    canvas.style.transform = `scale(${scale})`;
-    canvas.style.transformOrigin = 'top left';
-    wrap.style.minHeight = (CB_CANVAS_H * scale + 24) + 'px';
-  }
 
   window._lmOnClassChange = function (classId) {
     _lmClassId = classId;
@@ -695,93 +605,8 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     _lmRender(page, classIds, state);
   };
 
-  // ── Canvas (read-only seating map) ───────────────────────────────────────────
+// (_lmRenderCanvas() itself now lives in live-monitor-render.js.)
 
-  function _lmRenderCanvas() {
-    const canvas = document.getElementById('lm-canvas');
-    if (!canvas) return;
-    canvas.innerHTML = '';
-
-    if (!_lmLayoutId) {
-      canvas.innerHTML = `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-        color:var(--text-muted);font-size:13px">No layout selected for this class.</div>`;
-      return;
-    }
-
-    const seatingMap = ClassroomService.getLiveSeatingMap(_lmClassId, _lmLayoutId);
-    const eligibleStatuses = ['Early', 'On Time', 'Late'];
-
-    // Task 1: session point counts, computed once per canvas paint rather
-    // than once per seat — this screen can have dozens of seats and
-    // getSessionCounts() already does a single pass over recitationLog.
-    const recitationCounts = (_lmRecitationMode && _lmSessionStartAt)
-      ? RecitationService.getSessionCounts(_lmClassId, _lmSessionStartAt)
-      : null;
-
-    seatingMap.forEach(vm => {
-      const el = document.createElement('div');
-      el.className = 'lm-seat';
-      el.dataset.seatId = vm.seatId;
-      el.dataset.studentId = vm.studentId || '';
-      el.style.left = vm.xCoord + 'px';
-      el.style.top  = vm.yCoord + 'px';
-      el.style.transform = `translate(-50%,-50%) rotate(${vm.rotation || 0}deg)`;
-      el.style.background = vm.color.bg;
-      el.style.borderColor = vm.color.border;
-
-      const studentColor = vm.studentColor || 'rgba(139,92,246,0.5)';
-      // Task 1 — Live Counter Badge: only when isRecitationMode is true AND
-      // the seat is occupied. A student with 0 points this session still
-      // gets the badge (so "recitation mode is on and nobody's been called
-      // yet" is visibly a zero, not just an absent badge that pops in on
-      // their first point) — recitationCounts[id] defaults to 0 via `|| 0`.
-      const badgeHtml = (recitationCounts && vm.studentId)
-        ? `<div class="lm-recitation-badge" data-badge-for="${_esc(vm.studentId)}">${recitationCounts[vm.studentId] || 0}</div>`
-        : '';
-      // Photo, if the student has one, layers over the initials as an <img>
-      // absolutely positioned to fill the badge; onerror removes it so a
-      // missing/broken URL falls back invisibly to the initials underneath
-      // (same pattern used for avatars elsewhere in the app — topbar,
-      // sidebar, dashboard, leaderboard).
-      const photoHtml = vm.studentPhoto
-        ? `<img src="${_esc(vm.studentPhoto)}" alt="" onerror="this.remove()">`
-        : '';
-      el.innerHTML = vm.studentId
-        ? `<div class="lm-seat-init" style="background:${studentColor}">${photoHtml}${_esc(vm.studentInit || '?')}</div>
-           <div class="lm-seat-name">${_esc((vm.studentName||'').split(' ')[0])}</div>
-           ${badgeHtml}`
-        : `<div style="font-size:18px;opacity:.25">🪑</div>`;
-
-      // Spatial-block targeting: only seats that could actually win a roll
-      // (present/late + occupied) are clickable for targeting — tapping an
-      // absent student's or an empty seat would be a dead end, so it never
-      // gets the 'targetable' affordance in the first place.
-      //
-      // BUGFIX: this branch used to run AFTER the general recitation-mode
-      // award-click branch below, as an `else if`. Since spatial_block can
-      // only be selected while recitation mode is already on, the award-click
-      // branch's condition (`_lmRecitationMode && vm.studentId`) matched
-      // every occupied seat first and this branch never ran — tapping seats
-      // while "Roll Selected Seats Only" was selected always fell through to
-      // award-selection instead of toggling the target pool, so a teacher
-      // could never actually build a multi-seat selection. Checking the
-      // active strategy first lets targeting win when it's the chosen mode.
-      const isEligible = !!vm.studentId && eligibleStatuses.includes(vm.attendanceStatus);
-      if (_lmRecitationMode && _lmStrategy === 'spatial_block' && isEligible) {
-        el.classList.add('targetable');
-        if (_lmTargetedSeatIds.has(vm.seatId)) el.classList.add('targeted');
-        el.onclick = () => window._lmToggleSeatTarget(vm.seatId);
-      } else if (_lmRecitationMode && vm.studentId) {
-        // Task 3's "click seat -> select points" path for the Manual Award
-        // Panel — what a seat click does whenever spatial_block targeting
-        // isn't the thing currently in play.
-        el.classList.add('targetable');
-        el.onclick = () => window._lmSelectAwardStudentFromSeat(vm.studentId);
-      }
-
-      canvas.appendChild(el);
-    });
-  }
 
   // Toggles a seat's membership in the spatial_block target set, then does a
   // lightweight repaint: just the seat's own class + the toolbar's count
@@ -801,112 +626,9 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     if (btn) btn.disabled = !_lmLayoutId || (_lmStrategy === 'spatial_block' && _lmTargetedSeatIds.size === 0);
   };
 
-  // ── Sidebar: Scoreboard + Arrival Feed (Phase 1/2, unchanged) ───────────────
-  // OR the Task 3 Recitation Command Center, when a session is active. The
-  // branch happens here rather than inside a single mega-function so the
-  // Phase 1/2 sidebar body below is untouched byte-for-byte from before —
-  // Recitation Mode simply swaps which function owns #lm-sidebar's contents.
+// (_lmRenderSidebar/_lmRenderAttendanceSidebar/_lmOverridePanelHtml now live
+// in live-monitor-render.js.)
 
-  function _lmRenderSidebar() {
-    if (_lmRecitationMode) { _lmRenderRecitationSidebar(); return; }
-    _lmRenderAttendanceSidebar();
-  }
-
-  function _lmRenderAttendanceSidebar() {
-    const sidebar = document.getElementById('lm-sidebar');
-    if (!sidebar) return;
-
-    const state   = AppStore.getState();
-    // BUGFIX: was new Date().toISOString().slice(0,10) — the UTC date, which
-    // rolls the Live Monitor over to a new day 8 hours late relative to
-    // Manila time. See utils.js isoDate() for the full explanation.
-    const today   = isoDate();
-    const roster  = (state.students || []).filter(s => (s.classId || 'default-class') === _lmClassId);
-    const logs    = (state.attendanceLogs || [])
-      .filter(l => l.classId === _lmClassId && l.logDate === today);
-
-    const counts = { Present: 0, Late: 0, Absent: 0, Excused: 0 };
-    logs.forEach(l => {
-      if (l.status === 'Early' || l.status === 'On Time') counts.Present++;
-      else if (l.status === 'Late')    counts.Late++;
-      else if (l.status === 'Absent')  counts.Absent++;
-      else if (l.status === 'Excused') counts.Excused++;
-    });
-
-    // Arrival feed: every log with a scannedAt timestamp today, newest first.
-    const feedLogs = logs
-      .filter(l => l.scannedAt)
-      .slice()
-      .sort((a, b) => new Date(b.scannedAt) - new Date(a.scannedAt))
-      .slice(0, 30); // cap — this is a rolling feed, not a full audit log
-
-    const studentById = Object.fromEntries(roster.map(s => [s.id, s]));
-
-    sidebar.innerHTML = `
-      ${_lmOverridePanelHtml(roster, { collapsible: false })}
-
-      <div class="lm-scoreboard">
-        <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:#4edea3">${counts.Present}</div>
-          <div class="lm-stat-label">Present</div>
-        </div>
-        <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:#ffb95f">${counts.Late}</div>
-          <div class="lm-stat-label">Late</div>
-        </div>
-        <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:#ffb4ab">${counts.Absent}</div>
-          <div class="lm-stat-label">Absent</div>
-        </div>
-        <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:#93c5fd">${counts.Excused}</div>
-          <div class="lm-stat-label">Excused</div>
-        </div>
-      </div>
-
-      <div class="lm-feed-header">Arrival Feed</div>
-      <div class="lm-feed" id="lm-feed">
-        ${feedLogs.length ? feedLogs.map(l => _lmFeedItem(l, studentById[l.studentId])).join('') : `
-          <div class="lm-feed-empty">No scans yet today.</div>
-        `}
-      </div>
-    `;
-  }
-
-  // ── Phase 4: Manual Attendance Override Panel ───────────────────────────────
-  // Shared markup for State A (always expanded, primary sidebar content) and
-  // State B (collapsible, pinned to the bottom — see _lmRenderRecitationSidebar).
-  // Submits through AttendanceService.overrideAttendance(), same RPC the old
-  // standalone kiosk override form used — the logic didn't move, just the UI.
-  function _lmOverridePanelHtml(roster, opts) {
-    opts = opts || {};
-    const collapsible = !!opts.collapsible;
-    const collapsed = collapsible && !_lmOverrideExpanded;
-    const statuses = ['On Time', 'Early', 'Late', 'Absent', 'Excused', 'Remove'];
-
-    return `
-      <div class="lm-override-panel">
-        <div class="lm-override-header" ${collapsible ? `onclick="window._lmToggleOverridePanel()" style="cursor:pointer"` : ''}>
-          <h4>✏️ Manual Attendance Override</h4>
-          ${collapsible ? `<span class="lm-override-caret">${collapsed ? '▸ Show' : '▾ Hide'}</span>` : ''}
-        </div>
-        ${collapsed ? '' : `
-          <div class="lm-override-hint">Mark absent/present, or correct a scan anomaly. Stays available until the session is closed.</div>
-          <select class="lm-override-select" id="lm-override-student" onchange="window._lmOnOverrideStudentChange(this.value)">
-            <option value="">Select student…</option>
-            ${roster.map(s => `<option value="${_esc(s.id)}" ${s.id === _lmOverrideStudentId ? 'selected' : ''}>${_esc(s.name || s.displayName || 'Student')}</option>`).join('')}
-          </select>
-          <select class="lm-override-select" id="lm-override-status" onchange="window._lmOnOverrideStatusChange(this.value)">
-            ${statuses.map(v => `<option value="${_esc(v)}" ${v === _lmOverrideStatus ? 'selected' : ''}>${v === 'Remove' ? 'Remove entry' : v}</option>`).join('')}
-          </select>
-          <input class="lm-override-input" id="lm-override-note" placeholder="Optional note (e.g. reason for excused absence)"
-            value="${_esc(_lmOverrideNote)}" oninput="window._lmOnOverrideNoteInput(this.value)" />
-          <button class="lm-override-submit" id="lm-override-submit" ${_lmOverrideStudentId ? '' : 'disabled'}
-            onclick="window._lmSubmitOverride()">Save Override</button>
-        `}
-      </div>
-    `;
-  }
 
   window._lmOnOverrideStudentChange = function (studentId) {
     _lmOverrideStudentId = studentId;
@@ -953,100 +675,10 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     // status/color) and sidebar (scoreboard/feed) automatically.
   };
 
-  function _lmFeedItem(log, student) {
-    const time = log.scannedAt ? new Date(log.scannedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    const name = student ? (student.name || student.displayName || 'Unknown') : 'Unknown student';
-    const statusTag = log.status === 'Late' ? ' <span style="color:#ffb95f;font-weight:700">[Marked Late]</span>'
-      : log.status === 'Absent'  ? ' <span style="color:#ffb4ab;font-weight:700">[Absent]</span>'
-      : log.status === 'Excused' ? ' <span style="color:#93c5fd;font-weight:700">[Excused]</span>'
-      : '';
-    const verb = (log.entryMethod === 'RFID' || log.entryMethod === 'NFC') ? 'scanned in' : 'recorded';
-    return `
-      <div class="lm-feed-item">
-        <div class="lm-feed-time">${_esc(time)}</div>
-        <div class="lm-feed-text">${_esc(name)} ${verb}${statusTag}</div>
-      </div>
-    `;
-  }
 
-  // ── Phase 3: Recitation Command Center ──────────────────────────────────────
+// (_lmFeedItem/_lmRenderRecitationSidebar/_lmRecitationFeedItem now live in
+// live-monitor-render.js.)
 
-  // Task 3 — Sidebar Command Center: Session Status + Manual Award Panel +
-  // the undo-able Recitation Feed. Rendered into #lm-sidebar in place of the
-  // Scoreboard/Arrival Feed for as long as isRecitationMode is true.
-  function _lmRenderRecitationSidebar() {
-    const sidebar = document.getElementById('lm-sidebar');
-    if (!sidebar) return;
-
-    const state   = AppStore.getState();
-    const roster  = (state.students || []).filter(s => (s.classId || 'default-class') === _lmClassId);
-    const entries = RecitationService.getSessionEntries(_lmClassId, _lmSessionStartAt);
-    const studentById = Object.fromEntries(roster.map(s => [s.id, s]));
-
-    const searchTerm = _lmAwardSearch.trim().toLowerCase();
-    const matches = searchTerm
-      ? roster.filter(s => (s.name || s.displayName || '').toLowerCase().includes(searchTerm))
-      : roster;
-
-    const selectedStudent = _lmAwardStudentId ? studentById[_lmAwardStudentId] : null;
-
-    sidebar.innerHTML = `
-      <div class="lm-recitation-status">
-        <div class="lm-recitation-status-dot"></div>
-        <div class="lm-recitation-status-text">Session Active — started ${_esc(_lmSessionStartAt ? new Date(_lmSessionStartAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '')}</div>
-      </div>
-
-      <div class="lm-award-panel">
-        <h4>🎯 Manual Award</h4>
-        <input class="lm-award-search" id="lm-award-search" placeholder="Search student by name…"
-          value="${_esc(_lmAwardSearch)}" oninput="window._lmOnAwardSearchInput(this.value)" />
-        <div class="lm-award-results" id="lm-award-results">
-          ${matches.length ? matches.map(s => `
-            <div class="lm-award-result${s.id === _lmAwardStudentId ? ' selected' : ''}"
-              onclick="window._lmSelectAwardStudentFromSeat('${_esc(s.id)}')">
-              <span>${_esc(s.name || s.displayName || 'Student')}</span>
-              ${s.id === _lmAwardStudentId ? '<span>✓</span>' : ''}
-            </div>`).join('') : `<div class="lm-award-empty">No matching students.</div>`}
-        </div>
-        ${selectedStudent ? `
-          <div class="lm-award-selected">Selected: ${_esc(selectedStudent.name || selectedStudent.displayName)}</div>
-        ` : ''}
-        <div class="lm-points-row">
-          ${[1, 2, 3, 5].map(n => `
-            <button class="lm-points-btn${n === _lmAwardPoints ? ' selected' : ''}"
-              onclick="window._lmSetAwardPoints(${n})">+${n}</button>
-          `).join('')}
-        </div>
-        <button class="lm-award-submit" id="lm-award-submit" ${selectedStudent ? '' : 'disabled'}
-          onclick="window._lmSubmitManualAward()">🎤 Award Points</button>
-      </div>
-
-      <div class="lm-feed-header">Recitation Feed</div>
-      <div class="lm-feed" id="lm-feed">
-        ${entries.length ? entries.map(e => _lmRecitationFeedItem(e, studentById[e.studentId])).join('') : `
-          <div class="lm-feed-empty">No recitations logged yet this session.</div>
-        `}
-      </div>
-
-      ${_lmOverridePanelHtml(roster, { collapsible: true })}
-    `;
-  }
-
-  function _lmRecitationFeedItem(entry, student) {
-    const name = student ? (student.name || student.displayName || 'Unknown') : 'Unknown student';
-    const time = entry.createdAt ? new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    const via  = entry.note === 'Manual award' || (entry.note && !/^scan$/i.test(entry.note)) ? (entry.note ? entry.note : 'manual') : 'scan';
-    return `
-      <div class="lm-recitation-feed-item">
-        <div class="lm-recitation-feed-main">
-          <div class="lm-recitation-feed-name">${_esc(name)}</div>
-          <div class="lm-recitation-feed-meta">${_esc(time)} · ${_esc(via)}</div>
-        </div>
-        <div class="lm-recitation-feed-pts">+${entry.pts}</div>
-        <button class="lm-undo-btn" onclick="window._lmUndoRecitation('${_esc(entry.id)}')">Undo</button>
-      </div>
-    `;
-  }
 
   // Search box + seat-click + points selection — all lightweight repaints of
   // just the sidebar, not the whole page (keeps search input focus intact).
@@ -1097,443 +729,61 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
     // Same as above — the AppStore event drives the repaint.
   };
 
-  // Task 4 — Floating +N: diffs the current session feed against
-  // _lmRecitationSeenIds and spawns a float on any brand-new entry's seat.
-  // Called after every recitation-triggered repaint (own actions AND
-  // realtime echoes from another device), so it fires exactly once per
-  // entry no matter which tab/device logged it.
-  function _lmAnimateNewRecitationEntries() {
-    const entries = RecitationService.getSessionEntries(_lmClassId, _lmSessionStartAt);
-    entries.forEach(e => {
-      if (_lmRecitationSeenIds.has(e.id)) return;
-      _lmRecitationSeenIds.add(e.id);
-      _lmSpawnFloatingPoint(e.studentId, e.pts);
-    });
-  }
 
-  function _lmSpawnFloatingPoint(studentId, pts) {
-    const seatEl = document.querySelector(`.lm-seat[data-student-id="${studentId}"]`);
-    if (!seatEl) return;
+// (_lmAnimateNewRecitationEntries/_lmSpawnFloatingPoint now live in
+// live-monitor-render.js.)
 
-    const badgeEl = seatEl.querySelector('.lm-recitation-badge');
-    if (badgeEl) {
-      badgeEl.classList.remove('bump');
-      // Force reflow so re-adding the class restarts the animation even if
-      // two points land on the same student back-to-back.
-      void badgeEl.offsetWidth;
-      badgeEl.classList.add('bump');
-    }
 
-    const floatEl = document.createElement('div');
-    floatEl.className = 'lm-float-point';
-    floatEl.textContent = `+${pts}`;
-    seatEl.appendChild(floatEl);
-    setTimeout(() => floatEl.remove(), 1500);
-  }
+  // ── Recitation session lifecycle + Scanner B — owned by
+  // live-monitor-recitation.js (Phase 6) ────────────────────────────────────
+  // _lmReconcileSessionState/window._lmToggleRecitationMode/
+  // _lmStartRecitationSession/_lmStopRecitationSession/
+  // _lmStartScannerBListener/_lmStopScannerBListener/_lmSubmitScan/
+  // _lmFinalizeScan used to live here (~140 lines) — moved to their own
+  // file (see that file's header). Every call site elsewhere is unchanged.
 
-  // ── Recitation session lifecycle + Scanner B ────────────────────────────────
+  // ── Phone-as-NFC-reader (Web NFC) — owned by live-monitor-webnfc.js
+  // (Phase 6) ───────────────────────────────────────────────────────────────
+  // _lmWebNfcSupported/window._lmToggleWebNfc/_lmStartWebNfcCapture/
+  // _lmStopWebNfcCapture/_lmRefreshWebNfcButton used to live here
+  // (~75 lines) — moved to their own file for the same reason.
 
-  // Phase 71 — cross-device "Start Recitation Session" sync. Compares this
-  // tab's local recitation-mode flag against the authoritative
-  // RecitationService.getActiveSession() (synced from Supabase's
-  // recitation_sessions table — see db-service.js/recitation-service.js)
-  // and auto-enters/exits recitation mode to match. Called on mount (picks
-  // up a session that was already running before this device opened Live
-  // Monitor) and on every relevant store update (picks up a session
-  // started/stopped from ANOTHER device while this one is already open).
-  // _lmStartRecitationSession()/_lmStopRecitationSession() are pure local
-  // UI state — neither calls AppStore.updateState() — so this never
-  // re-enters itself through the subscriber it's called from.
-  function _lmReconcileSessionState() {
-    if (!_lmClassId || typeof RecitationService === 'undefined') return;
-    const active = RecitationService.getActiveSession(_lmClassId);
-    if (active && !_lmRecitationMode) {
-      // Join using the OTHER device's authoritative start time, not a fresh
-      // timestamp of our own, so both devices score the exact same window.
-      _lmStartRecitationSession(active.startedAt);
-    } else if (!active && _lmRecitationMode) {
-      _lmStopRecitationSession();
-    }
-  }
+  // ── Cold Call: random present/late student selector — owned by
+  // live-monitor-coldcall.js (Phase 6) ──────────────────────────────────────
+  // window._lmStartColdCall/_lmClearCycle/_lmLandOnWinner/_lmShowSpotlight
+  // used to live here (~190 lines) — moved to their own file for the same
+  // reason. This was the last remaining subsystem in live_monitor.js beyond
+  // core state/mount/subscribe/override — every "screen mode" this file
+  // supports now has its own file.
 
-  window._lmToggleRecitationMode = async function () {
-    if (_lmRecitationMode) {
-      // Confirm before stopping — this now ends the session on every
-      // device it's synced to (Phase 71), not just this tab, so an
-      // accidental click has a bigger blast radius than it used to.
-      if (!confirm('End this recitation session? This will end it on every device it\'s synced to.')) return;
-      const result = await RecitationService.stopSession(_lmClassId);
-      if (!result.ok) { toast('⚠️ ' + result.error, '#ffb95f'); return; }
-      _lmStopRecitationSession();
-    } else {
-      const result = await RecitationService.startSession(_lmClassId);
-      if (!result.ok) { toast('⚠️ ' + result.error, '#ffb95f'); return; }
-      // result.session.startedAt is authoritative — idempotent server-side,
-      // so if another device juuust started this same session, we join
-      // THEIRS instead of stamping our own new start time.
-      _lmStartRecitationSession(result.session ? result.session.startedAt : null);
-    }
-    const page = document.getElementById('a-classroom-monitor');
-    const state = AppStore.getState();
-    const classIds = window.getActiveClassIds(state);
-    _lmRender(page, classIds, state);
-  };
-
-  function _lmStartRecitationSession(startedAtISO) {
-    _lmRecitationMode    = true;
-    _lmSessionStartAt    = startedAtISO || new Date().toISOString();
-    _lmRecitationSeenIds = new Set();
-    _lmAwardStudentId    = null;
-    _lmAwardSearch       = '';
-    _lmAwardPoints       = 1;
-    _lmStartScannerBListener();
-    toast('🎤 Recitation session started', '#4edea3');
-  }
-
-  function _lmStopRecitationSession() {
-    if (!_lmRecitationMode) return; // safe no-op — lets unmount call this unconditionally
-    _lmRecitationMode = false;
-    _lmStopScannerBListener();
-    _lmStopWebNfcCapture(); // Phase 72 — don't leave the phone's NFC radio armed after the session ends
-    _lmSessionStartAt = null;
-    _lmRecitationSeenIds.clear();
-    // STRICT HIDE (Task 2): Cold Call is exclusively a State B feature — reset
-    // its strategy/targeting so nothing carries over the next time recitation
-    // mode is toggled off, and so a leftover 'spatial_block' value can never
-    // make seats look targetable while the toolbar controls are hidden.
-    _lmStrategy = 'pure_random';
-    _lmTargetedSeatIds.clear();
-    _lmOverrideExpanded = false; // collapse the override panel back down for next time
-  }
-
-  // Task 2/4 — Scanner B: a single document-level keydown listener, alive
-  // ONLY while isRecitationMode is true (started in _lmStartRecitationSession,
-  // torn down in _lmStopScannerBListener). Unlike Scanner A's dedicated
-  // hidden-input capture (att_scanner_rfid.js — appropriate there because
-  // that screen has nothing else worth typing into), the Live Monitor's
-  // sidebar has real inputs (award search, in the future maybe more) that
-  // must keep normal keyboard behavior — so every keystroke is checked
-  // against document.activeElement first, and ignored if focus is inside an
-  // INPUT/TEXTAREA/SELECT rather than swallowed.
-  function _lmStartScannerBListener() {
-    if (_lmRecitationKeyHandler) return; // already listening
-    _lmScanBuffer = '';
-    _lmRecitationKeyHandler = function (ev) {
-      if (!_lmRecitationMode) return;
-      const tag = (document.activeElement && document.activeElement.tagName) || '';
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-      if (ev.key === 'Enter') {
-        ev.preventDefault();
-        _lmFinalizeScan();
-        return;
-      }
-      // Reader-emitted keystrokes are single printable characters; ignore
-      // modifier/navigation keys (Shift, Tab, arrows, etc.) so they don't
-      // pollute the buffer.
-      if (ev.key.length === 1) {
-        _lmScanBuffer += ev.key;
-        clearTimeout(_lmScanInactivityTimer);
-        _lmScanInactivityTimer = setTimeout(_lmFinalizeScan, LM_SCAN_INACTIVITY_MS);
-      }
-    };
-    document.addEventListener('keydown', _lmRecitationKeyHandler);
-  }
-
-  function _lmStopScannerBListener() {
-    if (_lmRecitationKeyHandler) {
-      document.removeEventListener('keydown', _lmRecitationKeyHandler);
-      _lmRecitationKeyHandler = null;
-    }
-    clearTimeout(_lmScanInactivityTimer);
-    _lmScanInactivityTimer = null;
-    _lmScanBuffer = '';
-  }
-
-  async function _lmSubmitScan(tagId) {
-    if (!tagId) return;
-    const result = await RecitationService.processScannerTap(tagId, _lmClassId);
-    if (!result.ok) {
-      if (result.cooldown) {
-        toast('⏳ That card was just scanned — wait a few seconds', '#ffb95f');
-      } else {
-        toast('⚠️ ' + result.error, '#ffb95f');
-      }
-      return;
-    }
-    // Success path: AppStore.updateState() inside processScannerTap() fired
-    // 'recitation:point-logged' — the subscription repaints the canvas
-    // badge/sidebar feed and plays the +1 float. No extra work needed here.
-  }
-
-  async function _lmFinalizeScan() {
-    const tagId = _lmScanBuffer.trim();
-    _lmScanBuffer = '';
-    clearTimeout(_lmScanInactivityTimer);
-    await _lmSubmitScan(tagId);
-  }
-
-  // ── Phone-as-NFC-reader (Web NFC) ─────────────────────────────────────────
-  // Entirely additive to the keyboard-wedge listener above, same posture as
-  // att_scanner_rfid.js's identically-named feature: it never touches
-  // _lmScanBuffer or the keydown handler, it only ever calls the same
-  // _lmSubmitScan(tagId) the keyboard path calls, so everything downstream
-  // (RecitationService, AppStore, the realtime echo to other devices) is
-  // identical no matter which physical reader produced the tag. tagId is
-  // normalized via att_scanner_rfid.js's _rfidNormalizeTagId() (global,
-  // loaded on every page — see that file's header comment for why phone
-  // Web NFC reads and USB keyboard-wedge reads of the SAME card need
-  // normalizing into one canonical id before either can look up a student).
-
-  function _lmWebNfcSupported() {
-    return typeof window !== 'undefined' && 'NDEFReader' in window;
-  }
-
-  window._lmToggleWebNfc = function () {
-    if (_lmWebNfcActive) {
-      _lmStopWebNfcCapture();
-    } else {
-      _lmStartWebNfcCapture();
-    }
-  };
-
-  async function _lmStartWebNfcCapture() {
-    if (!_lmWebNfcSupported()) return;
-    try {
-      _lmWebNfcAbortController = new AbortController();
-      const ndef = new NDEFReader();
-      // Must be called from a user gesture (the button's onclick) — this is
-      // a browser security requirement, not something we can work around.
-      await ndef.scan({ signal: _lmWebNfcAbortController.signal });
-
-      _lmWebNfcActive = true;
-      _lmRefreshWebNfcButton();
-      toast('📱 Phone NFC reader armed — hold cards to the back of the phone', '#4edea3');
-
-      ndef.onreading = (event) => {
-        if (!_lmRecitationMode) return;
-        const rawTagId = event.serialNumber;
-        if (!rawTagId) return;
-        const tagId = (typeof _rfidNormalizeTagId === 'function') ? _rfidNormalizeTagId(rawTagId) : rawTagId;
-        _lmSubmitScan(tagId);
-      };
-
-      ndef.onreadingerror = () => {
-        toast('⚠️ Could not read that tag — try again', '#ffd166');
-      };
-    } catch (err) {
-      _lmWebNfcActive = false;
-      _lmWebNfcAbortController = null;
-      _lmRefreshWebNfcButton();
-      toast('Could not start phone NFC: ' + (err && err.message ? err.message : err), '#ffb4ab');
-    }
-  }
-
-  function _lmStopWebNfcCapture() {
-    if (_lmWebNfcAbortController) {
-      _lmWebNfcAbortController.abort();
-      _lmWebNfcAbortController = null;
-    }
-    _lmWebNfcActive = false;
-    _lmRefreshWebNfcButton();
-  }
-
-  function _lmRefreshWebNfcButton() {
-    const btn = document.getElementById('lm-webnfc-toggle');
-    if (!btn) return;
-    btn.classList.toggle('active', _lmWebNfcActive);
-    btn.textContent = _lmWebNfcActive ? '📱 NFC On — Roaming' : '📱 Use This Phone as Reader';
-    btn.title = _lmWebNfcActive
-      ? 'Stop using this phone as an NFC reader'
-      : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone';
-  }
-
-  // ── Cold Call: random present/late student selector ─────────────────────────
-  //
-  // Sequence: button click → _lmStartColdCall() → cycling flash animation
-  // across eligible seats for ~2.2s → land on the actual winner → flash the
-  // winner's seat → open the Profile Spotlight popup via the app's shared
-  // showModal(). "Roll Again" inside the popup just re-runs this whole
-  // sequence; "Close" calls the app's closeModalForce().
-
-  // Cold Call cycling animation: flashes a random seat repeatedly before
-  // landing on the actual winner. Ticks start fast and progressively slow
-  // down as the roll nears its end — a cubic ease-out curve, the same
-  // "settling down" feel as a wheel spinner or slot machine — instead of a
-  // flat, constant-speed flicker the whole way through. Implemented as a
-  // recursive setTimeout chain (not setInterval) because each tick's delay
-  // is different from the last; setInterval can only fire at one fixed period.
-  const LM_CYCLE_DURATION_MS = 4200; // total time from tap to landing on the winner
-  const LM_CYCLE_TICK_MIN_MS = 60;   // fastest flash interval, right at the start
-  const LM_CYCLE_TICK_MAX_MS = 420;  // slowest flash interval, right before landing
-
-  window._lmStartColdCall = function () {
-    if (!_lmLayoutId) return;
-
-    // pickRandomStudent() is called ONCE, upfront, and is authoritative —
-    // both the cycling-flicker animation below and the eventual winner come
-    // from this exact same {pool, winner} result, so there is exactly one
-    // random decision per roll, not a second one hiding at reveal time.
-    const result = ClassroomService.pickRandomStudent(
-      _lmLayoutId, _lmStrategy, Array.from(_lmTargetedSeatIds)
-    );
-    if (!result.ok) {
-      toast('⚠️ ' + result.error, '#ffb95f');
-      return;
-    }
-
-    const btn = document.getElementById('lm-coldcall-btn');
-    if (btn) { btn.disabled = true; btn.textContent = '🎲 Picking…'; }
-
-    _lmClearCycle(); // safety: never let two cycles overlap if double-clicked
-
-    const seatEls = Array.from(document.querySelectorAll('.lm-seat')).filter(
-      el => result.pool.some(c => c.seatId === el.dataset.seatId)
-    );
-    if (seatEls.length === 0) {
-      // Pool exists in data but the seat elements aren't on screen for some
-      // reason (e.g. layout just changed mid-click) — bail out gracefully.
-      if (btn) { btn.disabled = false; btn.textContent = '🎯 Pick Random Student'; }
-      return;
-    }
-
-    let lastFlashed = null;
-    const startedAt = Date.now();
-
-    const scheduleNextFlash = () => {
-      if (lastFlashed) lastFlashed.classList.remove('flash-cycle');
-      const pick = seatEls[Math.floor(Math.random() * seatEls.length)];
-      pick.classList.add('flash-cycle');
-      lastFlashed = pick;
-
-      const elapsed  = Date.now() - startedAt;
-      const progress = Math.min(elapsed / LM_CYCLE_DURATION_MS, 1);
-      // Cubic ease-out: delay stays near TICK_MIN while progress is low,
-      // then stretches out toward TICK_MAX as progress approaches 1 — the
-      // flashing visibly decelerates instead of cutting off abruptly.
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const delay = LM_CYCLE_TICK_MIN_MS + eased * (LM_CYCLE_TICK_MAX_MS - LM_CYCLE_TICK_MIN_MS);
-
-      if (elapsed + delay >= LM_CYCLE_DURATION_MS) {
-        _lmCycleTimeout = setTimeout(() => {
-          _lmClearCycle();
-          _lmLandOnWinner(result.winner);
-          if (btn) {
-            btn.disabled = !_lmLayoutId || (_lmStrategy === 'spatial_block' && _lmTargetedSeatIds.size === 0);
-            btn.textContent = '🎯 Pick Random Student';
-          }
-        }, delay);
-      } else {
-        _lmCycleInterval = setTimeout(scheduleNextFlash, delay);
-      }
-    };
-
-    scheduleNextFlash();
-  };
-
-  function _lmClearCycle() {
-    if (_lmCycleInterval) { clearTimeout(_lmCycleInterval); _lmCycleInterval = null; }
-    if (_lmCycleTimeout)  { clearTimeout(_lmCycleTimeout);   _lmCycleTimeout  = null; }
-    document.querySelectorAll('.lm-seat.flash-cycle').forEach(el => el.classList.remove('flash-cycle'));
-  }
-
-  const LM_CONFIRM_PAUSE_MS = 900; // beat between "cycle stopped here" and "yes, really, this one"
-
-  function _lmLandOnWinner(winnerVm) {
-    const el = document.querySelector(`.lm-seat[data-seat-id="${winnerVm.seatId}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-      // Confirmation beat: pulse the landed-on seat and label it before
-      // opening the profile, so the roll reads as "verified" rather than
-      // an instant, possibly-missed cut to the popup.
-      el.classList.add('flash-confirm');
-      const label = document.createElement('div');
-      label.className = 'lm-confirm-label';
-      label.textContent = '✓ Confirming…';
-      el.appendChild(label);
-      setTimeout(() => label.remove(), 900);
-    }
-
-    setTimeout(() => {
-      if (el) {
-        el.classList.remove('flash-confirm');
-        el.classList.add('flash-winner');
-        setTimeout(() => el.classList.remove('flash-winner'), 2300);
-      }
-      _lmShowSpotlight(winnerVm);
-    }, LM_CONFIRM_PAUSE_MS);
-  }
-
-  function _lmShowSpotlight(winnerVm) {
-    const state   = AppStore.getState();
-    const student = (state.students || []).find(s => s.id === winnerVm.studentId);
-    if (!student) {
-      toast('❌ Could not load that student\'s profile.', '#ffb4ab');
-      return;
-    }
-
-    const color = _cssColor(student.color);
-
-    // Equipped title, rendered with the same badge renderer the kiosk/
-    // sidebar/leaderboard use — reuses tsGetEquippedTitle()/tsBuildBadgeHTML()
-    // from modules/titles/ rather than re-deriving title styling here.
-    const equippedTitle = typeof tsGetEquippedTitle === 'function' ? tsGetEquippedTitle(student.id) : null;
-    const titleHtml = (equippedTitle && typeof tsBuildBadgeHTML === 'function')
-      ? `<div class="lm-spotlight-title-slot">${tsBuildBadgeHTML(equippedTitle, { small: true, noParticles: true })}</div>`
-      : '';
-
-    // Points stats. Overall is the big highlighted headline (visible from
-    // across the room); Today and This Session are supporting context.
-    const overallPts = (typeof RecitationService.getAllTimeTotalForStudent === 'function')
-      ? RecitationService.getAllTimeTotalForStudent(student.id) : 0;
-    const todayPts = (typeof RecitationService.getTodayTotalForStudent === 'function')
-      ? RecitationService.getTodayTotalForStudent(student.id) : 0;
-    const sessionPts = (_lmRecitationMode && _lmSessionStartAt)
-      ? (RecitationService.getSessionCounts(_lmClassId, _lmSessionStartAt)[student.id] || 0)
-      : null;
-
-    showModal(`
-      <div class="lm-spotlight" style="--hl:${color}">
-        <div class="lm-spotlight-avatar" style="background:${color}22;border:3px solid ${color};color:${color}">
-          ${student.profilePic ? `<img src="${_esc(student.profilePic)}" alt="" onerror="this.remove()">` : ''}
-          ${_esc(student.init || (student.name||'?')[0])}
-        </div>
-        ${titleHtml}
-        <div class="lm-spotlight-name">${_esc(student.name || student.displayName || 'Student')}</div>
-        <div class="lm-spotlight-tier">${_esc(student.tier || 'Novice')} · LV ${student.level || 0}</div>
-
-        <div class="lm-spotlight-headline">
-          <div class="lm-spotlight-headline-num">${overallPts}</div>
-          <div class="lm-spotlight-headline-label">⭐ Overall Recitation Points</div>
-        </div>
-
-        <div class="lm-spotlight-stats">
-          <div>
-            <div class="lm-spotlight-stat-num" style="color:#4edea3">${todayPts}</div>
-            <div class="lm-spotlight-stat-label">Today</div>
-          </div>
-          ${sessionPts !== null ? `
-          <div>
-            <div class="lm-spotlight-stat-num" style="color:#ffd166">${sessionPts}</div>
-            <div class="lm-spotlight-stat-label">This Session</div>
-          </div>` : ''}
-          <div>
-            <div class="lm-spotlight-stat-num">${student.coins || 0}</div>
-            <div class="lm-spotlight-stat-label">Coins</div>
-          </div>
-          <div>
-            <div class="lm-spotlight-stat-num" style="color:${winnerVm.color.border}">${_esc(winnerVm.attendanceStatus || '—')}</div>
-            <div class="lm-spotlight-stat-label">Status</div>
-          </div>
-        </div>
-
-        <div class="lm-spotlight-actions">
-          <button class="btn btn-ghost btn-sm" onclick="closeModalForce()">Close</button>
-          <button class="btn btn-primary btn-sm" onclick="closeModalForce(); window._lmStartColdCall();">🎲 Roll Again</button>
-        </div>
-      </div>
-    `, 'md');
-  }
-
-  console.log('[EduQuest] seat-arrangement/live_monitor.js loaded — renderClassroomMonitor/unmountClassroomMonitor registered.');
-}());
+// ── Phase 7 (2026-08-10, session 7): explicit window exports ──
+// These were previously implicit globals (bare top-level declarations,
+// reachable to other files only via classic-script auto-attach-to-window
+// behavior). Made explicit ahead of any real bundle/module scoping change
+// — found by build/audit-window-exports.js, which checks every symbol with
+// a real cross-file consumer, not just ones reachable from onclick markup.
+// See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window._lmRecitationMode = _lmRecitationMode;
+window._lmClassId = _lmClassId;
+window._lmStrategy = _lmStrategy;
+window._lmTargetedSeatIds = _lmTargetedSeatIds;
+window._lmSessionStartAt = _lmSessionStartAt;
+window._lmLayoutId = _lmLayoutId;
+window._lmWebNfcActive = _lmWebNfcActive;
+window._lmOverrideExpanded = _lmOverrideExpanded;
+window._lmAwardSearch = _lmAwardSearch;
+window._lmAwardStudentId = _lmAwardStudentId;
+window._lmAwardPoints = _lmAwardPoints;
+window._lmRecitationSeenIds = _lmRecitationSeenIds;
+window._lmKioskMode = _lmKioskMode;
+window._lmResizeListenerAttached = _lmResizeListenerAttached;
+window._lmOverrideStudentId = _lmOverrideStudentId;
+window._lmOverrideStatus = _lmOverrideStatus;
+window._lmOverrideNote = _lmOverrideNote;
+window._lmRecitationKeyHandler = _lmRecitationKeyHandler;
+window._lmScanBuffer = _lmScanBuffer;
+window._lmScanInactivityTimer = _lmScanInactivityTimer;
+window.LM_SCAN_INACTIVITY_MS = LM_SCAN_INACTIVITY_MS;
+window._lmWebNfcAbortController = _lmWebNfcAbortController;
+window._lmCycleTimeout = _lmCycleTimeout;
+window._lmCycleInterval = _lmCycleInterval;

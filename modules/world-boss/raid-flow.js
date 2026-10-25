@@ -492,6 +492,19 @@ function _wbrRenderLobbyCore() {
 
   _wbcSpawnParticles();
   wbcUpdateTopbarWidget();
+
+  // Event-Driven Communication phase (roadmap Phase 4) — restores the
+  // trigger point 3 patches (skills.js, this file's OWN former patch, rage.js)
+  // used to hook via monkey-patching window.renderStudentWorldBoss, before
+  // being silently discarded: this function replaces renderStudentWorldBoss
+  // wholesale (see below) rather than chaining, so anything that patched an
+  // EARLIER definition of it never ran again after this line executed. Full
+  // trace: skills.js/phases.js/rage.js patch → clobbered by student-page.js's
+  // later non-chaining definition → battle-overlay.js patches THAT →
+  // clobbered again by this file's own replacement below. Only bve-patches.js
+  // (which chains on top of THIS function, loading after it) survived.
+  const _activeForEmit = (typeof wbcGetActiveBoss === 'function') ? wbcGetActiveBoss() : null;
+  AppStore.emit({ type: 'world-boss:student-view-rendered', payload: { bossIdx: _activeForEmit ? _activeForEmit.idx : null } });
 }
 
 // ── Replace renderStudentWorldBoss with lobby ─────────────────────────────────
@@ -538,3 +551,23 @@ window.wbcJoinBoss = function (bossIdx) {
 };
 
 console.log('[EduQuest] world-boss/raid-flow.js loaded — WBR, wbrRenderLobby, wbrOpenBattle, wbrAnswer, wbrFeedHTML, side overlays, wbcJoinBoss replacement registered.');
+
+// ── Phase 7 (2026-08-10, session 2): explicit window export ──
+// These were previously implicit globals (bare top-level function
+// declarations, exposed to window only via classic-script behavior).
+// Made explicit ahead of any real module/bundle scoping change —
+// see PHASE7_IMPLICIT_GLOBALS.md.
+window.wbrAnswer = wbrAnswer;
+window.wbrCloseBattle = wbrCloseBattle;
+
+// ── Phase 7 (2026-08-10, session 7): explicit window exports ──
+// These were previously implicit globals (bare top-level declarations,
+// reachable to other files only via classic-script auto-attach-to-window
+// behavior). Made explicit ahead of any real bundle/module scoping change
+// — found by build/audit-window-exports.js, which checks every symbol with
+// a real cross-file consumer, not just ones reachable from onclick markup.
+// See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window.wbrSetBg = wbrSetBg;
+window.WBR = WBR;
+window.wbrStop = wbrStop;
+window.wbrType = wbrType;

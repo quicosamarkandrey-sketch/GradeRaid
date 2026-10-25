@@ -2,7 +2,9 @@
 //  EduQuest — modules/shop/pos-terminal.js
 //  Teacher Reward POS system: claim code scanner, pending queue,
 //  redemption history, analytics, cancel/claim flows.
-//  Also owns the renderAnalytics patch (injects POS summary at top).
+//  Also owns a DEAD renderAnalytics patch (would inject a POS summary at
+//  top of the admin Analytics page, but is load-order-clobbered before it
+//  can ever run — see the patch site's own comment; left unconverted).
 //
 //  CSS injected on load (id='pos-terminal-css', idempotent).
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1017,8 +1019,23 @@ function _posAnalyticsHTML() {
   </div>`;
 }
 
-// ── renderAnalytics patch ─────────────────────────────────────────────────────
-// Injects POS & Orders summary block at the top of the admin analytics page.
+// ── renderAnalytics patch — CONFIRMED DEAD, left unconverted ──────────────────
+// Continuation Plan §3, Category A investigation (this session): this file
+// loads at index.html:801, BEFORE modules/admin/analytics.js (:874) ever
+// defines window.renderAnalytics — so `_orig` below captures `undefined`,
+// and the plain (non-chaining) `window.renderAnalytics = function() {...}`
+// analytics.js runs 73 lines later silently discards this patch entirely.
+// The "🏪 POS & Orders Overview" block below has never rendered on the
+// admin Analytics page. Not restored: this file's own `_posAnalyticsHTML()`
+// (see the POS Terminal's own "analytics" tab, reachable via this block's
+// own "Open POS Terminal" button) already shows a strictly richer version
+// of the same data — today/week/all-time/cancelled/pending counts, a
+// 7-day chart, and a category breakdown, vs. this dead block's 4 raw
+// numbers. Same "flag, don't silently resolve" posture as the
+// battle-overlay.js finding earlier in this project: left as dead code for
+// a human to decide whether to delete outright or keep as a (currently
+// broken) intent to eventually wire up. See this session's engineering-log
+// entry for the full trace.
 ;(function () {
   const _orig = window.renderAnalytics;
   window.renderAnalytics = function () {
@@ -1044,3 +1061,10 @@ function _posAnalyticsHTML() {
 })();
 
 console.log('[EduQuest] shop/pos-terminal.js loaded — renderPOS, pos* functions, renderAnalytics patched.');
+
+// ── Phase 7 (2026-08-10, session 2): explicit window export ──
+// These were previously implicit globals (bare top-level function
+// declarations, exposed to window only via classic-script behavior).
+// Made explicit ahead of any real module/bundle scoping change —
+// see PHASE7_IMPLICIT_GLOBALS.md.
+window._posPayRenderGrid = _posPayRenderGrid;

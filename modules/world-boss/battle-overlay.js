@@ -311,6 +311,20 @@ function _wbeInitOrientationPrompt() {
     prompt.style.display = (isPortrait && isMobileSize) ? 'flex' : 'none';
   }
   _updatePrompt();
+  // Phase 7 (2026-08-10, session 4 dependency-map pass): hoisted out of an
+  // inline named function expression. A named function expression's own
+  // name is only visible INSIDE that function's own body (for recursion) —
+  // it is NOT bound in the enclosing scope. `_wbeOrientResizeListener` used
+  // to be declared this way inline in the `addEventListener('resize', ...)`
+  // call below, which meant the reference to it a few lines earlier (inside
+  // the orientationchange handler's cleanup) pointed at a name that was
+  // never actually accessible there — a real ReferenceError the moment a
+  // user rotated their device while a boss battle's shell had already
+  // closed, silently leaking the resize listener forever (its removal
+  // never completed). Declaring it as a real function here, before both
+  // addEventListener calls, gives both a shared, correctly-scoped
+  // reference. See EduQuest_Engineering_Refactor_Log.md Phase 7 session 4.
+  function _wbeOrientResizeListener() { _updatePrompt(); }
   window.addEventListener('orientationchange', function _wbeOrientListener() {
     setTimeout(_updatePrompt, 120);
     if (!document.querySelector('.wbe-shell')) {
@@ -318,7 +332,7 @@ function _wbeInitOrientationPrompt() {
       window.removeEventListener('resize', _wbeOrientResizeListener);
     }
   });
-  window.addEventListener('resize', function _wbeOrientResizeListener() { _updatePrompt(); });
+  window.addEventListener('resize', _wbeOrientResizeListener);
 }
 
 // ── Patch 5: renderStudentWorldBoss — promote to full battle if joined ────────
@@ -341,3 +355,10 @@ function _wbeInitOrientationPrompt() {
     return _baseRenderStudentWorldBoss();
   };
 })();
+
+// ── Phase 7 (2026-08-10, session 2): explicit window export ──
+// These were previously implicit globals (bare top-level function
+// declarations, exposed to window only via classic-script behavior).
+// Made explicit ahead of any real module/bundle scoping change —
+// see PHASE7_IMPLICIT_GLOBALS.md.
+window.wbeFinishIntro = wbeFinishIntro;

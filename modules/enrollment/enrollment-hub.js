@@ -450,6 +450,25 @@ window._enrollLockKiosk = function () {
  * is always reachable again after unlock — same "monkey-patch and keep a
  * reference to the original" shape nav.js's own header comment already
  * documents other modules using (Leaderboard, Titles, Inventory, DSM).
+ *
+ * [Continuation Plan §3, Category A — navTo] Found while converting the
+ * other two navTo patches (reward-presenter.js, titles_sidebar_refresh.js)
+ * — the plan's own table only listed those 2 sites, same undercounted-
+ * inventory pattern already seen on renderAnalytics/renderStudentMail.
+ * Deliberately NOT converted: this is Category C from the plan's own
+ * classification (§2 step 2), not Category A. It can *prevent* navigation
+ * from happening at all (the `id !== 'a-enrollment'` branch returns without
+ * ever calling `_enrollOrigNavTo`) — a reactive AppStore.subscribe()
+ * handler can only react after a function runs, it can't stop the function
+ * from doing its work in the first place, so this genuinely can't be
+ * expressed as a subscriber. It's also applied lazily at runtime (only once
+ * kiosk mode is actually locked), not unconditionally at parse time like
+ * the other two navTo patches — so it stays a monkey-patch by design, not
+ * an oversight. Confirmed it still works correctly after the other two
+ * sites' conversion: it wraps whatever `window.navTo` is at lock time,
+ * which is now nav.js's own thin wrapper (no longer reassigned by
+ * reward-presenter.js/titles_sidebar_refresh.js), so the chain is actually
+ * one link shorter than before.
  */
 function _enrollPatchNavGuard() {
   if (_enrollNavToPatched || typeof window.navTo !== 'function') return;
@@ -849,3 +868,12 @@ window._kioskResetToSearch = function () {
 };
 
 console.log('[EduQuest] enrollment/enrollment-hub.js loaded — renderEnrollmentHub registered.');
+
+// ── Phase 7 (2026-08-10, session 7): explicit window exports ──
+// These were previously implicit globals (bare top-level declarations,
+// reachable to other files only via classic-script auto-attach-to-window
+// behavior). Made explicit ahead of any real bundle/module scoping change
+// — found by build/audit-window-exports.js, which checks every symbol with
+// a real cross-file consumer, not just ones reachable from onclick markup.
+// See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window._enrollPersistLock = _enrollPersistLock;

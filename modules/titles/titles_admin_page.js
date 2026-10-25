@@ -344,29 +344,32 @@ window.tsAdminRevokeTitle = function (sid, tid) {
   tsAdminGrantRefreshStudentTitles();
 };
 
-// ── renderAdminAchievements patch ─────────────────────────────────────────────
+// ── admin:achievements-rendered subscriber ─────────────────────────────────────
 // Adds a "👑 Manage Titles" shortcut button to the admin achievements page.
-;(function () {
-  const _orig = window.renderAdminAchievements;
-  window.renderAdminAchievements = function () {
-    if (typeof _orig === 'function') _orig();
-    const dest = document.getElementById('a-achievements');
-    if (!dest) return;
-    const existing = dest.querySelector('.ts-ach-titles-link');
-    if (existing) return;
-    const bar = dest.querySelector('.page-hero > div > div:last-child') || dest.querySelector('.page-hero-stats') || dest.querySelector('div[style*="justify-content:space-between"]');
-    if (bar) {
-      const btn          = document.createElement('button');
-      btn.className      = 'btn btn-ghost btn-sm ts-ach-titles-link';
-      btn.innerHTML      = '👑 Manage Titles';
-      btn.style.cssText  = 'margin-top:8px';
-      btn.addEventListener('click', () => {
-        if (typeof navTo === 'function') navTo('a-titles');
-        else if (typeof renderAdminTitles === 'function') { renderAdminTitles(); }
-      });
-      bar.appendChild(btn);
-    }
-  };
-})();
+// Continuation Plan §3, Category A — replaces the old monkey-patch of
+// window.renderAdminAchievements. Confirmed single site, load-order traced
+// (ach_admin_page.js:809 defines and now emits this event; this file loads
+// at :816, after). The existing .ts-ach-titles-link idempotency check is
+// kept as-is — still needed since the subscriber (like the old patch) can
+// run more than once per page lifetime.
+AppStore.subscribe('titles-admin-achievements-link', function (state, event) {
+  if (event.type !== 'admin:achievements-rendered') return;
+  const dest = document.getElementById('a-achievements');
+  if (!dest) return;
+  const existing = dest.querySelector('.ts-ach-titles-link');
+  if (existing) return;
+  const bar = dest.querySelector('.page-hero > div > div:last-child') || dest.querySelector('.page-hero-stats') || dest.querySelector('div[style*="justify-content:space-between"]');
+  if (bar) {
+    const btn          = document.createElement('button');
+    btn.className      = 'btn btn-ghost btn-sm ts-ach-titles-link';
+    btn.innerHTML      = '👑 Manage Titles';
+    btn.style.cssText  = 'margin-top:8px';
+    btn.addEventListener('click', () => {
+      if (typeof navTo === 'function') navTo('a-titles');
+      else if (typeof renderAdminTitles === 'function') { renderAdminTitles(); }
+    });
+    bar.appendChild(btn);
+  }
+});
 
-console.log('[EduQuest] titles/admin-page.js loaded — renderAdminTitles, tsAdmin* CRUD, grant/revoke modal, renderAdminAchievements patched.');
+console.log('[EduQuest] titles/admin-page.js loaded — renderAdminTitles, tsAdmin* CRUD, grant/revoke modal, admin:achievements-rendered subscriber registered.');

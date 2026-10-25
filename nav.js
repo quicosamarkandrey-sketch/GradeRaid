@@ -16,11 +16,30 @@
 //     renderAdminAchievements, renderAdminPromotions, renderAdminRegistrations,
 //     renderAdminMail, renderNavManager, renderBossStudio (all globals)
 //
-// PHASE 1 EXTRACTION NOTE:
+// PHASE 1 EXTRACTION NOTE (superseded — see Continuation Plan §3 note below):
 //   navTo() is monkey-patched by 4 modules in the monolith:
 //   Leaderboard (HOL init), Titles (sidebar refresh), Inventory, DSM.
 //   All patches are preserved in the monolith. This extracted version contains
 //   the base navTo() only. Patches will be replaced in Phase 5.
+//
+// [Continuation Plan §3, Category A — navTo, 2026-08-03] The note above
+// turned out stale once actually verified against this codebase (grepped
+// for every `window.navTo =` assignment): the real, live patch sites were
+// reward-presenter.js and modules/titles/titles_sidebar_refresh.js — not
+// Leaderboard, Inventory, or DSM (none of those three ever assign
+// window.navTo here) — plus a 3rd, unlisted site the plan's own
+// classification table missed: modules/enrollment/enrollment-hub.js's
+// kiosk-lock guard (same undercounted-inventory pattern already found on
+// renderAnalytics/renderStudentMail). modules/world-boss/
+// titles_sidebar_refresh.js also still has a navTo patch in its source but
+// is the confirmed-dead duplicate of modules/titles/titles_sidebar_refresh.js
+// (no <script> tag loads it — see the renderStudentDashboard log entry).
+// The two live, convertible (post-hook/void-return) sites are now
+// AppStore.subscribe('nav:navigated', ...) handlers instead of patches —
+// see nav.js's own emit() call site below. enrollment-hub.js's guard is
+// deliberately NOT converted (Category C — it can block navigation
+// outright, which a reactive subscriber can't express) — see its own
+// comment for the full reasoning.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── SIDEBAR NAV ──
@@ -117,6 +136,17 @@ function setupSidebar(){
     b.onmouseover=function(){if(!this.classList.contains('active')){this.style.background='rgba(255,255,255,0.06)';this.style.color='var(--on-surface)';this.style.transform='translateX(3px)';}};
     b.onmouseout=function(){if(!this.classList.contains('active')){this.style.background='none';this.style.color='var(--text-muted)';this.style.transform='none';}};
   });
+
+  // Event-Driven Communication (Continuation Plan §3, Category A) — replaces
+  // shop_inventory.js's setupSidebar monkey-patch (the only confirmed patch
+  // site, verified via load-order trace: nav.js defines this before
+  // shop_inventory.js loads, and no other file re-assigns window.setupSidebar
+  // afterward). Post-hook, void-return shape — straightforward conversion,
+  // no dead-patch or superseding-system findings here. Uses AppStore.emit()
+  // rather than updateState(): setupSidebar() never mutates DB.* itself,
+  // it's pure DOM/nav rendering — same reasoning as 'session:booted' in
+  // auth.js. See state-manager.js's emit() comment.
+  AppStore.emit({ type: 'nav:sidebar-rendered', payload: { role: currentRole } });
 }
 // DSM helpers — defined later in the DSM script block; stubs so setupSidebar doesn't crash before DSM loads
 // Phase 70: teacher now reads its OWN dsmGetTeacherNav() (backed by a
@@ -125,7 +155,7 @@ function setupSidebar(){
 function dsmGetStudentNav(){return NAV_STUDENT;}
 function dsmGetAdminNav(){return NAV_ADMIN;}
 function dsmGetTeacherNav(){return NAV_ADMIN.filter(t=>ADMIN_ONLY_NAV_IDS.indexOf(t.id)===-1);}
-function navTo(id){
+function _navToCore(id){
   // Phase 60 (exploit fix) — authoritative completion state, independent of
   // navigation (Improvement Plan §7). Without this, a student could dodge
   // the Abort-as-loss penalty entirely just by clicking a sidebar link (or
@@ -227,6 +257,30 @@ function navTo(id){
   // close sidebar on mobile
   if(window.innerWidth<=1024)document.getElementById('sidebar').classList.remove('open');
 }
+
+// Event-Driven Communication (Continuation Plan §3, Category A) — replaces
+// the navTo monkey-patches in reward-presenter.js/titles_sidebar_refresh.js
+// (each refreshes its own sidebar badge/title shortly after navigation).
+// window.navTo wraps _navToCore (rather than emitting from inside it) for
+// the same reason analytics.js's renderAnalytics() split into
+// _renderAnalyticsCore(): the old monkey-patches called `_orig(id)` first
+// and ran their own side effects unconditionally afterward — including on
+// _navToCore's own early `return` (the activeQuiz-abort guard at the very
+// top, which reroutes to abortQuiz() instead of actually navigating).
+// Preserving that "always runs after, regardless of which internal branch
+// fired" semantics means the emit has to sit outside _navToCore, not at
+// its tail. NOT used as a hook point for renderStudentWorldBoss/
+// renderAnalytics/renderAdminAchievements/renderStudentDashboard's own
+// events — those are called from many places besides navTo, and each
+// already has its own separate event (world-boss:student-view-rendered,
+// admin:analytics-rendered, admin:achievements-rendered,
+// dashboard:student-rendered) precisely so hooking navTo alone wouldn't
+// silently break them for every non-navigation call site — see this
+// plan's §3 caution on the navTo row.
+window.navTo = function (id) {
+  _navToCore(id);
+  AppStore.emit({ type: 'nav:navigated', payload: { id } });
+};
 function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const el=document.getElementById(id);
@@ -264,3 +318,17 @@ function getLastVisitedPage(role) {
   return id;
 }
 
+
+// ── Phase 7 (2026-08-10, session 7): explicit window exports ──
+// These were previously implicit globals (bare top-level declarations,
+// reachable to other files only via classic-script auto-attach-to-window
+// behavior). Made explicit ahead of any real bundle/module scoping change
+// — found by build/audit-window-exports.js, which checks every symbol with
+// a real cross-file consumer, not just ones reachable from onclick markup.
+// See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window.showPage = showPage;
+window.setupSidebar = setupSidebar;
+window.getLastVisitedPage = getLastVisitedPage;
+window.NAV_STUDENT = NAV_STUDENT;
+window.NAV_ADMIN = NAV_ADMIN;
+window.ADMIN_ONLY_NAV_IDS = ADMIN_ONLY_NAV_IDS;

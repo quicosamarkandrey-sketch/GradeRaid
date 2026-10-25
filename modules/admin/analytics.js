@@ -3,11 +3,14 @@
 //  Class Analytics dashboard renderer
 //  Extracted from index.html (Phase 3 Day 18-19)
 //
-//  NOTE: This is the BASE renderAnalytics. Two monkey-patches
-//  from other modules (shop/promotions → orders block, and
-//  registrations → registration block) extend this via IIFE
-//  patterns; those patches live in their respective modules and
-//  will be merged in Phase 5. For now they remain in index.html.
+//  NOTE: This is the BASE renderAnalytics (now wrapped by
+//  _renderAnalyticsCore() + an AppStore.emit('admin:analytics-rendered')
+//  call — Continuation Plan §3). Of the two monkey-patches this comment
+//  used to describe: registrations.js's is LIVE and has been converted to
+//  an AppStore.subscribe() handler. shop_pos_terminal.js's is DEAD (this
+//  file's own assignment below loads after it and silently overwrites it —
+//  confirmed via index.html's script order) and was deliberately left
+//  unconverted; see this session's engineering-log entry.
 //
 //  CHUNK F (ISOLATION_ROLES_PLAN.md §11 "Aggregate analytics rollup", §12
 //  step 5) — two changes on top of the base screen above:
@@ -138,6 +141,25 @@ window.anlSetMode = function(mode) {
 };
 
 window.renderAnalytics = function() {
+  _renderAnalyticsCore();
+  // Continuation Plan §3, Category A — replaces registrations.js's
+  // renderAnalytics monkey-patch, the only LIVE patch on this function.
+  // (shop_pos_terminal.js also patches renderAnalytics, but that patch is
+  // confirmed DEAD — load-order-clobbered by this file's own assignment
+  // below, which runs after it; see this session's engineering-log entry.
+  // Left as dead code, not converted — its content is superseded by the
+  // POS Terminal's own analytics tab (`_posAnalyticsHTML()`), same
+  // "flag, don't silently resolve" posture as the battle-overlay.js
+  // finding earlier in this project.)
+  // Wrapping the whole function (rather than adding an emit before each of
+  // its 3 internal return paths — missing element, rollup mode, normal
+  // mode) preserves the old patch's "runs after the original completes,
+  // regardless of which internal branch fired" semantics exactly, with one
+  // emit call instead of three that could drift out of sync on a future
+  // edit to _renderAnalyticsCore().
+  AppStore.emit({ type: 'admin:analytics-rendered', payload: null });
+};
+function _renderAnalyticsCore() {
   const el = document.getElementById('a-analytics');
   if (!el) return;
 
@@ -206,7 +228,7 @@ window.renderAnalytics = function() {
   <div id="anl-student-table"></div>`;
 
   _anlRenderStudentTable();
-};
+}
 
 // ── ADMIN-ONLY: SCHOOL-WIDE ROLLUP MODE ────────────────────────────────
 // (Chunk F.) Fetches the teacher directory once per session (cached in

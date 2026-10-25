@@ -280,19 +280,18 @@ window.wblTrackCrit = function (bossIdx, studentId) {
 // anywhere in the admin UI to configure or manually fire them. Ported the
 // original's monkey-patches verbatim.
 
-;(function () {
-  if (typeof renderStudentWorldBoss !== 'function') return;
-  const _origRender = renderStudentWorldBoss;
-  window.renderStudentWorldBoss = function () {
-    _origRender();
-    const found = (typeof wbcGetActiveBoss === 'function') ? wbcGetActiveBoss() : null;
-    if (found && found.boss && found.boss.status === 'active') {
-      wbsStartSkillLoop(found.idx);
-    } else {
-      wbsStopSkillLoop();
-    }
-  };
-})();
+// world-boss:student-view-rendered → start/stop the skill-cooldown loop
+// (was a monkey-patch of renderStudentWorldBoss — see raid-flow.js's comment
+// on the emit() call for the full trace of why it never actually ran)
+AppStore.subscribe('wbs-skill-loop-view-sync', function (state, event) {
+  if (event.type !== 'world-boss:student-view-rendered') return;
+  const found = (typeof wbcGetActiveBoss === 'function') ? wbcGetActiveBoss() : null;
+  if (found && found.boss && found.boss.status === 'active') {
+    wbsStartSkillLoop(found.idx);
+  } else {
+    wbsStopSkillLoop();
+  }
+});
 
 ;(function () {
   if (typeof wbrShowEncounter === 'undefined' || typeof wbrShowEncounter !== 'function') return;
@@ -346,27 +345,32 @@ window.wblTrackCrit = function (bossIdx, studentId) {
   };
 })();
 
-// ── Also surface the skills button inside the boss edit form ─────────────────
-;(function () {
-  if (typeof openBossForm !== 'function') return;
-  const _orig = openBossForm;
-  window.openBossForm = function (bossIndex) {
-    _orig(bossIndex);
-    if (bossIndex === null || bossIndex === undefined) return;
-    setTimeout(() => {
-      const actions = document.querySelector('#modal-content .btn-primary');
-      if (!actions) return;
-      if (document.getElementById('wbs-form-btn')) return;
-      const btn = document.createElement('button');
-      btn.id = 'wbs-form-btn';
-      btn.className = 'btn btn-ghost';
-      btn.style.cssText = 'border-color:rgba(139,92,246,.3);color:#a78bfa';
-      btn.innerHTML = '✨ Skills';
-      btn.onclick = () => { closeModalForce(); wbsOpenSkillConfig(bossIndex); };
-      actions.parentNode.insertBefore(btn, actions);
-    }, 90);
-  };
-})();
+// ── boss-form:opened subscriber — also surface the skills button inside the
+// boss edit form ──────────────────────────────────────────────────────────
+// Continuation Plan §3, Category A — replaces the old monkey-patch of
+// window.openBossForm. Confirmed post-hook/void-return shape, load-order
+// traced (admin-page.js emits this after showModal() renders the form,
+// well before skills.js's subscriber can possibly run — see admin-page.js's
+// emit() call site for the full reasoning). Timing/DOM logic unchanged from
+// the original patch (still relies on the 90ms delay to let the modal
+// settle before querying it).
+AppStore.subscribe('wbs-boss-form-button', function (state, event) {
+  if (event.type !== 'boss-form:opened') return;
+  const bossIndex = event.payload.bossIndex;
+  if (bossIndex === null || bossIndex === undefined) return;
+  setTimeout(() => {
+    const actions = document.querySelector('#modal-content .btn-primary');
+    if (!actions) return;
+    if (document.getElementById('wbs-form-btn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'wbs-form-btn';
+    btn.className = 'btn btn-ghost';
+    btn.style.cssText = 'border-color:rgba(139,92,246,.3);color:#a78bfa';
+    btn.innerHTML = '✨ Skills';
+    btn.onclick = () => { closeModalForce(); wbsOpenSkillConfig(bossIndex); };
+    actions.parentNode.insertBefore(btn, actions);
+  }, 90);
+});
 
 // ── Runtime CSS injection ──────────────────────────────────────────────────────
 // RESTORED: every effect function above references a @keyframes animation

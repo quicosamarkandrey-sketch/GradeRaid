@@ -5,10 +5,10 @@
 //
 //  Required load order:
 //    1. store.js        — student Armory + cart engine
-//    2. inventory.js    — student Inventory + bootApp/setupSidebar patches
+//    2. inventory.js    — student Inventory + bootApp/setupSidebar subscribers
 //    3. orders.js       — student Orders + bootApp patch
 //    4. admin-store.js  — admin Manage Store + product CRUD
-//    5. pos-terminal.js — teacher POS + renderAnalytics patch
+//    5. pos-terminal.js — teacher POS + a dead renderAnalytics patch
 //    6. promotions.js   — promo system + renderAdminPromotions
 //    7. index.js        — this file (guard + CSS + migration)
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,1066 @@
+// src/modules/attendance/att_scanner_rfid.js — real-ESM twin of
+// ../../../modules/attendance/att_scanner_rfid.js.
+// Phase 7 (Stream A), file 23/29. Original stays untouched.
+//
+// All 51 UNIQUE top-level declared symbols exported. declaresCount in
+// dist/dependency-map.json says 52 — the established "declaresCount can
+// overcount vs AST" case here: `_rfidNormalizeTagId` is declared once
+// (a plain `function`) and then ALSO explicitly re-exported once more
+// via a trailing `window._rfidNormalizeTagId = _rfidNormalizeTagId;`
+// line at the very end of the file (kept verbatim, unchanged — it's a
+// pre-existing explicit re-export, not a new declare). AST/unique-name
+// count of 51 is correct and used here; this does not block anything.
+//
+// Mechanical conversion only: every `let X` -> `export let X`, every
+// `function X`/`async function X` -> `export function X`/`export async
+// function X`, every `window.X = function`/`window.X = async function`
+// -> `export const X = function`/`export const X = async function`.
+// Diffed against the original line-by-line to confirm these 51 changes
+// are the ONLY differences — no other text touched.
+//
+// THREE real imports, all formal exports of files already converted by
+// this stream, all checked against the "confirm no runtime
+// reassignment anywhere in the repo" rule (MEMORY.md) before finalizing
+// — only self-wiring assignments found for each, no production runtime
+// reassignment, and no redundant hot-path redeclaration either (unlike
+// `getLevel`, discovered unsafe while converting app-state.js — this
+// file doesn't touch getLevel/recalcStudentStats/TIER_THRESHOLDS/
+// XP_PER_LEVEL at all, avoiding that whole issue):
+//   - AppStore (modules/core/state-manager.js) — .getSlice()/
+//     .getState()/.getStudent()/.subscribe()/.unsubscribe().
+//   - AttendanceService (modules/attendance/attendance-service.js,
+//     this stream's own file 21) — .assignCard()/
+//     .closeAttendanceSession()/.getEffectiveSchedule()/
+//     .overrideAttendance()/.processScan()/.upsertSchedule().
+//   - getStudentAttendanceRecords, computeAttendanceStreak
+//     (student-stats.js).
+// Checked state-manager.js, attendance-service.js, and student-stats.js
+// for a reverse dependency back onto this file — none found (only
+// comments mention att_scanner_rfid.js), no cycle.
+//
+// Everything else (dom.js's toast(); modules/admin/sections-service.js,
+// modules/enrollment/enrollment-hub.js, modules/titles/
+// titles_badge_renderer.js, modules/titles/titles_sidebar_refresh.js —
+// all other streams' files; nav.js — this stream's own, not yet
+// converted; utils.js's _esc()/uid()/etc. — converted but NOT by this
+// stream) stays bare-identifier window fallback, exactly as in the
+// original.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  EduQuest — modules/attendance/att_scanner_rfid.js
+//  Owns renderRfidScanner() / unmountRfidScanner() — the Phase 1 replacement
+//  for the manual-only renderScanner() in att_scanner.js.
+//
+//  PHASE 4 — KIOSK REFACTOR
+//    This screen ("Device 1") is now a headless, distraction-free full-screen
+//    kiosk: no sidebar, no topbar, no admin chrome. It's a 2-column layout —
+//    an 80% "Student Spotlight" (huge profile card on scan) and a 20%
+//    "Recent Activity Log" (last 10 scans). Everything administrative that
+//    used to live on this page (Manual Override, Schedule, Close Session,
+//    Assign-Card mode) still works exactly as before — it just moved:
+//      - Manual Override → now lives in the LiveClassroomMonitor sidebar
+//        (modules/seat-arrangement/live_monitor.js), Device 2's screen,
+//        per the Phase 4 spec. Same AttendanceService.overrideAttendance()
+//        call underneath, just a different UI host.
+//      - Schedule / Close Session / Assign-Card mode → tucked behind the
+//        small ⚙️ settings icon in the kiosk's top-right corner, so the
+//        main screen stays clean but nothing was deleted.
+//
+//  INTEGRATION (the only two edits needed outside this file):
+//    nav.js, navTo():
+//      else if(id==='a-scanner')renderScanner();
+//      → else if(id==='a-scanner')renderRfidScanner();
+//
+//      Add a teardown line next to the existing _adminStoreInterval cleanup
+//      at the top of navTo(), same pattern:
+//        if(id!=='a-scanner') unmountRfidScanner();
+//
+//    index.html / load order: this file loads AFTER attendance-service.js,
+//    state-manager.js, and db-service.js (same position att_scanner.js
+//    occupies today).
+//
+//  HARDWARE MODEL
+//    The RFID/NFC reader is a USB-HID keyboard emulator: it "types" the tag
+//    ID into whatever has focus, character by character, then sends Enter.
+//    Rather than a document-wide keydown listener (which would hijack
+//    keystrokes from every other input on the page, including admin search
+//    boxes elsewhere in the app), this screen keeps a single dedicated,
+//    visually-hidden <input> focused at all times while mounted, and reads
+//    from THAT input specifically. Two finalize triggers, so it works
+//    whether or not your specific reader model sends an Enter keystroke:
+//      1. Enter keydown on the capture input (the common case).
+//      2. A 120ms inactivity timer after the last keystroke (fallback for
+//         readers that don't emit a terminator).
+//
+//  OPTIMISTIC / REALTIME REACTIVITY
+//    This module never mutates DB/AppStore itself — every action goes
+//    through AttendanceService, which applies the authoritative RPC result
+//    to AppStore the instant it resolves (see attendance-service.js header).
+//    This module's job is purely:
+//      - capture the scan and hand it to AttendanceService.processScan()
+//      - subscribe to AppStore so the recent-activity log re-renders the
+//        moment that update (or a realtime echo from another device)
+//        lands — no polling, no manual refresh button needed.
+//    This subscription is Supabase Realtime's job downstream (untouched
+//    here) — this module only reacts to AppStore, never talks to Supabase
+//    directly.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import { AppStore } from '../core/state-manager.js';
+import { AttendanceService } from './attendance-service.js';
+import { getStudentAttendanceRecords, computeAttendanceStreak } from '../../student-stats.js';
+
+export let _rfidFocusInterval = null;
+export let _rfidScanBuffer = '';
+export let _rfidInactivityTimer = null;
+export let _rfidScannerMounted = false;
+export let _rfidScanMode = 'attendance';   // 'attendance' | 'assign'
+export let _rfidAssignTargetStudentId = null;
+export let _rfidSelectedClassId = 'default-class';
+export let _rfidClockInterval = null;
+export let _rfidScheduleTimerInterval = null;
+// Phone-as-NFC-reader (Web NFC / NDEFReader) — an additive second capture
+// source that sits next to the USB-HID keyboard-emulator capture below.
+// Both feed the exact same _rfidFinalizeScan(tagId) pipeline, so nothing
+// about AttendanceService, the spotlight, or the activity log needs to
+// know or care which physical reader produced the tag ID. Android Chrome
+// only (see _rfidWebNfcSupported()) — the toggle button simply doesn't
+// render on browsers/devices without NDEFReader, so the USB flow is
+// completely unaffected everywhere else.
+export let _rfidWebNfcActive = false;
+export let _rfidWebNfcAbortController = null;
+// Fullscreen/kiosk toggle (opt-in) — same pattern live_monitor.js uses for
+// its own lm-kiosk-mode: defaults to a normal embedded page (sidebar +
+// topbar visible) and only fills the screen once the teacher explicitly
+// clicks the ⛶ Fullscreen button. Forced back to false on unmount so a
+// left-open kiosk session never leaks into the next page.
+export let _rfidKioskMode = false;
+
+/**
+ * renderRfidScanner() → void  [window.renderRfidScanner]
+ * Mounts the full-screen attendance kiosk into #a-scanner.
+ */
+export const renderRfidScanner = function () {
+  _rfidScannerMounted = true;
+  _rfidSelectedClassId = _rfidSelectedClassId || 'default-class';
+
+  // Headless kiosk mode is now OPT-IN — see window._rfidToggleKioskMode()
+  // below. Every mount starts embedded (sidebar + topbar visible); the
+  // teacher explicitly clicks ⛶ Fullscreen to fill the screen for
+  // scanning/projecting, same as live_monitor.js's lm-kiosk-mode.
+  _rfidKioskMode = false;
+  document.body.classList.remove('rfid-kiosk-mode');
+
+  // Phase 4: read from Section Maker's canonical list (shows every section,
+  // not just ones with an already-enrolled student) — falls back to the old
+  // derive-from-students behavior automatically if no sections exist yet.
+  // See modules/admin/sections-service.js.
+  const state = (typeof AppStore !== 'undefined') ? AppStore.getState() : {};
+  const classIds = window.getActiveClassIds ? window.getActiveClassIds(state) : Array.from(new Set((state.students || []).map(s => s.classId || 'default-class'))).sort();
+  if (!classIds.includes(_rfidSelectedClassId)) _rfidSelectedClassId = classIds[0] || 'default-class';
+
+  document.getElementById('a-scanner').innerHTML = `
+    <div class="kiosk-page">
+      <input id="rfid-capture-input" autocomplete="off" inputmode="none"
+             style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" />
+
+      <div class="kiosk-status-eyebrow" id="kiosk-status-eyebrow"></div>
+      <div class="kiosk-clock-corner" id="kiosk-clock-corner"></div>
+
+      <div class="kiosk-topstrip">
+        <select id="rfid-class-select" class="kiosk-class-select" onchange="_rfidOnClassChange(this.value)">
+          ${classIds.map(c => `<option value="${_esc(c)}" ${c === _rfidSelectedClassId ? 'selected' : ''}>${_esc(_rfidClassOptionLabel(c, state))}</option>`).join('')}
+        </select>
+        <button class="kiosk-fullscreen-btn${_rfidKioskMode ? ' active' : ''}" id="rfid-fullscreen-btn"
+          onclick="_rfidToggleKioskMode()"
+          title="${_rfidKioskMode ? 'Exit fullscreen' : 'Fill the screen for scanning/kiosk display'}">
+          ${_rfidKioskMode ? '⤢ Exit' : '⛶ Fullscreen'}
+        </button>
+        <button class="kiosk-icon-btn" title="Settings — schedule, assign card, close session" onclick="_rfidOpenSettings()">⚙️</button>
+        ${_rfidWebNfcSupported() ? `
+        <button class="kiosk-icon-btn${_rfidWebNfcActive ? ' active' : ''}" id="rfid-webnfc-btn"
+          title="${_rfidWebNfcActive ? 'Stop using this phone as an NFC reader' : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone'}"
+          onclick="_rfidToggleWebNfc()">
+          ${_rfidWebNfcActive ? '📱 NFC On' : '📱 Use Phone as Reader'}
+        </button>` : ''}
+        <!-- BUGFIX (report §4): true fullscreen hides the whole app shell
+             (topbar + sidebar) so students scanning cards don't see admin
+             nav, but nothing was left in its place to get back out — the
+             only way out was the browser Back button. This calls the same
+             navTo() every other nav link uses, which already tears down
+             kiosk mode via unmountRfidScanner() in nav.js. Only shown while
+             actually fullscreen — the sidebar already covers this otherwise. -->
+        ${_rfidKioskMode ? `<button class="kiosk-icon-btn" id="rfid-exit-kiosk-btn" title="Exit kiosk — back to admin dashboard" onclick="navTo('a-dashboard')">⏻</button>` : ''}
+      </div>
+
+      <div class="kiosk-columns">
+        <div class="kiosk-spotlight" id="kiosk-spotlight"></div>
+
+        <div class="kiosk-activity">
+          <div class="kiosk-activity-header">Recent Activity</div>
+          <div class="kiosk-schedule-timer" id="kiosk-schedule-timer"></div>
+          <div class="kiosk-roster-stats" id="kiosk-roster-stats"></div>
+          <div class="kiosk-activity-summary" id="kiosk-activity-summary"></div>
+          <div class="kiosk-activity-list" id="kiosk-activity-list"></div>
+        </div>
+      </div>
+    </div>`;
+
+  _rfidRenderSpotlight('idle');
+  _rfidRenderActivity();
+  _rfidUpdateStatusEyebrow();
+  _rfidStartCapture();
+  _rfidStartClock();
+  _rfidStartScheduleTimer();
+
+  AppStore.subscribe('rfid-scanner', function (state, event) {
+    if (!_rfidScannerMounted) return;
+    // Cheap targeted re-render — only the activity log (and dropdown label
+    // text), never the whole page (which would steal focus from the capture
+    // input mid-scan).
+    if (!event || event.type === 'state:updated' || event.type.indexOf('attendance:') === 0 || event.type === 'state:remote-sync') {
+      _rfidRenderActivity();
+      _rfidRefreshClassSelectCounts();
+      _rfidUpdateStatusEyebrow();
+    }
+  });
+};
+
+/**
+ * _rfidUpdateStatusEyebrow() → void
+ * Fills the top-left "Section A · Scanning" status tag (design v2) — reads
+ * the same class label + schedule-state helpers the rest of this page
+ * already uses (getClassLabel, AttendanceService.getEffectiveSchedule via
+ * _rfidScheduleFor), so this is purely a display of existing state, not a
+ * new data source. Session state maps to: Scanning (open), Late window
+ * (past lateCutoff, before close), or Closed (past close/no schedule).
+ */
+export function _rfidUpdateStatusEyebrow() {
+  const el = document.getElementById('kiosk-status-eyebrow');
+  if (!el) return;
+  const state = (typeof AppStore !== 'undefined') ? AppStore.getState() : {};
+  const label = window.getClassLabel ? window.getClassLabel(_rfidSelectedClassId, state) : _rfidSelectedClassId;
+  const info = _rfidNextScheduleMilestone(_rfidSelectedClassId);
+  const statusText = info.tone === 'closed' ? 'Closed' : info.tone === 'late' ? 'Late window' : 'Scanning';
+  el.innerHTML = `<span class="dot"></span><span>${_esc(label)} · ${_esc(statusText)}</span>`;
+}
+
+/**
+ * _rfidClassOptionLabel(classId, state) → string  (Investigation Report §4)
+ * "Section A (12/24)" — scanned-today / enrolled — instead of just the bare
+ * section name, so the dropdown itself answers "how's this section doing"
+ * without opening anything else.
+ */
+export function _rfidClassOptionLabel(classId, state) {
+  const label = window.getClassLabel ? window.getClassLabel(classId, state) : classId;
+  const enrolled = (state.students || []).filter(s => (s.classId || 'default-class') === classId).length;
+  const today = _rfidTodayISO();
+  const scannedToday = (state.attendanceLogs || []).filter(l => l.classId === classId && l.logDate === today).length;
+  return `${label} (${scannedToday}/${enrolled})`;
+}
+
+/**
+ * _rfidRefreshClassSelectCounts() → void
+ * Updates each <option>'s label text in place (never rebuilds the <select>
+ * itself) so the enrolled/scanned-today counts stay live as scans come in
+ * — called from the AppStore subscription alongside _rfidRenderActivity().
+ */
+export function _rfidRefreshClassSelectCounts() {
+  const select = document.getElementById('rfid-class-select');
+  if (!select) return;
+  const state = AppStore.getState();
+  Array.from(select.options).forEach(opt => {
+    opt.textContent = _rfidClassOptionLabel(opt.value, state);
+  });
+}
+
+/**
+ * unmountRfidScanner() → void  [window.unmountRfidScanner]
+ * Call when navigating away from #a-scanner — stops the focus-stealing
+ * interval, unsubscribes from AppStore, and restores the app shell.
+ * See nav.js integration note above.
+ */
+export const unmountRfidScanner = function () {
+  _rfidScannerMounted = false;
+  if (_rfidFocusInterval) { clearInterval(_rfidFocusInterval); _rfidFocusInterval = null; }
+  if (_rfidInactivityTimer) { clearTimeout(_rfidInactivityTimer); _rfidInactivityTimer = null; }
+  if (_rfidClockInterval) { clearInterval(_rfidClockInterval); _rfidClockInterval = null; }
+  if (_rfidScheduleTimerInterval) { clearInterval(_rfidScheduleTimerInterval); _rfidScheduleTimerInterval = null; }
+  if (_rfidWebNfcAbortController) { _rfidWebNfcAbortController.abort(); _rfidWebNfcAbortController = null; }
+  _rfidWebNfcActive = false;
+  clearTimeout(window._rfidSpotlightResetTimer);
+  _rfidKioskMode = false;
+  document.body.classList.remove('rfid-kiosk-mode');
+  AppStore.unsubscribe('rfid-scanner');
+};
+
+/**
+ * _rfidToggleKioskMode() → void  [window._rfidToggleKioskMode]
+ * Flips the scanner between its default embedded view (sidebar + topbar
+ * visible) and true fullscreen (both hidden, page fills the viewport) —
+ * same body-class mechanism live_monitor.js uses for its own Fullscreen
+ * button. Only the topstrip needs to change (button label/state, plus the
+ * ⏻ exit-to-dashboard button appearing/disappearing) — everything else
+ * (capture input, clock, activity feed, AppStore subscription) is
+ * untouched, so scanning isn't interrupted by toggling this mid-session.
+ */
+export const _rfidToggleKioskMode = function () {
+  _rfidKioskMode = !_rfidKioskMode;
+  document.body.classList.toggle('rfid-kiosk-mode', _rfidKioskMode);
+
+  const btn = document.getElementById('rfid-fullscreen-btn');
+  if (btn) {
+    btn.classList.toggle('active', _rfidKioskMode);
+    btn.title = _rfidKioskMode ? 'Exit fullscreen' : 'Fill the screen for scanning/kiosk display';
+    btn.textContent = _rfidKioskMode ? '⤢ Exit' : '⛶ Fullscreen';
+  }
+
+  const topstrip = document.querySelector('.kiosk-topstrip');
+  let exitBtn = document.getElementById('rfid-exit-kiosk-btn');
+  if (_rfidKioskMode && !exitBtn && topstrip) {
+    exitBtn = document.createElement('button');
+    exitBtn.id = 'rfid-exit-kiosk-btn';
+    exitBtn.className = 'kiosk-icon-btn';
+    exitBtn.title = 'Exit kiosk — back to admin dashboard';
+    exitBtn.textContent = '⏻';
+    exitBtn.onclick = function () { navTo('a-dashboard'); };
+    topstrip.appendChild(exitBtn);
+  } else if (!_rfidKioskMode && exitBtn) {
+    exitBtn.remove();
+  }
+};
+
+// ── Capture plumbing ────────────────────────────────────────────────────────
+
+// ── Live clock (Task 4 — gives the otherwise-empty top-left corner a job,
+//    and makes the kiosk feel "alive" during idle stretches between scans) ──
+
+export function _rfidTickClock() {
+  const el = document.getElementById('kiosk-clock-corner');
+  if (!el) return;
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+  const date = now.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' });
+  const blinkTime = _esc(time).replace(':', '<span class="kiosk-clock-blink">:</span>');
+  el.innerHTML = `<div class="kiosk-clock-time">${blinkTime}</div><div class="kiosk-clock-date">${_esc(date)}</div>`;
+}
+
+export function _rfidStartClock() {
+  if (_rfidClockInterval) clearInterval(_rfidClockInterval);
+  _rfidTickClock();
+  _rfidClockInterval = setInterval(_rfidTickClock, 1000 * 15);
+}
+
+// ── Schedule countdown (one chip, not three) ────────────────────────────────
+// A teacher only ever cares about whichever milestone is coming up next, so
+// instead of showing "opens/late/closes" as three separate timers this picks
+// the single next one and switches automatically as the day progresses:
+//   before openTime   → "Opens in"
+//   openTime→lateCutoff → "Late in"     (counting down to when scans start
+//                                        being marked Late)
+//   lateCutoff→closeTime → "Closes in"  (counting down to auto-close, which
+//                                        marks remaining students Absent)
+//   after closeTime   → "Session closed"
+export function _rfidScheduleFor(classId) {
+  // Phase 54: a section can have a whole-week default PLUS per-day
+  // overrides — resolve TODAY's actual window instead of grabbing whatever
+  // single row used to be the only one.
+  const sched = (typeof AttendanceService !== 'undefined' && AttendanceService.getEffectiveSchedule)
+    ? AttendanceService.getEffectiveSchedule(classId)
+    : AppStore.getSlice(s => (s.attendanceSchedules || []).find(x => x.classId === classId && (x.dayOfWeek || 0) === 0));
+  return sched || { openTime: '07:00', startTime: '07:30', lateCutoff: '07:45', closeTime: '08:30' };
+}
+
+export function _rfidTimeStrToDate(hhmm, base) {
+  const parts = (hhmm || '00:00').split(':').map(Number);
+  const d = new Date(base);
+  d.setHours(parts[0] || 0, parts[1] || 0, 0, 0);
+  return d;
+}
+
+export function _rfidNextScheduleMilestone(classId) {
+  const sched = _rfidScheduleFor(classId);
+  const now = new Date();
+  const open = _rfidTimeStrToDate(sched.openTime, now);
+  const late = _rfidTimeStrToDate(sched.lateCutoff, now);
+  const close = _rfidTimeStrToDate(sched.closeTime, now);
+
+  if (now < open) return { label: 'Opens in', target: open, tone: 'open' };
+  if (now < late) return { label: 'Late in', target: late, tone: 'late' };
+  if (now < close) return { label: 'Closes in', target: close, tone: 'close' };
+  return { label: 'Session closed', target: null, tone: 'closed' };
+}
+
+export function _rfidFormatCountdown(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`;
+}
+
+export function _rfidTickScheduleTimer() {
+  _rfidUpdateStatusEyebrow();
+  const el = document.getElementById('kiosk-schedule-timer');
+  if (!el) return;
+  const info = _rfidNextScheduleMilestone(_rfidSelectedClassId);
+  if (!info.target) {
+    el.innerHTML = `<div class="kiosk-timer-chip kiosk-timer-closed"><span class="kiosk-timer-label">🔒 Session closed</span></div>`;
+    return;
+  }
+  const remaining = _rfidFormatCountdown(info.target - new Date());
+  const icons = { open: '🚪', late: '⏰', close: '🔒' };
+  el.innerHTML = `
+    <div class="kiosk-timer-chip kiosk-timer-${info.tone}">
+      <span class="kiosk-timer-icon">${icons[info.tone] || '⏱'}</span>
+      <span class="kiosk-timer-label">${_esc(info.label)}</span>
+      <span class="kiosk-timer-value">${_esc(remaining)}</span>
+    </div>`;
+}
+
+export function _rfidStartScheduleTimer() {
+  if (_rfidScheduleTimerInterval) clearInterval(_rfidScheduleTimerInterval);
+  _rfidTickScheduleTimer();
+  _rfidScheduleTimerInterval = setInterval(_rfidTickScheduleTimer, 1000);
+}
+
+export function _rfidStartCapture() {
+  const input = document.getElementById('rfid-capture-input');
+  if (!input) return;
+
+  input.value = '';
+  _rfidScanBuffer = '';
+  input.focus();
+
+  // Defensive refocus: clicking a button on this screen, or a modal opening
+  // elsewhere (e.g. the ⚙️ Settings modal), can steal focus from the
+  // capture input. Re-grab it continuously while mounted, but never while
+  // the user is deliberately typing into a real text field (schedule
+  // times, the assign-card picker, etc.) or while a select/dropdown is open.
+  if (_rfidFocusInterval) clearInterval(_rfidFocusInterval);
+  _rfidFocusInterval = setInterval(function () {
+    if (!_rfidScannerMounted) return;
+    const active = document.activeElement;
+    const isRealInput = active && active !== input &&
+      (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA');
+    if (!isRealInput && document.getElementById('rfid-capture-input')) {
+      document.getElementById('rfid-capture-input').focus();
+    }
+  }, 600);
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      _rfidFinalizeScan(input.value);
+      return;
+    }
+    // Reset the inactivity finalize-timer on every keystroke.
+    if (_rfidInactivityTimer) clearTimeout(_rfidInactivityTimer);
+    _rfidInactivityTimer = setTimeout(function () {
+      if (input.value) _rfidFinalizeScan(input.value);
+    }, 120);
+  });
+}
+
+// ── Phone-as-NFC-reader (Web NFC) ───────────────────────────────────────────
+// Entirely additive to the USB-HID capture above: it never touches
+// _rfidScanBuffer, the hidden #rfid-capture-input, or the focus-stealing
+// interval. It only ever calls the same _rfidFinalizeScan(tagId) that the
+// keyboard-emulator path calls, so AttendanceService.processScan() and
+// everything downstream (spotlight, activity log, realtime) is identical
+// no matter which physical reader produced the tag.
+
+export function _rfidWebNfcSupported() {
+  return typeof window !== 'undefined' && 'NDEFReader' in window;
+}
+
+export const _rfidToggleWebNfc = function () {
+  if (_rfidWebNfcActive) {
+    _rfidStopWebNfcCapture();
+  } else {
+    _rfidStartWebNfcCapture();
+  }
+};
+
+export async function _rfidStartWebNfcCapture() {
+  if (!_rfidWebNfcSupported()) return;
+  try {
+    _rfidWebNfcAbortController = new AbortController();
+    const ndef = new NDEFReader();
+    // Must be called from a user gesture (the button's onclick) — this is
+    // a browser security requirement, not something we can work around.
+    await ndef.scan({ signal: _rfidWebNfcAbortController.signal });
+
+    _rfidWebNfcActive = true;
+    _rfidRefreshWebNfcButton();
+    toast('📱 Phone NFC reader armed — hold cards to the back of the phone', '#4edea3');
+
+    ndef.onreading = (event) => {
+      if (!_rfidScannerMounted) return;
+      // event.serialNumber is the tag/card UID (e.g. "04:a2:3f:9c:1b:80"),
+      // in the phone's native hex format — different on the wire from what
+      // the USB reader types, but _rfidFinalizeScan() normalizes both into
+      // one canonical id (see _rfidNormalizeTagId() above), so a card
+      // assigned via either reader is recognized by both.
+      const tagId = event.serialNumber;
+      if (tagId) _rfidFinalizeScan(tagId);
+    };
+
+    ndef.onreadingerror = () => {
+      toast('⚠️ Could not read that tag — try again', '#ffd166');
+    };
+  } catch (err) {
+    _rfidWebNfcActive = false;
+    _rfidWebNfcAbortController = null;
+    _rfidRefreshWebNfcButton();
+    toast('Could not start phone NFC: ' + (err && err.message ? err.message : err), '#ffb4ab');
+  }
+}
+
+export function _rfidStopWebNfcCapture() {
+  if (_rfidWebNfcAbortController) {
+    _rfidWebNfcAbortController.abort();
+    _rfidWebNfcAbortController = null;
+  }
+  _rfidWebNfcActive = false;
+  _rfidRefreshWebNfcButton();
+}
+
+export function _rfidRefreshWebNfcButton() {
+  const btn = document.getElementById('rfid-webnfc-btn');
+  if (!btn) return;
+  btn.classList.toggle('active', _rfidWebNfcActive);
+  btn.textContent = _rfidWebNfcActive ? '📱 NFC On' : '📱 Use Phone as Reader';
+  btn.title = _rfidWebNfcActive
+    ? 'Stop using this phone as an NFC reader'
+    : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone';
+}
+
+/**
+ * _rfidNormalizeTagId(raw) → string
+ * Makes a phone (Web NFC) scan and a USB (keyboard-wedge) scan of the SAME
+ * physical card produce the SAME tag_id, so either reader can be assigned
+ * once and then used interchangeably for that card.
+ *
+ * Confirmed against this project's actual USB reader with a real card:
+ *   phone (Web NFC serialNumber): "27:21:7c:33"   (hex, card's native byte order)
+ *   USB reader (keyboard-wedge):  "0863772967"    (decimal, REVERSED byte
+ *                                                   order, zero-padded to
+ *                                                   10 digits)
+ *   27:21:7c:33 reversed -> 33:7c:21:27 -> hex 337C2127 -> decimal 863772967
+ *   -> zero-padded -> 0863772967  ✓ matches exactly.
+ *
+ * The USB decimal format is treated as canonical (not the phone's hex)
+ * because every card assigned before this fix is already stored that way —
+ * so this needs no data migration, and only phone reads get converted.
+ * A plain digit string (already-USB-format input) is untouched and passes
+ * straight through, so the existing USB-only flow is byte-for-byte
+ * unaffected. Only 4-byte UIDs (colon/dash-separated hex, exactly 4 bytes —
+ * the common MIFARE Classic case, and the one verified above) get the
+ * fixed 10-digit zero-pad; longer UIDs are still converted to decimal but
+ * not force-padded, since there's no confirmed USB sample for that case.
+ */
+export function _rfidNormalizeTagId(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (/^[0-9a-fA-F]{2}([:\-][0-9a-fA-F]{2})+$/.test(s)) {
+    const hexBytes = s.split(/[:\-]/);
+    const reversedHex = hexBytes.slice().reverse().join('');
+    try {
+      const asDecimal = BigInt('0x' + reversedHex).toString();
+      return hexBytes.length === 4 ? asDecimal.padStart(10, '0') : asDecimal;
+    } catch (e) {
+      return s.replace(/[:\-]/g, '').toUpperCase(); // fallback if BigInt parsing ever fails
+    }
+  }
+  return s; // already USB/decimal format (or an unrecognized shape) — unchanged
+}
+
+export function _rfidFinalizeScan(rawValue) {
+  const input = document.getElementById('rfid-capture-input');
+  const tagId = _rfidNormalizeTagId(rawValue);
+  if (input) input.value = '';
+  if (_rfidInactivityTimer) { clearTimeout(_rfidInactivityTimer); _rfidInactivityTimer = null; }
+  if (!tagId) return;
+
+  if (_rfidScanMode === 'assign') {
+    _rfidHandleAssignScan(tagId);
+  } else {
+    _rfidHandleAttendanceScan(tagId);
+  }
+}
+
+export async function _rfidHandleAttendanceScan(tagId) {
+  _rfidRenderSpotlight('loading', { text: 'Checking card…' });
+  const result = await AttendanceService.processScan(tagId, _rfidSelectedClassId);
+
+  if (!result.ok) {
+    // BUGFIX (Investigation Report §4): "the attendance window closed for
+    // the day" isn't a mistake the way "unknown card" is — it's an expected
+    // end-of-period state. It used to render through the same 🚫 error
+    // look as everything else; now it gets its own calmer 'closed' mode.
+    if (result.error === 'closed') {
+      _rfidRenderSpotlight('closed', { message: result.message });
+      return;
+    }
+    const messages = {
+      unknown_card:  'Unknown card — not registered to any student.',
+      no_schedule:   'No schedule configured for this class.',
+      not_open:      'Attendance has not opened yet.',
+      wrong_section: result.message || 'This student is enrolled in a different section and cannot be scanned here.',
+    };
+    _rfidRenderSpotlight('error', {
+      message: messages[result.error] || result.message || 'Scan failed.',
+      rawTag: result.error === 'unknown_card' ? tagId : null,
+    });
+    return;
+  }
+
+  const student = AppStore.getStudent(result.studentId);
+  _rfidRenderSpotlight('profile', {
+    student, status: result.status,
+    alreadyRecorded: result.alreadyRecorded, fallbackName: result.studentName,
+  });
+  // _rfidRenderActivity() is also triggered by the AppStore subscription
+  // once AttendanceService applies the result — no need to call it here
+  // directly, but doing so keeps the log snappy on this device specifically
+  // rather than waiting on the realtime round-trip.
+  _rfidRenderActivity();
+}
+
+export async function _rfidHandleAssignScan(tagId) {
+  if (!_rfidAssignTargetStudentId) {
+    _rfidRenderSpotlight('message', { icon: '⚠️', text: 'Pick a student in Settings before scanning.', color: '#ffd166' });
+    return;
+  }
+  _rfidRenderSpotlight('loading', { text: 'Assigning card…' });
+  const result = await AttendanceService.assignCard(_rfidAssignTargetStudentId, tagId);
+  if (!result.ok) {
+    _rfidRenderSpotlight('message', { icon: '❌', text: result.error || 'Could not assign card.', color: '#ffb4ab', rawTag: tagId });
+    return;
+  }
+  const student = AppStore.getStudent(_rfidAssignTargetStudentId);
+  _rfidRenderSpotlight('message', { icon: '🪪', text: `Card assigned to ${student ? student.name : _rfidAssignTargetStudentId}.`, color: '#4edea3', rawTag: tagId });
+}
+
+// ── Student Spotlight (Task 1, left column — 80%) ───────────────────────────
+
+export function _rfidSpotlightIdleHtml() {
+  if (_rfidScanMode === 'assign') {
+    const target = _rfidAssignTargetStudentId ? AppStore.getStudent(_rfidAssignTargetStudentId) : null;
+    return `
+      <div class="kiosk-spotlight-idle">
+        <div class="kiosk-spotlight-idle-icon">🪪</div>
+        <div class="kiosk-spotlight-idle-text">Ready to assign a card</div>
+        <div class="kiosk-spotlight-idle-sub">${target ? `Tap a card for ${_esc(target.name)}` : 'Pick a student in Settings first'}</div>
+      </div>`;
+  }
+  return `
+    <div class="kiosk-spotlight-idle">
+      <div class="kiosk-spotlight-idle-icon">📶</div>
+      <div class="kiosk-spotlight-idle-text">Waiting for a card…</div>
+      <div class="kiosk-spotlight-idle-sub">Class: ${_esc(_rfidSelectedClassId)}</div>
+    </div>`;
+}
+
+export function _rfidWelcomeMessage(name, status, streak, alreadyRecorded) {
+  const firstName = _esc(String(name || 'Student').trim().split(/\s+/)[0]);
+  if (alreadyRecorded) return `You're already logged in for today, ${firstName}. See you in class!`;
+  if (status === 'Late') return `You're logged in, ${firstName} — try to beat the bell tomorrow!`;
+  if (streak && streak.current >= 3) return `Welcome back, ${firstName}! That's a ${streak.current}-day streak — keep up the great work!`;
+  if (status === 'Early') return `Welcome back, ${firstName}! Great to see you here early!`;
+  return `Welcome back, ${firstName}! Keep up the great work!`;
+}
+
+// Level/XP progress — mirrors the exact formula topbar.js's updateTopbar()
+// uses for the sidebar XP bar (xpNext=(level+1)*1000), so the number shown
+// here always agrees with what the student sees in their own sidebar.
+export function _rfidLevelProgress(student) {
+  if (!student) return null;
+  const lvl = student.level || 0;
+  const xp = student.xp || 0;
+  const xpNext = (lvl + 1) * 1000;
+  const pct = Math.min(100, Math.round((xp / xpNext) * 100));
+  return { lvl, xp, xpNext, pct };
+}
+
+// Class rank by XP — same sort AttendanceService/hall-of-fame.js already
+// uses for the leaderboard podium, scoped to this student's own section.
+// Returns null when there's no meaningful ranking to show (solo section).
+export function _rfidClassRank(student) {
+  if (!student) return null;
+  const classmates = AppStore.getSlice(s => (s.students || []).filter(
+    x => (x.classId || 'default-class') === (student.classId || 'default-class')
+  )) || [];
+  if (classmates.length < 2) return null;
+  const sorted = classmates.slice().sort((a, b) => (b.xp || 0) - (a.xp || 0));
+  const idx = sorted.findIndex(s => s.id === student.id);
+  return idx === -1 ? null : { rank: idx + 1, of: sorted.length };
+}
+
+export function _rfidProfileCardHtml(student, status, alreadyRecorded, fallbackName) {
+  const icons  = { 'Early': '🌅', 'On Time': '✅', 'Late': '⏰' };
+  const colors = { 'Early': '#7fd8ff', 'On Time': '#4edea3', 'Late': '#ffd166' };
+  const badgeColor = colors[status] || '#4edea3';
+  const name = student ? (student.name || student.displayName) : fallbackName;
+  const initials = (student && student.init) || String(name || '?').trim().slice(0, 2).toUpperCase();
+  const avatarColor = _cssColor(student && student.color);
+  const pct = student ? Math.round(Number(student.attendance) || 0) : null;
+  const pctColor = pct === null ? 'var(--text-muted)' : pct >= 90 ? '#4edea3' : pct >= 75 ? '#ffd166' : '#ffb4ab';
+
+  // Attendance streak (Investigation Report §4) — shares the exact same
+  // normalization + math as the student's own Progress page via the utils.js
+  // helpers, rather than a second copy of this logic living here.
+  const streak = student ? computeAttendanceStreak(getStudentAttendanceRecords(student.id)) : null;
+
+  // Too-many-absences warning (Investigation Report §4): no threshold existed
+  // anywhere in the app before. Reuses the same 75% line the progress ring
+  // color already draws, so a teacher sees one consistent cutoff everywhere
+  // instead of two different thresholds meaning slightly different things.
+  const showAbsenceWarning = pct !== null && pct < 75;
+
+  // Circular progress ring drawn with a conic-gradient — no SVG needed, and
+  // it scales/recolors purely through CSS custom properties set inline.
+  const ringDeg = pct !== null ? Math.round((pct / 100) * 360) : 0;
+
+  const lvlInfo = _rfidLevelProgress(student);
+  const rankInfo = _rfidClassRank(student);
+  // Equipped title — reuses the same tsGetEquippedTitle()/tsBuildBadgeHTML()
+  // pair the sidebar and dashboard use (modules/titles/), so the kiosk shows
+  // the exact same badge a student sees everywhere else. Guarded with
+  // typeof since modules/titles/*.js loads after this file (see index.html).
+  const equippedTitle = student && typeof tsGetEquippedTitle === 'function' ? tsGetEquippedTitle(student.id) : null;
+  const hasStatsPanel = (student && student.coins != null) || rankInfo;
+
+  return `
+    <div class="kiosk-dashboard">
+      <div class="kiosk-welcome-banner">
+        <div class="kiosk-welcome-icon">${!alreadyRecorded ? '✅' : '👋'}</div>
+        <div class="kiosk-welcome-copy">
+          <div class="kiosk-welcome-kicker">${!alreadyRecorded ? 'Scan Successful' : 'Already Checked In'}</div>
+          <div class="kiosk-welcome-text">${_rfidWelcomeMessage(name, status, streak, alreadyRecorded)}</div>
+        </div>
+      </div>
+
+      <div class="kiosk-dashboard-grid${pct === null ? ' kiosk-dashboard-grid-single' : ''}">
+        <div class="kiosk-panel kiosk-identity-panel">
+          ${student && student.profilePic
+            ? `<img class="kiosk-profile-avatar" src="${_esc(student.profilePic)}" alt="" />`
+            : `<div class="kiosk-profile-avatar" style="background:${avatarColor}22;color:${avatarColor};border-color:${avatarColor}44">${_esc(initials)}</div>`
+          }
+          <div class="kiosk-identity-info">
+            <div class="kiosk-profile-name">${_esc(name || 'Student')}</div>
+            <div class="kiosk-name-accent"></div>
+            ${student ? `<div class="kiosk-profile-section">Section: ${_esc(typeof getClassLabel === 'function' ? getClassLabel(student.classId) : student.classId)}</div>` : ''}
+            <div>
+              <div class="kiosk-status-badge" style="background:${badgeColor}22;color:${badgeColor};border:2px solid ${badgeColor}55">
+                ${icons[status] || '✅'} ${_esc(status)}${alreadyRecorded ? ' · already logged today' : ''}
+              </div>
+              ${streak && streak.current > 0 ? `<div class="kiosk-streak-pill">🔥 ${streak.current}-day streak</div>` : ''}
+            </div>
+            ${lvlInfo ? `
+            <div class="kiosk-level-block">
+              <div class="kiosk-level-label"><span>Level ${lvlInfo.lvl}</span><span>${lvlInfo.xp.toLocaleString()} / ${lvlInfo.xpNext.toLocaleString()} XP</span></div>
+              <div class="kiosk-level-track"><div class="kiosk-level-fill" style="width:${lvlInfo.pct}%"></div></div>
+              ${equippedTitle ? `<div class="kiosk-equipped-title"><div class="kiosk-equipped-label">Equipped Title</div>${tsBuildBadgeHTML(equippedTitle, { noParticles: true })}</div>` : ''}
+            </div>` : ''}
+          </div>
+        </div>
+
+        ${pct !== null ? `
+        <div class="kiosk-panel kiosk-attendance-panel" style="--ring-color:${pctColor}">
+          <div class="kiosk-ring" style="--ring-deg:${ringDeg}deg;--ring-color:${pctColor}">
+            <div class="kiosk-ring-inner">
+              <div class="kiosk-ring-pct">${pct}<span>%</span></div>
+              <div class="kiosk-ring-label">Cumulative<br>Attendance</div>
+            </div>
+          </div>
+          ${showAbsenceWarning ? `<div class="kiosk-absence-warning">⚠️ Below 75% — worth checking in with this student.</div>` : ''}
+        </div>` : ''}
+
+        ${pct !== null && hasStatsPanel ? `
+        <div class="kiosk-panel kiosk-stats-panel">
+          ${student && student.coins != null ? `
+          <div class="kiosk-stat-chip kiosk-stat-chip-coins">
+            <div class="kiosk-stat-label">Coins</div>
+            <div class="kiosk-stat-value">🪙 ${Number(student.coins || 0).toLocaleString()}</div>
+          </div>` : ''}
+          ${rankInfo ? `
+          <div class="kiosk-stat-chip kiosk-stat-chip-rank">
+            <div class="kiosk-stat-label">Class Rank</div>
+            <div class="kiosk-stat-value">#${rankInfo.rank} <span>of ${rankInfo.of}</span></div>
+          </div>` : ''}
+        </div>` : ''}
+      </div>
+    </div>`;
+}
+
+/**
+ * _rfidRenderSpotlight(mode, data) — the single entry point for everything
+ * shown in the left "Student Spotlight" column.
+ *   mode: 'idle' | 'loading' | 'message' | 'error' | 'profile'
+ * Auto-returns to 'idle' after a beat (except 'idle'/'loading' themselves)
+ * so the kiosk is always ready for the next student in line.
+ */
+export function _rfidRenderSpotlight(mode, data) {
+  const el = document.getElementById('kiosk-spotlight');
+  if (!el) return;
+  data = data || {};
+  clearTimeout(window._rfidSpotlightResetTimer);
+
+  if (mode === 'idle') {
+    el.innerHTML = _rfidSpotlightIdleHtml();
+    return;
+  }
+  if (mode === 'loading') {
+    el.innerHTML = `
+      <div class="kiosk-spotlight-idle">
+        <div class="kiosk-spotlight-idle-icon">⏳</div>
+        <div class="kiosk-spotlight-idle-text">${_esc(data.text || 'Checking card…')}</div>
+      </div>`;
+    return;
+  }
+  if (mode === 'message') {
+    el.innerHTML = `
+      <div class="kiosk-spotlight-idle">
+        <div class="kiosk-spotlight-idle-icon">${_esc(data.icon || 'ℹ️')}</div>
+        <div class="kiosk-spotlight-idle-text" style="color:${data.color || 'inherit'}">${_esc(data.text || '')}</div>
+        ${data.rawTag ? `<div class="kiosk-spotlight-raw-tag">Raw ID read: <code>${_esc(data.rawTag)}</code></div>` : ''}
+      </div>`;
+    window._rfidSpotlightResetTimer = setTimeout(function () { _rfidRenderSpotlight('idle'); }, 5200);
+    return;
+  }
+  if (mode === 'error') {
+    el.innerHTML = `
+      <div class="kiosk-spotlight-error">
+        <div class="kiosk-spotlight-error-icon">🚫</div>
+        <div class="kiosk-spotlight-error-text">${_esc(data.message || 'Scan failed.')}</div>
+        ${data.rawTag ? `<div class="kiosk-spotlight-raw-tag">Raw ID read: <code>${_esc(data.rawTag)}</code></div>` : ''}
+      </div>`;
+    window._rfidSpotlightResetTimer = setTimeout(function () { _rfidRenderSpotlight('idle'); }, 3200);
+    return;
+  }
+  if (mode === 'closed') {
+    // Distinct from 'error' (Investigation Report §4) — a closed window is
+    // an expected end-of-period state, not a scan gone wrong, so it gets a
+    // calmer icon/color and a direct pointer to where to still record it.
+    el.innerHTML = `
+      <div class="kiosk-spotlight-closed">
+        <div class="kiosk-spotlight-closed-icon">🔒</div>
+        <div class="kiosk-spotlight-closed-text">Attendance Window Closed</div>
+        <div class="kiosk-spotlight-closed-sub">${_esc(data.message || 'Use the Manual Override on the Live Classroom Monitor instead.')}</div>
+      </div>`;
+    window._rfidSpotlightResetTimer = setTimeout(function () { _rfidRenderSpotlight('idle'); }, 3200);
+    return;
+  }
+  if (mode === 'profile') {
+    el.innerHTML = _rfidProfileCardHtml(data.student, data.status, data.alreadyRecorded, data.fallbackName);
+    window._rfidSpotlightResetTimer = setTimeout(function () { _rfidRenderSpotlight('idle'); }, 5000);
+    return;
+  }
+}
+
+// ── Recent Activity Log (Task 1, right column — 20%) ────────────────────────
+
+// BUGFIX: this used to be new Date().toISOString().slice(0,10) — the UTC
+// date, not the Manila date, same class of bug already fixed elsewhere for
+// the 8am-instead-of-midnight rollover (FIXES_APPLIED.md §2). Now shares
+// utils.js's isoDate() so "today" means the same thing everywhere.
+export function _rfidTodayISO() {
+  return isoDate();
+}
+
+export function _rfidRenderActivity() {
+  const statsEl = document.getElementById('kiosk-roster-stats');
+  const summaryEl = document.getElementById('kiosk-activity-summary');
+  const listEl = document.getElementById('kiosk-activity-list');
+  if (!summaryEl || !listEl) return;
+
+  const today = _rfidTodayISO();
+  const students = AppStore.getSlice(s => s.students) || [];
+  const todaysLogs = AppStore.getSlice(s => (s.attendanceLogs || []).filter(
+    l => l.classId === _rfidSelectedClassId && l.logDate === today
+  ));
+
+  const by = { 'Early': 0, 'On Time': 0, 'Late': 0, 'Absent': 0, 'Excused': 0 };
+  todaysLogs.forEach(l => { if (by[l.status] !== undefined) by[l.status]++; });
+  const colors = { 'Early': '#7fd8ff', 'On Time': '#4edea3', 'Late': '#ffd166', 'Absent': '#ffb4ab', 'Excused': '#c4b5fd' };
+
+  // Roster snapshot — the four numbers a teacher glances at first when the
+  // kiosk is idle: how many are enrolled, how many are in (on time or
+  // early), how many came in late, and how many the kiosk hasn't seen yet
+  // today. "Not Checked In" mirrors the "already logged in" phrasing the
+  // spotlight card already uses, instead of the more clinical "not yet
+  // scanned".
+  if (statsEl) {
+    const enrolledCount = students.filter(s => (s.classId || 'default-class') === _rfidSelectedClassId).length;
+    const presentCount = by['Early'] + by['On Time'];
+    const lateCount = by['Late'];
+    const loggedCount = todaysLogs.length;
+    const notCheckedInCount = Math.max(0, enrolledCount - loggedCount);
+
+    statsEl.innerHTML = `
+      <div class="kiosk-roster-stat">
+        <div class="kiosk-roster-stat-value">${enrolledCount}</div>
+        <div class="kiosk-roster-stat-label">Total</div>
+      </div>
+      <div class="kiosk-roster-stat kiosk-roster-stat-present">
+        <div class="kiosk-roster-stat-value">${presentCount}</div>
+        <div class="kiosk-roster-stat-label">Present</div>
+      </div>
+      <div class="kiosk-roster-stat kiosk-roster-stat-late">
+        <div class="kiosk-roster-stat-value">${lateCount}</div>
+        <div class="kiosk-roster-stat-label">Late</div>
+      </div>
+      <div class="kiosk-roster-stat kiosk-roster-stat-pending">
+        <div class="kiosk-roster-stat-value">${notCheckedInCount}</div>
+        <div class="kiosk-roster-stat-label">Not Checked In</div>
+      </div>`;
+  }
+
+  // Compact one-line summary — the full stat grid the old layout had would
+  // crowd the spec'd 80/20 split, so this keeps the same information
+  // available at a glance without competing with the activity list.
+  summaryEl.innerHTML = ['Early', 'On Time', 'Late', 'Absent', 'Excused']
+    .filter(k => by[k] > 0)
+    .map(k => `<span style="color:${colors[k]};font-weight:800">${by[k]}</span> ${_esc(k)}`)
+    .join(' <span style="opacity:.35">·</span> ') || 'No scans yet today';
+
+  const last10 = todaysLogs.slice()
+    .sort((a, b) => new Date(b.scannedAt) - new Date(a.scannedAt))
+    .slice(0, 10);
+
+  listEl.innerHTML = last10.length ? last10.map(l => {
+    const student = students.find(s => s.id === l.studentId);
+    const name = student ? (student.name || student.displayName) : l.studentId;
+    const initials = (student && student.init) || String(name || '?').trim().slice(0, 2).toUpperCase();
+    const avatarColor = _cssColor(student && student.color);
+    const color = colors[l.status] || 'var(--text-muted)';
+    return `
+      <div class="kiosk-activity-item">
+        ${student && student.profilePic
+          ? `<img class="kiosk-activity-avatar" src="${_esc(student.profilePic)}" alt="" />`
+          : `<div class="kiosk-activity-avatar" style="background:${avatarColor}22;color:${avatarColor}">${_esc(initials)}</div>`
+        }
+        <div class="kiosk-activity-main">
+          <div class="kiosk-activity-name">${_esc(name)}</div>
+          <div class="kiosk-activity-meta" style="color:${color}">${_esc(l.status)}${l.entryMethod === 'Manual' ? ' · manual' : ''}</div>
+        </div>
+        <div class="kiosk-activity-time">${_esc(new Date(l.scannedAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }))}</div>
+      </div>`;
+  }).join('') : `<div class="kiosk-activity-empty">No scans yet today</div>`;
+}
+
+// ── Mode / class switching ──────────────────────────────────────────────────
+
+export const _rfidSetMode = function (mode) {
+  _rfidScanMode = mode;
+  _rfidAssignTargetStudentId = null;
+  window.renderRfidScanner();
+  // Settings modal stays open across mode switches so the teacher can flip
+  // between Attendance/Assign and immediately see the updated picker.
+  if (document.getElementById('rfid-settings-panel')) window._rfidOpenSettings();
+};
+export const _rfidOpenAssignPicker = function () {
+  const students = AppStore.getSlice(s => s.students) || [];
+  _rfidAssignTargetStudentId = students[0] ? students[0].id : null;
+  _rfidSetMode('assign');
+};
+export const _rfidOnClassChange = function (classId) {
+  _rfidSelectedClassId = classId;
+  window.renderRfidScanner();
+};
+
+// ── ⚙️ Settings (Task 1: everything administrative, tucked out of the way) ──
+// Assign-Card mode, Schedule, and Close Session all still work exactly as
+// they did before the kiosk refactor — they're just one tap away instead of
+// permanently on-screen, keeping the main kiosk view distraction-free.
+// (Manual Override moved out entirely — see the file header.)
+
+export const _rfidOpenSettings = function () {
+  const students = AppStore.getSlice(s => s.students) || [];
+  showModal(`
+    <h3 style="margin-bottom:4px">⚙️ Kiosk Settings</h3>
+    <div id="rfid-settings-panel" style="color:var(--text-muted);font-size:12px;margin-bottom:18px">Class: ${_esc(window.getClassLabel ? window.getClassLabel(_rfidSelectedClassId, AppStore.getState()) : _rfidSelectedClassId)}</div>
+
+    <div style="margin-bottom:20px">
+      <label class="form-label">Scan Mode</label>
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button class="btn ${_rfidScanMode === 'attendance' ? 'btn-primary' : ''}" onclick="_rfidSetMode('attendance')">📡 Attendance Mode</button>
+        <button class="btn ${_rfidScanMode === 'assign' ? 'btn-primary' : ''}" onclick="_rfidOpenAssignPicker()">🪪 Assign Card</button>
+      </div>
+      ${_rfidScanMode === 'assign' ? `
+      <div style="margin-top:12px;background:rgba(255,255,255,.03);border-radius:10px;padding:12px;border:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--text-muted);font-weight:700;margin-bottom:8px;letter-spacing:.06em">ASSIGNING NEXT SCANNED CARD TO</div>
+        <select id="rfid-assign-student" style="width:100%" onchange="_rfidAssignTargetStudentId=this.value">
+          ${students.map(s => `<option value="${s.id}" ${s.id === _rfidAssignTargetStudentId ? 'selected' : ''}>${_esc(s.name)}</option>`).join('')}
+        </select>
+      </div>` : ''}
+    </div>
+
+    <div style="margin-bottom:20px">
+      <label class="form-label">⏰ Default Schedule — ${_esc(window.getClassLabel ? window.getClassLabel(_rfidSelectedClassId, AppStore.getState()) : _rfidSelectedClassId)}</label>
+      <div style="margin-top:8px">${_rfidRenderScheduleForm()}</div>
+      <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
+        This is the whole-week default. Per-day overrides (e.g. a shorter Friday) and
+        every other section setting live in
+        <a style="color:var(--primary);font-weight:700;cursor:pointer;text-decoration:none" onclick="closeModalForce();navTo('a-sections')">Section Maker →</a>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;justify-content:space-between;align-items:center">
+      <button class="btn btn-danger" onclick="_rfidCloseSession()">🔒 Close Session</button>
+      <button class="btn" onclick="closeModalForce()">Done</button>
+    </div>
+  `, 'md');
+};
+
+export function _rfidRenderScheduleForm() {
+  // Phase 54: this quick-edit form only ever touches the DEFAULT (day 0)
+  // row — explicitly filtered now that a class_id can have up to 8 rows
+  // (1 default + 7 day overrides). Editing a specific day's override is a
+  // Section Maker action, not a kiosk one.
+  const sched = AppStore.getSlice(s => (s.attendanceSchedules || []).find(x => x.classId === _rfidSelectedClassId && (x.dayOfWeek || 0) === 0));
+  const v = sched || { openTime: '07:00', startTime: '07:30', lateCutoff: '07:45', closeTime: '08:30' };
+  return `
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-items:end">
+      <div><label class="form-label">Opens</label><input type="time" id="rfid-sched-open" value="${_esc(v.openTime)}"></div>
+      <div><label class="form-label">Start (On Time from)</label><input type="time" id="rfid-sched-start" value="${_esc(v.startTime)}"></div>
+      <div><label class="form-label">Late cutoff</label><input type="time" id="rfid-sched-late" value="${_esc(v.lateCutoff)}"></div>
+      <div><label class="form-label">Closes</label><input type="time" id="rfid-sched-close" value="${_esc(v.closeTime)}"></div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="_rfidSaveSchedule()">Save Schedule</button>`;
+}
+
+export const _rfidSaveSchedule = async function () {
+  const times = {
+    openTime: document.getElementById('rfid-sched-open').value,
+    startTime: document.getElementById('rfid-sched-start').value,
+    lateCutoff: document.getElementById('rfid-sched-late').value,
+    closeTime: document.getElementById('rfid-sched-close').value,
+  };
+  const result = await AttendanceService.upsertSchedule(_rfidSelectedClassId, times, 0);
+  if (!result.ok) { toast(result.error || 'Could not save schedule.', '#ffb4ab'); return; }
+  toast('⏰ Schedule saved', '#4edea3');
+};
+
+export const _rfidCloseSession = async function () {
+  if (!confirm(`Close today's attendance for "${_rfidSelectedClassId}"? Every student with no scan will be marked Absent.`)) return;
+  const result = await AttendanceService.closeAttendanceSession(_rfidSelectedClassId);
+  if (!result.ok) { toast(result.error || 'Could not close session.', '#ffb4ab'); return; }
+  closeModalForce();
+  toast(`🔒 Session closed — ${result.absencesRecorded} marked Absent`, '#4edea3');
+};
+
+console.log('[EduQuest] attendance/att_scanner_rfid.js loaded — renderRfidScanner, unmountRfidScanner registered (Phase 4 kiosk).');
+
+// ── Phase 7 (2026-08-10, session 7): explicit window exports ──
+// These were previously implicit globals (bare top-level declarations,
+// reachable to other files only via classic-script auto-attach-to-window
+// behavior). Made explicit ahead of any real bundle/module scoping change
+// — found by build/audit-window-exports.js, which checks every symbol with
+// a real cross-file consumer, not just ones reachable from onclick markup.
+// See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window._rfidNormalizeTagId = _rfidNormalizeTagId;

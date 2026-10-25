@@ -2,11 +2,13 @@
 //  EduQuest — modules/achievements/engine.js
 //  Achievement engine: rarity constants, stats snapshot, trigger evaluation,
 //  check-and-award, claim-time reward granting, sidebar badge, unlock popup,
-//  plus the pub/sub subscribers below and the remaining trigger-hook patches
-//  (wbcApplyDamage, bootApp — not yet converted; see the Event-Driven
-//  Communication phase, roadmap Phase 4). finishQuiz and logRecitation were
-//  converted to AppStore.subscribe(); the logAttendance patch was removed
-//  outright as dead code (see the comment where it used to live).
+//  plus the pub/sub subscribers below. All 5 of the Event-Driven
+//  Communication phase's target functions (roadmap Phase 4) are now
+//  converted or resolved: finishQuiz, logRecitation, and wbcApplyDamage
+//  became AppStore.subscribe() handlers; the logAttendance patch was
+//  removed as dead code (its intent restored via the real live attendance
+//  events instead); bootApp's 6 live patches (across this file and 5
+//  others) converted to AppStore.emit()-driven subscribers.
 //
 //  NOTE: confirmBuy patch intentionally OMITTED — shop/store.js already calls
 //  achCheckAndAward() via typeof guard in cartCheckout(). Patching confirmBuy
@@ -192,6 +194,34 @@ function achEvaluateTrigger(ach, stats) {
  *            quiz engine, wbcApplyDamage, bootApp — all via typeof guard or direct.
  */
 window.achCheckAndAward = function (studentId, suppressPopup) {
+  _achCheckAndAwardCore(studentId, suppressPopup);
+  // Event-Driven Communication (Continuation Plan §3, Category A —
+  // achCheckAndAward-as-title-hook, highest blast radius on the list:
+  // achCheckAndAward is called directly from ~8 places across the app —
+  // campaign_engine.js, combat-settings.js, shop_store.js,
+  // shop_pos_terminal.js, plus this file's own subscribers below — none of
+  // which needed to change, since all of them call the single global
+  // achCheckAndAward and this wrapper is now the only thing that name
+  // resolves to. Wrapping the whole function (rather than emitting from
+  // _achCheckAndAwardCore's own tail) preserves the old monkey-patch's
+  // "always runs after the original, regardless of which internal branch
+  // fired" semantics exactly — same reasoning as navTo/renderAnalytics:
+  // the old patch in titles_sidebar_refresh.js called `_orig(studentId,
+  // suppressPopup)` first and ran its own title-unlock scan unconditionally
+  // afterward (guarded only by its own `if (!studentId) return`), even on
+  // _achCheckAndAwardCore's early returns (no studentId, unknown student,
+  // or zero newly-unlocked achievements this call — that last one matters:
+  // an admin can link a title to an achievement AFTER a student already
+  // unlocked it, so a later achCheckAndAward() call that finds nothing NEW
+  // to unlock still needs to let the title-scan catch up on titles linked
+  // after the fact). The existing 'achievements:unlocked' event (emitted a
+  // few lines up) does NOT cover that catch-up case — it only fires when
+  // newlyUnlocked.length > 0 — so a dedicated event was needed here rather
+  // than reusing it.
+  AppStore.emit({ type: 'achievements:check-and-award-ran', payload: { studentId, suppressPopup } });
+};
+
+function _achCheckAndAwardCore(studentId, suppressPopup) {
   if (!studentId) return;
   const student = (AppStore.getSlice(s => s.students) || []).find(s => s.id === studentId);
   if (!student) return;
@@ -247,7 +277,7 @@ window.achCheckAndAward = function (studentId, suppressPopup) {
   currentUser = (AppStore.getSlice(s => s.students) || []).find(s => s.id === studentId);
   achUpdateSidebarBadge();
   if (!suppressPopup) newlyUnlocked.forEach((ach, i) => setTimeout(() => achShowUnlockPopup(ach), i * 1400));
-};
+}
 
 // ── Claim-time reward granting ────────────────────────────────────────────────
 
@@ -385,15 +415,26 @@ window.achShowUnlockPopup = function (ach) {
 // both fired achCheckAndAward(sid, true) on every recitation log. Removed
 // as part of the Event-Driven Communication phase (roadmap Phase 4).
 
-// wbcApplyDamage → achCheckAndAward (world-boss module; typeof guard)
-;(function () {
-  const _orig = window.wbcApplyDamage;
-  window.wbcApplyDamage = function (bossIdx, damage, studentId) {
-    const result = typeof _orig === 'function' ? _orig(bossIdx, damage, studentId) : undefined;
-    if (studentId) setTimeout(() => achCheckAndAward(studentId), 400);
-    return result;
-  };
-})();
+// wbcApplyDamage → achCheckAndAward, per hit: this used to be a monkey-patch
+// that NEVER ACTUALLY RAN — index.html loads ach_engine.js (807) before
+// combat-settings.js (853), so by the time this patch's IIFE captured
+// `_orig = window.wbcApplyDamage`, nothing had defined it yet (_orig was
+// undefined). combat-settings.js then OVERWRITES window.wbcApplyDamage
+// outright (it doesn't chain via _orig), silently discarding this patch for
+// good. Net effect: boss_damage/boss_crits achievements — the two trigger
+// types that are running totals crossable on ANY hit, not just a kill —
+// never got checked until some unrelated trigger happened to fire later.
+// Restored here as a real subscriber on the events wbcApplyDamage actually
+// emits (see combat-settings.js's own AppStore.updateState() call), on both
+// a normal hit and the killing blow — a crit landed as the finishing hit
+// should still count toward boss_crits. No suppressPopup, matching the
+// original patch and the finishQuiz/session-booted precedent: dealing damage
+// in a live raid is the student's own real-time action.
+AppStore.subscribe('ach-engine-boss-damage', function (state, event) {
+  if (event.type !== 'world-boss:damage-applied' && event.type !== 'world-boss:defeated') return;
+  const studentId = event.payload && event.payload.studentId;
+  if (studentId) setTimeout(() => achCheckAndAward(studentId), 400);
+});
 
 // session:booted → achCheckAndAward: dedicated subscriber, not folded into
 // the shared 'ach-engine-state-sync' one — this patch never passed

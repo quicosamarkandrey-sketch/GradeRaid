@@ -1,0 +1,36 @@
+const { chromium } = require('@playwright/test');
+const assert = require('node:assert/strict');
+(async()=>{
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH || '/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+const page=await browser.newPage({viewport:{width:1500,height:1000}});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.route('http://127.0.0.1:4174/', route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html><body></body></html>'}));
+await page.goto('http://127.0.0.1:4174/');
+await page.evaluate(()=>{document.body.innerHTML='<div id="a-classroom" class="active"></div>'; window.AppStore={getState:()=>({}),subscribe(){},unsubscribe(){}};window.getActiveClassIds=()=>['c'];window._esc=s=>String(s??'');window._cssColor=s=>s;window.toast=()=>{};window.ClassroomService={STATUS_COLORS:{_empty:{bg:'#333',border:'#999'}},getLiveSeatingMap:()=>[],duplicateSeats:seats=>seats.map((s,i)=>({...s,id:'copy'+i,xCoord:s.xCoord+30,yCoord:s.yCoord+30}))};});
+for(const file of ['classroom-builder-render.js','classroom_builder.js','classroom-editor.js']) await page.addScriptTag({url:'http://127.0.0.1:4174/modules/seat-arrangement/'+file});
+await page.evaluate(()=>{_cbMounted=true;_cbLayoutId='layout';_cbLocalSeats=[{id:'a',xCoord:200,yCoord:200},{id:'b',xCoord:400,yCoord:200}];_cbRenderShell(document.getElementById('a-classroom'),['c'],{});document.querySelector('#cb-canvas-wrap').style.cssText='width:1200px;height:800px;flex:none';_cbScaleCanvas();});
+const pos=async(x,y)=>page.locator('#cb-canvas').evaluate((el,p)=>{const r=el.getBoundingClientRect();return {x:r.left+p.x*r.width/1200,y:r.top+p.y*r.height/800}},{x,y});
+async function drag(x,y,a,b){const s=await pos(x,y),t=await pos(a,b);await page.mouse.move(s.x,s.y);await page.mouse.down();await page.mouse.move(t.x,t.y,{steps:8});await page.mouse.up();}
+await page.locator('[data-editor=select]').click();
+let p=await pos(200,200);await page.mouse.click(p.x,p.y);p=await pos(400,200);await page.mouse.click(p.x,p.y);
+assert.equal(await page.evaluate(()=>_cbSelectedSeatIds.size),2,'multi-select');
+await drag(200,200,300,300);
+assert.deepEqual(await page.evaluate(()=>_cbLocalSeats.map(s=>[s.xCoord,s.yCoord])),[[300,300],[500,300]],'group movement');
+await page.locator('[data-editor=undo]').click();assert.equal(await page.evaluate(()=>_cbLocalSeats[0].xCoord),200);
+await page.locator('[data-editor=redo]').click();assert.equal(await page.evaluate(()=>_cbLocalSeats[0].xCoord),300);
+await drag(100,100,600,400);assert.equal(await page.evaluate(()=>_cbSelectedSeatIds.size),2,'rectangle selection');
+await page.evaluate(()=>window._cbAddSeat());assert.equal(await page.evaluate(()=>_cbLocalSeats.length),3);
+await page.locator('[data-editor=undo]').click();assert.equal(await page.evaluate(()=>_cbLocalSeats.length),2,'undo add');
+await page.locator('input[aria-label="Seat display size"]').fill('60');
+assert.equal(await page.locator('.cb-seat').first().evaluate(el=>el.style.width),'60px');
+await page.evaluate(()=>{_cbLocalSeats[0].xCoord=1800;_cbLocalSeats[1].yCoord=1100;_cbRenderCanvas();});
+await page.locator('[data-editor=fit]').click();
+assert.equal(await page.evaluate(()=>_cbLocalSeats.every(s=>s.xCoord>=30&&s.xCoord<=1170&&s.yCoord>=30&&s.yCoord<=770)),true,'fit oversized layout');
+const before=await page.evaluate(()=>JSON.stringify(_cbLocalSeats));
+p=await pos(...await page.evaluate(()=>[_cbLocalSeats[0].xCoord,_cbLocalSeats[0].yCoord]));
+await page.mouse.move(p.x,p.y);await page.mouse.down();await page.mouse.move(p.x+20,p.y+20,{steps:3});await page.keyboard.press('Escape');await page.mouse.up();
+assert.equal(await page.evaluate(()=>JSON.stringify(_cbLocalSeats)),before,'Escape cancels drag');
+assert.deepEqual(errors,[]);
+console.log('PASS: multi-select, group drag, rectangle select, undo, redo, undo add, seat size; no page errors');
+await browser.close();
+})().catch(e=>{console.error(e);process.exit(1)});

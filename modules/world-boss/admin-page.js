@@ -684,6 +684,20 @@ window.openBossForm = function (bossIndex) {
     <button class="btn btn-ghost" onclick="closeModalForce()">Cancel</button>
     <button class="btn btn-primary" onclick="saveBossForm()" style="background:linear-gradient(135deg,#EC4899,#9333ea);box-shadow:0 4px 16px rgba(236,72,153,.3)">${isEdit ? '✅ Save Changes' : '＋ Create Boss'}</button>
   </div>`, 'lg');
+
+  // Event-Driven Communication (Continuation Plan §3, Category A) —
+  // replaces the openBossForm monkey-patches in skills.js/phases.js/rage.js
+  // (each surfaces its own config button inside the modal this function
+  // just opened). Load-order traced: admin-page.js loads first among the
+  // world-boss group (see index.html's "LOAD ORDER FIX" comment), then
+  // skills.js → phases.js → rage.js, each of which used to chain
+  // `_orig`-capturing wrappers around window.openBossForm — confirmed live
+  // and correctly chained (no silent-overwrite bug here, unlike
+  // wbcApplyDamage/renderStudentWorldBoss/renderStudentDashboard), but
+  // still worth collapsing into one idiom. Post-hook, void-return shape —
+  // openBossForm's only job after showModal() is done is DOM injection
+  // into the modal it just opened, so no return value to worry about.
+  AppStore.emit({ type: 'boss-form:opened', payload: { bossIndex } });
 };
 
 // ── Boss Library Picker ───────────────────────────────────────────────────────

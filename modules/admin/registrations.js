@@ -911,31 +911,44 @@ window.regAdminConfirmReassign = async function(regId) {
 };
 
 // ── EXTEND ANALYTICS WITH REGISTRATION STATS ──────────
-// NOTE: This patch extends the base renderAnalytics defined in analytics.js.
-// In Phase 5 this becomes an explicit call in analytics.js directly.
-;(function() {
-  const _origAnal2 = renderAnalytics;
-  renderAnalytics = function() {
-    _origAnal2();
-    const regs     = DB.registrations || [];
-    const pending  = regs.filter(r => r.status === 'pending').length;
-    const approved = regs.filter(r => r.status === 'approved').length;
-    const rejected = regs.filter(r => r.status === 'rejected').length;
-    const sect = document.getElementById('a-analytics');
-    if (!sect) return;
-    const regBlock = `
-    <div style="background:rgba(26,20,56,.8);border:1px solid rgba(78,222,163,.2);border-radius:16px;padding:20px;margin-bottom:24px">
-      <div style="font-family:var(--fm);font-size:9px;color:var(--secondary);letter-spacing:.16em;margin-bottom:14px;text-transform:uppercase">👤 Student Registrations</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
-        <div class="pos-stat-card"><div class="pos-stat-val" style="color:var(--primary)">${regs.length}</div><div class="pos-stat-lbl">Total Registrations</div></div>
-        <div class="pos-stat-card"><div class="pos-stat-val" style="color:#ffb95f">${pending}</div><div class="pos-stat-lbl">Pending</div></div>
-        <div class="pos-stat-card"><div class="pos-stat-val" style="color:#4edea3">${approved}</div><div class="pos-stat-lbl">Approved</div></div>
-        <div class="pos-stat-card"><div class="pos-stat-val" style="color:#ffb4ab">${rejected}</div><div class="pos-stat-lbl">Rejected</div></div>
-      </div>
-      <div style="margin-top:14px"><button class="btn btn-ghost btn-sm" onclick="navTo('a-registrations')"><span class="material-symbols-outlined" style="font-size:14px">person_add</span> Manage Registrations</button></div>
-    </div>`;
-    sect.innerHTML = regBlock + (sect.innerHTML || '');
-  };
-})();
+// Continuation Plan §3, Category A — replaces the old monkey-patch of
+// renderAnalytics. Confirmed the only LIVE patch on this function (the
+// other, shop_pos_terminal.js's, is dead — see analytics.js's header
+// comment and this session's engineering-log entry). Post-hook,
+// DOM-injection, void-return shape — straightforward conversion.
+AppStore.subscribe('registrations-analytics-block', function (state, event) {
+  if (event.type !== 'admin:analytics-rendered') return;
+  const regs     = DB.registrations || [];
+  const pending  = regs.filter(r => r.status === 'pending').length;
+  const approved = regs.filter(r => r.status === 'approved').length;
+  const rejected = regs.filter(r => r.status === 'rejected').length;
+  const sect = document.getElementById('a-analytics');
+  if (!sect) return;
+  const regBlock = `
+  <div style="background:rgba(26,20,56,.8);border:1px solid rgba(78,222,163,.2);border-radius:16px;padding:20px;margin-bottom:24px">
+    <div style="font-family:var(--fm);font-size:9px;color:var(--secondary);letter-spacing:.16em;margin-bottom:14px;text-transform:uppercase">👤 Student Registrations</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+      <div class="pos-stat-card"><div class="pos-stat-val" style="color:var(--primary)">${regs.length}</div><div class="pos-stat-lbl">Total Registrations</div></div>
+      <div class="pos-stat-card"><div class="pos-stat-val" style="color:#ffb95f">${pending}</div><div class="pos-stat-lbl">Pending</div></div>
+      <div class="pos-stat-card"><div class="pos-stat-val" style="color:#4edea3">${approved}</div><div class="pos-stat-lbl">Approved</div></div>
+      <div class="pos-stat-card"><div class="pos-stat-val" style="color:#ffb4ab">${rejected}</div><div class="pos-stat-lbl">Rejected</div></div>
+    </div>
+    <div style="margin-top:14px"><button class="btn btn-ghost btn-sm" onclick="navTo('a-registrations')"><span class="material-symbols-outlined" style="font-size:14px">person_add</span> Manage Registrations</button></div>
+  </div>`;
+  sect.innerHTML = regBlock + (sect.innerHTML || '');
+});
 
 console.log('[EduQuest] Admin Registrations loaded.');
+
+// ── Phase 7 (2026-08-10, session 7): explicit window exports ──
+// These were previously implicit globals (bare top-level declarations,
+// reachable to other files only via classic-script auto-attach-to-window
+// behavior). Made explicit ahead of any real bundle/module scoping change
+// — found by build/audit-window-exports.js, which checks every symbol with
+// a real cross-file consumer, not just ones reachable from onclick markup.
+// See PHASE7_WINDOW_EXPORT_AUDIT.md.
+window.regPasswordToggleBtn = regPasswordToggleBtn;
+window.regValidatePassword = regValidatePassword;
+window.regValidateName = regValidateName;
+window.regPickColor = regPickColor;
+window.regMakeInitials = regMakeInitials;

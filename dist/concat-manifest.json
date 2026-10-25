@@ -1,0 +1,826 @@
+{
+  "totalScriptElementsInIndexHtml": 137,
+  "localExternalFileCount": 133,
+  "inlineBlockCount": 3,
+  "cdnExternal": [
+    "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"
+  ],
+  "manifest": [
+    {
+      "type": "external",
+      "file": "./error-capture.js",
+      "startLine": 1,
+      "endLine": 95
+    },
+    {
+      "type": "inline",
+      "label": "index.html inline <script> block #0",
+      "startLine": 99,
+      "endLine": 102
+    },
+    {
+      "type": "external",
+      "file": "./supabase-client.js",
+      "startLine": 106,
+      "endLine": 165
+    },
+    {
+      "type": "external",
+      "file": "./repository/table-sync.js",
+      "startLine": 169,
+      "endLine": 1168
+    },
+    {
+      "type": "external",
+      "file": "./repository/pull-mappers.js",
+      "startLine": 1172,
+      "endLine": 1710
+    },
+    {
+      "type": "external",
+      "file": "./repository/realtime-groups.js",
+      "startLine": 1714,
+      "endLine": 1983
+    },
+    {
+      "type": "external",
+      "file": "./db-service.js",
+      "startLine": 1987,
+      "endLine": 3135
+    },
+    {
+      "type": "external",
+      "file": "./dsm-service.js",
+      "startLine": 3139,
+      "endLine": 3308
+    },
+    {
+      "type": "external",
+      "file": "./db-schema.js",
+      "startLine": 3312,
+      "endLine": 3534
+    },
+    {
+      "type": "external",
+      "file": "./modules/core/state-manager.js",
+      "startLine": 3538,
+      "endLine": 4414
+    },
+    {
+      "type": "external",
+      "file": "./modules/core/active-section.js",
+      "startLine": 4418,
+      "endLine": 4495
+    },
+    {
+      "type": "external",
+      "file": "./db-migrations.js",
+      "startLine": 4499,
+      "endLine": 4674
+    },
+    {
+      "type": "external",
+      "file": "./app-state.js",
+      "startLine": 4678,
+      "endLine": 4830
+    },
+    {
+      "type": "external",
+      "file": "./dom.js",
+      "startLine": 4834,
+      "endLine": 4874
+    },
+    {
+      "type": "external",
+      "file": "./utils.js",
+      "startLine": 4878,
+      "endLine": 4968
+    },
+    {
+      "type": "external",
+      "file": "./student-stats.js",
+      "startLine": 4972,
+      "endLine": 5429
+    },
+    {
+      "type": "external",
+      "file": "./modules/quest-engine.js",
+      "startLine": 5433,
+      "endLine": 5967
+    },
+    {
+      "type": "external",
+      "file": "./modules/quest-mascot-lines.js",
+      "startLine": 5971,
+      "endLine": 6134
+    },
+    {
+      "type": "external",
+      "file": "./modules/quest-chains.js",
+      "startLine": 6138,
+      "endLine": 6253
+    },
+    {
+      "type": "external",
+      "file": "./nav.js",
+      "startLine": 6257,
+      "endLine": 6591
+    },
+    {
+      "type": "external",
+      "file": "./topbar.js",
+      "startLine": 6595,
+      "endLine": 6696
+    },
+    {
+      "type": "external",
+      "file": "./modules/shared/button-loading.js",
+      "startLine": 6700,
+      "endLine": 6813
+    },
+    {
+      "type": "external",
+      "file": "./modules/shared/notification-service.js",
+      "startLine": 6817,
+      "endLine": 7219
+    },
+    {
+      "type": "external",
+      "file": "./auth.js",
+      "startLine": 7223,
+      "endLine": 7801
+    },
+    {
+      "type": "external",
+      "file": "./recovery.js",
+      "startLine": 7805,
+      "endLine": 8012
+    },
+    {
+      "type": "inline",
+      "label": "index.html inline <script> block #1",
+      "startLine": 8016,
+      "endLine": 8078
+    },
+    {
+      "type": "external",
+      "file": "./modules/shared/reward-presenter.js",
+      "startLine": 8082,
+      "endLine": 8502
+    },
+    {
+      "type": "external",
+      "file": "./modules/shared/stat-bars.js",
+      "startLine": 8506,
+      "endLine": 8567
+    },
+    {
+      "type": "external",
+      "file": "./modules/shared/sequence.js",
+      "startLine": 8571,
+      "endLine": 8616
+    },
+    {
+      "type": "external",
+      "file": "./modules/shared/particles.js",
+      "startLine": 8620,
+      "endLine": 8705
+    },
+    {
+      "type": "external",
+      "file": "./modules/shared/ambient-backdrop.js",
+      "startLine": 8709,
+      "endLine": 8798
+    },
+    {
+      "type": "external",
+      "file": "./modules/shared/quick-jump.js",
+      "startLine": 8802,
+      "endLine": 8883
+    },
+    {
+      "type": "external",
+      "file": "./modules/shared/mascot-lines-service.js",
+      "startLine": 8887,
+      "endLine": 8955
+    },
+    {
+      "type": "external",
+      "file": "./modules/mail/mail-engine.js",
+      "startLine": 8959,
+      "endLine": 9154
+    },
+    {
+      "type": "external",
+      "file": "./modules/mail/student-inbox.js",
+      "startLine": 9158,
+      "endLine": 9354
+    },
+    {
+      "type": "external",
+      "file": "./modules/mail/admin-compose.js",
+      "startLine": 9358,
+      "endLine": 9716
+    },
+    {
+      "type": "external",
+      "file": "./modules/mail/index.js",
+      "startLine": 9720,
+      "endLine": 9756
+    },
+    {
+      "type": "external",
+      "file": "./modules/leaderboard/eql-engine.js",
+      "startLine": 9760,
+      "endLine": 10287
+    },
+    {
+      "type": "external",
+      "file": "./modules/leaderboard/hall-of-fame-styles.js",
+      "startLine": 10291,
+      "endLine": 10956
+    },
+    {
+      "type": "external",
+      "file": "./modules/leaderboard/hall-of-fame.js",
+      "startLine": 10960,
+      "endLine": 11588
+    },
+    {
+      "type": "external",
+      "file": "./modules/leaderboard/admin-leaderboard.js",
+      "startLine": 11592,
+      "endLine": 11872
+    },
+    {
+      "type": "external",
+      "file": "./modules/leaderboard/index.js",
+      "startLine": 11876,
+      "endLine": 11957
+    },
+    {
+      "type": "external",
+      "file": "./modules/recitation/logger.js",
+      "startLine": 11961,
+      "endLine": 12035
+    },
+    {
+      "type": "external",
+      "file": "./modules/recitation/progress.js",
+      "startLine": 12039,
+      "endLine": 12952
+    },
+    {
+      "type": "external",
+      "file": "./modules/recitation/recitation_index.js",
+      "startLine": 12956,
+      "endLine": 12990
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/sections-service.js",
+      "startLine": 12994,
+      "endLine": 13350
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/sections.js",
+      "startLine": 13354,
+      "endLine": 14255
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/sections_index.js",
+      "startLine": 14259,
+      "endLine": 14436
+    },
+    {
+      "type": "external",
+      "file": "./modules/attendance/attendance-service.js",
+      "startLine": 14440,
+      "endLine": 14887
+    },
+    {
+      "type": "external",
+      "file": "./modules/attendance/att_scanner_rfid.js",
+      "startLine": 14891,
+      "endLine": 15905
+    },
+    {
+      "type": "external",
+      "file": "./modules/attendance/attendance-recitation-log.js",
+      "startLine": 15909,
+      "endLine": 16427
+    },
+    {
+      "type": "external",
+      "file": "./modules/attendance/att_index.js",
+      "startLine": 16431,
+      "endLine": 16470
+    },
+    {
+      "type": "external",
+      "file": "./modules/enrollment/enrollment-service.js",
+      "startLine": 16474,
+      "endLine": 16638
+    },
+    {
+      "type": "external",
+      "file": "./modules/enrollment/enrollment-hub.js",
+      "startLine": 16642,
+      "endLine": 17521
+    },
+    {
+      "type": "external",
+      "file": "./modules/seat-arrangement/classroom-service.js",
+      "startLine": 17525,
+      "endLine": 18350
+    },
+    {
+      "type": "external",
+      "file": "./modules/seat-arrangement/recitation-service.js",
+      "startLine": 18354,
+      "endLine": 18754
+    },
+    {
+      "type": "external",
+      "file": "./modules/seat-arrangement/classroom-builder-render.js",
+      "startLine": 18758,
+      "endLine": 19298
+    },
+    {
+      "type": "external",
+      "file": "./modules/seat-arrangement/classroom_builder.js",
+      "startLine": 19302,
+      "endLine": 20606
+    },
+    {
+      "type": "external",
+      "file": "./modules/seat-arrangement/classroom_index.js",
+      "startLine": 20610,
+      "endLine": 20869
+    },
+    {
+      "type": "external",
+      "file": "./modules/seat-arrangement/live-monitor-render.js",
+      "startLine": 20873,
+      "endLine": 21362
+    },
+    {
+      "type": "external",
+      "file": "./modules/seat-arrangement/live_monitor.js",
+      "startLine": 21366,
+      "endLine": 22155
+    },
+    {
+      "type": "external",
+      "file": "./modules/seat-arrangement/live-monitor-recitation.js",
+      "startLine": 22159,
+      "endLine": 22347
+    },
+    {
+      "type": "external",
+      "file": "./modules/seat-arrangement/live-monitor-webnfc.js",
+      "startLine": 22351,
+      "endLine": 22464
+    },
+    {
+      "type": "external",
+      "file": "./modules/seat-arrangement/live-monitor-coldcall.js",
+      "startLine": 22468,
+      "endLine": 22695
+    },
+    {
+      "type": "external",
+      "file": "./modules/shop/shop_store.js",
+      "startLine": 22699,
+      "endLine": 23166
+    },
+    {
+      "type": "external",
+      "file": "./modules/shop/shop_inventory.js",
+      "startLine": 23170,
+      "endLine": 23545
+    },
+    {
+      "type": "external",
+      "file": "./modules/shop/shop_orders.js",
+      "startLine": 23549,
+      "endLine": 23761
+    },
+    {
+      "type": "external",
+      "file": "./modules/shop/shop_pos_terminal.js",
+      "startLine": 23765,
+      "endLine": 24835
+    },
+    {
+      "type": "external",
+      "file": "./modules/shop/shop_promotions.js",
+      "startLine": 24839,
+      "endLine": 25399
+    },
+    {
+      "type": "external",
+      "file": "./modules/shop/shop_admin_store.js",
+      "startLine": 25403,
+      "endLine": 25690
+    },
+    {
+      "type": "external",
+      "file": "./modules/shop/shop_index.js",
+      "startLine": 25694,
+      "endLine": 25952
+    },
+    {
+      "type": "external",
+      "file": "./modules/achievements/ach_engine.js",
+      "startLine": 25956,
+      "endLine": 26448
+    },
+    {
+      "type": "external",
+      "file": "./modules/achievements/ach_student_page.js",
+      "startLine": 26452,
+      "endLine": 26674
+    },
+    {
+      "type": "external",
+      "file": "./modules/achievements/ach_admin_page.js",
+      "startLine": 26678,
+      "endLine": 27174
+    },
+    {
+      "type": "external",
+      "file": "./modules/achievements/ach_index.js",
+      "startLine": 27178,
+      "endLine": 27330
+    },
+    {
+      "type": "external",
+      "file": "./modules/titles/titles_badge_renderer.js",
+      "startLine": 27334,
+      "endLine": 27673
+    },
+    {
+      "type": "external",
+      "file": "./modules/titles/titles_designer.js",
+      "startLine": 27677,
+      "endLine": 28190
+    },
+    {
+      "type": "external",
+      "file": "./modules/titles/titles_student_page.js",
+      "startLine": 28194,
+      "endLine": 28395
+    },
+    {
+      "type": "external",
+      "file": "./modules/titles/titles_admin_page.js",
+      "startLine": 28399,
+      "endLine": 28774
+    },
+    {
+      "type": "external",
+      "file": "./modules/titles/titles_sidebar_refresh.js",
+      "startLine": 28778,
+      "endLine": 29076
+    },
+    {
+      "type": "external",
+      "file": "./modules/titles/titles_index.js",
+      "startLine": 29080,
+      "endLine": 29312
+    },
+    {
+      "type": "external",
+      "file": "./modules/section/my-section.js",
+      "startLine": 29316,
+      "endLine": 29513
+    },
+    {
+      "type": "external",
+      "file": "./modules/campaign/campaign_engine.js",
+      "startLine": 29517,
+      "endLine": 30237
+    },
+    {
+      "type": "external",
+      "file": "./modules/campaign/campaign-dragdrop-beat.js",
+      "startLine": 30241,
+      "endLine": 30492
+    },
+    {
+      "type": "external",
+      "file": "./modules/campaign/campaign-skills.js",
+      "startLine": 30496,
+      "endLine": 30766
+    },
+    {
+      "type": "external",
+      "file": "./modules/campaign/campaign-reveal-dialogue-beats.js",
+      "startLine": 30770,
+      "endLine": 30991
+    },
+    {
+      "type": "external",
+      "file": "./modules/campaign/campaign_stage_map.js",
+      "startLine": 30995,
+      "endLine": 31200
+    },
+    {
+      "type": "external",
+      "file": "./modules/campaign/campaign_admin_map_editor.js",
+      "startLine": 31204,
+      "endLine": 32135
+    },
+    {
+      "type": "external",
+      "file": "./modules/campaign/campaign_index.js",
+      "startLine": 32139,
+      "endLine": 32272
+    },
+    {
+      "type": "external",
+      "file": "./modules/boss-studio/bs_storage.js",
+      "startLine": 32276,
+      "endLine": 32794
+    },
+    {
+      "type": "external",
+      "file": "./modules/boss-studio/bs_library.js",
+      "startLine": 32798,
+      "endLine": 33266
+    },
+    {
+      "type": "external",
+      "file": "./modules/boss-studio/bs_animation_library.js",
+      "startLine": 33270,
+      "endLine": 33617
+    },
+    {
+      "type": "external",
+      "file": "./modules/boss-studio/bs_editor.js",
+      "startLine": 33621,
+      "endLine": 34584
+    },
+    {
+      "type": "external",
+      "file": "./modules/boss-studio/bs_bve_engine.js",
+      "startLine": 34588,
+      "endLine": 35261
+    },
+    {
+      "type": "external",
+      "file": "./modules/boss-studio/bs_index.js",
+      "startLine": 35265,
+      "endLine": 35610
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/combat-settings.js",
+      "startLine": 35614,
+      "endLine": 35857
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/admin-page.js",
+      "startLine": 35861,
+      "endLine": 36713
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/loot-service.js",
+      "startLine": 36717,
+      "endLine": 37092
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/loot-rain.js",
+      "startLine": 37096,
+      "endLine": 38065
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/skills.js",
+      "startLine": 38069,
+      "endLine": 38549
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/phases.js",
+      "startLine": 38553,
+      "endLine": 39078
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/rage.js",
+      "startLine": 39082,
+      "endLine": 39459
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/summon-notify.js",
+      "startLine": 39463,
+      "endLine": 40018
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/minions.js",
+      "startLine": 40022,
+      "endLine": 40843
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/leaderboard.js",
+      "startLine": 40847,
+      "endLine": 41309
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/student-page.js",
+      "startLine": 41313,
+      "endLine": 41822
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/battle-overlay.js",
+      "startLine": 41826,
+      "endLine": 42190
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/raid-flow.js",
+      "startLine": 42194,
+      "endLine": 42767
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/bve-patches.js",
+      "startLine": 42771,
+      "endLine": 43324
+    },
+    {
+      "type": "external",
+      "file": "./modules/world-boss/index.js",
+      "startLine": 43328,
+      "endLine": 43462
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/student-manager.js",
+      "startLine": 43466,
+      "endLine": 43538
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/command-center.js",
+      "startLine": 43542,
+      "endLine": 43966
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/analytics.js",
+      "startLine": 43970,
+      "endLine": 44322
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/quiz-builder.js",
+      "startLine": 44326,
+      "endLine": 45057
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/registrations-service.js",
+      "startLine": 45061,
+      "endLine": 45265
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/registrations.js",
+      "startLine": 45269,
+      "endLine": 46223
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/teacher-directory-service.js",
+      "startLine": 46227,
+      "endLine": 46395
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/teacher-directory.js",
+      "startLine": 46399,
+      "endLine": 46985
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/content-oversight-service.js",
+      "startLine": 46989,
+      "endLine": 47147
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/content-oversight.js",
+      "startLine": 47151,
+      "endLine": 47952
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/mascot-lines.js",
+      "startLine": 47956,
+      "endLine": 48158
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/starter-pack-service.js",
+      "startLine": 48162,
+      "endLine": 48303
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/starter-pack-editor.js",
+      "startLine": 48307,
+      "endLine": 48880
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/teacher-invite-service.js",
+      "startLine": 48884,
+      "endLine": 49003
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/teacher-invite.js",
+      "startLine": 49007,
+      "endLine": 49265
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/audit-log-service.js",
+      "startLine": 49269,
+      "endLine": 49334
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/audit-log.js",
+      "startLine": 49338,
+      "endLine": 49600
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/system-health-service.js",
+      "startLine": 49604,
+      "endLine": 49782
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/system-health.js",
+      "startLine": 49786,
+      "endLine": 50146
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/ownership-service.js",
+      "startLine": 50150,
+      "endLine": 50228
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/school-settings-service.js",
+      "startLine": 50232,
+      "endLine": 50299
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/school-settings.js",
+      "startLine": 50303,
+      "endLine": 50423
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/dsm-manager.js",
+      "startLine": 50427,
+      "endLine": 51069
+    },
+    {
+      "type": "external",
+      "file": "./modules/admin/index.js",
+      "startLine": 51073,
+      "endLine": 51143
+    },
+    {
+      "type": "inline",
+      "label": "index.html inline <script> block #2",
+      "startLine": 51147,
+      "endLine": 53890
+    },
+    {
+      "type": "external",
+      "file": "./modules/perceived-speed.js",
+      "startLine": 53894,
+      "endLine": 54625
+    }
+  ]
+}
