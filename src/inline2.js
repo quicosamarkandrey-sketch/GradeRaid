@@ -201,8 +201,8 @@ export function renderStudentDashboard(){
     <!-- Combined academic snapshot — same focal card as the XP ring above, not a separate stat-grid -->
     <div class="dash-hero-stats">
       <div class="dash-hero-stat-chip"><div class="val" style="color:var(--primary)">${st.xp.toLocaleString()}</div><div class="lbl">Total XP</div></div>
-      <div class="dash-hero-stat-chip"><div class="val" style="color:var(--secondary)">${st.attendance}%</div><div class="lbl">Attendance</div></div>
-      <div class="dash-hero-stat-chip"><div class="val" style="color:var(--tertiary)">${st.quizAvg}%</div><div class="lbl">Quiz Avg</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" data-progress-status="${st.attendance >= 90 ? 'good' : st.attendance >= 75 ? 'warning' : 'danger'}" style="color:var(--secondary)">${st.attendance}%</div><div class="lbl">Attendance</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" data-progress-status="${st.quizAvg >= 75 ? 'good' : st.quizAvg >= 60 ? 'warning' : 'danger'}" style="color:var(--tertiary)">${st.quizAvg}%</div><div class="lbl">Quiz Avg</div></div>
       <div class="dash-hero-stat-chip"><div class="val" style="color:var(--tertiary)">#${myRank}</div><div class="lbl">Class Rank</div></div>
     </div>
   </div>

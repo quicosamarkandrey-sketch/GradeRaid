@@ -364,3 +364,60 @@
 .theme-nocturne .cc-action-sub{margin-top:4px;line-height:1.45}
 .theme-nocturne .cc-action-card:hover{transform:none;box-shadow:none;border-color:#777}
 .theme-nocturne .cc-action-icon{background:#1a1a1a;border-color:#3a3a3a;border-radius:5px}
+
+/* Black-led interface, selective light surfaces and functional color. */
+:root.theme-nocturne{
+  --success:#81b895;--warning:#d7b16b;--info:#8caee0;--danger:#e09393;
+  --positive:var(--success);--negative:var(--danger);--error:var(--danger);
+}
+.theme-nocturne .btn-success{background:#203529;color:#c0e0cb;border-color:#497158}
+.theme-nocturne .btn-danger{background:#352020;color:#f1b1b1;border:1px solid #825151}
+.theme-nocturne .btn-success:hover{background:#294634}
+.theme-nocturne .btn-danger:hover{background:#482929}
+.theme-nocturne :is(.bp-green,.badge-success){background:#81b89512;border-color:#81b89566;color:#a4d0b3}
+.theme-nocturne :is(.bp-red,.badge-danger){background:#e0939312;border-color:#e0939366;color:#efb4b4}
+.theme-nocturne :is(.bp-gold,.badge-warning){background:#d7b16b12;border-color:#d7b16b66;color:#e2c38c}
+.theme-nocturne :is(.bp-blue,.badge-info){background:#8caee012;border-color:#8caee066;color:#b0c8ed}
+.theme-nocturne #s-attendance .cal-dot.present{background:var(--success)}
+.theme-nocturne #s-attendance .cal-dot.absent{border-color:var(--danger)}
+.theme-nocturne #s-attendance .cal-dot.recitation{border-color:var(--info)}
+.theme-nocturne #s-attendance .cal-dot.quiz{background:var(--warning)}
+.theme-nocturne #s-attendance .cal-day.present .cal-day-num{color:var(--success)}
+.theme-nocturne #s-attendance .cal-day.absent .cal-day-num{color:var(--danger)}
+.theme-nocturne :is(.lm-seat,.cb-seat)[data-attendance-status="On Time"],.theme-nocturne :is(.lm-seat,.cb-seat)[data-attendance-status="Early"]{border-color:var(--success)!important;background:#81b8950d!important}
+.theme-nocturne :is(.lm-seat,.cb-seat)[data-attendance-status="Late"]{border-color:var(--warning)!important;background:#d7b16b0d!important}
+.theme-nocturne :is(.lm-seat,.cb-seat)[data-attendance-status="Absent"]{border-color:var(--danger)!important;background:#e093930d!important}
+.theme-nocturne :is(.lm-seat,.cb-seat)[data-attendance-status="Excused"]{border-color:var(--info)!important;background:#8caee00d!important}
+.theme-nocturne .lm-seat[data-attendance-status="Late"] .lm-seat-status-tag{color:var(--warning)}
+.theme-nocturne .lm-seat[data-attendance-status="Absent"] .lm-seat-status-tag{color:var(--danger)}
+.theme-nocturne .lm-seat[data-attendance-status="Excused"] .lm-seat-status-tag{color:var(--info)}
+.theme-nocturne :is(.lm-seat.flash-cycle,.lm-seat.flash-confirm,.lm-seat.flash-winner){border-color:#fff!important;background:#ffffff12!important}
+
+/* A light overview card anchors the student page without lightening the shell. */
+.theme-nocturne #s-dashboard .dash-hero{
+  --primary:#191919;--text:#191919;--on-surface:#191919;--text-muted:#606060;
+  background:#f4f4f1;border-color:#f4f4f1;color:#191919;
+}
+.theme-nocturne #s-dashboard .dash-hero :is(.dash-hero-name,.coin-display .val,.dash-hero-stat-chip .val){color:#191919!important}
+.theme-nocturne #s-dashboard .dash-hero :is(.dash-hero-sub,.coin-display .lbl,.dash-hero-stat-chip .lbl){color:#606060}
+.theme-nocturne #s-dashboard .dash-hero-stats,.theme-nocturne #s-dashboard .dash-hero-stat-chip{border-color:#d5d5d1}
+.theme-nocturne #s-dashboard .dash-hero .stat-bar{background:#d9d9d5}
+.theme-nocturne #s-dashboard .dash-hero .stat-bar-fill{background:#252525}
+.theme-nocturne #s-dashboard .dash-hero .dash-xp-ring circle:first-child{stroke:#d5d5d1}
+.theme-nocturne #s-dashboard .dash-hero .dash-xp-ring circle[stroke="url(#xpG)"]{stroke:#252525}
+.theme-nocturne #s-dashboard .dash-hero .level-badge{background:#252525;border-color:#252525;color:#fff}
+.theme-nocturne #s-dashboard .dash-hero .btn-primary,.theme-nocturne #s-dashboard .dash-hero .btn-orange{background:#191919!important;color:#fff!important;border-color:#191919!important}
+.theme-nocturne #s-dashboard .dash-hero .btn:hover{background:#333!important;border-color:#333!important}
+.theme-nocturne #s-dashboard .dash-hero .val[data-progress-status="good"]{color:#34764a!important}
+.theme-nocturne #s-dashboard .dash-hero .val[data-progress-status="warning"]{color:#8b641c!important}
+.theme-nocturne #s-dashboard .dash-hero .val[data-progress-status="danger"]{color:#a33c3c!important}
+
+/* One editorial light card on the staff dashboard; operational panels stay dark. */
+.theme-nocturne .cc-quote-panel{
+  --text:#202020;--on-surface:#202020;--text-muted:#606060;--primary:#505050;
+  background:#f4f4f1;border-color:#f4f4f1;color:#202020;
+}
+.theme-nocturne .cc-quote-panel::before{border-left-color:#bdbdb6}
+.theme-nocturne .cc-quote-text{color:#202020}
+.theme-nocturne .cc-quote-eyebrow{color:#626262}
+:root.theme-nocturne{--secondary:var(--success);--secondary-dark:#51956a}

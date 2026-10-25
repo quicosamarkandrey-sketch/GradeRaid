@@ -44,20 +44,34 @@ const root=path.resolve(__dirname,'../..');
      assert.ok(await page.locator('#'+id).isVisible(),role+': '+id+' not visible');
      assert.ok(await page.locator('#'+id).evaluate(el=>el.textContent.trim().length>0),id+' empty');
      assert.equal(await page.locator('#sidebar .material-symbols-outlined').evaluateAll(nodes=>nodes.every(el=>el.querySelector('svg'))),true,'Icon-font dependency in navigation');
-     if(id==='a-dashboard'||id==='s-dashboard'){await page.waitForTimeout(400);await page.screenshot({path:`/workspace/monochrome-${role}-${width}.png`,fullPage:true});}
+     if(id==='a-dashboard'||id==='s-dashboard'){await page.waitForTimeout(400);await page.screenshot({path:`/workspace/balanced-${role}-${width}.png`,fullPage:true});}
      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),role+' '+id+' overflows at '+width);
      if(id==='a-classroom-monitor'){
       const seat=page.locator('.lm-seat').first();
       assert.equal(await seat.getAttribute('data-attendance-status'),'On Time');
       assert.equal(await seat.locator('.lm-seat-status-tag').textContent(),'On Time');
-      assert.equal(await seat.evaluate(el=>getComputedStyle(el).borderTopColor),'rgb(237, 237, 237)');
+      assert.equal(await seat.evaluate(el=>getComputedStyle(el).borderTopColor),'rgb(129, 184, 149)');
      }
      assert.ok(await page.locator('#sidebar .nav-btn.active').evaluateAll(nodes=>nodes.every(el=>{const c=getComputedStyle(el).borderRightColor.match(/\d+/g).map(Number);return c[0]===c[1]&&c[1]===c[2];})),'Navigation tint remains');
      assert.ok(await page.locator('#topbar').evaluate(el=>{const c=getComputedStyle(el).backgroundColor.match(/\d+/g).map(Number);return c[0]===c[1]&&c[1]===c[2];}),'Header tint remains');
+     if(id==='s-dashboard'){
+      assert.equal(await page.locator('.dash-hero').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(244, 244, 241)');
+      assert.equal(await page.locator('.dash-hero .btn').evaluate(el=>getComputedStyle(el).color),'rgb(255, 255, 255)');
+     }
+     if(id==='a-dashboard')assert.equal(await page.locator('.cc-quote-panel').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(244, 244, 241)');
      count++;
     }
    }
   }
+  await page.evaluate(()=>{
+   window.fixtureOriginalStudent=currentUser;
+   currentUser={...currentUser,attendance:80,quizAvg:50};renderStudentDashboard();
+  });
+  assert.equal(await page.locator('.dash-hero .val[data-progress-status=warning]').textContent(),'80%');
+  assert.equal(await page.locator('.dash-hero .val[data-progress-status=warning]').evaluate(el=>getComputedStyle(el).color),'rgb(139, 100, 28)');
+  assert.equal(await page.locator('.dash-hero .val[data-progress-status=danger]').textContent(),'50%');
+  assert.equal(await page.locator('.dash-hero .val[data-progress-status=danger]').evaluate(el=>getComputedStyle(el).color),'rgb(163, 60, 60)');
+  await page.evaluate(()=>{currentUser=fixtureOriginalStudent;renderStudentDashboard();});
   // Presentation is idempotent and does not rewrite fields, user prose,
   // uploaded photos, selected values, or attendance status colors.
   await page.evaluate(()=>{
@@ -75,6 +89,11 @@ const root=path.resolve(__dirname,'../..');
   assert.equal(await page.locator('#theme-probe .avatar').evaluate(el=>el.style.color),'rgb(139, 92, 246)');
   assert.equal(await page.locator('#theme-probe .lm-seat').evaluate(el=>el.style.borderColor),'rgb(78, 222, 163)');
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('.theme-legacy-probe')).color==='rgb(238, 238, 238)');
+  await page.evaluate(()=>{
+   const el=document.createElement('div');el.id='semantic-colors';el.innerHTML='<button class="btn btn-danger">Delete</button><button class="btn btn-success">Confirm</button>';document.body.append(el);
+  });
+  assert.equal(await page.locator('#semantic-colors .btn-danger').evaluate(el=>getComputedStyle(el).color),'rgb(241, 177, 177)');
+  assert.equal(await page.locator('#semantic-colors .btn-success').evaluate(el=>getComputedStyle(el).color),'rgb(192, 224, 203)');
   const before=await page.locator('#theme-probe').innerHTML();
   await page.evaluate(()=>UIPresentation.refresh(document.getElementById('theme-probe')));
   assert.equal(await page.locator('#theme-probe').innerHTML(),before);

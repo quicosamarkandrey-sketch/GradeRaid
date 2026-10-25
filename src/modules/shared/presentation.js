@@ -178,10 +178,10 @@ import { uiIcon } from '../../dom.js';
     "#8b5cf6": "#bdbdbd",
     "#6d28d9": "#787878",
     "#7c3aed": "#939393",
-    "#4edea3": "#dedede",
-    "#ffb95f": "#eeeeee",
-    "#ffd166": "#eeeeee",
-    "#ffd700": "#eeeeee",
+    "#4edea3": "#81b895",
+    "#ffb95f": "#d7b16b",
+    "#ffd166": "#d7b16b",
+    "#ffd700": "#d7b16b",
     "#231f38": "#1c1c1c",
     "#1a1438": "#1a1a1a",
     "#2a2836": "#272727",
@@ -190,37 +190,33 @@ import { uiIcon } from '../../dom.js';
     "#0e0d19": "#121212",
     "#0f172a": "#1e1e1e",
     "#1e293b": "#2a2a2a",
-    "#22d3ee": "#b2b2b2",
-    "#06b6d4": "#b2b2b2",
-    "#38bdf8": "#b2b2b2",
-    "#10b981": "#b2b2b2",
-    "#f97316": "#aaaaaa",
-    "#fb923c": "#aaaaaa",
+    "#22d3ee": "#8caee0",
+    "#06b6d4": "#8caee0",
+    "#38bdf8": "#8caee0",
+    "#10b981": "#81b895",
+    "#f97316": "#d7b16b",
+    "#fb923c": "#d7b16b",
     "#ec4899": "#9e9e9e",
-    "#3b82f6": "#a7a7a7",
-    "#60a5fa": "#b5b5b5",
-    "#93c5fd": "#cbcbcb",
-    "#ef4444": "#c4c4c4"
+    "#3b82f6": "#8caee0",
+    "#60a5fa": "#8caee0",
+    "#93c5fd": "#8caee0",
+    "#ef4444": "#e09393",
+    "#c2c8c1": "#81b895",
+    "#ffb4ab": "#e09393",
+    "#d99b98": "#e09393",
+    "#cbc7be": "#d7b16b",
+    "#ccc8be": "#d7b16b"
 };
   // CSSOM serializes most hex colors as rgb(), so cover both spellings.
   const triplet = value => [1,3,5].map(index=>parseInt(value.slice(index,index+2),16)).join(',');
   for (const [before,after] of Object.entries(hex)) palette.set(triplet(before),triplet(after));
-  function neutralTriplet(r,g,b) {
-    const linear = component => { const x=Number(component)/255; return x<=.04045 ? x/12.92 : ((x+.055)/1.055)**2.4; };
-    const luminance=.2126*linear(r)+.7152*linear(g)+.0722*linear(b);
-    const gray=Math.round(255*(luminance<=.0031308 ? 12.92*luminance : 1.055*luminance**(1/2.4)-.055));
-    return [gray,gray,gray].join(',');
-  }
   function neutralize(value) {
     if (/url\(/i.test(value)) return value; // uploaded artwork and SVG data URLs
     return value.replace(/(#[\da-f]{6})([\da-f]{2})?\b/gi, (value,base,alpha) => {
-      const channels=[1,3,5].map(index=>parseInt(base.slice(index,index+2),16));
-      const gray=neutralTriplet(...channels).split(',')[0];
-      const fallback='#'+Number(gray).toString(16).padStart(2,'0').repeat(3);
-      return (hex[base.toLowerCase()] || fallback)+(alpha || '');
+      return hex[base.toLowerCase()] ? hex[base.toLowerCase()]+(alpha || '') : value;
     })
       .replace(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/g, (v,r,g,b) => {
-        const replacement = palette.get(`${r},${g},${b}`) || neutralTriplet(r,g,b);
+        const replacement = palette.get(`${r},${g},${b}`);
         return replacement ? v.slice(0,v.indexOf('(')+1)+replacement : v;
       });
   }

@@ -1,4 +1,4 @@
-# Nocturne — black and white design system
+# Nocturne — black-led design system
 
 The shared presentation now covers student, teacher and admin views. Earlier phases established the student layouts; the current palette and local icon system apply across all roles, including dynamically rendered staff tools and dialogs.
 The entry page enables `theme-nocturne`; `styles/modules/nocturne.css`
@@ -7,7 +7,8 @@ working layout rules. The classic dashboard, build input, and ESM twin are
 kept in sync.
 
 - Near-black surfaces (#090909 / #121212), white text, quiet neutral
-  borders and solid white (#f2f2f2) primary actions. No warm or colored accent. No global grayscale filter: photos,
+  borders and solid white (#f2f2f2) primary actions. Selective white cards
+  create emphasis; restrained green, amber, red and blue communicate state. No global grayscale filter: photos,
   artwork and meaningful status colors retain their own rendering.
 - System sans-serif (Inter when available, then Segoe UI / Arial) for headings,
   controls and body text; monospace only for identifiers/numbers. No serif
@@ -26,7 +27,7 @@ kept in sync.
 without altering service APIs or stored records. It batches new DOM subtrees,
 replaces decorative symbols and Material icon-font names with a closed local
 SVG registry, and maps known legacy colors in inline styles and local stylesheets
-onto the monochrome palette. Source-module and classic-script versions are kept in sync.
+onto the restrained interface palette. Source-module and classic-script versions are kept in sync.
 
 No whole-page grayscale filter is used. Editable values, marked user prose,
 profile-name containers, artwork URLs, avatars, custom badge previews, and live
@@ -86,3 +87,19 @@ not rewritten. Live Monitor shows each student's attendance status in text;
 solid, dashed, dotted and double borders distinguish attendance states without
 relying on hue. Classroom selection and locked-seat markers remain visible.
 The full-app check asserts neutral header styling and visible attendance labels.
+
+## Functional color and selective light cards
+
+The shell remains predominantly black with white navigation and controls.
+The student overview and staff motivation card are light surfaces with scoped
+dark text, borders and inverted primary actions. Other operational panels stay
+dark. Success/present uses muted green, warning/late uses amber, error/absent
+uses red, and information/excused uses blue. Attendance labels and border
+patterns remain, so hue is an additional signal.
+
+The presentation adapter maps known decorative legacy colors instead of
+converting every unknown color to grayscale. Functional and data colors are
+preserved. Dashboard attendance and quiz summary colors follow their numeric
+values; stored statistics and business logic are unchanged. Browser checks
+verify light-card contrast, semantic actions and attendance color alongside
+the existing navigation, user-content and mobile checks.
