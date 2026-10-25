@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="theme-nocturne">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -29,6 +29,7 @@
 <link rel="stylesheet" href="./styles/modules/notifications.css">
 <link rel="stylesheet" href="./styles/modules/system-health.css">
 <link rel="stylesheet" href="./styles/modules/student-mobile.css">
+<link rel="stylesheet" href="./styles/modules/nocturne.css">
 </head>
 <body>
 <div id="app">
@@ -134,7 +135,7 @@
       <!-- WORLD BOSS TOPBAR WIDGET -->
       <div id="wb-topbar-widget" onclick="navTo('s-world-boss')">
         <div class="wb-event-live-dot"></div>
-        <div class="wb-widget-icon">💀</div>
+        <div class="wb-widget-icon"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3l8 4v6c0 4-8 8-8 8s-8-4-8-8V7l8-4Z M8 12h8 M12 8v8"/></svg></div>
         <div class="wb-widget-info">
           <div class="wb-widget-name" id="wb-widget-name">BOSS RAID</div>
           <div class="wb-widget-hp-bar stat-bar" id="wb-widget-hp-track"><div id="wb-widget-hp-fill" class="stat-bar-fill" style="width:100%"></div></div>
@@ -976,6 +977,7 @@ function renderStudentDashboard(){
   const qrIdx=DB.students.indexOf(st);
 
   document.getElementById('s-dashboard').innerHTML=`
+  <header class="dashboard-heading"><p class="dashboard-eyebrow">Student / Overview</p><h1>Your dashboard</h1></header>
   <!-- HERO CARD (primary focal element — XP/level progress + academic snapshot combined, per Design Discovery) -->
   <div class="dash-hero" id="dash-hero">
     <canvas class="dash-hero-canvas" id="dash-hero-canvas"></canvas>
@@ -986,7 +988,7 @@ function renderStudentDashboard(){
           <circle cx="55" cy="55" r="${r}" fill="none" stroke="url(#xpG)" stroke-width="7" stroke-linecap="round"
             stroke-dasharray="${circ}" stroke-dashoffset="${dashOff}" style="transition:stroke-dashoffset .8s"/>
           <defs><linearGradient id="xpG" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#4edea3"/>
+            <stop offset="0%" stop-color="#a8a8a8"/><stop offset="100%" stop-color="var(--secondary)"/>
           </linearGradient></defs>
         </svg>
         <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
@@ -1011,18 +1013,18 @@ function renderStudentDashboard(){
       </div>
       <div class="dash-hero-right">
         <div class="coin-display">
-          <div class="val float">🪙 ${st.coins.toLocaleString()}</div>
+          <div class="val float"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M15 8h-4a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9 M12 6v12"/></svg> ${st.coins.toLocaleString()}</div>
           <div class="lbl">Coins Available</div>
         </div>
-        <button class="btn btn-orange btn-block" onclick="navTo('s-store')">🛍️ Visit Armory</button>
+        <button class="btn btn-orange btn-block" onclick="navTo('s-store')"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 7h12l1 14H5L6 7Z M9 7V5a3 3 0 0 1 6 0v2"/></svg> Visit Armory</button>
       </div>
     </div>
     <!-- Combined academic snapshot — same focal card as the XP ring above, not a separate stat-grid -->
     <div class="dash-hero-stats">
-      <div class="dash-hero-stat-chip"><div class="val" style="color:#d0bcff">${st.xp.toLocaleString()}</div><div class="lbl">Total XP</div></div>
-      <div class="dash-hero-stat-chip"><div class="val" style="color:#4edea3">${st.attendance}%</div><div class="lbl">Attendance</div></div>
-      <div class="dash-hero-stat-chip"><div class="val" style="color:#fb923c">${st.quizAvg}%</div><div class="lbl">Quiz Avg</div></div>
-      <div class="dash-hero-stat-chip"><div class="val" style="color:#ffb95f">#${myRank}</div><div class="lbl">Class Rank</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" style="color:var(--primary)">${st.xp.toLocaleString()}</div><div class="lbl">Total XP</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" style="color:var(--secondary)">${st.attendance}%</div><div class="lbl">Attendance</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" style="color:var(--tertiary)">${st.quizAvg}%</div><div class="lbl">Quiz Avg</div></div>
+      <div class="dash-hero-stat-chip"><div class="val" style="color:var(--tertiary)">#${myRank}</div><div class="lbl">Class Rank</div></div>
     </div>
   </div>
 
@@ -1034,13 +1036,13 @@ function renderStudentDashboard(){
     const unread=mails.filter(m=>!((m.readBy||{})[st.id])).length;
     const unclaimedMailRewards=mails.filter(m=>m.hasReward&&!((m.claimedBy||{})[st.id])).length;
     const notifs=[];
-    if(unclaimed>0) notifs.push({icon:'🎁',color:'#d0bcff',bg:'rgba(208,188,255,.07)',border:'rgba(208,188,255,.25)',title:unclaimed+' Achievement Reward'+(unclaimed>1?'s':'')+' Ready to Claim',sub:'Go to Achievements to collect your rewards.',action:'navTo(\'s-badges\')',btnLabel:'Claim Now',btnColor:'#8b5cf6'});
-    if(unclaimedMailRewards>0) notifs.push({icon:'📬',color:'#ffb95f',bg:'rgba(255,185,95,.07)',border:'rgba(255,185,95,.25)',title:unclaimedMailRewards+' Mail Reward'+(unclaimedMailRewards>1?'s':'')+' Unclaimed',sub:'Your teacher sent you rewards. Open your mail to claim them.',action:'navTo(\'s-mail\')',btnLabel:'Open Mail',btnColor:'#f59e0b'});
+    if(unclaimed>0) notifs.push({icon:'🎁',color:'var(--primary)',bg:'rgba(208,188,255,.07)',border:'rgba(208,188,255,.25)',title:unclaimed+' Achievement Reward'+(unclaimed>1?'s':'')+' Ready to Claim',sub:'Go to Achievements to collect your rewards.',action:'navTo(\'s-badges\')',btnLabel:'Claim Now',btnColor:'#a8a8a8'});
+    if(unclaimedMailRewards>0) notifs.push({icon:'📬',color:'var(--tertiary)',bg:'rgba(255,185,95,.07)',border:'rgba(255,185,95,.25)',title:unclaimedMailRewards+' Mail Reward'+(unclaimedMailRewards>1?'s':'')+' Unclaimed',sub:'Your teacher sent you rewards. Open your mail to claim them.',action:'navTo(\'s-mail\')',btnLabel:'Open Mail',btnColor:'#f59e0b'});
     else if(unread>0) notifs.push({icon:'📨',color:'rgba(255,185,95,.7)',bg:'rgba(255,185,95,.04)',border:'rgba(255,185,95,.18)',title:unread+' Unread Message'+(unread>1?'s':'')+'',sub:'Your teacher sent you a message.',action:'navTo(\'s-mail\')',btnLabel:'Read Mail',btnColor:'#ca8a04'});
     if(!notifs.length) return '';
     return `<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px">`+
-      notifs.map(n=>`<div style="background:${n.bg};border:1px solid ${n.border};border-radius:14px;padding:13px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <div style="font-size:24px;flex-shrink:0;animation:achBadgePulse 2s ease-in-out infinite">${n.icon}</div>
+      notifs.map(n=>`<div class="dashboard-alert" style="background:${n.bg};border:1px solid ${n.border};border-radius:14px;padding:13px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="font-size:24px;flex-shrink:0;animation:achBadgePulse 2s ease-in-out infinite"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18v14H3V5Z M3 5l9 8 9-8"/></svg></div>
         <div style="flex:1;min-width:0">
           <div style="font-family:var(--fh);font-size:14px;font-weight:900;color:${n.color}">${n.title}</div>
           <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${n.sub}</div>
@@ -1054,7 +1056,7 @@ function renderStudentDashboard(){
       <!-- ACTIVE QUESTS -->
       ${pending.length ? `
       <div class="section-header">
-        <span class="material-symbols-outlined">swords</span>
+        <svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v15h-7l-1 2-1-2H4V4Z M12 6v15"/></svg>
         <h2>Active Quests</h2>
         <span class="badge-pill bp-green">${pending.length} available</span>
       </div>
@@ -1062,8 +1064,8 @@ function renderStudentDashboard(){
         ${pending.slice(0,2).map((q,qi)=>`
         <div class="quest-card" onclick="startQuiz('${q.id}')">
           <div class="quest-img-wrap">
-            <div class="quest-img-placeholder">${['🧬','🔢','🌍','⚗️','💻'][qi%5]}</div>
-            ${qi===0?'<div class="quest-badge hot">🔥 Active</div>':'<div class="quest-badge new">✨ New</div>'}
+            <div class="quest-img-placeholder"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v15h-7l-1 2-1-2H4V4Z M12 6v15"/></svg></div>
+            ${qi===0?'<div class="quest-badge hot">Available</div>':'<div class="quest-badge new">New</div>'}
           </div>
           <div class="quest-body">
             <div class="quest-title">${q.title}</div>
@@ -1075,13 +1077,13 @@ function renderStudentDashboard(){
               </div>
               <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
             </div>
-            <button class="quest-btn primary">⚔ Begin Quest</button>
+            <button class="quest-btn primary"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v15h-7l-1 2-1-2H4V4Z M12 6v15"/></svg> Begin Quest</button>
           </div>
         </div>`).join('')}
       </div>` : `
-      <div class="section-header"><span class="material-symbols-outlined">swords</span><h2>Active Quests</h2></div>
+      <div class="section-header"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v15h-7l-1 2-1-2H4V4Z M12 6v15"/></svg><h2>Active Quests</h2></div>
       <div style="text-align:center;padding:48px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;margin-bottom:24px;backdrop-filter:blur(12px)">
-        <div style="font-size:48px;margin-bottom:12px">🏆</div>
+        <div style="font-size:48px;margin-bottom:12px"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4 4L19 6"/></svg></div>
         <div style="font-family:var(--fh);font-size:16px;font-weight:800;margin-bottom:6px">All Quests Complete!</div>
         <div style="color:var(--text-muted);font-size:13px">Check back when new quests are posted.</div>
       </div>`}
@@ -1089,13 +1091,13 @@ function renderStudentDashboard(){
       <!-- OVERALL ACTIVITY (Phase 67 — was "Point Activity"; now merges every
            reward/purchase source, not just DB.pointLog, and shows a live
            relative time via window.eqTimeAgo() instead of a frozen string) -->
-      <div class="section-header"><span class="material-symbols-outlined">receipt_long</span><h2>Overall Activity</h2></div>
+      <div class="section-header"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16 M4 12h10 M4 18h16"/></svg><h2>Overall Activity</h2></div>
       <div class="glass-card" style="padding:16px">
         <div class="pt-events">
           ${activityFeed.length ? activityFeed.map(e=>`
           <div class="pt-event">
-            <div class="pt-icon" style="font-size:18px">${e.icon || '⭐'}</div>
-            <div class="pt-delta" style="color:${e.pts>0?'#4edea3':e.pts<0?'#ffb4ab':'var(--text-muted)'}">${e.pts>0?'+':''}${e.pts||0}</div>
+            <div class="pt-icon" style="font-size:18px"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16 M4 12h10 M4 18h16"/></svg></div>
+            <div class="pt-delta" style="color:${e.pts>0?'var(--secondary)':e.pts<0?'#ffb4ab':'var(--text-muted)'}">${e.pts>0?'+':''}${e.pts||0}</div>
             <div class="pt-info"><div class="pt-what">${e.label}</div><div class="pt-when">${window.eqTimeAgo(e.createdAt)}</div></div>
           </div>`).join('') : '<div style="color:var(--text-muted);text-align:center;padding:16px;font-size:13px">No activity yet</div>'}
         </div>
@@ -1105,10 +1107,10 @@ function renderStudentDashboard(){
     <!-- SIDEBAR COL -->
     <div style="display:flex;flex-direction:column;gap:16px">
       <!-- LEADERBOARD MINI -->
-      <div class="section-header"><span class="material-symbols-outlined">military_tech</span><h2>Rankings</h2></div>
+      <div class="section-header"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V11h5v10 M9 21V4h6v17 M15 21v-7h5v7"/></svg><h2>Rankings</h2></div>
       <div class="glass-card" style="padding:16px">
         ${sorted.slice(0,5).map((s,i)=>{
-          const medals=['🥇','🥈','🥉','4.','5.'];const isMe=s.id===st.id;
+          const medals=['1','2','3','4','5'];const isMe=s.id===st.id;
           return `<div class="lb-row" style="padding:8px 10px;background:${isMe?'rgba(208,188,255,0.08)':'transparent'};border:${isMe?'1px solid rgba(208,188,255,0.2)':'1px solid transparent'};margin-bottom:6px">
             <div class="lb-rank">${i<3?medals[i]:`<span style="font-size:12px;font-weight:700;color:var(--text-muted)">${medals[i]}</span>`}</div>
             <div class="lb-av" style="background:${s.color+'22'};color:${s.color};border-color:${s.color+'44'}">${s.init}</div>
@@ -1120,22 +1122,22 @@ function renderStudentDashboard(){
 
       <!-- QR CODE -->
       <div class="glass-card dash-qr-card">
-        <h3>🔲 Your QR Code</h3>
+        <h3><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h6v6H3V3Z M15 3h6v6h-6V3Z M3 15h6v6H3v-6Z M15 15h2v2h-2z M19 19h2v2h-2z M15 21v-2 M21 15h-2"/></svg> Your QR Code</h3>
         <div class="qr-card">
           <div class="qr-svg-wrap">
             <svg width="82" height="82" viewBox="0 0 80 80">
-              <rect x="4" y="4" width="26" height="26" rx="3" fill="none" stroke="#d0bcff" stroke-width="2.5"/>
-              <rect x="10" y="10" width="14" height="14" fill="#d0bcff"/>
-              <rect x="50" y="4" width="26" height="26" rx="3" fill="none" stroke="#d0bcff" stroke-width="2.5"/>
-              <rect x="56" y="10" width="14" height="14" fill="#d0bcff"/>
-              <rect x="4" y="50" width="26" height="26" rx="3" fill="none" stroke="#d0bcff" stroke-width="2.5"/>
-              <rect x="10" y="56" width="14" height="14" fill="#d0bcff"/>
-              <rect x="38" y="38" width="6" height="6" fill="#4edea3"/>
-              <rect x="50" y="38" width="6" height="6" fill="#4edea3"/>
-              <rect x="62" y="38" width="6" height="6" fill="#4edea3"/>
-              <rect x="38" y="50" width="6" height="6" fill="#4edea3"/>
-              <rect x="50" y="62" width="6" height="6" fill="#4edea3"/>
-              <rect x="62" y="50" width="6" height="6" fill="#4edea3"/>
+              <rect x="4" y="4" width="26" height="26" rx="3" fill="none" stroke="var(--primary)" stroke-width="2.5"/>
+              <rect x="10" y="10" width="14" height="14" fill="var(--primary)"/>
+              <rect x="50" y="4" width="26" height="26" rx="3" fill="none" stroke="var(--primary)" stroke-width="2.5"/>
+              <rect x="56" y="10" width="14" height="14" fill="var(--primary)"/>
+              <rect x="4" y="50" width="26" height="26" rx="3" fill="none" stroke="var(--primary)" stroke-width="2.5"/>
+              <rect x="10" y="56" width="14" height="14" fill="var(--primary)"/>
+              <rect x="38" y="38" width="6" height="6" fill="var(--secondary)"/>
+              <rect x="50" y="38" width="6" height="6" fill="var(--secondary)"/>
+              <rect x="62" y="38" width="6" height="6" fill="var(--secondary)"/>
+              <rect x="38" y="50" width="6" height="6" fill="var(--secondary)"/>
+              <rect x="50" y="62" width="6" height="6" fill="var(--secondary)"/>
+              <rect x="62" y="50" width="6" height="6" fill="var(--secondary)"/>
             </svg>
           </div>
           <div style="font-size:11px;color:var(--text-muted)">ID: #SQ-2024-0${qrIdx+81}</div>
@@ -1145,12 +1147,12 @@ function renderStudentDashboard(){
 
       <!-- GOALS -->
       <div class="glass-card">
-        <h3>🎯 Active Goals</h3>
+        <h3><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z M12 10v4 M10 12h4"/></svg> Active Goals</h3>
         <div>
           <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:12px">Perfect Attendance</span><span class="badge-pill bp-green">${st.attendance}%</span></div>
-          <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden;margin-bottom:14px"><div style="height:100%;border-radius:20px;width:${st.attendance}%;background:linear-gradient(90deg,#4edea3,#06b6d4);box-shadow:0 0 8px rgba(78,222,163,.5)"></div></div>
+          <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden;margin-bottom:14px"><div style="height:100%;border-radius:20px;width:${st.attendance}%;background:linear-gradient(90deg,var(--secondary),#06b6d4);box-shadow:0 0 8px rgba(78,222,163,.5)"></div></div>
           <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:12px">Reach Level ${st.level+1}</span><span class="badge-pill bp-primary">${xpPct}%</span></div>
-          <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden"><div style="height:100%;border-radius:20px;width:${xpPct}%;background:linear-gradient(90deg,#8b5cf6,#d0bcff);box-shadow:0 0 8px rgba(139,92,246,.5)"></div></div>
+          <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden"><div style="height:100%;border-radius:20px;width:${xpPct}%;background:linear-gradient(90deg,#a8a8a8,var(--primary));box-shadow:0 0 8px rgba(139,92,246,.5)"></div></div>
         </div>
       </div>
     </div>
@@ -1179,8 +1181,8 @@ function renderStudentDashboard(){
     window._eqDashHeroBackdropStop = null;
   }
   const heroCanvas = document.getElementById('dash-hero-canvas');
-  if (heroCanvas && typeof startAmbientBackdrop === 'function') {
-    window._eqDashHeroBackdropStop = startAmbientBackdrop(heroCanvas, { count: 55, color: '#d0bcff', alpha: 0.4, dotSize: 2.2 });
+  if (heroCanvas && !document.documentElement.classList.contains('theme-nocturne') && typeof startAmbientBackdrop === 'function') {
+    window._eqDashHeroBackdropStop = startAmbientBackdrop(heroCanvas, { count: 55, color: 'var(--primary)', alpha: 0.4, dotSize: 2.2 });
   }
 
   // Level Up Wow Moment (Event tier — rare, earned, skippable per redesign

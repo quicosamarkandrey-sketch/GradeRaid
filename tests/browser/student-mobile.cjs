@@ -1,10 +1,11 @@
-// Serve the repository on port 4175, then run this file. Uses fixture data
+// Self-hosted browser check. Uses fixture data
 // with the real renderers; never authenticates or writes to Supabase.
 const {chromium}=require('@playwright/test');
 const fs=require('node:fs');
 const path=require('node:path');
 const acorn=require('acorn');
 const assert=require('node:assert/strict');
+const http=require('node:http');
 const root=path.resolve(__dirname,'../..');
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
 let dashboard;
@@ -14,11 +15,18 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
   if(fn)dashboard=match[1].slice(fn.start,fn.end);
 }
 (async()=>{
+ const server=http.createServer((req,res)=>{
+  const file=path.resolve(root,'.'+new URL(req.url,'http://localhost').pathname);
+  if(!file.startsWith(root+path.sep)){res.writeHead(403);res.end();return;}
+  fs.readFile(file,(error,data)=>{res.writeHead(error?404:200,{'Content-Type':file.endsWith('.css')?'text/css':'text/plain'});res.end(error?'Not found':data);});
+ });
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const baseURL='http://127.0.0.1:'+server.address().port;
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']});
  try{
  const page=await browser.newPage();await page.emulateMedia({reducedMotion:'reduce'});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.route('http://127.0.0.1:4175/',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${['base','modules/shop','modules/recitation','modules/student-mobile'].map(p=>`<link rel="stylesheet" href="/styles/${p}.css">`).join('')}<style>.material-symbols-outlined{display:inline-block;width:20px;flex-shrink:0;font-size:0!important}.material-symbols-outlined::before{content:'◆';font-size:14px}</style></head><body>${['s-dashboard','s-my-section','s-inventory','s-store','s-attendance','s-mail'].map(id=>`<div id="${id}" class="page active"></div>`).join('')}</body></html>`}));
- await page.goto('http://127.0.0.1:4175/');
+ await page.route(baseURL+'/',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html class="theme-nocturne"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${['base','modules/shop','modules/recitation','modules/student-mobile','modules/nocturne'].map(p=>`<link rel="stylesheet" href="/styles/${p}.css">`).join('')}<style>.material-symbols-outlined{display:inline-block;width:20px;flex-shrink:0;font-size:0!important}.material-symbols-outlined::before{content:'◆';font-size:14px}</style></head><body>${['s-dashboard','s-my-section','s-inventory','s-store','s-attendance','s-mail'].map(id=>`<div id="${id}" class="page active"></div>`).join('')}</body></html>`}));
+ await page.goto(baseURL+'/');
  await page.evaluate(()=>{
  window.currentUser={id:'s1',name:'Alexandra Rivera Santos',init:'AR',color:'#a78bfa',tier:'Scholar',classId:'c1',xp:12345,coins:1500,level:12,attendance:96,quizAvg:88,completedQuizzes:[]};
  const items=Array.from({length:6},(_,i)=>({id:'item'+i,itemId:'item'+i,itemName:'Supercharged Knowledge Potion '+i,name:'Supercharged Knowledge Potion '+i,desc:'A helpful reward to boost your next classroom adventure.',cat:'supplies',category:'supplies',cost:100,stock:10,quantity:2,emoji:'🧪',datePurchased:'2026-10-25'}));
@@ -73,5 +81,5 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  await page.locator('#invtab-history').click();assert.equal(await page.locator('#inv-panel-history').isVisible(),true);
  assert.deepEqual(errors,[]);
  console.log(JSON.stringify(heights));console.log('PASS: five real page renderers at six widths; all progress tabs at 320px; no horizontal page overflow or page errors.');
- }finally{await browser.close();}
+ }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(e=>{console.error(e);process.exit(1)});
