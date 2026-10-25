@@ -90,7 +90,7 @@ export const renderStudentStore = function (cat = 'all') {
   </div>
 
   <!-- HEADER -->
-  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+  <div class="student-store-heading" style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
     <div>
       <div style="font-family:var(--fm);font-size:10px;color:var(--text-muted);letter-spacing:.12em;margin-bottom:6px">THE ARMORY // REWARD_EXCHANGE</div>
       <div style="font-family:var(--fh);font-size:28px;font-weight:900;letter-spacing:-.5px;color:var(--on-surface)">The Armory</div>

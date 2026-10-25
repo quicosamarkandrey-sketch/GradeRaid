@@ -1,0 +1,146 @@
+/* Phone density for these student pages only. Desktop and other pages keep
+   their existing presentation. ID scoping also beats late injected styles. */
+@media (max-width: 640px) {
+  :is(#s-dashboard,#s-my-section,#s-inventory,#s-store,#s-attendance) {
+    padding:12px;min-width:0;
+  }
+  :is(#s-dashboard,#s-my-section,#s-inventory,#s-store,#s-attendance) .glass-card {
+    padding:14px!important;border-radius:14px;margin-bottom:14px;
+  }
+  :is(#s-my-section,#s-inventory,#s-store) .page-hero {
+    padding:16px;margin-bottom:16px;border-radius:16px;
+  }
+  :is(#s-my-section,#s-inventory,#s-store) .page-hero h1 {
+    font-size:23px!important;line-height:1.2;margin-bottom:6px!important;
+  }
+  :is(#s-my-section,#s-inventory,#s-store) .page-hero p {font-size:12px!important;line-height:1.5}
+  :is(#s-inventory,#s-store) .page-hero-label {font-size:9px;letter-spacing:.08em}
+  #s-inventory .page-hero-stats {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:14px}
+  #s-inventory .hero-stat-pill {min-width:0;padding:8px 3px}
+  #s-inventory .hero-stat-pill .val {font-size:17px}
+  #s-inventory .hero-stat-pill .lbl {font-size:9px;letter-spacing:0;overflow-wrap:anywhere}
+
+  /* Dashboard: identity + ring share a row; wallet becomes a short row. */
+  #s-dashboard .dash-hero {padding:16px;margin-bottom:16px;border-radius:16px}
+  #s-dashboard .dash-hero-inner {display:grid;grid-template-columns:80px minmax(0,1fr);gap:14px;text-align:left}
+  #s-dashboard .dash-xp-ring {width:80px;height:90px}
+  #s-dashboard .dash-xp-ring>svg {width:80px;height:80px}
+  #s-dashboard .dash-xp-ring .level-badge {font-size:9px;padding:3px 7px;bottom:0}
+  #s-dashboard .dash-hero-info {min-width:0}
+  #s-dashboard .dash-hero-name {font-size:19px;line-height:1.2;overflow-wrap:anywhere}
+  #s-dashboard .dash-hero-sub {font-size:11px;margin-bottom:8px!important;line-height:1.4}
+  #s-dashboard .dash-hero .stat-bar {height:12px}
+  #s-dashboard .dash-hero-right {grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left}
+  #s-dashboard .coin-display {margin:0;min-width:0}
+  #s-dashboard .coin-display .val {font-size:21px}
+  #s-dashboard .coin-display .lbl {font-size:10px}
+  #s-dashboard .dash-hero-right .btn {width:auto;min-height:44px;font-size:12px;padding:10px 14px}
+  #s-dashboard .dash-hero-stats {grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:14px;padding-top:14px}
+  #s-dashboard .dash-hero-stat-chip {padding:10px 2px;min-width:0}
+  #s-dashboard .dash-hero-stat-chip .val {font-size:17px}
+  #s-dashboard .dash-hero-stat-chip .lbl {font-size:8px;letter-spacing:0}
+  #s-dashboard .dash-lower-grid {gap:14px;min-width:0}
+  #s-dashboard .dash-lower-grid>div {min-width:0}
+  #s-dashboard .section-header {gap:6px;margin-bottom:10px}
+  #s-dashboard .section-header h2 {font-size:16px}
+  #s-dashboard .quest-grid {gap:10px;margin-bottom:16px!important}
+  #s-dashboard .quest-card {display:grid;grid-template-columns:66px minmax(0,1fr);min-width:0}
+  #s-dashboard .quest-img-wrap {height:100%;min-height:100px}
+  #s-dashboard .quest-img-placeholder {font-size:32px}
+  #s-dashboard .quest-badge {font-size:8px;padding:3px 5px;left:4px;right:auto;top:6px}
+  #s-dashboard .quest-body {padding:12px;min-width:0}
+  #s-dashboard .quest-title {font-size:14px}
+  #s-dashboard .quest-desc {font-size:12px;margin-bottom:8px}
+  #s-dashboard .quest-meta {flex-wrap:wrap;gap:6px}
+  #s-dashboard .quest-btn {min-height:44px;margin-top:8px}
+  #s-dashboard .pt-event {padding:8px 0;gap:8px}
+  #s-dashboard .pt-what {font-size:12px}
+
+  /* Classmates keep photo, full name and XP without full-width cards. */
+  #s-my-section .my-section-roster {grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+  #s-my-section .my-section-student {padding:26px 10px 12px!important;border-radius:14px!important;min-width:0}
+  #s-my-section .my-section-avatar {width:48px!important;height:48px!important;font-size:18px!important;margin:2px auto 8px!important}
+  #s-my-section .my-section-student>div[style*="white-space:nowrap"] {white-space:normal!important;overflow-wrap:anywhere;font-size:13px!important;line-height:1.35}
+  #s-my-section .my-section-student>div[style*="font-size:20px"] {font-size:15px!important;top:8px!important;right:8px!important}
+  #s-my-section .my-section-adviser>div:first-child {gap:12px!important;flex-wrap:nowrap!important;align-items:flex-start!important}
+  #s-my-section .my-section-adviser>div:first-child>div:first-child {width:48px!important;height:48px!important;border-radius:14px!important;font-size:20px!important}
+  #s-my-section .my-section-adviser>div:first-child>div:nth-child(2) {min-width:0!important}
+  #s-my-section .my-section-adviser .badge-pill {font-size:10px;padding:4px 7px;white-space:normal}
+  #s-my-section .my-section-adviser>div:last-child {font-size:11px!important;margin-top:10px!important;padding-top:10px!important;line-height:1.5}
+
+  /* Two items per row, with full-size touch actions and wrapping names. */
+  #s-inventory .inv-grid,#s-store .store-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:16px}
+  #s-inventory .inv-card,#s-store .store-card {padding:12px 10px;border-radius:14px;min-width:0}
+  #s-inventory .inv-emoji,#s-store .store-emoji {font-size:32px;margin:8px 0}
+  #s-inventory .inv-name,#s-store .store-name {font-size:13px;overflow-wrap:anywhere;line-height:1.35}
+  #s-store .store-desc {font-size:11px;line-height:1.4}
+  #s-store .store-footer {flex-wrap:wrap;gap:6px}
+  #s-store .store-redeem-btn {width:100%;min-height:44px;padding:8px;font-size:11px;white-space:normal}
+  #s-inventory .inv-card-actions {flex-wrap:wrap;padding-top:8px}
+  #s-inventory :is(.inv-use-btn,.inv-detail-btn,.inv-code-btn) {min-height:44px;padding:8px;font-size:11px;white-space:normal}
+  #s-inventory .inv-toolbar {gap:8px;margin-bottom:12px}
+  #s-inventory .inv-search-wrap {width:100%;min-width:0}
+  #s-inventory .inv-filter-row {display:flex;flex-wrap:wrap;width:100%;gap:6px}
+  #s-inventory .inv-filter-row select {flex:1 1 90px;min-width:0;max-width:100%;min-height:44px;padding:8px!important}
+  #s-inventory .inv-hist-row {padding:10px;gap:8px;flex-wrap:wrap}
+  #s-inventory .inv-empty {grid-column:1/-1;padding:30px 14px}
+  #s-inventory .inv-tab-row,#s-store .cat-tabs {gap:6px;margin-bottom:14px;overflow-x:auto;flex-wrap:nowrap}
+  #s-inventory .inv-tab,#s-store .cat-tab {flex-shrink:0;min-height:44px;font-size:12px;padding:8px 12px}
+  #s-store .store-banner,#s-store .promo-empty-banner {height:126px;margin-bottom:14px;border-radius:14px}
+  #s-store .store-banner-title {font-size:17px}
+
+  /* Progress: smaller hero and two-up stats instead of tall stacked tiles. */
+  #s-attendance .prog-hero {padding:16px;margin-bottom:14px;border-radius:16px}
+  #s-attendance .prog-hero-grid {grid-template-columns:minmax(0,1fr);gap:0}
+  #s-attendance .prog-hero-avatar {display:none}
+  #s-attendance .prog-hero-name {font-size:24px;overflow-wrap:anywhere}
+  #s-attendance .prog-hero-label {font-size:10px}
+  #s-attendance .prog-hero-sub {font-size:11px;margin-bottom:12px}
+  #s-attendance .prog-stat-strip {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  #s-attendance .prog-stat-chip {min-width:0;padding:8px}
+  #s-attendance .prog-stat-chip .v {font-size:20px}
+  #s-attendance .prog-stat-chip .l {font-size:9px;letter-spacing:0}
+  #s-attendance .prog-tabs {gap:4px;margin-bottom:14px;max-width:100%}
+  #s-attendance .prog-tab {padding:10px;min-height:44px;font-size:12px;gap:4px;letter-spacing:0;flex-shrink:0}
+  #s-attendance .streak-grid,#s-attendance .milestone-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:16px}
+  #s-attendance .streak-card,#s-attendance .ms-card {padding:14px 10px;border-radius:14px;min-width:0}
+  #s-attendance .streak-icon,#s-attendance .ms-icon {font-size:26px;margin-bottom:6px}
+  #s-attendance .streak-num {font-size:32px}
+  #s-attendance .streak-lbl {font-size:10px;letter-spacing:0}
+  #s-attendance .streak-sub {font-size:11px;line-height:1.45}
+  #s-attendance .ms-title {font-size:12px}
+  #s-attendance .cal-dow {padding:8px 2px;font-size:9px}
+  #s-attendance .cal-day {padding:4px 2px}
+  #s-attendance .cal-nav-btn {width:44px;height:44px}
+  #s-attendance .rec-entry {padding:10px;gap:10px}
+  #s-attendance .rec-entry-icon {width:32px;height:32px;font-size:18px}
+}
+@media(max-width:640px){
+  #s-attendance .prog-summary-grid{grid-template-columns:minmax(0,1fr)!important;gap:10px!important;margin-bottom:16px!important}
+  #s-attendance .prog-summary-grid .glass-card{min-width:0;margin:0}
+  #s-attendance .trophy-grid{grid-template-columns:minmax(0,1fr);gap:10px}
+}
+@media(max-width:640px){
+  #s-attendance .prog-milestone-summary{flex-wrap:wrap;gap:10px!important}
+  #s-attendance .prog-milestone-summary>div:first-child{font-size:32px!important}
+  #s-attendance .prog-milestone-summary>div:nth-child(2){min-width:150px}
+  #s-attendance .prog-milestone-summary>div:last-child{padding:8px 12px!important}
+  #s-attendance .section-header{flex-wrap:wrap;gap:6px}
+  #s-attendance .section-header h2{font-size:16px}
+  #s-attendance .share-card{padding:16px}
+  #s-attendance .showcase-title-text{font-size:18px;letter-spacing:.04em}
+  #s-store .student-store-heading{align-items:center!important;gap:8px!important;margin-bottom:14px!important}
+  #s-store .student-store-heading>div:first-child{flex:1;min-width:0}
+  #s-store .student-store-heading>div:first-child>div:nth-child(2){font-size:23px!important}
+  #s-store .student-store-heading>div:last-child{padding:10px!important;border-radius:12px!important;gap:4px!important}
+  #s-store .student-store-heading>div:last-child .float{font-size:20px!important}
+}
+@media(max-width:640px){
+  #s-dashboard .dash-xp-ring>div[style]{bottom:10px!important}
+  #s-dashboard .dash-qr-card .qr-card{display:grid;grid-template-columns:76px minmax(0,1fr);gap:4px 12px;align-items:center;text-align:left;padding:0}
+  #s-dashboard .dash-qr-card .qr-svg-wrap{grid-row:span 2;width:76px;height:76px;margin:0;padding:5px;border-radius:10px}
+  #s-dashboard .dash-qr-card .qr-svg-wrap svg{width:64px;height:64px}
+  #s-dashboard .dash-qr-card .qr-card>div:last-child{align-self:start}
+  #s-inventory .inv-card-top{min-height:20px}
+  #s-inventory .inv-search-wrap input{font-size:16px!important}
+}

@@ -56,7 +56,7 @@ function renderStudentDashboard(){
     <canvas class="dash-hero-canvas" id="dash-hero-canvas"></canvas>
     <div class="dash-hero-inner">
       <div class="dash-xp-ring" style="position:relative;flex-shrink:0">
-        <svg width="110" height="110" style="transform:rotate(-90deg)">
+        <svg viewBox="0 0 110 110" width="110" height="110" style="transform:rotate(-90deg)">
           <circle cx="55" cy="55" r="${r}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="7"/>
           <circle cx="55" cy="55" r="${r}" fill="none" stroke="url(#xpG)" stroke-width="7" stroke-linecap="round"
             stroke-dasharray="${circ}" stroke-dashoffset="${dashOff}" style="transition:stroke-dashoffset .8s"/>
@@ -194,7 +194,7 @@ function renderStudentDashboard(){
       </div>
 
       <!-- QR CODE -->
-      <div class="glass-card">
+      <div class="glass-card dash-qr-card">
         <h3>🔲 Your QR Code</h3>
         <div class="qr-card">
           <div class="qr-svg-wrap">

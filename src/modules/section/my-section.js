@@ -153,7 +153,7 @@ export function _mySectionPaint(info) {
   </div>
 
   ${classmates.length ? `
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px">
+  <div class="my-section-roster" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px">
     ${classmates.map((c, i) => _mySectionStudentCardHTML(c, i, st, titles)).join('')}
   </div>` : `
   <div style="text-align:center;padding:64px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;backdrop-filter:blur(12px)">
@@ -176,7 +176,7 @@ export function _mySectionTeacherCardHTML(teacher) {
   }
   const initials = (teacher.displayName || 'T').split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
   return `
-  <div class="glass-card" style="background:linear-gradient(135deg,rgba(139,92,246,0.10),rgba(78,222,163,0.05));border-color:rgba(208,188,255,0.25)">
+  <div class="glass-card my-section-adviser" style="background:linear-gradient(135deg,rgba(139,92,246,0.10),rgba(78,222,163,0.05));border-color:rgba(208,188,255,0.25)">
     <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
       <div style="width:76px;height:76px;border-radius:20px;flex-shrink:0;background:rgba(208,188,255,0.14);border:2px solid rgba(208,188,255,0.35);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:28px;color:#d0bcff">${_esc(initials)}</div>
       <div style="flex:1;min-width:200px">
@@ -210,11 +210,11 @@ export function _mySectionStudentCardHTML(c, i, st, titles) {
     if (t) titleBadgeHTML = `<div style="margin-top:10px;display:flex;justify-content:center">${tsBuildBadgeHTML(t, { small: true })}</div>`;
   }
   return `
-  <div style="position:relative;background:${isMe ? 'linear-gradient(135deg,rgba(208,188,255,0.14),rgba(139,92,246,0.06))' : 'rgba(35,31,56,0.7)'};border:1px solid ${isMe ? 'rgba(208,188,255,0.4)' : 'var(--border)'};border-radius:18px;padding:22px 18px;text-align:center;backdrop-filter:blur(12px);transition:transform .2s"
+  <div class="my-section-student" style="position:relative;background:${isMe ? 'linear-gradient(135deg,rgba(208,188,255,0.14),rgba(139,92,246,0.06))' : 'rgba(35,31,56,0.7)'};border:1px solid ${isMe ? 'rgba(208,188,255,0.4)' : 'var(--border)'};border-radius:18px;padding:22px 18px;text-align:center;backdrop-filter:blur(12px);transition:transform .2s"
     onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
     ${rankIcon ? `<div style="position:absolute;top:10px;right:14px;font-size:20px">${rankIcon}</div>` : `<div style="position:absolute;top:10px;right:14px;font-size:11px;color:var(--text-muted);font-weight:800">#${rank}</div>`}
     ${isMe ? `<div style="position:absolute;top:10px;left:14px;font-size:9px;letter-spacing:.08em;color:#d0bcff;font-weight:800;background:rgba(208,188,255,0.15);border:1px solid rgba(208,188,255,0.3);padding:2px 8px;border-radius:8px">YOU</div>` : ''}
-    <div style="width:72px;height:72px;border-radius:50%;margin:8px auto 12px;position:relative;overflow:hidden;background:${color}33;border:3px solid ${color}88;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:26px;color:${color}">${avatarInner}</div>
+    <div class="my-section-avatar" style="width:72px;height:72px;border-radius:50%;margin:8px auto 12px;position:relative;overflow:hidden;background:${color}33;border:3px solid ${color}88;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:26px;color:${color}">${avatarInner}</div>
     <div style="font-family:var(--fh);font-size:15px;font-weight:800;color:var(--on-surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(c.displayName || 'Student')}</div>
     <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Level ${c.level ?? 1} · ${_esc(c.tier || 'Scholar')}</div>
     <div style="margin-top:10px;font-family:var(--fm);font-size:16px;font-weight:800;color:${color}">${(c.xp || 0).toLocaleString()} <span style="font-size:10px;color:var(--text-muted);font-weight:600">XP</span></div>

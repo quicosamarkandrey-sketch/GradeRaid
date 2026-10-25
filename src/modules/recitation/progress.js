@@ -459,7 +459,7 @@ export function progRenderStreaks(st, attendanceSess, recitations, attStreaks, r
     <span class="material-symbols-outlined">calendar_today</span>
     <h2>Attendance Overview</h2>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px">
+  <div class="prog-summary-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px">
     <div class="glass-card" style="padding:20px">
       <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px">
         <div>
@@ -644,7 +644,7 @@ export function progRenderMilestones(st, presentCount, attStreaks, recStats, per
   const totalUnlocked = attUnlocked + recUnlocked;
 
   return `
-  <div class="glass-card" style="padding:18px;margin-bottom:24px;display:flex;align-items:center;gap:18px">
+  <div class="glass-card prog-milestone-summary" style="padding:18px;margin-bottom:24px;display:flex;align-items:center;gap:18px">
     <div style="font-size:48px">🏆</div>
     <div style="flex:1">
       <div style="font-family:var(--fh);font-size:22px;font-weight:900;color:var(--on-surface)">${totalUnlocked} / ${total} Milestones</div>
