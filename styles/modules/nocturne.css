@@ -10,8 +10,8 @@
   --text:#eeede9;--text-muted:#a5a5a0;--on-surface:#eeede9;
   --border:#303133;--border2:#444547;
   --glow-primary:none;--glow-secondary:none;--glow-gold:none;
-  --fh:Georgia,'Times New Roman',serif;
-  --fb:Arial,Helvetica,sans-serif;--fm:'Courier New',monospace;
+  --fh:'Inter','Segoe UI',Arial,sans-serif;
+  --fb:'Inter','Segoe UI',Arial,sans-serif;--fm:'Courier New',monospace;
 }
 .theme-nocturne body {background:#101112;background-image:none}
 .theme-nocturne body::after {display:none}
@@ -20,7 +20,7 @@
 .theme-nocturne :is(.glass-card,.page-hero) {background:#191a1c;border:1px solid var(--border);box-shadow:none;backdrop-filter:none}
 .theme-nocturne :is(.page-hero-bg,.page-hero-bg2) {display:none}
 .theme-nocturne #topbar {background:#101112;box-shadow:none;backdrop-filter:none;border-bottom:1px solid #303133}
-.theme-nocturne #topbar .logo {font-family:Georgia,serif;font-size:19px;font-weight:400;letter-spacing:.04em;color:#eeede9;text-shadow:none}
+.theme-nocturne #topbar .logo {font-family:var(--fh);font-size:19px;font-weight:400;letter-spacing:.04em;color:#eeede9;text-shadow:none}
 .theme-nocturne #topbar .logo span {color:#a5a5a0;text-shadow:none}
 .theme-nocturne #sidebar {background:#141517;box-shadow:none;backdrop-filter:none}
 .theme-nocturne :is(.sidebar-player-name,.sidebar-player-sub,.xp-bar-labels) {font-family:var(--fb)}
@@ -58,10 +58,10 @@
 .theme-nocturne #s-dashboard {max-width:1380px;margin-inline:auto}
 #s-dashboard .dashboard-heading {padding:4px 0 22px;display:flex;flex-direction:column;gap:8px}
 #s-dashboard .dashboard-eyebrow {font:11px var(--fb);color:#91928e;letter-spacing:.16em;text-transform:uppercase}
-#s-dashboard .dashboard-heading h1 {font:400 clamp(30px,4vw,42px)/1.1 Georgia,serif;letter-spacing:-.03em;color:#eeede9}
+#s-dashboard .dashboard-heading h1 {font:500 clamp(30px,4vw,42px)/1.1 var(--fh);letter-spacing:-.03em;color:#eeede9}
 .theme-nocturne #s-dashboard .dash-hero {background:#191a1c;border:1px solid #393a3c;border-radius:8px;box-shadow:none;padding:26px}
 .theme-nocturne #s-dashboard .dash-hero::before,.theme-nocturne #s-dashboard .dash-hero::after,.theme-nocturne #s-dashboard .dash-hero-canvas {display:none}
-.theme-nocturne #s-dashboard .dash-hero-name {font-family:Georgia,serif;font-weight:400;font-size:29px;letter-spacing:-.02em;color:#eeede9}
+.theme-nocturne #s-dashboard .dash-hero-name {font-family:var(--fh);font-weight:400;font-size:29px;letter-spacing:-.02em;color:#eeede9}
 .theme-nocturne #s-dashboard .dash-hero-sub {font-family:var(--fb);font-size:12px;color:#a5a5a0}
 .theme-nocturne #s-dashboard .dash-xp-ring {color:#eeede9}
 .theme-nocturne #s-dashboard .dash-xp-ring circle[stroke="url(#xpG)"] {stroke:#d2d2cb}
@@ -71,18 +71,18 @@
 .theme-nocturne #s-dashboard .stat-bar-fill {background:#b8b8b0;animation:none}
 .theme-nocturne #s-dashboard .stat-bar-fill::after {display:none}
 .theme-nocturne #s-dashboard .coin-display {background:transparent;border:0;padding:0;box-shadow:none;border-radius:0}
-.theme-nocturne #s-dashboard .coin-display .val {font:400 28px Georgia,serif;color:#eeede9;text-shadow:none;animation:none;display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.theme-nocturne #s-dashboard .coin-display .val {font:500 28px var(--fh);color:#eeede9;text-shadow:none;animation:none;display:flex;align-items:center;justify-content:flex-end;gap:8px}
 .theme-nocturne #s-dashboard .coin-display .lbl {color:#a5a5a0;font-family:var(--fb);letter-spacing:.04em}
 .theme-nocturne #s-dashboard .dash-hero-stats {border-top:1px solid #393a3c;gap:0;padding-top:18px}
 .theme-nocturne #s-dashboard .dash-hero-stat-chip {background:transparent;border:0;border-right:1px solid #393a3c;border-radius:0;box-shadow:none;animation:none;opacity:1;transform:none;padding:4px 12px}
 .theme-nocturne #s-dashboard .dash-hero-stat-chip:last-child {border-right:0}
-.theme-nocturne #s-dashboard .dash-hero-stat-chip .val {font:400 24px Georgia,serif;color:#e0e0d8!important}
+.theme-nocturne #s-dashboard .dash-hero-stat-chip .val {font:500 24px var(--fh);color:#e0e0d8!important}
 .theme-nocturne #s-dashboard .dash-hero-stat-chip .lbl {font-family:var(--fb);color:#a5a5a0;letter-spacing:.05em;font-size:10px}
 .theme-nocturne #s-dashboard .section-header {border:0;margin-bottom:14px;gap:9px}
-.theme-nocturne #s-dashboard .section-header h2 {font:400 23px Georgia,serif;letter-spacing:-.01em}
+.theme-nocturne #s-dashboard .section-header h2 {font:500 23px var(--fh);letter-spacing:-.01em}
 .theme-nocturne #s-dashboard .section-header>.eq-line-icon {width:17px;height:17px;color:#969792}
 .theme-nocturne #s-dashboard .glass-card {border-radius:8px;background:#191a1c;box-shadow:none}
-.theme-nocturne #s-dashboard .glass-card h3 {font:400 21px Georgia,serif}
+.theme-nocturne #s-dashboard .glass-card h3 {font:500 21px var(--fh)}
 .theme-nocturne #s-dashboard .quest-card {--rc:#bcbcb8;--rg:transparent;background:#1b1c1e;border:1px solid #3b3c3e;border-radius:8px;clip-path:none;box-shadow:none;transform:none}
 .theme-nocturne #s-dashboard .quest-card:hover {border-color:#92938e;box-shadow:none;transform:none}
 .theme-nocturne #s-dashboard .quest-card::before,.theme-nocturne #s-dashboard .quest-card::after,.theme-nocturne #s-dashboard .quest-img-wrap::after {display:none}
@@ -146,3 +146,93 @@
   .theme-nocturne #topbar .topbar-avatar {flex-shrink:0}
 }
 @media(max-width:380px){.theme-nocturne #topbar-coins{display:none!important}}
+
+/* Phase 2 — student section, reward catalog, inventory and progress. */
+.theme-nocturne :is(#s-my-section,#s-inventory,#s-store,#s-attendance) {--fh:'Inter','Segoe UI',Arial,sans-serif}
+.theme-nocturne :is(#s-my-section,#s-inventory,#s-store,#s-attendance) :is(.page-hero,.prog-hero,.store-banner,.promo-empty-banner) {
+  background:#191a1c!important;border:1px solid #393a3c!important;border-radius:8px;box-shadow:none!important;backdrop-filter:none;
+}
+.theme-nocturne :is(#s-my-section,#s-inventory,#s-store,#s-attendance) :is(h1,.prog-hero-name) {font-weight:600!important;letter-spacing:-.035em}
+.theme-nocturne :is(#s-my-section,#s-inventory,#s-store,#s-attendance) :is(.page-hero-label,.prog-hero-label) {color:#a7a7a0;letter-spacing:.09em}
+.theme-nocturne :is(#s-my-section,#s-inventory,#s-store,#s-attendance) .glass-card {background:#191a1c!important;border-color:#393a3c!important;box-shadow:none!important;backdrop-filter:none;border-radius:8px}
+.theme-nocturne :is(#s-my-section,#s-inventory,#s-store,#s-attendance) .section-header h2 {font-size:19px;font-weight:600;letter-spacing:-.02em}
+.theme-nocturne :is(#s-my-section,#s-inventory,#s-store,#s-attendance) .hero-stat-pill {background:#202123;border-color:#41423f;border-radius:5px;box-shadow:none}
+.theme-nocturne :is(#s-my-section,#s-inventory,#s-store,#s-attendance) .eq-line-icon {width:20px;height:20px;color:currentColor}
+.theme-nocturne #s-my-section .my-section-student {background:#191a1c!important;border:1px solid #393a3c!important;border-radius:8px!important;box-shadow:none;backdrop-filter:none;transform:none!important}
+.theme-nocturne #s-my-section .my-section-student:hover {border-color:#85867e!important}
+.theme-nocturne #s-my-section .my-section-avatar {background:#27282a!important;color:#deded7!important;border:1px solid #62635c!important;border-radius:8px!important;box-shadow:none}
+.theme-nocturne #s-my-section .my-section-rank {position:absolute;right:12px;top:10px;font:11px var(--fb);color:#b5b5ad}
+.theme-nocturne #s-my-section .my-section-adviser>div:first-child>div:first-child {background:#27282a!important;color:#deded7!important;border:1px solid #62635c!important;border-radius:6px!important}
+.theme-nocturne #s-my-section .my-section-adviser-note {line-height:1.6}
+.theme-nocturne #s-my-section .badge-pill {box-shadow:none}
+
+.theme-nocturne :is(#s-store,#s-inventory) :is(.store-card,.inv-card,.inv-hist-row) {background:#191a1c;border:1px solid #393a3c;border-radius:8px;box-shadow:none;backdrop-filter:none;transform:none;clip-path:none}
+.theme-nocturne :is(#s-store,#s-inventory) :is(.store-card,.inv-card):hover {border-color:#85867e;box-shadow:none;transform:none}
+.theme-nocturne #s-store .store-card::before,.theme-nocturne #s-store .store-card::after,.theme-nocturne #s-inventory .inv-card::before {display:none}
+.theme-nocturne :is(#s-store,#s-inventory) :is(.store-emoji,.inv-emoji) {display:flex;align-items:center;justify-content:center;min-height:56px;margin:8px 0 12px;color:#bcbcb4;filter:none!important}
+.theme-nocturne :is(#s-store,#s-inventory) :is(.store-emoji,.inv-emoji) .eq-line-icon {width:36px;height:36px}
+.theme-nocturne :is(#s-store,#s-inventory) :is(.store-name,.inv-name) {font-weight:600;letter-spacing:-.01em}
+.theme-nocturne :is(#s-store,#s-inventory) :is(.rarity-pill,.inv-cat-pill,.inv-qty-badge,.inv-used-badge) {background:#242527!important;color:#cbcbc3!important;border:1px solid #50514c!important;border-radius:3px;text-shadow:none;box-shadow:none;animation:none}
+.theme-nocturne #s-inventory .inv-cat-pill .eq-line-icon {width:12px;height:12px}
+.theme-nocturne :is(#s-store,#s-inventory) :is(.store-redeem-btn,.inv-use-btn,.inv-code-btn,.inv-detail-btn) {min-height:44px;background:#e6e5df;color:#171819;border:1px solid #e6e5df;border-radius:4px;font:600 12px var(--fb);box-shadow:none;transform:none;white-space:normal}
+.theme-nocturne #s-inventory :is(.inv-code-btn,.inv-detail-btn) {background:#232426;color:#e2e2da;border:1px solid #5b5c55}
+.theme-nocturne :is(#s-store,#s-inventory) :is(.store-redeem-btn,.inv-use-btn,.inv-code-btn,.inv-detail-btn):hover {filter:brightness(1.12);box-shadow:none;transform:none}
+.theme-nocturne #s-store .store-redeem-btn:disabled {background:#292a2c;color:#9d9d96;border-color:#454642;filter:none}
+.theme-nocturne :is(#s-store,#s-inventory) :is(.cat-tab,.inv-tab) {border-radius:4px;font:600 12px var(--fb);box-shadow:none;background:transparent;color:#aaa99f;border:1px solid transparent;min-height:44px;animation:none;transform:none}
+.theme-nocturne :is(#s-store,#s-inventory) :is(.cat-tab.active,.inv-tab.active) {background:#292a2c;border:1px solid #73746c;color:#efefe6;box-shadow:none}
+.theme-nocturne #s-inventory :is(.inv-search-wrap,.inv-filter-row select) {background:#202123!important;border:1px solid #4c4d47!important;border-radius:5px!important;box-shadow:none}
+.theme-nocturne #s-inventory .inv-hist-emoji {background:#252628;border:1px solid #41423d;border-radius:5px;color:#cccac1}
+.theme-nocturne #s-inventory .inv-pending-dot {background:#d4d1c9;box-shadow:none;animation:none}
+.theme-nocturne #s-store .student-store-heading>div:last-child {background:#202123!important;border-color:#4b4c46!important;box-shadow:none!important;border-radius:6px!important}
+.theme-nocturne #s-store :is(.promo-slide,.promo-slide-content,.promo-slide-bg) {background:#202123!important;box-shadow:none;border-radius:8px}
+.theme-nocturne #s-store .promo-slide-bg::after {display:none}
+.theme-nocturne #s-store :is(.promo-tag,.promo-countdown,.store-banner-tag) {background:#2c2d2f!important;color:#d5d5cd!important;border-color:#56574e!important;text-shadow:none;box-shadow:none;border-radius:3px;animation:none}
+.theme-nocturne #s-store :is(.promo-btn,.store-banner-btn) {background:#e6e5df;color:#171819;border:1px solid #e6e5df;min-height:44px;border-radius:4px;font-weight:600;box-shadow:none}
+.theme-nocturne #s-store .promo-slide-emoji .eq-line-icon {width:64px;height:64px;color:#a8a89f}
+.theme-nocturne #s-store .promo-slide-emoji {filter:none}
+.theme-nocturne #s-store .promo-nav-btn {background:#292a2c;border:1px solid #66675e;color:#e5e5dd;box-shadow:none}
+.theme-nocturne .cart-fab {background:#e6e5df!important;color:#171819!important;border:1px solid #e6e5df;border-radius:5px;box-shadow:0 8px 24px #0004;min-height:44px}
+.theme-nocturne .cart-fab .cart-count {background:#30312e;color:#efefe8}
+.theme-nocturne .cart-qty-btn {background:#292a2c;color:#eeede9;border:1px solid #64655c;border-radius:4px;min-width:36px;min-height:44px;box-shadow:none}
+
+.theme-nocturne #s-attendance .prog-hero::before,.theme-nocturne #s-attendance .share-card::before,.theme-nocturne #s-attendance .share-card::after,.theme-nocturne #s-attendance .streak-card::before {display:none}
+.theme-nocturne #s-attendance :is(.prog-hero-avatar,.prog-stat-chip,.share-stat) {background:#252628!important;border:1px solid #45463f!important;box-shadow:none!important;color:#deded7!important;border-radius:5px}
+.theme-nocturne #s-attendance :is(.streak-card,.ms-card,.trophy-card,.share-card,.showcase-header,.rec-entry,.att-hist-row,.cal-grid-wrap,.cal-day-detail) {background:#191a1c;border:1px solid #41423d;box-shadow:none;backdrop-filter:none;border-radius:8px;transform:none}
+.theme-nocturne #s-attendance :is(.streak-card,.ms-card,.trophy-card,.rec-entry,.att-hist-row):hover {box-shadow:none;transform:none;border-color:#85867c}
+.theme-nocturne #s-attendance :is(.streak-num,.prog-stat-chip .v,.trophy-card-value,.share-stat .sv) {font-weight:600;letter-spacing:-.025em}
+.theme-nocturne #s-attendance :is(.streak-icon,.ms-icon,.showcase-crown,.trophy-icon) .eq-line-icon {width:28px;height:28px}
+.theme-nocturne #s-attendance :is(.streak-badge,.trophy-grade,.share-badge-chip) {background:#262729!important;border:1px solid #52534b!important;color:#d1d1c8!important;border-radius:4px;box-shadow:none;animation:none}
+.theme-nocturne #s-attendance .showcase-title-text {background:none;-webkit-text-fill-color:#e6e6de;color:#e6e6de;letter-spacing:.06em;font-weight:600}
+.theme-nocturne #s-attendance .showcase-crown {filter:none;animation:none}
+.theme-nocturne #s-attendance .share-watermark {color:#aaa99f}
+.theme-nocturne #s-attendance .prog-tab {font-family:var(--fb);border-radius:4px;color:#aaa99f;min-height:44px;box-shadow:none}
+.theme-nocturne #s-attendance .prog-tab.active {background:#292a2c;color:#efefe6;border-color:#b2b2a7}
+.theme-nocturne #s-attendance :is(.cal-dot,.rec-entry-icon) {box-shadow:none}
+.theme-nocturne #s-attendance .cal-day.today .cal-day-num {background:#e6e5df;color:#171819;border-radius:4px}
+.theme-nocturne #s-attendance .cal-day.absent .cal-day-num {color:#d99b98}
+.theme-nocturne #s-attendance .cal-day.present .cal-day-num {color:#c2c8c1}
+.theme-nocturne #s-attendance .cal-day.has-data {border-bottom-color:#77786d}
+.theme-nocturne #s-attendance .rec-entry-icon {background:#27282a;border-color:#52534c;color:#d4d4ca;border-radius:5px}
+.theme-nocturne #s-attendance .ms-card.unlocked::after {color:#d5d5cb}
+.theme-nocturne #s-attendance .streak-lbl {letter-spacing:.02em}
+@media(max-width:640px){
+  .theme-nocturne :is(#s-my-section,#s-inventory,#s-store,#s-attendance) .section-header h2 {font-size:16px}
+  .theme-nocturne :is(#s-store,#s-inventory) :is(.store-emoji,.inv-emoji) {min-height:44px}
+  .theme-nocturne :is(#s-store,#s-inventory) :is(.store-redeem-btn,.inv-use-btn,.inv-code-btn,.inv-detail-btn) {font-size:11px}
+}
+.theme-nocturne #s-my-section .my-section-student>div[style*="var(--fm)"] {color:#d2d2c8!important}
+.theme-nocturne :is(#s-my-section,#s-inventory,#s-store,#s-attendance) .student-empty-state {background:#191a1c!important;border:1px solid #41423b;border-radius:8px!important;color:#aaa99f;padding:28px 16px!important}
+.theme-nocturne .student-empty-state>div:first-child>.eq-line-icon {width:32px;height:32px;color:#aaa99f}
+.theme-nocturne #s-store .student-catalog-intro {padding:22px 24px;display:flex;flex-direction:column;justify-content:center;height:100%}
+.theme-nocturne #s-store .promo-empty-banner>div {background:#202123!important}
+.theme-nocturne #s-store .promo-price,.theme-nocturne #s-store .store-banner-price {color:#d4d1c9;text-shadow:none}
+.theme-nocturne .modal-box:has(.student-shop-dialog) {background:#191a1c;box-shadow:0 20px 60px #0008}
+.theme-nocturne .modal-box:has(.student-shop-dialog) .eq-line-icon {width:28px;height:28px;color:#cccac1}
+.theme-nocturne .modal-box:has(.student-shop-dialog) :is(.cart-qty-btn,.btn) {min-height:44px}
+.theme-nocturne #pos-claim-display {font-size:clamp(18px,5vw,28px)!important;letter-spacing:.08em!important;text-shadow:none!important;overflow-wrap:anywhere}
+/* Shape as well as tone distinguishes calendar activity in monochrome. */
+.theme-nocturne #s-attendance .cal-dot.present {background:#c2c8c1;border-radius:50%}
+.theme-nocturne #s-attendance .cal-dot.absent {background:transparent;border:1px solid #d99b98;border-radius:50%}
+.theme-nocturne #s-attendance .cal-dot.recitation {background:transparent;border:1px solid #deded7;border-radius:0}
+.theme-nocturne #s-attendance .cal-dot.quiz {background:#cbc7be;border-radius:0;transform:rotate(45deg)}
+@media(max-width:640px){.theme-nocturne #s-dashboard .dash-hero-stat-chip .lbl{font-size:9px}}

@@ -16,17 +16,17 @@
 .prog-hero{
   position:relative;overflow:hidden;border-radius:20px;
   background:linear-gradient(135deg,#0f0d1f 0%,#1a1438 50%,#0e1a2a 100%);
-  border:1px solid rgba(208,188,255,0.15);
+  border:1px solid rgba(202,202,194,0.15);
   padding:36px 40px 32px;margin-bottom:28px;
 }
 .prog-hero::before{
   content:'';position:absolute;inset:0;
-  background:radial-gradient(ellipse at 75% 50%,rgba(78,222,163,0.10) 0%,transparent 55%),
-             radial-gradient(ellipse at 20% 80%,rgba(208,188,255,0.10) 0%,transparent 50%);
+  background:radial-gradient(ellipse at 75% 50%,rgba(202,202,194,0.10) 0%,transparent 55%),
+             radial-gradient(ellipse at 20% 80%,rgba(202,202,194,0.10) 0%,transparent 50%);
   pointer-events:none;
 }
 .prog-hero-grid{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center;position:relative;z-index:1}
-.prog-hero-label{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(78,222,163,.7);margin-bottom:6px}
+.prog-hero-label{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(202,202,194,.7);margin-bottom:6px}
 .prog-hero-name{font-family:var(--fh);font-size:36px;font-weight:900;letter-spacing:-.5px;color:var(--on-surface);line-height:1.1;margin-bottom:4px}
 .prog-hero-sub{font-size:13px;color:var(--text-muted);margin-bottom:18px}
 .prog-stat-strip{display:flex;gap:10px;flex-wrap:wrap}
@@ -41,8 +41,8 @@
   width:90px;height:90px;border-radius:18px;
   display:flex;align-items:center;justify-content:center;
   font-family:var(--fh);font-size:28px;font-weight:900;
-  box-shadow:0 0 40px rgba(139,92,246,0.3);
-  border:2px solid rgba(208,188,255,0.25);flex-shrink:0;
+  box-shadow:0 0 40px rgba(202,202,194,0.3);
+  border:2px solid rgba(202,202,194,0.25);flex-shrink:0;
 }
 
 /* ── TAB BAR ── */
@@ -65,21 +65,21 @@
 .streak-card{
   position:relative;overflow:hidden;
   border-radius:16px;padding:22px;
-  background:rgba(35,31,56,0.85);
+  background:rgba(202,202,194,0.85);
   border:1px solid var(--border);
   backdrop-filter:blur(12px);
   transition:all .3s;
 }
 .streak-card:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(0,0,0,.4)}
-.streak-card.fire{border-color:rgba(255,185,95,0.35);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(40,25,10,.6))}
+.streak-card.fire{border-color:rgba(202,202,194,0.35);background:linear-gradient(135deg,rgba(202,202,194,.9),rgba(40,25,10,.6))}
 .streak-card.fire::before{content:'';position:absolute;top:-20px;right:-20px;width:100px;height:100px;
-  background:radial-gradient(circle,rgba(255,185,95,.18) 0%,transparent 70%);border-radius:50%}
-.streak-card.crystal{border-color:rgba(78,222,163,0.35);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(10,30,25,.6))}
+  background:radial-gradient(circle,rgba(202,202,194,.18) 0%,transparent 70%);border-radius:50%}
+.streak-card.crystal{border-color:rgba(202,202,194,0.35);background:linear-gradient(135deg,rgba(202,202,194,.9),rgba(10,30,25,.6))}
 .streak-card.crystal::before{content:'';position:absolute;top:-20px;right:-20px;width:100px;height:100px;
-  background:radial-gradient(circle,rgba(78,222,163,.15) 0%,transparent 70%);border-radius:50%}
-.streak-card.violet{border-color:rgba(208,188,255,0.35);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(20,10,40,.6))}
+  background:radial-gradient(circle,rgba(202,202,194,.15) 0%,transparent 70%);border-radius:50%}
+.streak-card.violet{border-color:rgba(202,202,194,0.35);background:linear-gradient(135deg,rgba(202,202,194,.9),rgba(20,10,40,.6))}
 .streak-card.violet::before{content:'';position:absolute;top:-20px;right:-20px;width:100px;height:100px;
-  background:radial-gradient(circle,rgba(208,188,255,.12) 0%,transparent 70%);border-radius:50%}
+  background:radial-gradient(circle,rgba(202,202,194,.12) 0%,transparent 70%);border-radius:50%}
 .streak-icon{font-size:36px;margin-bottom:10px;line-height:1;display:block}
 .streak-num{font-family:var(--fh);font-size:48px;font-weight:900;line-height:1;margin-bottom:2px}
 .streak-lbl{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)}
@@ -96,9 +96,9 @@
   border:1px solid var(--border2);cursor:pointer;color:var(--on-surface);
   display:flex;align-items:center;justify-content:center;transition:all .18s;font-size:16px;
 }
-.cal-nav-btn:hover{background:rgba(208,188,255,.1);border-color:rgba(208,188,255,.3)}
+.cal-nav-btn:hover{background:rgba(202,202,194,.1);border-color:rgba(202,202,194,.3)}
 .cal-month-label{font-family:var(--fh);font-size:18px;font-weight:900;color:var(--on-surface)}
-.cal-grid-wrap{background:rgba(35,31,56,0.8);border:1px solid var(--border);border-radius:16px;overflow:hidden;backdrop-filter:blur(12px)}
+.cal-grid-wrap{background:rgba(202,202,194,0.8);border:1px solid var(--border);border-radius:16px;overflow:hidden;backdrop-filter:blur(12px)}
 .cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--border)}
 .cal-dow{padding:10px;text-align:center;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
 .cal-days-grid{display:grid;grid-template-columns:repeat(7,1fr)}
@@ -108,7 +108,7 @@
   cursor:default;transition:all .18s;border-right:1px solid rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.03);
 }
 .cal-day.has-data{cursor:pointer}
-.cal-day.has-data:hover{background:rgba(208,188,255,.07)}
+.cal-day.has-data:hover{background:rgba(202,202,194,.07)}
 .cal-day.today .cal-day-num{background:var(--primary-dark);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center}
 .cal-day-num{font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:3px;line-height:1}
 .cal-day.present .cal-day-num{color:var(--secondary)}
@@ -116,14 +116,14 @@
 .cal-day.empty{opacity:.25}
 .cal-day-dots{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;margin-top:2px}
 .cal-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
-.cal-dot.present{background:var(--secondary);box-shadow:0 0 4px rgba(78,222,163,.6)}
+.cal-dot.present{background:var(--secondary);box-shadow:0 0 4px rgba(202,202,194,.6)}
 .cal-dot.absent{background:var(--error);box-shadow:0 0 4px rgba(255,180,171,.6)}
-.cal-dot.recitation{background:var(--primary);box-shadow:0 0 4px rgba(208,188,255,.6)}
-.cal-dot.quiz{background:var(--tertiary);box-shadow:0 0 4px rgba(255,185,95,.6)}
+.cal-dot.recitation{background:var(--primary);box-shadow:0 0 4px rgba(202,202,194,.6)}
+.cal-dot.quiz{background:var(--tertiary);box-shadow:0 0 4px rgba(202,202,194,.6)}
 .cal-day-detail{
-  background:rgba(28,25,48,0.98);border:1px solid rgba(208,188,255,.2);
+  background:rgba(28,25,48,0.98);border:1px solid rgba(202,202,194,.2);
   border-radius:16px;padding:20px;margin-top:16px;
-  box-shadow:0 0 32px rgba(139,92,246,.15);
+  box-shadow:0 0 32px rgba(202,202,194,.15);
   animation:fadeIn .2s ease;display:none;
 }
 .cal-day-detail.open{display:block}
@@ -134,16 +134,16 @@
 .rec-timeline{display:flex;flex-direction:column;gap:8px;margin-bottom:24px}
 .rec-entry{
   display:flex;align-items:flex-start;gap:14px;padding:14px 16px;
-  background:rgba(35,31,56,.8);border:1px solid var(--border);border-radius:12px;
+  background:rgba(202,202,194,.8);border:1px solid var(--border);border-radius:12px;
   transition:all .2s;backdrop-filter:blur(8px);position:relative;overflow:hidden;
 }
 .rec-entry::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--secondary);border-radius:3px 0 0 3px}
 .rec-entry.high-pts::before{background:var(--primary)}
 .rec-entry.epic-pts::before{background:var(--tertiary)}
-.rec-entry:hover{border-color:rgba(78,222,163,.25);transform:translateX(2px)}
-.rec-entry-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;background:rgba(78,222,163,.1);border:1px solid rgba(78,222,163,.25)}
-.rec-entry-icon.high{background:rgba(208,188,255,.1);border-color:rgba(208,188,255,.25)}
-.rec-entry-icon.epic{background:rgba(255,185,95,.1);border-color:rgba(255,185,95,.25)}
+.rec-entry:hover{border-color:rgba(202,202,194,.25);transform:translateX(2px)}
+.rec-entry-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;background:rgba(202,202,194,.1);border:1px solid rgba(202,202,194,.25)}
+.rec-entry-icon.high{background:rgba(202,202,194,.1);border-color:rgba(202,202,194,.25)}
+.rec-entry-icon.epic{background:rgba(202,202,194,.1);border-color:rgba(202,202,194,.25)}
 .rec-entry-body{flex:1;min-width:0}
 .rec-entry-pts{font-family:var(--fh);font-size:20px;font-weight:900}
 .rec-entry-note{font-size:13px;color:var(--text-muted);margin-top:2px;line-height:1.4}
@@ -154,10 +154,10 @@
 .milestone-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:28px}
 .ms-card{
   border-radius:14px;padding:18px;
-  background:rgba(35,31,56,.85);border:1px solid var(--border);
+  background:rgba(202,202,194,.85);border:1px solid var(--border);
   backdrop-filter:blur(12px);transition:all .3s;position:relative;overflow:hidden;
 }
-.ms-card.unlocked{border-color:rgba(255,185,95,.4);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(30,20,5,.7))}
+.ms-card.unlocked{border-color:rgba(202,202,194,.4);background:linear-gradient(135deg,rgba(202,202,194,.9),rgba(30,20,5,.7))}
 .ms-card.unlocked::after{content:'✓';position:absolute;top:10px;right:12px;font-size:16px;font-weight:900;color:var(--tertiary)}
 .ms-card.locked{opacity:.55}
 .ms-card:hover:not(.locked){transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,.4)}
@@ -171,15 +171,15 @@
 .showcase-header{
   text-align:center;padding:32px;
   background:linear-gradient(135deg,rgba(25,20,50,.95),rgba(15,25,20,.9));
-  border:1px solid rgba(208,188,255,.15);border-radius:20px;margin-bottom:24px;
+  border:1px solid rgba(202,202,194,.15);border-radius:20px;margin-bottom:24px;
   position:relative;overflow:hidden;
 }
 .showcase-header::before{content:'';position:absolute;inset:0;
-  background:radial-gradient(ellipse at 50% 0%,rgba(208,188,255,.12) 0%,transparent 60%);pointer-events:none}
+  background:radial-gradient(ellipse at 50% 0%,rgba(202,202,194,.12) 0%,transparent 60%);pointer-events:none}
 .showcase-crown{font-size:56px;display:block;margin-bottom:8px;line-height:1;animation:floatCrown 3s ease-in-out infinite}
 @keyframes floatCrown{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
 .showcase-title-text{font-family:var(--fm);font-size:22px;font-weight:900;letter-spacing:.1em;
-  background:linear-gradient(135deg,#ffd700,#ffb95f,#d0bcff);
+  background:linear-gradient(135deg,#d5d2c9,#cbc7be,#deded7);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
   margin-bottom:4px}
 .showcase-sub{font-size:13px;color:var(--text-muted)}
@@ -187,15 +187,15 @@
 .trophy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:28px}
 .trophy-card{
   border-radius:16px;padding:20px;
-  background:rgba(35,31,56,.85);border:1px solid var(--border);
+  background:rgba(202,202,194,.85);border:1px solid var(--border);
   backdrop-filter:blur(12px);transition:all .3s;
   display:flex;flex-direction:column;
 }
-.trophy-card.gold{border-color:rgba(255,215,0,.4);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(30,22,5,.7))}
-.trophy-card.silver{border-color:rgba(192,192,192,.35);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(20,20,25,.8))}
-.trophy-card.bronze{border-color:rgba(205,127,50,.35);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(25,15,5,.7))}
-.trophy-card.emerald{border-color:rgba(78,222,163,.4);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(5,25,15,.7))}
-.trophy-card.violet{border-color:rgba(208,188,255,.4);background:linear-gradient(135deg,rgba(35,31,56,.9),rgba(20,10,40,.7))}
+.trophy-card.gold{border-color:rgba(202,202,194,.4);background:linear-gradient(135deg,rgba(202,202,194,.9),rgba(30,22,5,.7))}
+.trophy-card.silver{border-color:rgba(192,192,192,.35);background:linear-gradient(135deg,rgba(202,202,194,.9),rgba(20,20,25,.8))}
+.trophy-card.bronze{border-color:rgba(205,127,50,.35);background:linear-gradient(135deg,rgba(202,202,194,.9),rgba(25,15,5,.7))}
+.trophy-card.emerald{border-color:rgba(202,202,194,.4);background:linear-gradient(135deg,rgba(202,202,194,.9),rgba(5,25,15,.7))}
+.trophy-card.violet{border-color:rgba(202,202,194,.4);background:linear-gradient(135deg,rgba(202,202,194,.9),rgba(20,10,40,.7))}
 .trophy-card:hover{transform:translateY(-4px);box-shadow:0 14px 44px rgba(0,0,0,.5)}
 .trophy-icon-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .trophy-icon{font-size:32px;line-height:1}
@@ -209,26 +209,26 @@
 .att-hist-list{display:flex;flex-direction:column;gap:8px}
 .att-hist-row{
   display:flex;align-items:center;gap:14px;padding:12px 16px;
-  background:rgba(35,31,56,.75);border:1px solid var(--border);border-radius:12px;
+  background:rgba(202,202,194,.75);border:1px solid var(--border);border-radius:12px;
   transition:all .2s;backdrop-filter:blur(8px);
 }
 .att-hist-row:hover{border-color:rgba(255,255,255,.12);transform:translateX(2px)}
 .att-status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.att-status-dot.present{background:var(--secondary);box-shadow:0 0 8px rgba(78,222,163,.5)}
+.att-status-dot.present{background:var(--secondary);box-shadow:0 0 8px rgba(202,202,194,.5)}
 .att-status-dot.absent{background:var(--error);box-shadow:0 0 8px rgba(255,180,171,.5)}
 
 /* ── SHARE CARD STYLE ── */
 .share-card{
   background:linear-gradient(135deg,#12102a 0%,#1a1438 40%,#0c1a14 100%);
-  border:1px solid rgba(208,188,255,.25);border-radius:20px;
+  border:1px solid rgba(202,202,194,.25);border-radius:20px;
   padding:28px;position:relative;overflow:hidden;margin-bottom:20px;
 }
 .share-card::before{content:'';position:absolute;top:-30px;right:-30px;width:160px;height:160px;
-  background:radial-gradient(circle,rgba(208,188,255,.12) 0%,transparent 70%);border-radius:50%;pointer-events:none}
+  background:radial-gradient(circle,rgba(202,202,194,.12) 0%,transparent 70%);border-radius:50%;pointer-events:none}
 .share-card::after{content:'';position:absolute;bottom:-40px;left:10%;width:120px;height:120px;
-  background:radial-gradient(circle,rgba(78,222,163,.10) 0%,transparent 70%);border-radius:50%;pointer-events:none}
+  background:radial-gradient(circle,rgba(202,202,194,.10) 0%,transparent 70%);border-radius:50%;pointer-events:none}
 .share-card-inner{position:relative;z-index:1}
-.share-watermark{font-family:var(--fm);font-size:9px;letter-spacing:.16em;color:rgba(208,188,255,.35);text-transform:uppercase;margin-bottom:16px}
+.share-watermark{font-family:var(--fm);font-size:9px;letter-spacing:.16em;color:rgba(202,202,194,.35);text-transform:uppercase;margin-bottom:16px}
 .share-student-row{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;margin-bottom:18px}
 .share-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
 .share-stat{text-align:center;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px}
@@ -242,31 +242,31 @@
 
 // ── Milestone Definitions ─────────────────────────────────────────────────────
 const PROG_ATTENDANCE_MILESTONES = [
-  {id:'att_1',       icon:'🗓️', title:'First Attendance',    desc:'Log your first attendance session',       target:1,  field:'presentCount',   color:'#4edea3'},
-  {id:'att_5',       icon:'📅', title:'Week Warrior',        desc:'Be present 5 times',                     target:5,  field:'presentCount',   color:'#4edea3'},
-  {id:'att_10',      icon:'✨', title:'Consistent Scholar',  desc:'Be present 10 times',                    target:10, field:'presentCount',   color:'#8b5cf6'},
-  {id:'att_25',      icon:'🌟', title:'Dedicated Student',   desc:'Be present 25 times',                    target:25, field:'presentCount',   color:'#ffb95f'},
-  {id:'att_50',      icon:'🏆', title:'Attendance Legend',   desc:'Be present 50 times',                    target:50, field:'presentCount',   color:'#ffd700'},
-  {id:'streak_3',    icon:'🔥', title:'3-Day Streak',        desc:'Attend 3 consecutive days',               target:3,  field:'currentStreak',  color:'#f97316'},
+  {id:'att_1',       icon:'🗓️', title:'First Attendance',    desc:'Log your first attendance session',       target:1,  field:'presentCount',   color:'#c2c8c1'},
+  {id:'att_5',       icon:'📅', title:'Week Warrior',        desc:'Be present 5 times',                     target:5,  field:'presentCount',   color:'#c2c8c1'},
+  {id:'att_10',      icon:'✨', title:'Consistent Scholar',  desc:'Be present 10 times',                    target:10, field:'presentCount',   color:'#96968e'},
+  {id:'att_25',      icon:'🌟', title:'Dedicated Student',   desc:'Be present 25 times',                    target:25, field:'presentCount',   color:'#cbc7be'},
+  {id:'att_50',      icon:'🏆', title:'Attendance Legend',   desc:'Be present 50 times',                    target:50, field:'presentCount',   color:'#d5d2c9'},
+  {id:'streak_3',    icon:'🔥', title:'3-Day Streak',        desc:'Attend 3 consecutive days',               target:3,  field:'currentStreak',  color:'#c5c1b8'},
   {id:'streak_7',    icon:'🔥', title:'Weekly Fire',         desc:'Attend 7 consecutive days',               target:7,  field:'currentStreak',  color:'#ef4444'},
-  {id:'streak_14',   icon:'💫', title:'Fortnight Flame',     desc:'Maintain a 14-day streak',                target:14, field:'longestStreak',  color:'#d0bcff'},
-  {id:'streak_30',   icon:'⭐', title:'Eternal Flame',       desc:'30-day attendance streak',                target:30, field:'longestStreak',  color:'#ffd700'},
-  {id:'perfect_month',  icon:'💎', title:'Perfect Month',   desc:'Zero absences in a whole month',          target:1,  field:'perfectMonths',  color:'#4edea3'},
+  {id:'streak_14',   icon:'💫', title:'Fortnight Flame',     desc:'Maintain a 14-day streak',                target:14, field:'longestStreak',  color:'#deded7'},
+  {id:'streak_30',   icon:'⭐', title:'Eternal Flame',       desc:'30-day attendance streak',                target:30, field:'longestStreak',  color:'#d5d2c9'},
+  {id:'perfect_month',  icon:'💎', title:'Perfect Month',   desc:'Zero absences in a whole month',          target:1,  field:'perfectMonths',  color:'#c2c8c1'},
   {id:'perfect_months_3',icon:'💎💎',title:'Diamond Attendance',desc:'3 perfect attendance months',          target:3,  field:'perfectMonths',  color:'#a78bfa'},
 ];
 const PROG_RECITATION_MILESTONES = [
-  {id:'rec_1',       icon:'🎤',  title:'First Word',          desc:'Complete your first recitation',          target:1,  field:'sessionCount', color:'#4edea3'},
-  {id:'rec_5',       icon:'🗣️', title:'Active Participant',   desc:'Complete 5 recitations',                 target:5,  field:'sessionCount', color:'#4edea3'},
-  {id:'rec_10',      icon:'📢',  title:'Vocal Scholar',       desc:'Complete 10 recitations',                target:10, field:'sessionCount', color:'#8b5cf6'},
-  {id:'rec_25',      icon:'🎙️', title:'Voice of Class',       desc:'Complete 25 recitations',                target:25, field:'sessionCount', color:'#ffb95f'},
-  {id:'rec_50',      icon:'👑',  title:'Recitation Master',   desc:'50 recitation sessions',                 target:50, field:'sessionCount', color:'#ffd700'},
-  {id:'rec_pts_50',  icon:'⚡',  title:'50 Points Earned',    desc:'Earn 50 recitation points',              target:50, field:'totalPts',     color:'#4edea3'},
-  {id:'rec_pts_150', icon:'⚡⚡',title:'Point Powerhouse',    desc:'Earn 150 recitation points',             target:150,field:'totalPts',     color:'#8b5cf6'},
-  {id:'rec_pts_500', icon:'💥',  title:'Elite Contributor',   desc:'Earn 500 recitation points total',       target:500,field:'totalPts',     color:'#ffd700'},
-  {id:'rec_streak_3',icon:'🎯',  title:'3 Recitations in a Row',desc:'Recite on 3 consecutive class days',  target:3,  field:'streak',       color:'#f97316'},
+  {id:'rec_1',       icon:'🎤',  title:'First Word',          desc:'Complete your first recitation',          target:1,  field:'sessionCount', color:'#c2c8c1'},
+  {id:'rec_5',       icon:'🗣️', title:'Active Participant',   desc:'Complete 5 recitations',                 target:5,  field:'sessionCount', color:'#c2c8c1'},
+  {id:'rec_10',      icon:'📢',  title:'Vocal Scholar',       desc:'Complete 10 recitations',                target:10, field:'sessionCount', color:'#96968e'},
+  {id:'rec_25',      icon:'🎙️', title:'Voice of Class',       desc:'Complete 25 recitations',                target:25, field:'sessionCount', color:'#cbc7be'},
+  {id:'rec_50',      icon:'👑',  title:'Recitation Master',   desc:'50 recitation sessions',                 target:50, field:'sessionCount', color:'#d5d2c9'},
+  {id:'rec_pts_50',  icon:'⚡',  title:'50 Points Earned',    desc:'Earn 50 recitation points',              target:50, field:'totalPts',     color:'#c2c8c1'},
+  {id:'rec_pts_150', icon:'⚡⚡',title:'Point Powerhouse',    desc:'Earn 150 recitation points',             target:150,field:'totalPts',     color:'#96968e'},
+  {id:'rec_pts_500', icon:'💥',  title:'Elite Contributor',   desc:'Earn 500 recitation points total',       target:500,field:'totalPts',     color:'#d5d2c9'},
+  {id:'rec_streak_3',icon:'🎯',  title:'3 Recitations in a Row',desc:'Recite on 3 consecutive class days',  target:3,  field:'streak',       color:'#c5c1b8'},
   {id:'rec_streak_5',icon:'🎯',  title:'Consistent Voice',    desc:'Recite on 5 consecutive days',           target:5,  field:'streak',       color:'#ef4444'},
-  {id:'rec_wins',    icon:'🌠',  title:'High Scorer',         desc:'Earn 15+ pts in a single recitation',   target:1,  field:'wins',         color:'#ffb95f'},
-  {id:'rec_wins_5',  icon:'🌠🌠',title:'Consistent Excellence',desc:'Earn 15+ pts 5 times',                 target:5,  field:'wins',         color:'#ffd700'},
+  {id:'rec_wins',    icon:'🌠',  title:'High Scorer',         desc:'Earn 15+ pts in a single recitation',   target:1,  field:'wins',         color:'#cbc7be'},
+  {id:'rec_wins_5',  icon:'🌠🌠',title:'Consistent Excellence',desc:'Earn 15+ pts 5 times',                 target:5,  field:'wins',         color:'#d5d2c9'},
 ];
 
 // ── Module State ──────────────────────────────────────────────────────────────
@@ -388,26 +388,26 @@ function progRenderStreaks(st, attendanceSess, recitations, attStreaks, recStrea
   return `
   <div class="streak-grid">
     <div class="streak-card fire">
-      <span class="streak-icon">🔥</span>
-      <div class="streak-num" style="color:#ffb95f">${attStreaks.current}</div>
+      <span class="streak-icon">${uiIcon('flame')}</span>
+      <div class="streak-num" style="color:#cbc7be">${attStreaks.current}</div>
       <div class="streak-lbl">Attendance Streak</div>
       <div class="streak-sub">Consecutive days present<br>Longest ever: <strong style="color:#fff">${attStreaks.longest} days</strong></div>
-      ${attStreaks.current >= 3 ? `<span class="streak-badge" style="background:rgba(255,185,95,.15);border:1px solid rgba(255,185,95,.35);color:#ffb95f">🔥 On Fire</span>` : ''}
-      ${attStreaks.current >= 7 ? `<span class="streak-badge" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.35);color:#f87171;margin-left:4px">🏅 Weekly Hero</span>` : ''}
+      ${attStreaks.current >= 3 ? `<span class="streak-badge" style="background:rgba(202,202,194,.15);border:1px solid rgba(202,202,194,.35);color:#cbc7be">${uiIcon('flame')} On Fire</span>` : ''}
+      ${attStreaks.current >= 7 ? `<span class="streak-badge" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.35);color:#f87171;margin-left:4px">${uiIcon('award')} Weekly Hero</span>` : ''}
     </div>
     <div class="streak-card crystal">
-      <span class="streak-icon">🎤</span>
-      <div class="streak-num" style="color:#4edea3">${recStreaks.current}</div>
+      <span class="streak-icon">${uiIcon('mic')}</span>
+      <div class="streak-num" style="color:#c2c8c1">${recStreaks.current}</div>
       <div class="streak-lbl">Recitation Streak</div>
       <div class="streak-sub">Consecutive class days recited<br>Best ever: <strong style="color:#fff">${recStreaks.longest} days</strong></div>
-      ${recStreaks.current >= 3 ? `<span class="streak-badge" style="background:rgba(78,222,163,.15);border:1px solid rgba(78,222,163,.35);color:#4edea3">🎯 Active Voice</span>` : ''}
+      ${recStreaks.current >= 3 ? `<span class="streak-badge" style="background:rgba(202,202,194,.15);border:1px solid rgba(202,202,194,.35);color:#c2c8c1">${uiIcon('mic')} Active Voice</span>` : ''}
     </div>
     <div class="streak-card violet">
-      <span class="streak-icon">💎</span>
-      <div class="streak-num" style="color:#d0bcff">${perfectMonths}</div>
+      <span class="streak-icon">${uiIcon('award')}</span>
+      <div class="streak-num" style="color:#deded7">${perfectMonths}</div>
       <div class="streak-lbl">Perfect Months</div>
       <div class="streak-sub">Months with zero absences<br>${perfectMonths === 0 ? "Work toward your first!" : "Keep going, you're amazing!"}</div>
-      ${perfectMonths >= 1 ? `<span class="streak-badge" style="background:rgba(208,188,255,.15);border:1px solid rgba(208,188,255,.35);color:#d0bcff">💎 Diamond Scholar</span>` : ''}
+      ${perfectMonths >= 1 ? `<span class="streak-badge" style="background:rgba(202,202,194,.15);border:1px solid rgba(202,202,194,.35);color:#deded7">${uiIcon('award')} Diamond Scholar</span>` : ''}
     </div>
   </div>
 
@@ -420,17 +420,17 @@ function progRenderStreaks(st, attendanceSess, recitations, attStreaks, recStrea
       <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px">
         <div>
           <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Attendance Rate</div>
-          <div style="font-family:var(--fh);font-size:40px;font-weight:900;color:${attPct >= 90 ? '#4edea3' : attPct >= 75 ? '#ffb95f' : '#ffb4ab'};line-height:1">${attPct}%</div>
+          <div style="font-family:var(--fh);font-size:40px;font-weight:900;color:${attPct >= 90 ? '#c2c8c1' : attPct >= 75 ? '#cbc7be' : '#d99b98'};line-height:1">${attPct}%</div>
         </div>
         <div style="text-align:right">
           <div style="font-size:11px;color:var(--text-muted)">Present</div>
-          <div style="font-family:var(--fh);font-size:18px;font-weight:900;color:#4edea3">${presentCount}</div>
+          <div style="font-family:var(--fh);font-size:18px;font-weight:900;color:#c2c8c1">${presentCount}</div>
           <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Absent</div>
-          <div style="font-family:var(--fh);font-size:18px;font-weight:900;color:#ffb4ab">${absentCount}</div>
+          <div style="font-family:var(--fh);font-size:18px;font-weight:900;color:#d99b98">${absentCount}</div>
         </div>
       </div>
       <div style="background:rgba(255,255,255,.06);border-radius:20px;height:10px;overflow:hidden;margin-bottom:6px">
-        <div style="height:100%;border-radius:20px;width:${attBar}%;background:linear-gradient(90deg,#4edea3,#06b6d4);box-shadow:0 0 10px rgba(78,222,163,.5);transition:width .8s ease"></div>
+        <div style="height:100%;border-radius:20px;width:${attBar}%;background:linear-gradient(90deg,#c2c8c1,#06b6d4);box-shadow:0 0 10px rgba(202,202,194,.5);transition:width .8s ease"></div>
       </div>
       <div style="font-size:11px;color:var(--text-muted)">Total sessions recorded: ${totalSess}</div>
     </div>
@@ -438,12 +438,12 @@ function progRenderStreaks(st, attendanceSess, recitations, attStreaks, recStrea
       <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:14px">Recitation Summary</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         ${[
-          { v: recStats.sessionCount || recitations.length, l: 'Sessions',       c: '#d0bcff' },
-          { v: recStats.totalPts     || 0,                  l: 'Total Pts',      c: '#4edea3' },
-          { v: recStats.streak       || recStreaks.longest,  l: 'Best Streak',   c: '#f97316' },
-          { v: recStats.wins         || 0,                  l: 'High Scores',    c: '#ffd700' },
+          { v: recStats.sessionCount || recitations.length, l: 'Sessions',       c: '#deded7' },
+          { v: recStats.totalPts     || 0,                  l: 'Total Pts',      c: '#c2c8c1' },
+          { v: recStats.streak       || recStreaks.longest,  l: 'Best Streak',   c: '#c5c1b8' },
+          { v: recStats.wins         || 0,                  l: 'High Scores',    c: '#d5d2c9' },
         ].map(s => `
-        <div style="text-align:center;padding:12px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px">
+        <div class="student-empty-state" style="text-align:center;padding:12px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px">
           <div style="font-family:var(--fh);font-size:28px;font-weight:900;color:${s.c}">${s.v}</div>
           <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700">${s.l}</div>
         </div>`).join('')}
@@ -461,13 +461,13 @@ function progRenderStreaks(st, attendanceSess, recitations, attStreaks, recStrea
     <div class="att-hist-row">
       <div class="att-status-dot ${a.status}"></div>
       <div style="flex:1">
-        <div style="font-size:13px;font-weight:700;color:${a.status === 'present' ? '#4edea3' : '#ffb4ab'}">${a.status === 'present' ? '✅ Present' : '❌ Absent'}</div>
+        <div style="font-size:13px;font-weight:700;color:${a.status === 'present' ? '#c2c8c1' : '#d99b98'}">${a.status === 'present' ? 'Present' : 'Absent'}</div>
         <div style="font-size:11px;color:var(--text-muted)">${a.date || '—'}</div>
       </div>
       <div class="badge-pill ${a.status === 'present' ? 'bp-green' : 'bp-red'}">${a.status === 'present' ? '+5 coins' : '-5 coins'}</div>
     </div>`).join('') :
-    `<div style="text-align:center;padding:48px;background:rgba(35,31,56,.7);border:1px solid var(--border);border-radius:16px;color:var(--text-muted)">
-      <div style="font-size:40px;margin-bottom:10px">📅</div>
+    `<div class="student-empty-state" style="text-align:center;padding:48px;background:rgba(202,202,194,.7);border:1px solid var(--border);border-radius:16px;color:var(--text-muted)">
+      <div style="font-size:40px;margin-bottom:10px">${uiIcon('calendar')}</div>
       <div style="font-family:var(--fh);font-weight:800;margin-bottom:4px">No records yet</div>
       <div style="font-size:13px">Your attendance will appear here once your teacher logs it.</div>
     </div>`}
@@ -532,12 +532,12 @@ function progRenderRecitationPanel(st, recitations, recStats, recStreaks) {
   return `
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:28px">
     ${[
-      { v: recStats.sessionCount || recitations.length, l: 'Total Sessions',    c: '#d0bcff' },
-      { v: recStats.totalPts     || 0,                  l: 'Total Points',      c: '#4edea3' },
-      { v: recStats.wins         || 0,                  l: 'High Scores (15+)', c: '#ffd700' },
-      { v: recStreaks.longest,                           l: 'Best Streak',       c: '#f97316' },
-      { v: topPts,                                       l: 'Best Single Score', c: '#ffb95f' },
-      { v: recitations.length > 0 ? Math.round((recStats.totalPts || 0) / (recStats.sessionCount || recitations.length)) : 0, l: 'Avg Points/Session', c: '#8b5cf6' },
+      { v: recStats.sessionCount || recitations.length, l: 'Total Sessions',    c: '#deded7' },
+      { v: recStats.totalPts     || 0,                  l: 'Total Points',      c: '#c2c8c1' },
+      { v: recStats.wins         || 0,                  l: 'High Scores (15+)', c: '#d5d2c9' },
+      { v: recStreaks.longest,                           l: 'Best Streak',       c: '#c5c1b8' },
+      { v: topPts,                                       l: 'Best Single Score', c: '#cbc7be' },
+      { v: recitations.length > 0 ? Math.round((recStats.totalPts || 0) / (recStats.sessionCount || recitations.length)) : 0, l: 'Avg Points/Session', c: '#96968e' },
     ].map(s => `
     <div class="glass-card" style="padding:16px;text-align:center">
       <div style="font-family:var(--fh);font-size:28px;font-weight:900;color:${s.c}">${s.v}</div>
@@ -556,20 +556,19 @@ function progRenderRecitationPanel(st, recitations, recStats, recStreaks) {
     ${[...recitations].sort((a, b) => new Date(b.when || 0) - new Date(a.when || 0)).map(r => {
       const pts  = r.pts || 0;
       const tier = pts >= 20 ? 'epic' : pts >= 15 ? 'high' : 'normal';
-      const icon = pts >= 20 ? '🌟' : pts >= 15 ? '⭐' : '🎤';
       return `<div class="rec-entry ${tier === 'high' ? 'high-pts' : ''} ${tier === 'epic' ? 'epic-pts' : ''}">
-        <div class="rec-entry-icon ${tier}"><span style="font-size:20px">${icon}</span></div>
+        <div class="rec-entry-icon ${tier}"><span style="font-size:20px">${uiIcon('mic')}</span></div>
         <div class="rec-entry-body">
-          <div class="rec-entry-pts" style="color:${pts >= 20 ? '#ffd700' : pts >= 15 ? '#d0bcff' : '#4edea3'}">+${pts} pts</div>
+          <div class="rec-entry-pts" style="color:${pts >= 20 ? '#d5d2c9' : pts >= 15 ? '#deded7' : '#c2c8c1'}">+${pts} pts</div>
           <div class="rec-entry-note">${_esc(r.note || 'Recitation session')}</div>
-          <div class="rec-entry-when">🕐 ${r.when || '—'}</div>
+          <div class="rec-entry-when">${r.when || '—'}</div>
         </div>
-        ${pts >= 20 ? `<span class="badge-pill bp-gold" style="font-size:10px">🌟 Epic</span>` : pts >= 15 ? `<span class="badge-pill bp-primary" style="font-size:10px">⭐ High Score</span>` : ''}
+        ${pts >= 20 ? `<span class="badge-pill bp-gold" style="font-size:10px">Epic</span>` : pts >= 15 ? `<span class="badge-pill bp-primary" style="font-size:10px">High score</span>` : ''}
       </div>`;
     }).join('')}
   </div>` : `
-  <div style="text-align:center;padding:64px 20px;background:rgba(35,31,56,.7);border:1px solid var(--border);border-radius:16px">
-    <div style="font-size:48px;margin-bottom:12px">🎤</div>
+  <div class="student-empty-state" style="text-align:center;padding:64px 20px;background:rgba(202,202,194,.7);border:1px solid var(--border);border-radius:16px">
+    <div style="font-size:48px;margin-bottom:12px">${uiIcon('mic')}</div>
     <div style="font-family:var(--fh);font-size:16px;font-weight:800;color:var(--on-surface);margin-bottom:6px">No recitations yet</div>
     <div style="color:var(--text-muted);font-size:13px">Your recitation history will appear here. Speak up in class!</div>
   </div>`}`;
@@ -584,7 +583,7 @@ function progRenderMilestones(st, presentCount, attStreaks, recStats, perfectMon
     const pct     = Math.min(100, Math.round(val / ms.target * 100));
     const unlocked = val >= ms.target;
     return `<div class="ms-card ${unlocked ? 'unlocked' : 'locked'}">
-      <span class="ms-icon">${ms.icon}</span>
+      <span class="ms-icon">${uiIcon('award')}</span>
       <div class="ms-title">${ms.title}</div>
       <div class="ms-desc">${ms.desc}</div>
       <div class="ms-progress"><div class="ms-progress-fill" style="width:${pct}%;background:${ms.color};box-shadow:0 0 8px ${ms.color}55"></div></div>
@@ -601,16 +600,16 @@ function progRenderMilestones(st, presentCount, attStreaks, recStats, perfectMon
 
   return `
   <div class="glass-card prog-milestone-summary" style="padding:18px;margin-bottom:24px;display:flex;align-items:center;gap:18px">
-    <div style="font-size:48px">🏆</div>
+    <div style="font-size:48px">${uiIcon('award')}</div>
     <div style="flex:1">
       <div style="font-family:var(--fh);font-size:22px;font-weight:900;color:var(--on-surface)">${totalUnlocked} / ${total} Milestones</div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Keep pushing — every achievement counts!</div>
       <div style="background:rgba(255,255,255,.06);border-radius:20px;height:8px;overflow:hidden">
-        <div style="height:100%;border-radius:20px;width:${Math.round(totalUnlocked / total * 100)}%;background:linear-gradient(90deg,#8b5cf6,#4edea3);box-shadow:0 0 10px rgba(139,92,246,.5)"></div>
+        <div style="height:100%;border-radius:20px;width:${Math.round(totalUnlocked / total * 100)}%;background:linear-gradient(90deg,#96968e,#c2c8c1);box-shadow:0 0 10px rgba(202,202,194,.5)"></div>
       </div>
     </div>
-    <div style="text-align:center;padding:12px 20px;background:rgba(255,185,95,.08);border:1px solid rgba(255,185,95,.2);border-radius:12px">
-      <div style="font-family:var(--fh);font-size:32px;font-weight:900;color:#ffd700">${Math.round(totalUnlocked / total * 100)}%</div>
+    <div class="student-empty-state" style="text-align:center;padding:12px 20px;background:rgba(202,202,194,.08);border:1px solid rgba(202,202,194,.2);border-radius:12px">
+      <div style="font-family:var(--fh);font-size:32px;font-weight:900;color:#d5d2c9">${Math.round(totalUnlocked / total * 100)}%</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700">Complete</div>
     </div>
   </div>
@@ -634,36 +633,36 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
   const myRank  = sorted.findIndex(s => s.id === st.id) + 1;
   const trophies = [];
 
-  if (attPct >= 100) trophies.push({ icon: '💎', grade: 'LEGENDARY', gradeColor: '#4edea3', gradeBg: 'rgba(78,222,163,.15)',  title: 'Perfect Attendance',    value: `${attPct}%`,      sub: 'You have never missed a single class. A true legend.', variant: 'emerald' });
-  else if (attPct >= 95) trophies.push({ icon: '🏆', grade: 'PLATINUM', gradeColor: '#d0bcff', gradeBg: 'rgba(208,188,255,.15)', title: 'Elite Attendance',     value: `${attPct}%`,      sub: 'Exceptional dedication — only the most committed scholars achieve this.', variant: 'violet' });
-  else if (attPct >= 85) trophies.push({ icon: '⭐', grade: 'GOLD',     gradeColor: '#ffd700', gradeBg: 'rgba(255,215,0,.15)',  title: 'Strong Attendance',    value: `${attPct}%`,      sub: 'A reliable presence that teachers and classmates can count on.', variant: 'gold' });
+  if (attPct >= 100) trophies.push({ icon: '💎', grade: 'LEGENDARY', gradeColor: '#c2c8c1', gradeBg: 'rgba(202,202,194,.15)',  title: 'Perfect Attendance',    value: `${attPct}%`,      sub: 'You have never missed a single class. A true legend.', variant: 'emerald' });
+  else if (attPct >= 95) trophies.push({ icon: '🏆', grade: 'PLATINUM', gradeColor: '#deded7', gradeBg: 'rgba(202,202,194,.15)', title: 'Elite Attendance',     value: `${attPct}%`,      sub: 'Exceptional dedication — only the most committed scholars achieve this.', variant: 'violet' });
+  else if (attPct >= 85) trophies.push({ icon: '⭐', grade: 'GOLD',     gradeColor: '#d5d2c9', gradeBg: 'rgba(202,202,194,.15)',  title: 'Strong Attendance',    value: `${attPct}%`,      sub: 'A reliable presence that teachers and classmates can count on.', variant: 'gold' });
   else if (attPct > 0)   trophies.push({ icon: '📅', grade: 'BRONZE',   gradeColor: '#cd7f32', gradeBg: 'rgba(205,127,50,.15)',  title: 'Attendance Record',   value: `${attPct}%`,      sub: 'Building good attendance habits.', variant: 'bronze' });
 
   if (attStreaks.longest >= 14) trophies.push({ icon: '🔥', grade: 'EPIC',   gradeColor: '#ef4444', gradeBg: 'rgba(239,68,68,.15)',   title: 'Attendance Streak Record', value: `${attStreaks.longest} days`, sub: 'Your best run of consecutive days present. Incredible discipline.', variant: 'gold' });
-  else if (attStreaks.longest >= 7) trophies.push({ icon: '🔥', grade: 'RARE', gradeColor: '#f97316', gradeBg: 'rgba(249,115,22,.15)',  title: 'Week-Long Streak',   value: `${attStreaks.longest} days`, sub: 'A full week of consecutive attendance. Keep building!', variant: 'silver' });
-  else if (attStreaks.longest >= 3) trophies.push({ icon: '🔥', grade: 'COMMON',gradeColor:'#ffb95f', gradeBg: 'rgba(255,185,95,.15)', title: 'Attendance Streak',  value: `${attStreaks.longest} days`, sub: 'Your current best streak. Aim higher!', variant: 'bronze' });
+  else if (attStreaks.longest >= 7) trophies.push({ icon: '🔥', grade: 'RARE', gradeColor: '#c5c1b8', gradeBg: 'rgba(249,115,22,.15)',  title: 'Week-Long Streak',   value: `${attStreaks.longest} days`, sub: 'A full week of consecutive attendance. Keep building!', variant: 'silver' });
+  else if (attStreaks.longest >= 3) trophies.push({ icon: '🔥', grade: 'COMMON',gradeColor:'#cbc7be', gradeBg: 'rgba(202,202,194,.15)', title: 'Attendance Streak',  value: `${attStreaks.longest} days`, sub: 'Your current best streak. Aim higher!', variant: 'bronze' });
 
   if (perfectMonths >= 3) trophies.push({ icon: '💎', grade: 'LEGENDARY', gradeColor: '#a78bfa', gradeBg: 'rgba(167,139,250,.15)', title: 'Diamond Attendance', value: `${perfectMonths} perfect months`, sub: 'Three or more months of flawless attendance. Extraordinary commitment.', variant: 'violet' });
-  else if (perfectMonths >= 1) trophies.push({ icon: '🌟', grade: 'GOLD',   gradeColor: '#ffd700', gradeBg: 'rgba(255,215,0,.15)',  title: 'Perfect Month',      value: `${perfectMonths} month${perfectMonths > 1 ? 's' : ''}`, sub: 'Zero absences for an entire month. Outstanding achievement!', variant: 'gold' });
+  else if (perfectMonths >= 1) trophies.push({ icon: '🌟', grade: 'GOLD',   gradeColor: '#d5d2c9', gradeBg: 'rgba(202,202,194,.15)',  title: 'Perfect Month',      value: `${perfectMonths} month${perfectMonths > 1 ? 's' : ''}`, sub: 'Zero absences for an entire month. Outstanding achievement!', variant: 'gold' });
 
   const sessCount = recStats.sessionCount || recitations.length;
-  if (sessCount >= 25)      trophies.push({ icon: '👑', grade: 'EPIC',   gradeColor: '#ffd700', gradeBg: 'rgba(255,215,0,.15)',  title: 'Recitation Master',   value: `${sessCount} sessions`, sub: '25+ recitation sessions. A true voice of the classroom.', variant: 'gold' });
-  else if (sessCount >= 10) trophies.push({ icon: '🎙️',grade: 'RARE',   gradeColor: '#4edea3', gradeBg: 'rgba(78,222,163,.15)', title: 'Vocal Scholar',       value: `${sessCount} sessions`, sub: '10+ recitations completed. Your voice matters!', variant: 'emerald' });
-  else if (sessCount >= 1)  trophies.push({ icon: '🎤', grade: 'COMMON', gradeColor: '#4edea3', gradeBg: 'rgba(78,222,163,.15)', title: 'Active Participant',  value: `${sessCount} sessions`, sub: "You've started your recitation journey. Keep it up!", variant: 'silver' });
+  if (sessCount >= 25)      trophies.push({ icon: '👑', grade: 'EPIC',   gradeColor: '#d5d2c9', gradeBg: 'rgba(202,202,194,.15)',  title: 'Recitation Master',   value: `${sessCount} sessions`, sub: '25+ recitation sessions. A true voice of the classroom.', variant: 'gold' });
+  else if (sessCount >= 10) trophies.push({ icon: '🎙️',grade: 'RARE',   gradeColor: '#c2c8c1', gradeBg: 'rgba(202,202,194,.15)', title: 'Vocal Scholar',       value: `${sessCount} sessions`, sub: '10+ recitations completed. Your voice matters!', variant: 'emerald' });
+  else if (sessCount >= 1)  trophies.push({ icon: '🎤', grade: 'COMMON', gradeColor: '#c2c8c1', gradeBg: 'rgba(202,202,194,.15)', title: 'Active Participant',  value: `${sessCount} sessions`, sub: "You've started your recitation journey. Keep it up!", variant: 'silver' });
 
   const totalRecPts = recStats.totalPts || 0;
-  if (totalRecPts >= 500)      trophies.push({ icon: '💥', grade: 'LEGENDARY', gradeColor: '#ffd700', gradeBg: 'rgba(255,215,0,.15)',  title: 'Recitation Elite',    value: `${totalRecPts} pts`, sub: '500+ recitation points earned. An academic force to be reckoned with.', variant: 'gold' });
-  else if (totalRecPts >= 150) trophies.push({ icon: '⚡', grade: 'GOLD',     gradeColor: '#d0bcff', gradeBg: 'rgba(208,188,255,.15)', title: 'Point Powerhouse',    value: `${totalRecPts} pts`, sub: '150+ points through recitation. Your contributions truly shine.', variant: 'violet' });
+  if (totalRecPts >= 500)      trophies.push({ icon: '💥', grade: 'LEGENDARY', gradeColor: '#d5d2c9', gradeBg: 'rgba(202,202,194,.15)',  title: 'Recitation Elite',    value: `${totalRecPts} pts`, sub: '500+ recitation points earned. An academic force to be reckoned with.', variant: 'gold' });
+  else if (totalRecPts >= 150) trophies.push({ icon: '⚡', grade: 'GOLD',     gradeColor: '#deded7', gradeBg: 'rgba(202,202,194,.15)', title: 'Point Powerhouse',    value: `${totalRecPts} pts`, sub: '150+ points through recitation. Your contributions truly shine.', variant: 'violet' });
 
-  if (myRank === 1)      trophies.push({ icon: '🥇', grade: 'LEGENDARY', gradeColor: '#ffd700', gradeBg: 'rgba(255,215,0,.15)', title: 'Class Champion',   value: 'Rank #1',         sub: 'Top of the entire class leaderboard. The undisputed champion.', variant: 'gold' });
-  else if (myRank <= 3)  trophies.push({ icon: '🏅', grade: 'EPIC',     gradeColor: '#ffd700', gradeBg: 'rgba(255,215,0,.15)', title: `Top ${myRank} Leaderboard`, value: `Rank #${myRank}`, sub: `Among the top 3 students in your class. Elite performance.`, variant: 'gold' });
-  else if (myRank <= 5)  trophies.push({ icon: '⭐', grade: 'RARE',     gradeColor: '#ffb95f', gradeBg: 'rgba(255,185,95,.15)', title: 'Top 5 Scholar',    value: `Rank #${myRank}`, sub: 'Inside the top 5 in class rankings. A strong competitor.', variant: 'silver' });
+  if (myRank === 1)      trophies.push({ icon: '🥇', grade: 'LEGENDARY', gradeColor: '#d5d2c9', gradeBg: 'rgba(202,202,194,.15)', title: 'Class Champion',   value: 'Rank #1',         sub: 'Top of the entire class leaderboard. The undisputed champion.', variant: 'gold' });
+  else if (myRank <= 3)  trophies.push({ icon: '🏅', grade: 'EPIC',     gradeColor: '#d5d2c9', gradeBg: 'rgba(202,202,194,.15)', title: `Top ${myRank} Leaderboard`, value: `Rank #${myRank}`, sub: `Among the top 3 students in your class. Elite performance.`, variant: 'gold' });
+  else if (myRank <= 5)  trophies.push({ icon: '⭐', grade: 'RARE',     gradeColor: '#cbc7be', gradeBg: 'rgba(202,202,194,.15)', title: 'Top 5 Scholar',    value: `Rank #${myRank}`, sub: 'Inside the top 5 in class rankings. A strong competitor.', variant: 'silver' });
 
   const topRecSession = recitations.length ? Math.max(...recitations.map(r => r.pts || 0)) : 0;
 
   return `
   <div class="showcase-header">
-    <span class="showcase-crown">👑</span>
+    <span class="showcase-crown">${uiIcon('award')}</span>
     <div class="showcase-title-text">ACADEMIC SHOWCASE</div>
     <div class="showcase-sub" style="position:relative;z-index:1">${_esc(st.name)} · ${st.tier} · Level ${st.level}</div>
   </div>
@@ -688,19 +687,19 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
       </div>
       <div class="share-stats-grid">
         ${[
-          { sv: `${attPct}%`,  sl: 'Attendance',    c: '#4edea3' },
-          { sv: attStreaks.longest, sl: 'Best Streak', c: '#f97316' },
-          { sv: sessCount,     sl: 'Recitations',   c: '#d0bcff' },
-          { sv: perfectMonths, sl: 'Perfect Months', c: '#ffd700' },
-          { sv: totalRecPts,   sl: 'Rec Points',    c: '#4edea3' },
-          { sv: topRecSession, sl: 'Best Score',    c: '#ffb95f' },
+          { sv: `${attPct}%`,  sl: 'Attendance',    c: '#c2c8c1' },
+          { sv: attStreaks.longest, sl: 'Best Streak', c: '#c5c1b8' },
+          { sv: sessCount,     sl: 'Recitations',   c: '#deded7' },
+          { sv: perfectMonths, sl: 'Perfect Months', c: '#d5d2c9' },
+          { sv: totalRecPts,   sl: 'Rec Points',    c: '#c2c8c1' },
+          { sv: topRecSession, sl: 'Best Score',    c: '#cbc7be' },
         ].map(s => `<div class="share-stat"><div class="sv" style="color:${s.c}">${s.sv}</div><div class="sl">${s.sl}</div></div>`).join('')}
       </div>
       <div class="share-badges-row">
-        ${attPct >= 90    ? `<span class="share-badge-chip" style="background:rgba(78,222,163,.15);border:1px solid rgba(78,222,163,.3);color:#4edea3">📅 ${attPct}% Attendance</span>` : ''}
-        ${attStreaks.longest >= 7 ? `<span class="share-badge-chip" style="background:rgba(255,185,95,.15);border:1px solid rgba(255,185,95,.3);color:#ffb95f">🔥 ${attStreaks.longest}-Day Streak</span>` : ''}
-        ${perfectMonths > 0 ? `<span class="share-badge-chip" style="background:rgba(208,188,255,.15);border:1px solid rgba(208,188,255,.3);color:#d0bcff">💎 Perfect Month</span>` : ''}
-        ${myRank <= 3     ? `<span class="share-badge-chip" style="background:rgba(255,215,0,.15);border:1px solid rgba(255,215,0,.3);color:#ffd700">🥇 Top ${myRank}</span>` : ''}
+        ${attPct >= 90    ? `<span class="share-badge-chip" style="background:rgba(202,202,194,.15);border:1px solid rgba(202,202,194,.3);color:#c2c8c1">${uiIcon('calendar')} ${attPct}% Attendance</span>` : ''}
+        ${attStreaks.longest >= 7 ? `<span class="share-badge-chip" style="background:rgba(202,202,194,.15);border:1px solid rgba(202,202,194,.3);color:#cbc7be">${uiIcon('flame')} ${attStreaks.longest}-Day Streak</span>` : ''}
+        ${perfectMonths > 0 ? `<span class="share-badge-chip" style="background:rgba(202,202,194,.15);border:1px solid rgba(202,202,194,.3);color:#deded7">${uiIcon('award')} Perfect Month</span>` : ''}
+        ${myRank <= 3     ? `<span class="share-badge-chip" style="background:rgba(202,202,194,.15);border:1px solid rgba(202,202,194,.3);color:#d5d2c9">${uiIcon('award')} Top ${myRank}</span>` : ''}
         ${earnedTitles.length > 0 ? `<span class="share-badge-chip" style="background:rgba(236,72,153,.15);border:1px solid rgba(236,72,153,.3);color:#EC4899">🎖️ ${earnedTitles[0].name}</span>` : ''}
       </div>
     </div>
@@ -716,7 +715,7 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
     ${trophies.map(t => `
     <div class="trophy-card ${t.variant || ''}">
       <div class="trophy-icon-row">
-        <span class="trophy-icon">${t.icon}</span>
+        <span class="trophy-icon">${uiIcon('award')}</span>
         <span class="trophy-grade" style="color:${t.gradeColor};background:${t.gradeBg};border:1px solid ${t.gradeColor}33">${t.grade}</span>
       </div>
       <div class="trophy-card-title">${t.title}</div>
@@ -724,8 +723,8 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
       <div class="trophy-card-sub">${t.sub}</div>
     </div>`).join('')}
   </div>` : `
-  <div style="text-align:center;padding:56px 20px;background:rgba(35,31,56,.7);border:1px solid var(--border);border-radius:16px;margin-bottom:24px">
-    <div style="font-size:48px;margin-bottom:12px">🏆</div>
+  <div class="student-empty-state" style="text-align:center;padding:56px 20px;background:rgba(202,202,194,.7);border:1px solid var(--border);border-radius:16px;margin-bottom:24px">
+    <div style="font-size:48px;margin-bottom:12px">${uiIcon('award')}</div>
     <div style="font-family:var(--fh);font-size:16px;font-weight:800;margin-bottom:6px">No trophies yet</div>
     <div style="color:var(--text-muted);font-size:13px">Attend class, recite, and earn perfect months to fill your trophy room!</div>
   </div>`}
@@ -738,8 +737,8 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:28px">
     ${earnedAchs.map(a => `
-    <div class="glass-card" style="padding:16px;text-align:center;border-color:rgba(255,185,95,.25)">
-      <div style="font-size:32px;margin-bottom:8px">${a.icon || '🏆'}</div>
+    <div class="glass-card" style="padding:16px;text-align:center;border-color:rgba(202,202,194,.25)">
+      <div style="font-size:32px;margin-bottom:8px">${uiIcon('award')}</div>
       <div style="font-family:var(--fh);font-size:13px;font-weight:800;color:var(--on-surface);margin-bottom:4px">${_esc(a.name)}</div>
       <div style="font-size:11px;color:var(--text-muted)">${_esc(a.description)}</div>
     </div>`).join('')}
@@ -753,8 +752,8 @@ function progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStre
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:28px">
     ${earnedTitles.map(t => `
-    <div style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:${_cssColor(t.bgColor, 'rgba(255,215,0,.1)')};border:2px solid ${_cssColor(t.borderColor, 'rgba(255,215,0,.4)')};font-family:var(--fh);font-size:14px;font-weight:800;color:${_cssColor(t.textColor, '#ffd700')}">
-      ${t.icon || '🎖️'} ${_esc(t.name)}
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:${_cssColor(t.bgColor, 'rgba(202,202,194,.1)')};border:2px solid ${_cssColor(t.borderColor, 'rgba(202,202,194,.4)')};font-family:var(--fh);font-size:14px;font-weight:800;color:${_cssColor(t.textColor, '#d5d2c9')}">
+      ${uiIcon('award')} ${_esc(t.name)}
     </div>`).join('')}
   </div>` : ''}
   `;
@@ -795,14 +794,14 @@ window.renderStudentProgress = function () {
   <div class="prog-hero">
     <div class="prog-hero-grid">
       <div>
-        <div class="prog-hero-label">📊 Academic Progress</div>
+        <div class="prog-hero-label">${uiIcon('chart')} Academic Progress</div>
         <div class="prog-hero-name">${_esc(st.name)}</div>
         <div class="prog-hero-sub">${_esc(st.tier)} · Level ${st.level} · <span style="color:var(--primary)">Your Complete Record</span></div>
         <div class="prog-stat-strip">
-          <div class="prog-stat-chip"><span class="v" style="color:#4edea3">${attPct}%</span><span class="l">Attendance</span></div>
-          <div class="prog-stat-chip"><span class="v" style="color:#f97316">${attStreaks.current}</span><span class="l">Current Streak</span></div>
-          <div class="prog-stat-chip"><span class="v" style="color:#d0bcff">${recStats.sessionCount || recitations.length}</span><span class="l">Recitations</span></div>
-          <div class="prog-stat-chip"><span class="v" style="color:#ffd700">${perfectMonths}</span><span class="l">Perfect Months</span></div>
+          <div class="prog-stat-chip"><span class="v" style="color:#c2c8c1">${attPct}%</span><span class="l">Attendance</span></div>
+          <div class="prog-stat-chip"><span class="v" style="color:#c5c1b8">${attStreaks.current}</span><span class="l">Current Streak</span></div>
+          <div class="prog-stat-chip"><span class="v" style="color:#deded7">${recStats.sessionCount || recitations.length}</span><span class="l">Recitations</span></div>
+          <div class="prog-stat-chip"><span class="v" style="color:#d5d2c9">${perfectMonths}</span><span class="l">Perfect Months</span></div>
         </div>
       </div>
       <div class="prog-hero-avatar" style="background:${_cssColor(st.color) + '22'};color:${_cssColor(st.color)};border-color:${_cssColor(st.color) + '44'};box-shadow:0 0 40px ${_cssColor(st.color) + '44'}">${_esc(st.init)}</div>
@@ -875,30 +874,30 @@ window.progShowCalDay = function (day, year, month) {
   const dateStr = `${months[month]} ${day}, ${year}`;
 
   let html = `<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-    <div style="font-size:28px">${d.status === 'present' ? '✅' : d.status === 'absent' ? '❌' : '📋'}</div>
+    <div style="font-size:28px">${uiIcon(d.status === 'present' ? 'check' : d.status === 'absent' ? 'close' : 'calendar')}</div>
     <div>
       <div style="font-family:var(--fh);font-size:16px;font-weight:900;color:var(--on-surface)">${dateStr}</div>
-      <div style="font-size:12px;color:${d.status === 'present' ? '#4edea3' : d.status === 'absent' ? '#ffb4ab' : 'var(--text-muted)'};font-weight:700;margin-top:2px">
+      <div style="font-size:12px;color:${d.status === 'present' ? '#c2c8c1' : d.status === 'absent' ? '#d99b98' : 'var(--text-muted)'};font-weight:700;margin-top:2px">
         ${d.status === 'present' ? 'Present' : d.status === 'absent' ? 'Absent' : 'No attendance recorded'}
       </div>
     </div>
   </div>`;
 
   if (d.recitations.length) {
-    html += `<div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">🎤 Recitations (${d.recitations.length})</div>`;
+    html += `<div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">${uiIcon('mic')} Recitations (${d.recitations.length})</div>`;
     d.recitations.forEach(r => {
-      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(78,222,163,.06);border:1px solid rgba(78,222,163,.15);border-radius:8px;margin-bottom:6px;font-size:12px">
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(202,202,194,.06);border:1px solid rgba(202,202,194,.15);border-radius:8px;margin-bottom:6px;font-size:12px">
         <span style="color:var(--on-surface)">${_esc(r.note || 'Recitation')}</span>
-        <span style="color:#4edea3;font-weight:800">+${r.pts} pts</span>
+        <span style="color:#c2c8c1;font-weight:800">+${r.pts} pts</span>
       </div>`;
     });
   }
   if (d.quizzes.length) {
-    html += `<div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-top:10px;margin-bottom:8px">📝 Quests Completed (${d.quizzes.length})</div>`;
+    html += `<div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-top:10px;margin-bottom:8px">${uiIcon('book')} Quests Completed (${d.quizzes.length})</div>`;
     d.quizzes.forEach(q => {
-      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(255,185,95,.06);border:1px solid rgba(255,185,95,.15);border-radius:8px;margin-bottom:6px;font-size:12px">
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(202,202,194,.06);border:1px solid rgba(202,202,194,.15);border-radius:8px;margin-bottom:6px;font-size:12px">
         <span style="color:var(--on-surface)">${(q.what || '').replace('Quest: ', '')}</span>
-        <span style="color:#ffb95f;font-weight:800">+${q.pts} XP</span>
+        <span style="color:#cbc7be;font-weight:800">+${q.pts} XP</span>
       </div>`;
     });
   }

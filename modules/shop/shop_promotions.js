@@ -132,9 +132,9 @@ window.promoCountdownStr = function (endDate) {
   const d = Math.floor(diff / 86400000);
   const h = Math.floor((diff % 86400000) / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
-  if (d > 0) return `⏰ ${d}d ${h}h left`;
-  if (h > 0) return `⏰ ${h}h ${m}m left`;
-  return `⏰ ${m}m left`;
+  if (d > 0) return `${d}d ${h}h left`;
+  if (h > 0) return `${h}h ${m}m left`;
+  return `${m}m left`;
 };
 
 // ── Carousel state ────────────────────────────────────────────────────────────
@@ -145,7 +145,6 @@ let promoCarousel = { idx: 0, slides: [], timer: null, interval: 6000 };
 window.promoBuildSlideHTML = function (p) {
   const cfg       = promoTypeConfig(p.type);
   const item      = p.linkedItemId ? (AppStore.getSlice(s => s.store) || []).find(i => i.id === p.linkedItemId) : null;
-  const emoji     = p.image || item?.emoji || '🎁';
   const countdown = p.endDate ? promoCountdownStr(p.endDate) : null;
   const tagLabel  = p.adminLabel || (p.type === 'custom' && p.customTypeLabel ? p.customTypeLabel : cfg.tagLabel);
   const price     = item ? item.cost : null;
@@ -162,7 +161,7 @@ window.promoBuildSlideHTML = function (p) {
           <button class="promo-btn" onclick="event.stopPropagation();promoClickBanner('${p.id}')">${item ? 'Redeem' : 'View →'}</button>
         </div>
       </div>
-      <div class="promo-slide-emoji">${emoji}</div>
+      <div class="promo-slide-emoji">${uiIcon(item?.cat)}</div>
     </div>
   </div>`;
 };
@@ -178,11 +177,11 @@ window.promoRenderCarousel = function () {
     wrap.innerHTML = `<div class="promo-empty-banner">
       <div style="width:100%;height:100%;background:linear-gradient(135deg,rgba(26,20,56,0.98),rgba(139,92,246,0.15));display:flex;align-items:center;padding:0 32px">
         <div class="store-banner-inner">
-          <span class="store-banner-tag">🏪 Welcome</span>
+          <span class="store-banner-tag">Welcome</span>
           <div class="store-banner-title">The Armory</div>
           <div class="store-banner-sub">Browse all available rewards and exchange your coins!</div>
         </div>
-        <div style="font-size:96px;margin-left:auto;padding-right:32px;filter:drop-shadow(0 0 32px rgba(255,185,95,0.4))">⚔️</div>
+        <div style="font-size:96px;margin-left:auto;padding-right:32px;filter:drop-shadow(0 0 32px rgba(255,185,95,0.4))">${uiIcon('bag')}</div>
       </div>
     </div>`;
     return;
@@ -506,7 +505,6 @@ window.promoAdminPreview = function (id) {
   if (!p) return;
   const cfg       = promoTypeConfig(p.type);
   const item      = p.linkedItemId ? (AppStore.getSlice(s => s.store) || []).find(i => i.id === p.linkedItemId) : null;
-  const emoji     = p.image || item?.emoji || '📣';
   const countdown = p.endDate ? promoCountdownStr(p.endDate) : null;
   const tagLabel  = p.adminLabel || (p.type === 'custom' && p.customTypeLabel ? p.customTypeLabel : cfg.tagLabel);
   const price     = item ? item.cost : null;
@@ -524,7 +522,7 @@ window.promoAdminPreview = function (id) {
             <div class="promo-sub">${_esc(p.subtitle || '')}</div>
             <div class="promo-cta">${price !== null ? `<div class="promo-price"><span class="material-symbols-outlined" style="font-size:16px;font-variation-settings:'FILL' 1">monetization_on</span>${price}</div>` : ''}<button class="promo-btn">${item ? 'Redeem' : 'View →'}</button></div>
           </div>
-          <div class="promo-slide-emoji">${emoji}</div>
+          <div class="promo-slide-emoji">${uiIcon(item?.cat)}</div>
         </div>
       </div>
     </div>

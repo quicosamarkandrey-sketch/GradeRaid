@@ -94,7 +94,7 @@ async function _mySectionFetch() {
 function _mySectionSkeletonHTML() {
   return `
   <div class="page-hero"><div class="page-hero-bg"></div><div style="position:relative;z-index:1">
-    <div class="page-hero-label">🏫 My Section</div>
+    <div class="page-hero-label">${uiIcon('users')} My Section</div>
     <h1 style="font-family:var(--fh);font-size:32px;font-weight:900;color:var(--on-surface);margin-bottom:8px">Loading your section…</h1>
     <p style="font-size:14px;color:var(--text-muted)">Fetching your classmates and adviser info</p>
   </div></div>`;
@@ -114,7 +114,7 @@ function _mySectionPaint(info) {
 
   el.innerHTML = `
   <div class="page-hero"><div class="page-hero-bg"></div><div style="position:relative;z-index:1">
-    <div class="page-hero-label">🏫 My Section</div>
+    <div class="page-hero-label">${uiIcon('users')} My Section</div>
     <h1 style="font-family:var(--fh);font-size:32px;font-weight:900;color:var(--on-surface);margin-bottom:8px">${section ? _esc(section.label) : 'Not yet assigned'}</h1>
     <p style="font-size:14px;color:var(--text-muted)">${classmates.length} classmate${classmates.length === 1 ? '' : 's'} · your shared quests, campaigns, shop, and badges live here</p>
   </div></div>
@@ -122,7 +122,7 @@ function _mySectionPaint(info) {
   ${_mySectionTeacherCardHTML(teacher)}
 
   <div style="display:flex;align-items:center;justify-content:space-between;margin:28px 0 16px">
-    <div style="font-family:var(--fh);font-size:18px;font-weight:800;color:var(--on-surface)">👥 Your Class</div>
+    <div style="font-family:var(--fh);font-size:18px;font-weight:800;color:var(--on-surface)">${uiIcon('users')} Your Class</div>
     <span class="badge-pill bp-primary">${classmates.length} student${classmates.length === 1 ? '' : 's'}</span>
   </div>
 
@@ -130,8 +130,8 @@ function _mySectionPaint(info) {
   <div class="my-section-roster" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px">
     ${classmates.map((c, i) => _mySectionStudentCardHTML(c, i, st, titles)).join('')}
   </div>` : `
-  <div style="text-align:center;padding:64px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;backdrop-filter:blur(12px)">
-    <div style="font-size:48px;margin-bottom:12px">🧑‍🤝‍🧑</div>
+  <div class="student-empty-state" style="text-align:center;padding:64px;background:rgba(202,202,194,0.7);border:1px solid var(--border);border-radius:16px;backdrop-filter:blur(12px)">
+    <div style="font-size:48px;margin-bottom:12px">${uiIcon('users')}</div>
     <div style="font-family:var(--fh);font-size:18px;font-weight:800;margin-bottom:6px">No classmates found yet</div>
     <div style="color:var(--text-muted);font-size:13px">Once your section fills up, everyone will show up here.</div>
   </div>`}
@@ -141,7 +141,7 @@ function _mySectionPaint(info) {
 function _mySectionTeacherCardHTML(teacher) {
   if (!teacher) {
     return `<div class="glass-card" style="display:flex;align-items:center;gap:14px">
-      <div style="font-size:32px">🧑‍🏫</div>
+      <div style="font-size:32px">${uiIcon('users')}</div>
       <div>
         <div style="font-family:var(--fh);font-size:15px;font-weight:800;color:var(--on-surface)">Adviser not yet assigned</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Check back once your section has a teacher assigned.</div>
@@ -150,21 +150,21 @@ function _mySectionTeacherCardHTML(teacher) {
   }
   const initials = (teacher.displayName || 'T').split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
   return `
-  <div class="glass-card my-section-adviser" style="background:linear-gradient(135deg,rgba(139,92,246,0.10),rgba(78,222,163,0.05));border-color:rgba(208,188,255,0.25)">
+  <div class="glass-card my-section-adviser" style="background:linear-gradient(135deg,rgba(202,202,194,0.10),rgba(202,202,194,0.05));border-color:rgba(202,202,194,0.25)">
     <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
-      <div style="width:76px;height:76px;border-radius:20px;flex-shrink:0;background:rgba(208,188,255,0.14);border:2px solid rgba(208,188,255,0.35);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:28px;color:#d0bcff">${_esc(initials)}</div>
+      <div style="width:76px;height:76px;border-radius:20px;flex-shrink:0;background:rgba(202,202,194,0.14);border:2px solid rgba(202,202,194,0.35);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:28px;color:#deded7">${_esc(initials)}</div>
       <div style="flex:1;min-width:200px">
         <div style="font-size:10px;letter-spacing:.12em;color:var(--text-muted);text-transform:uppercase;font-weight:700;margin-bottom:2px">Your Adviser</div>
         <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:var(--on-surface)">${_esc(teacher.displayName || 'Teacher')}</div>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-          <span class="badge-pill bp-primary">📝 ${teacher.quizCount ?? 0} quests</span>
-          <span class="badge-pill bp-green">🗺️ ${teacher.campaignWorldCount ?? 0} campaign worlds</span>
-          <span class="badge-pill bp-gold">🏪 ${teacher.shopProductCount ?? 0} shop items</span>
-          <span class="badge-pill bp-gray">🏅 ${teacher.achievementCount ?? 0} achievements</span>
+          <span class="badge-pill bp-primary">${uiIcon('book')} ${teacher.quizCount ?? 0} quests</span>
+          <span class="badge-pill bp-green">${uiIcon('book')} ${teacher.campaignWorldCount ?? 0} campaign worlds</span>
+          <span class="badge-pill bp-gold">${uiIcon('bag')} ${teacher.shopProductCount ?? 0} shop items</span>
+          <span class="badge-pill bp-gray">${uiIcon('award')} ${teacher.achievementCount ?? 0} achievements</span>
         </div>
       </div>
     </div>
-    <div style="font-size:12px;color:var(--text-muted);margin-top:14px;padding-top:14px;border-top:1px solid var(--border2)">
+    <div class="my-section-adviser-note" style="font-size:12px;color:var(--text-muted);margin-top:14px;padding-top:14px;border-top:1px solid var(--border2)">
       Your shop, achievements, and titles always match your adviser above — quests and campaign worlds may differ from other sections this teacher runs, since they're assigned per-section.
     </div>
   </div>`;
@@ -173,7 +173,6 @@ function _mySectionTeacherCardHTML(teacher) {
 function _mySectionStudentCardHTML(c, i, st, titles) {
   const isMe = st && c.id === st.id;
   const rank = i + 1;
-  const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null;
   const color = _cssColor(c.color);
   const avatarInner = c.profilePicUrl
     ? `<img src="${c.profilePicUrl}" alt="${_esc(c.init || '')}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.remove()">`
@@ -184,10 +183,10 @@ function _mySectionStudentCardHTML(c, i, st, titles) {
     if (t) titleBadgeHTML = `<div style="margin-top:10px;display:flex;justify-content:center">${tsBuildBadgeHTML(t, { small: true })}</div>`;
   }
   return `
-  <div class="my-section-student" style="position:relative;background:${isMe ? 'linear-gradient(135deg,rgba(208,188,255,0.14),rgba(139,92,246,0.06))' : 'rgba(35,31,56,0.7)'};border:1px solid ${isMe ? 'rgba(208,188,255,0.4)' : 'var(--border)'};border-radius:18px;padding:22px 18px;text-align:center;backdrop-filter:blur(12px);transition:transform .2s"
+  <div class="my-section-student" style="position:relative;background:${isMe ? 'linear-gradient(135deg,rgba(202,202,194,0.14),rgba(202,202,194,0.06))' : 'rgba(202,202,194,0.7)'};border:1px solid ${isMe ? 'rgba(202,202,194,0.4)' : 'var(--border)'};border-radius:18px;padding:22px 18px;text-align:center;backdrop-filter:blur(12px);transition:transform .2s"
     onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='none'">
-    ${rankIcon ? `<div style="position:absolute;top:10px;right:14px;font-size:20px">${rankIcon}</div>` : `<div style="position:absolute;top:10px;right:14px;font-size:11px;color:var(--text-muted);font-weight:800">#${rank}</div>`}
-    ${isMe ? `<div style="position:absolute;top:10px;left:14px;font-size:9px;letter-spacing:.08em;color:#d0bcff;font-weight:800;background:rgba(208,188,255,0.15);border:1px solid rgba(208,188,255,0.3);padding:2px 8px;border-radius:8px">YOU</div>` : ''}
+    <div class="my-section-rank">#${rank}</div>
+    ${isMe ? `<div style="position:absolute;top:10px;left:14px;font-size:9px;letter-spacing:.08em;color:#deded7;font-weight:800;background:rgba(202,202,194,0.15);border:1px solid rgba(202,202,194,0.3);padding:2px 8px;border-radius:8px">YOU</div>` : ''}
     <div class="my-section-avatar" style="width:72px;height:72px;border-radius:50%;margin:8px auto 12px;position:relative;overflow:hidden;background:${color}33;border:3px solid ${color}88;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:900;font-size:26px;color:${color}">${avatarInner}</div>
     <div style="font-family:var(--fh);font-size:15px;font-weight:800;color:var(--on-surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(c.displayName || 'Student')}</div>
     <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Level ${c.level ?? 1} · ${_esc(c.tier || 'Scholar')}</div>

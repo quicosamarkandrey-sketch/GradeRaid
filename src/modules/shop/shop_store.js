@@ -37,7 +37,7 @@
 
 import { AppStore } from '../core/state-manager.js';
 import { DBService } from '../../db-service.js';
-import { toast, showModal, closeModalForce } from '../../dom.js';
+import { uiIcon, toast, showModal, closeModalForce } from '../../dom.js';
 import { _esc, todayStr, nowStr } from '../../utils.js';
 
 // ── Item rarity helper ────────────────────────────────────────────────────────
@@ -48,8 +48,8 @@ import { _esc, todayStr, nowStr } from '../../utils.js';
  * Used by store cards and inventory cards.
  */
 export const getItemRarity = function (item) {
-  if (item.cat === 'mystery')   return { label: 'LEGENDARY', cls: 'rarity-legendary', glow: 'rgba(255,185,95,0.3)' };
-  if (item.cat === 'privilege') return { label: 'EPIC',      cls: 'rarity-epic',      glow: 'rgba(208,188,255,0.3)' };
+  if (item.cat === 'mystery')   return { label: 'LEGENDARY', cls: 'rarity-legendary', glow: 'rgba(202,202,194,0.3)' };
+  if (item.cat === 'privilege') return { label: 'EPIC',      cls: 'rarity-epic',      glow: 'rgba(202,202,194,0.3)' };
   if (item.cost >= 200)         return { label: 'RARE',      cls: 'rarity-rare',      glow: 'rgba(144,180,255,0.25)' };
   return                               { label: 'COMMON',    cls: 'rarity-common',    glow: 'rgba(203,195,215,0.1)' };
 };
@@ -75,17 +75,10 @@ export const renderStudentStore = function (cat = 'all') {
   document.getElementById('s-store').innerHTML = `
   <!-- PROMO CAROUSEL (populated by promotions.js) -->
   <div id="promo-carousel-wrap" class="store-banner">
-    <div style="width:100%;height:100%;background:linear-gradient(135deg,rgba(26,20,56,0.98),rgba(139,92,246,0.15));display:flex;align-items:center;padding:0 32px">
-      <div class="store-banner-inner">
-        <span class="store-banner-tag">🔥 Limited Offer</span>
-        <div class="store-banner-title">Mystic Knowledge Potion</div>
-        <div class="store-banner-sub">Instant +500 XP boost and a permanent +2 multiplier for your next Quest. Only this week!</div>
-        <div class="store-banner-cta">
-          <div class="store-banner-price"><span class="material-symbols-outlined" style="font-size:16px;font-variation-settings:'FILL' 1">monetization_on</span>750</div>
-          <button class="store-banner-btn">Claim Special</button>
-        </div>
-      </div>
-      <div style="font-size:96px;margin-left:auto;padding-right:32px;display:none;filter:drop-shadow(0 0 32px rgba(255,185,95,0.4))">🧪</div>
+    <div class="student-catalog-intro">
+      <span class="store-banner-tag">Reward catalog</span>
+      <div class="store-banner-title">Choose your next reward</div>
+      <div class="store-banner-sub">Browse your adviser's available items and privileges.</div>
     </div>
   </div>
 
@@ -96,7 +89,7 @@ export const renderStudentStore = function (cat = 'all') {
       <div style="font-family:var(--fh);font-size:28px;font-weight:900;letter-spacing:-.5px;color:var(--on-surface)">The Armory</div>
       <div style="font-size:13px;color:var(--text-muted);margin-top:4px">Exchange your coins for legendary rewards</div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;background:rgba(42,40,54,0.9);border:1px solid rgba(255,185,95,0.25);padding:14px 20px;border-radius:16px;box-shadow:0 0 20px rgba(255,185,95,0.12)">
+    <div style="display:flex;align-items:center;gap:10px;background:rgba(42,40,54,0.9);border:1px solid rgba(202,202,194,0.25);padding:14px 20px;border-radius:16px;box-shadow:0 0 20px rgba(202,202,194,0.12)">
       <span class="material-symbols-outlined" style="color:var(--tertiary);font-size:28px;font-variation-settings:'FILL' 1">monetization_on</span>
       <div>
         <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.08em;text-transform:uppercase">Balance</div>
@@ -117,11 +110,11 @@ export const renderStudentStore = function (cat = 'all') {
       const r = getItemRarity(item);
       const canAfford = st.coins >= item.cost;
       const out = item.stock === 0;
-      const stockColor = item.stock === 0 ? '#ffb4ab' : item.stock <= 3 ? '#ffb95f' : 'rgba(255,255,255,0.35)';
+      const stockColor = item.stock === 0 ? '#d99b98' : item.stock <= 3 ? '#cbc7be' : 'rgba(255,255,255,0.35)';
       const stockLabel = item.stock === 0 ? 'Out of stock' : item.stock <= 3 ? `Only ${item.stock} left` : `${item.stock} in stock`;
       return `<div class="store-card cat-${item.cat} ${out ? 'out-of-stock' : ''}" id="store-item-${item.id}" style="${!canAfford && !out ? 'opacity:.65' : ''}">
         ${out ? `<div style="position:absolute;top:12px;right:12px;z-index:2"><span class="badge-pill bp-red" style="font-size:9px;letter-spacing:.04em">OUT OF STOCK</span></div>` : ''}
-        <div class="store-emoji" style="filter:${out ? 'grayscale(1)' : ''}">${item.emoji}</div>
+        <div class="store-emoji" style="filter:${out ? 'grayscale(1)' : ''}">${uiIcon(item.cat)}</div>
         <div class="store-rarity"><span class="rarity-pill ${r.cls}">${r.label}</span></div>
         <div class="store-name">${_esc(item.name)}</div>
         <div class="store-desc">${_esc(item.desc)}</div>
@@ -130,11 +123,11 @@ export const renderStudentStore = function (cat = 'all') {
           <div class="store-price">
             <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">monetization_on</span>${item.cost}
           </div>
-          <button class="store-redeem-btn" ${out || !canAfford ? 'disabled' : ''} style="${out ? 'opacity:.5;cursor:not-allowed' : canAfford ? '' : 'opacity:.5;cursor:not-allowed'}" onclick="event.stopPropagation();${out || !canAfford ? '' : `cartAdd('${item.id}')`}">${out ? 'Unavailable' : canAfford ? '🛒 Add to Cart' : "Can't Afford"}</button>
+          <button class="store-redeem-btn" ${out || !canAfford ? 'disabled' : ''} style="${out ? 'opacity:.5;cursor:not-allowed' : canAfford ? '' : 'opacity:.5;cursor:not-allowed'}" onclick="event.stopPropagation();${out || !canAfford ? '' : `cartAdd('${item.id}')`}">${out ? 'Unavailable' : canAfford ? 'Add to cart' : "Can't Afford"}</button>
         </div>
       </div>`;
     }).join('')}
-  </div>` : `<div style="text-align:center;padding:80px;color:var(--text-muted);font-size:13px">No items in this category.</div>`}`;
+  </div>` : `<div class="student-empty-state" style="text-align:center;padding:80px;color:var(--text-muted);font-size:13px">No items in this category.</div>`}`;
 
   _cartRenderFab();
   // Promotions carousel — typeof guard (promotions.js loads after store.js)
@@ -148,13 +141,13 @@ export const _CART = {};
 export const cartAdd = function (id) {
   const item = (AppStore.getSlice(s => s.store) || []).find(i => i.id === id);
   if (!item) return;
-  if (item.stock === 0) { toast('❌ Out of stock!', '#ffb4ab'); return; }
+  if (item.stock === 0) { toast('❌ Out of stock!', '#d99b98'); return; }
   const cartQty = _CART[id] ? _CART[id].qty : 0;
-  if (cartQty >= item.stock) { toast(`❌ Only ${item.stock} in stock!`, '#ffb4ab'); return; }
+  if (cartQty >= item.stock) { toast(`❌ Only ${item.stock} in stock!`, '#d99b98'); return; }
   if (!_CART[id]) _CART[id] = { item, qty: 0 };
   _CART[id].qty++;
   _CART[id].item = item;
-  toast(`🛒 ${item.emoji} ${_esc(item.name)} added to cart!`, '#8b5cf6');
+  toast(`Added ${uiIcon(item.cat)} ${_esc(item.name)} added to cart!`, '#96968e');
   _cartRenderFab();
 };
 
@@ -175,7 +168,7 @@ export const cartSetQty = function (id, qty) {
   if (!_CART[id]) _CART[id] = { item, qty: 0 };
   _CART[id].qty   = capped;
   _CART[id].item  = item;
-  if (capped !== n) toast(`⚠️ Qty capped at ${capped} (max stock)`, '#ffb95f');
+  if (capped !== n) toast(`⚠️ Qty capped at ${capped} (max stock)`, '#cbc7be');
   _cartRenderFab();
   _cartRenderModal();
 };
@@ -195,7 +188,7 @@ export function _cartRenderFab() {
   const fab = document.createElement('button');
   fab.id        = 'cart-fab';
   fab.className = 'cart-fab';
-  fab.innerHTML = `🛒 Cart <span class="cart-count">${count}</span> &nbsp;·&nbsp; 🪙 ${_cartTotal().toLocaleString()}`;
+  fab.innerHTML = `Cart <span class="cart-count">${count}</span> &nbsp;·&nbsp; ${_cartTotal().toLocaleString()}`;
   fab.onclick   = cartOpenModal;
   document.body.appendChild(fab);
 }
@@ -218,10 +211,10 @@ export function _cartRenderModal() {
   const canAfford = currentUser.coins >= total;
   const rows = entries.map(e => `
     <div class="cart-item-row">
-      <div style="font-size:28px;width:36px;text-align:center;flex-shrink:0">${e.item.emoji}</div>
+      <div style="font-size:28px;width:36px;text-align:center;flex-shrink:0">${uiIcon(e.item.cat)}</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:13px;color:var(--on-surface)">${_esc(e.item.name)}</div>
-        <div style="font-size:11px;color:var(--text-muted)">🪙 ${e.item.cost.toLocaleString()} each · ${e.item.stock} in stock</div>
+        <div style="font-size:11px;color:var(--text-muted)">Coins ${e.item.cost.toLocaleString()} each · ${e.item.stock} in stock</div>
       </div>
       <div class="cart-qty-ctrl">
         <button class="cart-qty-btn" onclick="cartSetQty('${e.item.id}',${e.qty - 1})">−</button>
@@ -230,34 +223,34 @@ export function _cartRenderModal() {
           oninput="cartSetQty('${e.item.id}',this.value)">
         <button class="cart-qty-btn" onclick="cartSetQty('${e.item.id}',${e.qty + 1})">+</button>
       </div>
-      <div style="min-width:64px;text-align:right;font-family:var(--fh);font-weight:800;font-size:13px;color:var(--tertiary)">🪙 ${(e.item.cost * e.qty).toLocaleString()}</div>
+      <div style="min-width:64px;text-align:right;font-family:var(--fh);font-weight:800;font-size:13px;color:var(--tertiary)">Coins ${(e.item.cost * e.qty).toLocaleString()}</div>
       <button onclick="cartSetQty('${e.item.id}',0)" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0 0 0 8px;line-height:1">✕</button>
     </div>`).join('');
 
   showModal(`
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+  <div class="student-shop-dialog" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
     <div style="font-family:var(--fh);font-size:18px;font-weight:900">🛒 Your Cart</div>
     <button onclick="cartClear();closeModalForce()" style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;font-weight:700">Clear all</button>
   </div>
   <div style="max-height:340px;overflow-y:auto;padding-right:4px">${rows}</div>
-  <div style="background:rgba(26,24,44,0.9);border-radius:12px;padding:14px;margin:14px 0">
+  <div style="background:#202123;border-radius:12px;padding:14px;margin:14px 0">
     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
       <span style="color:var(--text-muted)">Your balance</span>
-      <span class="coin-tag">🪙 ${currentUser.coins.toLocaleString()}</span>
+      <span class="coin-tag">Coins ${currentUser.coins.toLocaleString()}</span>
     </div>
     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
       <span style="color:var(--text-muted)">Total (${_cartCount()} item${_cartCount() !== 1 ? 's' : ''})</span>
-      <span style="color:#ffb95f;font-weight:700">−${total.toLocaleString()}</span>
+      <span style="color:#cbc7be;font-weight:700">−${total.toLocaleString()}</span>
     </div>
     <div style="display:flex;justify-content:space-between;font-size:14px;border-top:1px solid var(--border);padding-top:10px;font-weight:800">
       <span>After purchase</span>
-      <span class="coin-tag" style="${canAfford ? '' : 'color:#ffb4ab;border-color:rgba(255,180,171,0.3)'}">🪙 ${(currentUser.coins - total).toLocaleString()}</span>
+      <span class="coin-tag" style="${canAfford ? '' : 'color:#d99b98;border-color:rgba(255,180,171,0.3)'}">Coins ${(currentUser.coins - total).toLocaleString()}</span>
     </div>
-    ${!canAfford ? `<div style="color:#ffb4ab;font-size:11px;font-weight:700;margin-top:8px;text-align:center">⚠️ Not enough coins — remove some items</div>` : ''}
+    ${!canAfford ? `<div style="color:#d99b98;font-size:11px;font-weight:700;margin-top:8px;text-align:center">⚠️ Not enough coins — remove some items</div>` : ''}
   </div>
   <div style="display:flex;gap:10px">
     <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Keep Shopping</button>
-    <button class="btn btn-primary" style="flex:1;background:linear-gradient(135deg,#8b5cf6,#EC4899)" ${canAfford ? '' : 'disabled'} onclick="cartCheckout()">Checkout ✅</button>
+    <button class="btn btn-primary" style="flex:1;background:linear-gradient(135deg,#96968e,#EC4899)" ${canAfford ? '' : 'disabled'} onclick="cartCheckout()">Checkout</button>
   </div>
   `, 'md');
 }
@@ -298,7 +291,7 @@ export const cartCheckout = async function () {
   // button is already disabled client-side when unaffordable; this is the
   // authoritative re-check right before writing anything.
   const estimatedTotal = entries.reduce((s, e) => s + e.item.cost * e.qty, 0);
-  if (student.coins < estimatedTotal) { toast('❌ Not enough coins!', '#ffb4ab'); return; }
+  if (student.coins < estimatedTotal) { toast('❌ Not enough coins!', '#d99b98'); return; }
 
   // Phase 14: reserve stock atomically per item BEFORE creating any
   // order/redemption/inventory record. The old code did `item.stock -= qty`
@@ -328,7 +321,7 @@ export const cartCheckout = async function () {
   }
 
   if (!succeeded.length) {
-    failed.forEach(f => toast(`❌ ${_esc(f.e.item.name)}: ${f.reason}`, '#ffb4ab'));
+    failed.forEach(f => toast(`❌ ${_esc(f.e.item.name)}: ${f.reason}`, '#d99b98'));
     _cartRenderModal(); // refreshes stock numbers shown in the still-open cart
     return;
   }
@@ -413,27 +406,27 @@ export const cartCheckout = async function () {
   // the stock race) stays in the cart so the student can see it and adjust
   // quantity/remove it themselves, instead of it silently vanishing.
   succeeded.forEach(({ e }) => delete _CART[e.item.id]);
-  failed.forEach(f => toast(`❌ ${_esc(f.e.item.name)}: ${f.reason}`, '#ffb4ab'));
+  failed.forEach(f => toast(`❌ ${_esc(f.e.item.name)}: ${f.reason}`, '#d99b98'));
 
   // Consolidated claim codes modal
   const codesHtml = [...new Map(orderIds.map(o => [o.item.id, o])).values()].map(o => `
-    <div style="background:rgba(26,24,44,0.9);border-radius:10px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
-      <span style="font-size:24px">${o.item.emoji}</span>
+    <div style="background:#202123;border-radius:10px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
+      <span style="font-size:24px">${uiIcon(o.item.cat)}</span>
       <div style="flex:1">
         <div style="font-weight:700;font-size:13px">${_esc(o.item.name)} ×${o.qty}</div>
-        <div style="font-family:var(--fm);font-size:18px;font-weight:900;color:#d0bcff;letter-spacing:.12em;margin-top:2px">${o.claimCode}</div>
+        <div style="font-family:var(--fm);font-size:18px;font-weight:900;color:#deded7;letter-spacing:.12em;margin-top:2px">${o.claimCode}</div>
       </div>
     </div>`).join('');
 
   showModal(`
-  <div style="text-align:center;margin-bottom:16px">
+  <div class="student-shop-dialog" style="text-align:center;margin-bottom:16px">
     <div style="font-size:52px;margin-bottom:8px">🎉</div>
     <div style="font-family:var(--fm);font-size:10px;color:var(--secondary);letter-spacing:.14em;margin-bottom:4px;text-transform:uppercase">Order Confirmed</div>
     <div style="font-family:var(--fh);font-size:18px;font-weight:900;margin-bottom:4px">Show codes to your teacher</div>
     <div style="font-size:12px;color:var(--text-muted)">One code per item — present to claim each reward</div>
   </div>
   <div style="max-height:300px;overflow-y:auto">${codesHtml}</div>
-  <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="closeModalForce()">Got it! ✅</button>
+  <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="closeModalForce()">Got it</button>
   `, 'sm');
 
   renderStudentStore();
@@ -474,17 +467,17 @@ export const posGenCode = function (existingOrders) {
  */
 export const posShowClaimCode = function (code, item, orderId) {
   showModal(`
-  <div style="text-align:center">
-    <div style="font-size:52px;margin-bottom:8px">${item.emoji}</div>
+  <div class="student-shop-dialog" style="text-align:center">
+    <div style="font-size:52px;margin-bottom:8px">${uiIcon(item.cat)}</div>
     <div style="font-family:var(--fm);font-size:10px;color:var(--secondary);letter-spacing:.14em;margin-bottom:6px;text-transform:uppercase">ORDER CONFIRMED</div>
     <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:var(--on-surface);margin-bottom:4px">${_esc(item.name)}</div>
     <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px">Show this code to your teacher to claim your reward</div>
-    <div style="background:rgba(78,222,163,0.07);border:2px solid rgba(78,222,163,0.3);border-radius:16px;padding:24px;margin-bottom:20px">
+    <div style="background:rgba(202,202,194,0.07);border:2px solid rgba(202,202,194,0.3);border-radius:16px;padding:24px;margin-bottom:20px">
       <div style="font-family:var(--fm);font-size:9px;color:var(--text-muted);letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px">YOUR CLAIM CODE</div>
-      <div id="pos-claim-display" style="font-family:var(--fm);font-size:32px;font-weight:900;color:var(--secondary);letter-spacing:.18em;text-shadow:0 0 20px rgba(78,222,163,0.4)">${_esc(code)}</div>
+      <div id="pos-claim-display" style="font-family:var(--fm);font-size:32px;font-weight:900;color:var(--secondary);letter-spacing:.18em;text-shadow:0 0 20px rgba(202,202,194,0.4)">${_esc(code)}</div>
       <div style="font-size:11px;color:var(--text-muted);margin-top:8px">Order: <span style="color:var(--primary)">${_esc(orderId)}</span></div>
     </div>
-    <div style="background:rgba(255,185,95,0.07);border:1px solid rgba(255,185,95,0.2);border-radius:10px;padding:10px 14px;margin-bottom:20px;font-size:12px;color:var(--tertiary);display:flex;align-items:center;gap:8px">
+    <div style="background:rgba(202,202,194,0.07);border:1px solid rgba(202,202,194,0.2);border-radius:10px;padding:10px 14px;margin-bottom:20px;font-size:12px;color:var(--tertiary);display:flex;align-items:center;gap:8px">
       <span class="material-symbols-outlined" style="font-size:16px">info</span>
       <span>Screenshot or memorize this code. Find it anytime in <b>My Inventory</b>.</span>
     </div>

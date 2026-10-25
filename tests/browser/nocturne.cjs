@@ -39,7 +39,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  window.getLevel=x=>Math.floor(x/1000);window.XP_PER_LEVEL=1000;window.eqTimeAgo=()=> 'Today';window.updateTopbar=()=>{};
  window.getStudentAttendanceRecords=()=>[];window.computeAttendanceStreak=()=>({current:0,longest:0});
  });
- for(const file of ['modules/section/my-section.js','modules/shop/shop_store.js','modules/shop/shop_inventory.js','modules/recitation/progress.js'])await page.addScriptTag({path:path.join(root,file)});
+ for(const file of ['dom.js','modules/section/my-section.js','modules/shop/shop_store.js','modules/shop/shop_inventory.js','modules/recitation/progress.js'])await page.addScriptTag({path:path.join(root,file)});
  await page.addScriptTag({content:dashboard});
  await page.evaluate(()=>{
  renderStudentDashboard();renderInventory();renderStudentStore();renderStudentProgress();

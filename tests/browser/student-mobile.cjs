@@ -36,7 +36,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  window.getLevel=x=>Math.floor(x/1000);window.XP_PER_LEVEL=1000;window.eqTimeAgo=()=> 'Today';window.updateTopbar=()=>{};
  window.getStudentAttendanceRecords=()=>[];window.computeAttendanceStreak=()=>({current:0,longest:0});
  });
- for(const file of ['modules/section/my-section.js','modules/shop/shop_store.js','modules/shop/shop_inventory.js','modules/recitation/progress.js'])await page.addScriptTag({path:path.join(root,file)});
+ for(const file of ['dom.js','modules/section/my-section.js','modules/shop/shop_store.js','modules/shop/shop_inventory.js','modules/recitation/progress.js'])await page.addScriptTag({path:path.join(root,file)});
  await page.addScriptTag({content:dashboard});
  await page.evaluate(()=>{
  renderStudentDashboard();renderInventory();renderStudentStore();renderStudentProgress();
@@ -44,6 +44,8 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  });
  const pages=['s-dashboard','s-my-section','s-inventory','s-store','s-attendance'];
  const heights=[];
+ assert.ok(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--fh').includes('Segoe UI')),'Sans-serif font not applied');
+ await page.evaluate(()=>document.body.insertAdjacentHTML('beforeend','<div id="modal-overlay" class="modal-overlay" style="display:none"><div id="modal-box" class="modal-box md"><div id="modal-content"></div></div></div><div id="toast" style="display:none"></div>'));
  for(const width of [320,375,390,430,640,1280]){
   await page.setViewportSize({width,height:844});
   for(const id of pages){
@@ -58,6 +60,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
     assert.ok(Math.abs(result.height-beforeDesktop)<1,'Desktop layout changed: '+id);
    }
    if(width===390){
+    if(id!=='s-dashboard')assert.equal(await page.locator('#'+id).evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),false,'Decorative emoji remains on '+id);
     const after=result.height;
     await page.evaluate(()=>document.querySelector('link[href*="student-mobile"]').disabled=true);
     const before=await page.locator('#'+id).evaluate(el=>el.getBoundingClientRect().height);
@@ -74,11 +77,29 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
   await page.evaluate(tab=>progSwitchTab(tab),tab);
   if(await page.evaluate(()=>document.documentElement.scrollWidth>321)) console.log(tab,await page.locator('#s-attendance .prog-panel.active').evaluate(el=>[...el.querySelectorAll('*')].filter(n=>n.getBoundingClientRect().right>321).slice(0,8).map(n=>({cls:n.className,style:n.getAttribute('style'),width:n.getBoundingClientRect().width}))));
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=321),'Progress tab overflow: '+tab);
+  assert.equal(await page.locator('#s-attendance .prog-panel.active').evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),false,'Progress emoji: '+tab);
  }
  await page.evaluate(()=>document.querySelectorAll('.page').forEach(el=>el.style.display=el.id==='s-inventory'?'block':'none'));
  await page.locator('#inv-search').fill('no-such-item');assert.equal(await page.locator('.inv-card').count(),0);
  await page.locator('#inv-search').fill('');assert.equal(await page.locator('.inv-card').count(),6);
  await page.locator('#invtab-history').click();assert.equal(await page.locator('#inv-panel-history').isVisible(),true);
+ await page.evaluate(()=>invSwitchTab('items'));
+ await page.locator('.inv-detail-btn').first().click();
+ assert.equal(await page.locator('#modal-overlay').isVisible(),true);
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=321),'Item detail overflows');
+ await page.evaluate(()=>closeModalForce());
+ await page.evaluate(()=>{document.querySelectorAll('.page').forEach(el=>el.style.display=el.id==='s-store'?'block':'none');renderStudentStore();});
+ await page.locator('.store-redeem-btn').first().click();
+ assert.equal(await page.evaluate(()=>_cartCount()),1);
+ await page.evaluate(()=>cartOpenModal());
+ assert.equal(await page.locator('#modal-overlay').isVisible(),true);
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=321),'Cart overflows');
+ await page.evaluate(()=>closeModalForce());
+ await page.evaluate(()=>posShowClaimCode('ABC-234-XYZ',{name:'Classroom reward',cat:'supplies'},'order-1'));
+ assert.equal(await page.locator('#pos-claim-display').textContent(),'ABC-234-XYZ');
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=321),'Claim code overflows');
+ await page.evaluate(()=>closeModalForce());
+ assert.equal(await page.evaluate(()=>uiIcon('<img onerror=alert(1)>').includes('<img')),false);
  assert.deepEqual(errors,[]);
  console.log(JSON.stringify(heights));console.log('PASS: five real page renderers at six widths; all progress tabs at 320px; no horizontal page overflow or page errors.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
