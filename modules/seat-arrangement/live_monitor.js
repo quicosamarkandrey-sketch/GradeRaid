@@ -154,46 +154,30 @@
    (see el.style.borderColor in _lmRenderCanvas), so the glyph was a
    second signal for the same information. Removing it frees the
    vertical space that let .lm-seat-init grow from 54px to 82px above. */
+/* A moving outline keeps the avatar and attendance color readable. */
 .lm-seat.flash-cycle{
-  background:rgba(255,221,87,.85)!important;border-color:#ffdd57!important;
-  box-shadow:0 0 22px rgba(255,221,87,.7)!important;transform:translate(-50%,-50%) scale(1.08);
-}
-.lm-seat.flash-winner{
-  animation:lm-winner-pulse 1.1s ease-in-out 2;
-  border-color:#ffdd57!important;box-shadow:0 0 0 4px rgba(255,221,87,.5),0 0 30px rgba(255,221,87,.6)!important;
-}
-@keyframes lm-winner-pulse{
-  0%,100%{transform:translate(-50%,-50%) scale(1)}
-  50%{transform:translate(-50%,-50%) scale(1.15)}
-}
-
-/* Confirmation beat — the cycle has landed but the profile hasn't opened
-   yet. A tighter, faster double-ring pulse (distinct from flash-winner's
-   single slow pulse) reads as "verifying" rather than "done", so the
-   reveal a moment later still feels like a payoff. */
-.lm-seat.flash-confirm{
-  animation:lm-confirm-pulse .45s ease-in-out 2;
-  border-color:#4edea3!important;
-  box-shadow:0 0 0 6px rgba(78,222,163,.35),0 0 34px rgba(78,222,163,.65)!important;
+  border-color:#a5b4fc!important;background:rgba(99,102,241,.18)!important;
+  box-shadow:0 0 0 3px rgba(165,180,252,.25),0 0 24px rgba(34,211,238,.25)!important;
   z-index:8;
 }
-@keyframes lm-confirm-pulse{
-  0%,100%{transform:translate(-50%,-50%) scale(1.06)}
-  50%{transform:translate(-50%,-50%) scale(1.22)}
+.lm-seat.flash-cycle::after,.lm-seat.flash-confirm::after{
+  content:'';position:absolute;inset:-7px;border-radius:20px;
+  border:1px solid rgba(103,232,249,.65);pointer-events:none;
 }
+.lm-seat.flash-confirm,.lm-seat.flash-winner{
+  border-color:#67e8f9!important;z-index:9;
+  box-shadow:0 0 0 4px rgba(103,232,249,.2),0 0 36px rgba(139,92,246,.45)!important;
+  animation:lm-lock-in .7s ease-out;
+}
+@keyframes lm-lock-in{from{filter:brightness(1.6)}to{filter:brightness(1)}}
 .lm-confirm-label{
-  position:absolute;left:50%;bottom:100%;transform:translate(-50%,4px);
-  margin-bottom:6px;white-space:nowrap;font-family:var(--fh);font-weight:900;
-  font-size:15px;color:#4edea3;background:rgba(10,14,12,.88);
-  padding:5px 14px;border-radius:20px;border:2px solid #4edea3;
-  box-shadow:0 4px 16px rgba(78,222,163,.5);z-index:9;
-  animation:lm-confirm-label-in .9s ease forwards;
+  position:absolute;left:50%;bottom:100%;transform:translate(-50%,-10px);
+  white-space:nowrap;padding:6px 12px;border-radius:20px;background:#15162f;
+  border:1px solid #a5b4fc;color:#e0e7ff;font-size:11px;font-weight:800;letter-spacing:.08em;
 }
-@keyframes lm-confirm-label-in{
-  0%{opacity:0;transform:translate(-50%,14px) scale(.85)}
-  15%{opacity:1;transform:translate(-50%,4px) scale(1)}
-  80%{opacity:1}
-  100%{opacity:0;transform:translate(-50%,-2px) scale(1)}
+@media(prefers-reduced-motion:reduce){
+  .lm-seat.flash-confirm,.lm-seat.flash-winner,.lm-spotlight{animation:none!important}
+  .lm-recitation-badge.bump{animation:none!important}
 }
 
 .lm-strategy-select{min-width:172px}
@@ -243,43 +227,35 @@
 .lm-feed-empty{color:var(--text-muted);font-size:12px;text-align:center;padding:24px 0}
 
 /* ── Winner Spotlight Popup (rendered into the app's shared #modal-content) ── */
-.lm-spotlight{text-align:center;padding:10px;animation:lm-spotlight-in .4s ease}
-@keyframes lm-spotlight-in{
-  0%{opacity:0;transform:scale(.9) translateY(10px)}
-  100%{opacity:1;transform:scale(1) translateY(0)}
+.lm-spotlight{
+  text-align:center;padding:24px 12px 12px;position:relative;isolation:isolate;
+  background:radial-gradient(ellipse at 50% 0%,rgba(139,92,246,.23),transparent 65%);
+  border-radius:20px;animation:lm-spotlight-in .35s ease-out;
 }
+@keyframes lm-spotlight-in{from{opacity:0;translate:0 12px}to{opacity:1;translate:0 0}}
+.lm-spotlight-eyebrow{color:#a5b4fc;font-size:11px;letter-spacing:.22em;text-transform:uppercase;font-weight:800;margin-bottom:22px}
 .lm-spotlight-avatar{
-  width:132px;height:132px;border-radius:50%;margin:0 auto 12px;
-  display:flex;align-items:center;justify-content:center;
-  font-family:var(--fh);font-weight:900;font-size:46px;
-  position:relative;overflow:hidden;
+  width:116px;height:116px;border-radius:32px;margin:0 auto 20px;position:relative;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  color:#e0e7ff;background:#292342;border:2px solid #a5b4fc;
+  box-shadow:0 0 0 7px rgba(165,180,252,.08),0 16px 40px rgba(0,0,0,.3);
+  font-family:var(--fh);font-size:40px;font-weight:900;
 }
-.lm-spotlight-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}
-.lm-spotlight-title-slot{display:flex;justify-content:center;margin-bottom:10px}
-.lm-spotlight-name{font-family:var(--fh);font-size:28px;font-weight:900;margin-bottom:4px}
-.lm-spotlight-tier{font-size:14px;color:var(--text-muted);margin-bottom:16px;font-weight:700}
-
-/* The big highlighted "Overall Recitation Points" headline — the single
-   number a teacher should be able to read from across the room. */
-.lm-spotlight-headline{
-  margin:0 auto 18px;padding:14px 20px;border-radius:18px;max-width:320px;
-  background:linear-gradient(160deg,var(--hl,#8b5cf6)29,rgba(20,18,32,.6));
-  border:2px solid var(--hl,#8b5cf6);
-  box-shadow:0 0 28px color-mix(in srgb, var(--hl,#8b5cf6) 45%, transparent);
-}
-.lm-spotlight-headline-num{
-  font-family:var(--fh);font-size:56px;font-weight:900;line-height:1;
-  color:var(--hl,#8b5cf6);text-shadow:0 0 22px color-mix(in srgb, var(--hl,#8b5cf6) 70%, transparent);
-}
-.lm-spotlight-headline-label{
-  font-size:12px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;
-  color:var(--text-muted);margin-top:4px;
-}
-
-.lm-spotlight-stats{display:flex;justify-content:center;gap:22px;margin-bottom:22px;flex-wrap:wrap}
-.lm-spotlight-stat-num{font-family:var(--fh);font-size:24px;font-weight:900}
-.lm-spotlight-stat-label{font-size:10.5px;color:var(--text-muted);font-weight:700;text-transform:uppercase}
+.lm-spotlight-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.lm-spotlight-title-slot{display:flex;justify-content:center;margin:0 0 12px}
+.lm-spotlight-name{font-family:var(--fh);font-size:clamp(24px,5vw,34px);font-weight:900;line-height:1.2;overflow-wrap:anywhere;margin-bottom:8px;color:#f5f3ff}
+.lm-spotlight-tier{font-size:12px;color:#a8a4be;margin-bottom:24px}
+.lm-spotlight-headline{padding:20px;border:1px solid rgba(165,180,252,.22);border-radius:18px;background:rgba(139,92,246,.09);margin-bottom:12px}
+.lm-spotlight-headline-num{font-size:64px;line-height:1;font-weight:900;font-family:var(--fh);color:#e0e7ff;font-variant-numeric:tabular-nums}
+.lm-spotlight-headline-label{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#b9b3d4;margin-top:8px}
+.lm-spotlight-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:24px}
+.lm-spotlight-stats>div{padding:14px 6px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06)}
+.lm-spotlight-stat-num{font-size:22px;font-weight:800;color:#e0e7ff;font-variant-numeric:tabular-nums}
+.lm-spotlight-stat-label{font-size:10px;color:#aaa4bf;margin-top:4px;text-transform:uppercase;letter-spacing:.05em}
 .lm-spotlight-actions{display:flex;gap:10px;justify-content:center}
+.lm-spotlight-actions button{flex:1;min-height:44px;border-radius:12px}
+.lm-spotlight-actions .btn-primary{background:linear-gradient(120deg,#7c3aed,#4f46e5);color:white;border:1px solid #a78bfa}
+.lm-spotlight-status{font-size:12px;color:#a5b4fc;margin:12px 0 20px}
 
 /* ── Phase 3: Recitation Command Center ─────────────────────────────────── */
 
@@ -297,17 +273,18 @@
 
 /* Task 1 — Live Counter Badge: top-right corner of the seat card, only
    rendered at all when isRecitationMode is true (see _lmRenderCanvas). */
+.lm-seat-init.lm-score-avatar{background:#17182e!important;isolation:isolate}
+.lm-score-avatar .lm-avatar-identity{opacity:.22;display:flex;align-items:center;justify-content:center;position:absolute;inset:0}
+.lm-score-avatar .lm-avatar-identity img{width:100%;height:100%;object-fit:cover}
 .lm-recitation-badge{
-  position:absolute;top:-16px;right:-16px;min-width:38px;height:38px;padding:0 8px;
-  border-radius:19px;background:linear-gradient(135deg,#ffd166,#ff9f5f);color:#1a1625;
-  font-family:var(--fh);font-size:20px;font-weight:900;display:flex;align-items:center;
-  justify-content:center;box-shadow:0 3px 14px rgba(255,209,102,.7);
-  border:3px solid rgba(20,18,32,.9);z-index:5;line-height:1;
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-family:var(--fh);font-size:40px;font-weight:900;
+  font-variant-numeric:tabular-nums;line-height:1;z-index:2;
+  text-shadow:0 2px 8px #000,0 0 24px rgba(165,180,252,.6);
+  pointer-events:none;overflow:hidden;
 }
 .lm-recitation-badge.bump{animation:lm-badge-bump .35s ease}
-@keyframes lm-badge-bump{
-  0%{transform:scale(1)} 45%{transform:scale(1.5)} 100%{transform:scale(1)}
-}
+@keyframes lm-badge-bump{0%,100%{scale:1}45%{scale:1.15}}
 
 /* Task 4 — Floating +1 (or +N for manual awards). Spawned as a child of the
    seat element and removed after the animation completes — see
@@ -572,6 +549,7 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
 
 
   window._lmOnClassChange = function (classId) {
+    _lmClearCycle();
     _lmClassId = classId;
     _lmTargetedSeatIds.clear();
     // Phase 71 — the class just switched, so re-check whether ITS session
@@ -586,6 +564,7 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
   };
 
   window._lmOnLayoutChange = function (layoutId) {
+    _lmClearCycle();
     _lmLayoutId = layoutId || null;
     _lmTargetedSeatIds.clear();
     _lmRenderCanvas();

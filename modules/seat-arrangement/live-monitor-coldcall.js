@@ -43,12 +43,14 @@
   // flat, constant-speed flicker the whole way through. Implemented as a
   // recursive setTimeout chain (not setInterval) because each tick's delay
   // is different from the last; setInterval can only fire at one fixed period.
-  const LM_CYCLE_DURATION_MS = 4200; // total time from tap to landing on the winner
-  const LM_CYCLE_TICK_MIN_MS = 60;   // fastest flash interval, right at the start
+  const LM_CYCLE_DURATION_MS = 2800; // total time from tap to landing on the winner
+  const LM_CYCLE_TICK_MIN_MS = 140;   // fastest flash interval, right at the start
   const LM_CYCLE_TICK_MAX_MS = 420;  // slowest flash interval, right before landing
 
   window._lmStartColdCall = function () {
     if (!_lmLayoutId) return;
+    _lmClearCycle();
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     // pickRandomStudent() is called ONCE, upfront, and is authoritative —
     // both the cycling-flicker animation below and the eventual winner come
@@ -65,7 +67,7 @@
     const btn = document.getElementById('lm-coldcall-btn');
     if (btn) { btn.disabled = true; btn.textContent = '🎲 Picking…'; }
 
-    _lmClearCycle(); // safety: never let two cycles overlap if double-clicked
+    if (reduceMotion) { _lmLandOnWinner(result.winner); return; }
 
     const seatEls = Array.from(document.querySelectorAll('.lm-seat')).filter(
       el => result.pool.some(c => c.seatId === el.dataset.seatId)
@@ -114,34 +116,38 @@
   function _lmClearCycle() {
     if (_lmCycleInterval) { clearTimeout(_lmCycleInterval); _lmCycleInterval = null; }
     if (_lmCycleTimeout)  { clearTimeout(_lmCycleTimeout);   _lmCycleTimeout  = null; }
-    document.querySelectorAll('.lm-seat.flash-cycle').forEach(el => el.classList.remove('flash-cycle'));
+    document.querySelectorAll('.lm-seat.flash-cycle,.lm-seat.flash-confirm,.lm-seat.flash-winner').forEach(el => el.classList.remove('flash-cycle', 'flash-confirm', 'flash-winner'));
+    document.querySelectorAll('.lm-confirm-label').forEach(el => el.remove());
+    const button = document.getElementById('lm-coldcall-btn');
+    if (button) {
+      button.disabled = !_lmLayoutId || (_lmStrategy === 'spatial_block' && !_lmTargetedSeatIds.size);
+      button.textContent = '🎯 Pick Random Student';
+    }
   }
 
-  const LM_CONFIRM_PAUSE_MS = 900; // beat between "cycle stopped here" and "yes, really, this one"
 
   function _lmLandOnWinner(winnerVm) {
     const el = document.querySelector(`.lm-seat[data-seat-id="${winnerVm.seatId}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-      // Confirmation beat: pulse the landed-on seat and label it before
-      // opening the profile, so the roll reads as "verified" rather than
-      // an instant, possibly-missed cut to the popup.
-      el.classList.add('flash-confirm');
-      const label = document.createElement('div');
-      label.className = 'lm-confirm-label';
-      label.textContent = '✓ Confirming…';
-      el.appendChild(label);
-      setTimeout(() => label.remove(), 900);
-    }
-
-    setTimeout(() => {
-      if (el) {
-        el.classList.remove('flash-confirm');
-        el.classList.add('flash-winner');
-        setTimeout(() => el.classList.remove('flash-winner'), 2300);
-      }
+    const layoutId = _lmLayoutId;
+    if (!el) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduced ? 'instant' : 'smooth', block: 'nearest', inline: 'nearest' });
+    el.classList.add('flash-confirm');
+    const label = document.createElement('div');
+    label.className = 'lm-confirm-label';
+    label.textContent = 'YOUR TURN';
+    el.appendChild(label);
+    _lmCycleTimeout = setTimeout(() => {
+      _lmCycleTimeout = null;
+      label.remove();
+      el.classList.remove('flash-confirm');
+      if (!_lmMounted || _lmLayoutId !== layoutId || !el.isConnected) return;
+      el.classList.add('flash-winner');
       _lmShowSpotlight(winnerVm);
-    }, LM_CONFIRM_PAUSE_MS);
+      const button = document.getElementById('lm-coldcall-btn');
+      if (button) { button.disabled = false; button.textContent = '🎯 Pick Random Student'; }
+      _lmCycleTimeout = setTimeout(_lmClearCycle, 2000);
+    }, reduced ? 0 : 650);
   }
 
   function _lmShowSpotlight(winnerVm) {
@@ -152,7 +158,6 @@
       return;
     }
 
-    const color = _cssColor(student.color);
 
     // Equipped title, rendered with the same badge renderer the kiosk/
     // sidebar/leaderboard use — reuses tsGetEquippedTitle()/tsBuildBadgeHTML()
@@ -173,43 +178,28 @@
       : null;
 
     showModal(`
-      <div class="lm-spotlight" style="--hl:${color}">
-        <div class="lm-spotlight-avatar" style="background:${color}22;border:3px solid ${color};color:${color}">
+      <div class="lm-spotlight">
+        <div class="lm-spotlight-eyebrow">The floor is yours</div>
+        <div class="lm-spotlight-avatar">
           ${student.profilePic ? `<img src="${_esc(student.profilePic)}" alt="" onerror="this.remove()">` : ''}
-          ${_esc(student.init || (student.name||'?')[0])}
+          ${_esc(student.init || (student.name || '?')[0])}
         </div>
         ${titleHtml}
         <div class="lm-spotlight-name">${_esc(student.name || student.displayName || 'Student')}</div>
-        <div class="lm-spotlight-tier">${_esc(student.tier || 'Novice')} · LV ${student.level || 0}</div>
-
+        <div class="lm-spotlight-tier">${_esc(student.tier || 'Novice')} · Level ${_esc(student.level || 0)}</div>
         <div class="lm-spotlight-headline">
-          <div class="lm-spotlight-headline-num">${overallPts}</div>
-          <div class="lm-spotlight-headline-label">⭐ Overall Recitation Points</div>
+          <div class="lm-spotlight-headline-num">${_esc(sessionPts === null ? overallPts : sessionPts)}</div>
+          <div class="lm-spotlight-headline-label">${sessionPts === null ? 'Overall recitation points' : 'Points this session'}</div>
         </div>
-
         <div class="lm-spotlight-stats">
-          <div>
-            <div class="lm-spotlight-stat-num" style="color:#4edea3">${todayPts}</div>
-            <div class="lm-spotlight-stat-label">Today</div>
-          </div>
-          ${sessionPts !== null ? `
-          <div>
-            <div class="lm-spotlight-stat-num" style="color:#ffd166">${sessionPts}</div>
-            <div class="lm-spotlight-stat-label">This Session</div>
-          </div>` : ''}
-          <div>
-            <div class="lm-spotlight-stat-num">${student.coins || 0}</div>
-            <div class="lm-spotlight-stat-label">Coins</div>
-          </div>
-          <div>
-            <div class="lm-spotlight-stat-num" style="color:${winnerVm.color.border}">${_esc(winnerVm.attendanceStatus || '—')}</div>
-            <div class="lm-spotlight-stat-label">Status</div>
-          </div>
+          <div><div class="lm-spotlight-stat-num">${_esc(todayPts)}</div><div class="lm-spotlight-stat-label">Today</div></div>
+          <div><div class="lm-spotlight-stat-num">${_esc(overallPts)}</div><div class="lm-spotlight-stat-label">All time</div></div>
+          <div><div class="lm-spotlight-stat-num">${_esc(student.level || 0)}</div><div class="lm-spotlight-stat-label">Level</div></div>
         </div>
-
+        <div class="lm-spotlight-status">${_esc(winnerVm.attendanceStatus || 'Selected student')}</div>
         <div class="lm-spotlight-actions">
-          <button class="btn btn-ghost btn-sm" onclick="closeModalForce()">Close</button>
-          <button class="btn btn-primary btn-sm" onclick="closeModalForce(); window._lmStartColdCall();">🎲 Roll Again</button>
+          <button class="btn btn-ghost btn-sm" onclick="closeModalForce()">Back to class</button>
+          <button class="btn btn-primary btn-sm" onclick="closeModalForce(); window._lmStartColdCall();">Pick another student →</button>
         </div>
       </div>
     `, 'md');

@@ -85,6 +85,7 @@ import { CB_CANVAS_W, CB_CANVAS_H } from './classroom_builder.js';
 import { _lmWebNfcSupported } from './live-monitor-webnfc.js';
 
   export function _lmRender(page, classIds, state) {
+    _lmClearCycle();
     const layouts = (state.classroomLayouts || []).filter(l => l.classId === _lmClassId);
     const coldCallDisabled = !_lmLayoutId ||
       (_lmStrategy === 'spatial_block' && _lmTargetedSeatIds.size === 0);
@@ -229,7 +230,7 @@ import { _lmWebNfcSupported } from './live-monitor-webnfc.js';
       // yet" is visibly a zero, not just an absent badge that pops in on
       // their first point) — recitationCounts[id] defaults to 0 via `|| 0`.
       const badgeHtml = (recitationCounts && vm.studentId)
-        ? `<div class="lm-recitation-badge" data-badge-for="${_esc(vm.studentId)}">${recitationCounts[vm.studentId] || 0}</div>`
+        ? `<div class="lm-recitation-badge" aria-label="${recitationCounts[vm.studentId] || 0} recitation points this session" data-badge-for="${_esc(vm.studentId)}">${recitationCounts[vm.studentId] || 0}</div>`
         : '';
       // Photo, if the student has one, layers over the initials as an <img>
       // absolutely positioned to fill the badge; onerror removes it so a
@@ -240,9 +241,8 @@ import { _lmWebNfcSupported } from './live-monitor-webnfc.js';
         ? `<img src="${_esc(vm.studentPhoto)}" alt="" onerror="this.remove()">`
         : '';
       el.innerHTML = vm.studentId
-        ? `<div class="lm-seat-init" style="background:${studentColor}">${photoHtml}${_esc(vm.studentInit || '?')}</div>
-           <div class="lm-seat-name">${_esc((vm.studentName||'').split(' ')[0])}</div>
-           ${badgeHtml}`
+        ? `<div class="lm-seat-init${badgeHtml ? ' lm-score-avatar' : ''}" style="background:${studentColor}"><span class="lm-avatar-identity">${photoHtml}${_esc(vm.studentInit || '?')}</span>${badgeHtml}</div>
+           <div class="lm-seat-name">${_esc((vm.studentName||'').split(' ')[0])}</div>`
         : `<div style="font-size:18px;opacity:.25">🪑</div>`;
 
       // Spatial-block targeting: only seats that could actually win a roll
