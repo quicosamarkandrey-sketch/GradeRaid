@@ -408,17 +408,26 @@ export function progBuildCalendar(sid, year, month) {
     if (!data[key]) data[key] = { status: null, recitations: [], quizzes: [], rewards: [] };
     data[key].status = a.status;
   });
+  (AppStore.getSlice(s=>s.attendanceLogs) || []).filter(r=>r.studentId===sid).forEach(r=>{
+    if(!r.logDate)return;
+    const d=new Date(r.logDate+'T12:00:00');
+    if(isNaN(d)||d.getFullYear()!==year||d.getMonth()!==month)return;
+    const key=d.getDate();
+    if(!data[key])data[key]={status:null,recitations:[],quizzes:[],rewards:[]};
+    data[key].attendanceLabel=r.status;
+    if(r.status==='Excused')data[key].status='excused';
+  });
   recitations.forEach(r => {
-    if (!r.when) return;
-    const d = new Date(r.when); if (isNaN(d) || d.getFullYear() !== year || d.getMonth() !== month) return;
-    const key = d.getDate();
+    const d=StudentProgressUI.calendarParts(r);
+    if(!d || d.year!==year || d.month!==month)return;
+    const key=d.day;
     if (!data[key]) data[key] = { status: null, recitations: [], quizzes: [], rewards: [] };
     data[key].recitations.push(r);
   });
   quizLog.forEach(q => {
-    if (!q.when) return;
-    const d = new Date(q.when); if (isNaN(d) || d.getFullYear() !== year || d.getMonth() !== month) return;
-    const key = d.getDate();
+    const d=StudentProgressUI.calendarParts(q);
+    if(!d || d.year!==year || d.month!==month)return;
+    const key=d.day;
     if (!data[key]) data[key] = { status: null, recitations: [], quizzes: [], rewards: [] };
     data[key].quizzes.push(q);
   });
@@ -536,24 +545,27 @@ export function progRenderCalendarPanel(st) {
     let cls = 'cal-day';
     if (dayData?.status === 'present') cls += ' present';
     else if (dayData?.status === 'absent') cls += ' absent';
+    if (dayData?.status === 'excused') cls += ' excused';
+    if (dayData?.attendanceLabel === 'Late') cls += ' late';
     if (isToday)   cls += ' today';
     if (hasData)   cls += ' has-data';
     const dots = [];
-    if (dayData?.status === 'present')         dots.push('<span class="cal-dot present"></span>');
+    if (dayData?.status === 'present')         dots.push(`<span class="cal-dot ${dayData?.attendanceLabel==='Late'?'late':'present'}"></span>`);
     else if (dayData?.status === 'absent')     dots.push('<span class="cal-dot absent"></span>');
+    if (dayData?.status === 'excused') dots.push('<span class="cal-dot excused"></span>');
     if (dayData?.recitations?.length)          dots.push('<span class="cal-dot recitation"></span>');
     if (dayData?.quizzes?.length)              dots.push('<span class="cal-dot quiz"></span>');
-    dayCells += `<div class="${cls}" ${hasData ? `onclick="progShowCalDay(${d},${progCalYear},${progCalMonth})"` : ''}>
+    dayCells += `<${hasData?'button':'div'} class="${cls}" ${hasData ? `type="button" aria-label="${months[progCalMonth]} ${d}, ${progCalYear}: ${_esc(dayData.attendanceLabel || dayData.status || 'activity recorded')}" onclick="progShowCalDay(${d},${progCalYear},${progCalMonth})"` : ''}>
       <div class="cal-day-num">${d}</div>
       <div class="cal-day-dots">${dots.join('')}</div>
-    </div>`;
+    </${hasData?'button':'div'}>`;
   }
 
   return `
   <div class="cal-header">
-    <button class="cal-nav-btn" onclick="progCalNav(-1)">‹</button>
+    <button class="cal-nav-btn" aria-label="Previous month" onclick="progCalNav(-1)">‹</button>
     <div class="cal-month-label">${months[progCalMonth]} ${progCalYear}</div>
-    <button class="cal-nav-btn" onclick="progCalNav(1)">›</button>
+    <button class="cal-nav-btn" aria-label="Next month" onclick="progCalNav(1)">›</button>
   </div>
   <div class="cal-grid-wrap">
     <div class="cal-dow-row">
@@ -563,6 +575,8 @@ export function progRenderCalendarPanel(st) {
   </div>
   <div class="cal-legend">
     <div class="cal-leg-item"><span class="cal-dot present" style="width:8px;height:8px"></span>Present</div>
+    <div class="cal-leg-item"><span class="cal-dot late" style="width:8px;height:8px"></span>Late</div>
+    <div class="cal-leg-item"><span class="cal-dot excused" style="width:8px;height:8px"></span>Excused</div>
     <div class="cal-leg-item"><span class="cal-dot absent" style="width:8px;height:8px"></span>Absent</div>
     <div class="cal-leg-item"><span class="cal-dot recitation" style="width:8px;height:8px"></span>Recitation</div>
     <div class="cal-leg-item"><span class="cal-dot quiz" style="width:8px;height:8px"></span>Quiz</div>
@@ -606,7 +620,7 @@ export function progRenderRecitationPanel(st, recitations, recStats, recStreaks)
         <div class="rec-entry-body">
           <div class="rec-entry-pts" style="color:${pts >= 20 ? '#d5d2c9' : pts >= 15 ? '#deded7' : '#c2c8c1'}">+${pts} pts</div>
           <div class="rec-entry-note">${_esc(r.note || 'Recitation session')}</div>
-          <div class="rec-entry-when">${r.when || '—'}</div>
+          <div class="rec-entry-when">${StudentProgressUI.dateLabel(r)}</div>
         </div>
         ${pts >= 20 ? `<span class="badge-pill bp-gold" style="font-size:10px">Epic</span>` : pts >= 15 ? `<span class="badge-pill bp-primary" style="font-size:10px">High score</span>` : ''}
       </div>`;
@@ -804,6 +818,54 @@ export function progRenderShowcase(st, attendanceSess, recitations, attStreaks, 
   `;
 }
 
+// Simple record summaries; awards and claims remain on the Achievements page.
+const StudentProgressUI = window.StudentProgressUI = (() => {
+  let historyLimit=20,historyStudent=null;
+  const points = entries => entries.reduce((sum,r)=>sum+(Number(r.pts)||0),0);
+  function timestamp(record) {
+    for (const value of [record.createdAt,record.when,record.date]) {
+      if(!value)continue;
+      const n=new Date(/^\d{4}-\d{2}-\d{2}$/.test(value)?value+'T12:00:00':value).getTime();
+      if(Number.isFinite(n))return n;
+    }
+    return 0;
+  }
+  function calendarParts(record) {
+    const stamp=timestamp(record);if(!stamp)return null;
+    const values=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Manila',year:'numeric',month:'numeric',day:'numeric'}).formatToParts(new Date(stamp)).map(p=>[p.type,p.value]));
+    return {year:Number(values.year),month:Number(values.month)-1,day:Number(values.day)};
+  }
+  function dateLabel(record) {const n=timestamp(record);return n ? new Date(n).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric',timeZone:'Asia/Manila'}) : 'Date not recorded';}
+  function card(label,value,description,tab) {
+    return `<button class="learning-metric" onclick="progSwitchTab('${tab}')"><span>${label}</span><strong>${value}</strong><small>${description}</small><span class="learning-metric-link">View ${tab==='calendar'?'attendance':'history'} →</span></button>`;
+  }
+  function overview(attendance,recitations) {
+    const present=attendance.filter(r=>r.status==='present').length;
+    const rate=attendance.length?Math.round(present/attendance.length*100)+'%':'—';
+    const recent=[...attendance.map(r=>({...r,kind:'attendance',label:r.status==='present'?'Attended class':'Recorded absent'})),...recitations.map(r=>({...r,kind:'recitation',label:r.note||'Class participation'}))].sort((a,b)=>timestamp(b)-timestamp(a)).slice(0,5);
+    return `<div class="learning-metrics">
+      ${card('Attendance',rate,attendance.length?`${present} attended out of ${attendance.length} recorded`:'No attendance records yet','calendar')}
+      ${card('Contributions',recitations.length,'Each recorded recitation counts once','recitation')}
+      ${card('Recitation points',points(recitations).toLocaleString(),'Points awarded for classroom participation','recitation')}
+    </div><section class="learning-section"><div class="learning-section-heading"><h2>Recent records</h2><span>Latest 5</span></div>
+      ${recent.length?`<ul class="learning-records">${recent.map(r=>`<li><div><strong>${_esc(r.label)}</strong><span>${dateLabel(r)} · ${r.kind==='attendance'?'Attendance':'Participation'}</span></div>${r.kind==='recitation'?`<b>${Number(r.pts)||0} pts</b>`:''}</li>`).join('')}</ul>`:'<div class="learning-empty"><h3>Your progress starts here</h3><p>Attendance and participation recorded by your teacher will appear here.</p></div>'}
+    </section>`;
+  }
+  function participation(recitations) {
+    if(historyStudent!==currentUser?.id){historyStudent=currentUser?.id;historyLimit=20;}
+    const sorted=[...recitations].sort((a,b)=>timestamp(b)-timestamp(a));
+    return `<div class="learning-metrics learning-metrics-two"><div class="learning-metric"><span>Recitation points</span><strong>${points(recitations).toLocaleString()}</strong><small>Total points awarded by your teacher</small></div><div class="learning-metric"><span>Recorded contributions</span><strong>${recitations.length}</strong><small>One entry for each recorded recitation</small></div></div>
+    <section class="learning-section"><div class="learning-section-heading"><h2>Recitation history</h2><span>Newest first</span></div><p class="learning-help">All recorded contributions. Recitation points are separate from XP and coins.</p>
+    ${sorted.length?`<ul class="learning-records" id="student-recitation-history">${sorted.slice(0,historyLimit).map(r=>`<li><div><strong>${_esc(r.note||'Class participation')}</strong><time>${dateLabel(r)}</time></div><b>${Number(r.pts)||0} pts</b></li>`).join('')}</ul><div class="learning-history-footer"><span>Showing ${Math.min(historyLimit,sorted.length)} of ${sorted.length} contributions</span>${sorted.length>historyLimit?'<button class="btn btn-ghost" onclick="StudentProgressUI.moreHistory()">Show more</button>':''}</div>`:'<div class="learning-empty"><h3>No participation recorded yet</h3><p>Your teacher-recorded recitations and points will appear here.</p></div>'}</section>`;
+  }
+  function moreHistory(){historyLimit+=20;window.renderStudentProgress();}
+  return {points,timestamp,dateLabel,calendarParts,overview,participation,moreHistory};
+})();
+window.openStudentProgress = function(tab='streaks') {
+  progActiveTab=['streaks','calendar','recitation'].includes(tab)?tab:'streaks';
+  navTo('s-attendance');
+};
+
 // ── Main Render ───────────────────────────────────────────────────────────────
 
 /**
@@ -822,61 +884,26 @@ export const renderStudentProgress = function () {
     return;
   }
 
-  const attendanceSess = progGetAttendanceForStudent(st.id);
-  const recitations    = progGetRecitationsForStudent(st.id);
-  const presentCount   = attendanceSess.filter(a => a.status === 'present').length;
-  const absentCount    = attendanceSess.filter(a => a.status === 'absent').length;
-  const totalSess      = attendanceSess.length;
-  const attPct         = totalSess > 0 ? Math.round(presentCount / totalSess * 100) : 0;
-  const attStreaks     = progAttStreak(attendanceSess);
-  const recStreaks     = progRecStreak(recitations);
-  const perfectMonths  = progPerfectMonths(attendanceSess);
-  const recStats       = typeof eqlComputeRecitation === 'function'
-    ? eqlComputeRecitation(st.id)
-    : { totalPts: 0, sessionCount: recitations.length, streak: 0, wins: 0 };
+  const attendance = progGetAttendanceForStudent(st.id);
+  const recitations = progGetRecitationsForStudent(st.id);
+  if (!['streaks','calendar','recitation'].includes(progActiveTab)) progActiveTab='streaks';
+  const tabs=[['streaks','Overview'],['calendar','Attendance'],['recitation','Participation']];
+  const content=progActiveTab==='calendar'
+    ? `<section class="learning-section"><h2>Attendance record</h2><p class="learning-help">Early, on-time, and late arrivals count as attended. Excused records are excluded from the attendance rate. Blank dates have no recorded activity.</p>${progRenderCalendarPanel(st)}</section>`
+    : progActiveTab==='recitation' ? StudentProgressUI.participation(recitations) : StudentProgressUI.overview(attendance,recitations);
+  document.getElementById('s-attendance').innerHTML=`
+    <header class="learning-header"><p class="learning-eyebrow">Your learning record</p><h1>My Progress</h1><p>Attendance and classroom participation, in one place.</p><span class="learning-period">All recorded classes</span></header>
+    <div class="prog-tabs learning-tabs" role="tablist" aria-label="Progress sections">${tabs.map(([key,label])=>`<button id="progress-tab-${key}" class="prog-tab ${progActiveTab===key?'active':''}" role="tab" aria-selected="${progActiveTab===key}" aria-controls="prog-panel-${key}" tabindex="${progActiveTab===key?0:-1}" onclick="progSwitchTab('${key}')">${label}</button>`).join('')}</div>
+    <div class="prog-panel active" id="prog-panel-${progActiveTab}" role="tabpanel" aria-labelledby="progress-tab-${progActiveTab}">${content}</div>`;
+  document.querySelector('.learning-tabs').onkeydown=e=>{
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
+    e.preventDefault();
+    const focused=tabs.findIndex(([key])=>'progress-tab-'+key===e.target.id);
+    const i=focused>=0?focused:tabs.findIndex(([key])=>key===progActiveTab);
+    const next=e.key==='Home'?0:e.key==='End'?tabs.length-1:(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+    progSwitchTab(tabs[next][0]);
+  };
 
-  document.getElementById('s-attendance').innerHTML = `
-  <div class="prog-hero">
-    <div class="prog-hero-grid">
-      <div>
-        <div class="prog-hero-label">${uiIcon('chart')} Academic Progress</div>
-        <div class="prog-hero-name">${_esc(st.name)}</div>
-        <div class="prog-hero-sub">${_esc(st.tier)} · Level ${st.level} · <span style="color:var(--primary)">Your Complete Record</span></div>
-        <div class="prog-stat-strip">
-          <div class="prog-stat-chip"><span class="v" style="color:#c2c8c1">${attPct}%</span><span class="l">Attendance</span></div>
-          <div class="prog-stat-chip"><span class="v" style="color:#c5c1b8">${attStreaks.current}</span><span class="l">Current Streak</span></div>
-          <div class="prog-stat-chip"><span class="v" style="color:#deded7">${recStats.sessionCount || recitations.length}</span><span class="l">Recitations</span></div>
-          <div class="prog-stat-chip"><span class="v" style="color:#d5d2c9">${perfectMonths}</span><span class="l">Perfect Months</span></div>
-        </div>
-      </div>
-      <div class="prog-hero-avatar" style="background:${_cssColor(st.color) + '22'};color:${_cssColor(st.color)};border-color:${_cssColor(st.color) + '44'};box-shadow:0 0 40px ${_cssColor(st.color) + '44'}">${_esc(st.init)}</div>
-    </div>
-  </div>
-
-  <div class="prog-tabs">
-    <button class="prog-tab ${progActiveTab === 'streaks'    ? 'active' : ''}" onclick="progSwitchTab('streaks')"><span class="material-symbols-outlined">local_fire_department</span>Streaks &amp; Stats</button>
-    <button class="prog-tab ${progActiveTab === 'calendar'   ? 'active' : ''}" onclick="progSwitchTab('calendar')"><span class="material-symbols-outlined">calendar_month</span>Attendance Calendar</button>
-    <button class="prog-tab ${progActiveTab === 'recitation' ? 'active' : ''}" onclick="progSwitchTab('recitation')"><span class="material-symbols-outlined">mic</span>Recitation History</button>
-    <button class="prog-tab ${progActiveTab === 'milestones' ? 'active' : ''}" onclick="progSwitchTab('milestones')"><span class="material-symbols-outlined">emoji_events</span>Milestones</button>
-    <button class="prog-tab ${progActiveTab === 'showcase'   ? 'active' : ''}" onclick="progSwitchTab('showcase')"><span class="material-symbols-outlined">workspace_premium</span>Academic Showcase</button>
-  </div>
-
-  <div class="prog-panel ${progActiveTab === 'streaks'    ? 'active' : ''}" id="prog-panel-streaks">
-    ${progRenderStreaks(st, attendanceSess, recitations, attStreaks, recStreaks, perfectMonths, recStats, presentCount, absentCount, attPct)}
-  </div>
-  <div class="prog-panel ${progActiveTab === 'calendar'   ? 'active' : ''}" id="prog-panel-calendar">
-    ${progRenderCalendarPanel(st)}
-  </div>
-  <div class="prog-panel ${progActiveTab === 'recitation' ? 'active' : ''}" id="prog-panel-recitation">
-    ${progRenderRecitationPanel(st, recitations, recStats, recStreaks)}
-  </div>
-  <div class="prog-panel ${progActiveTab === 'milestones' ? 'active' : ''}" id="prog-panel-milestones">
-    ${progRenderMilestones(st, presentCount, attStreaks, recStats, perfectMonths)}
-  </div>
-  <div class="prog-panel ${progActiveTab === 'showcase'   ? 'active' : ''}" id="prog-panel-showcase">
-    ${progRenderShowcase(st, attendanceSess, recitations, attStreaks, recStreaks, perfectMonths, recStats, presentCount, attPct)}
-  </div>
-  `;
 };
 
 // ── Tab Switcher ──────────────────────────────────────────────────────────────
@@ -887,8 +914,10 @@ export const renderStudentProgress = function () {
  * tab: 'streaks' | 'calendar' | 'recitation' | 'milestones' | 'showcase'
  */
 export const progSwitchTab = function (tab) {
-  progActiveTab = tab;
+  if (['milestones','showcase'].includes(tab)) {navTo('s-badges');return;}
+  progActiveTab = ['streaks','calendar','recitation'].includes(tab)?tab:'streaks';
   window.renderStudentProgress();
+  document.getElementById('progress-tab-'+progActiveTab)?.focus({preventScroll:true});
 };
 
 // ── Calendar Navigation ───────────────────────────────────────────────────────
@@ -923,7 +952,7 @@ export const progShowCalDay = function (day, year, month) {
     <div>
       <div style="font-family:var(--fh);font-size:16px;font-weight:900;color:var(--on-surface)">${dateStr}</div>
       <div style="font-size:12px;color:${d.status === 'present' ? '#c2c8c1' : d.status === 'absent' ? '#d99b98' : 'var(--text-muted)'};font-weight:700;margin-top:2px">
-        ${d.status === 'present' ? 'Present' : d.status === 'absent' ? 'Absent' : 'No attendance recorded'}
+        ${_esc(d.attendanceLabel || (d.status === 'present' ? 'Present' : d.status === 'absent' ? 'Absent' : 'No attendance recorded'))}
       </div>
     </div>
   </div>`;
@@ -941,7 +970,7 @@ export const progShowCalDay = function (day, year, month) {
     html += `<div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-top:10px;margin-bottom:8px">${uiIcon('book')} Quests Completed (${d.quizzes.length})</div>`;
     d.quizzes.forEach(q => {
       html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(202,202,194,.06);border:1px solid rgba(202,202,194,.15);border-radius:8px;margin-bottom:6px;font-size:12px">
-        <span style="color:var(--on-surface)">${(q.what || '').replace('Quest: ', '')}</span>
+        <span style="color:var(--on-surface)">${_esc((q.what || '').replace('Quest: ', ''))}</span>
         <span style="color:#cbc7be;font-weight:800">+${q.pts} XP</span>
       </div>`;
     });

@@ -503,6 +503,32 @@ function _holTargetPageId() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+  // Student view keeps ranking controls and scores readable without the stage effects.
+  function _holRenderStudent(entries,activeTab,activePeriod,enabled) {
+    const descriptions={hall:'Total XP earned across all time.',recitation:'Recitation points recorded by your teacher.',academic:'Quest XP + 200 points per perfect score + 50 points per completed quest.',boss:'Total damage contributed in boss battles.',overall:'Combined participation, boss-battle, and academic score.'};
+    const categoryNames={hall:'Experience (XP)',recitation:'Participation',academic:'Quests',boss:'Boss battles'};
+    const ranked=entries.filter(e=>e.score>0);
+    const me=ranked.find(e=>e.student.id===currentUser?.id);
+    const pageSize=10;
+    const totalPages=Math.max(1,Math.ceil(ranked.length/pageSize));
+    _holPage=Math.min(_holPage,totalPages);
+    const start=(_holPage-1)*pageSize,shown=ranked.slice(start,start+pageSize);
+    const section=(AppStore.getSlice(s=>s.classSections)||[]).find(c=>c.id===(currentUser?.classId||'default-class'));
+    const scope=section?.label || 'Your section';
+    const period=activeTab==='hall'?'All time':HOL_PERIODS.find(p=>p.key===activePeriod)?.label||'All Time';
+    return `<header class="learning-header"><p class="learning-eyebrow">${_esc(scope)}</p><h1>Hall of Fame</h1><p>Celebrate class progress and see where you stand.</p></header>
+      <div class="student-ranking-controls"><label>Rank by<select id="student-rank-category" onchange="renderLeaderboard(this.value,'${activePeriod}')">${Object.entries(categoryNames).map(([key,label])=>`<option value="${key}" ${key===activeTab?'selected':''}>${label}</option>`).join('')}</select></label>
+      ${activeTab==='hall'?'<div class="student-ranking-period"><span>Time period</span><strong>All time</strong></div>':`<label>Time period<select id="student-rank-period" onchange="renderLeaderboard('${activeTab}',this.value)">${HOL_PERIODS.map(p=>`<option value="${p.key}" ${p.key===activePeriod?'selected':''}>${p.label}</option>`).join('')}</select></label>`}</div>
+      <p class="learning-help student-ranking-explanation">${descriptions[activeTab]} ${activeTab==='hall'?'':`${period} scores use recorded activity in the selected period.`} Equal scores share a rank.</p>
+      ${!enabled?'<div class="learning-empty"><h2>Rankings are currently unavailable</h2><p>Your teacher has turned off this category.</p></div>':`
+      <section class="student-standing" aria-label="Your standing"><div><span>Your standing · ${period}</span><strong>${me?'#'+me.rank:'Not ranked yet'}</strong><p>${me?`${_esc(me.scoreLabel)} · ${ranked.length} ranked student${ranked.length===1?'':'s'}`:'Your standing appears after you earn a score in this category.'}</p></div><button class="btn btn-ghost" onclick="openStudentProgress('recitation')">View My Progress →</button></section>
+      <section class="learning-section" id="hol-list-${activeTab}"><div class="learning-section-heading"><h2>Class rankings</h2><span>${ranked.length} ranked</span></div>
+      ${ranked.length?`<div class="student-rank-columns" aria-hidden="true"><span>Rank</span><span>Student</span><span>Score</span></div><ol class="student-rank-list" start="${start+1}">${shown.map(e=>{
+        const isMe=e.student.id===currentUser?.id;
+        return `<li class="student-rank-row${isMe?' is-you':''}" ${isMe?'aria-current="true"':''}><span class="student-rank-position">#${e.rank}</span><div class="student-rank-person"><span class="student-rank-avatar" aria-hidden="true">${_esc(e.student.init || (e.student.name||'?').slice(0,1))}${e.student.profilePic?`<img src="${_esc(e.student.profilePic)}" alt="" onerror="this.remove()">`:''}</span><div><strong>${_esc(e.student.name||'Student')}${isMe?' <span class="student-you-label">You</span>':''}</strong><small>${e.rank<=3?'Top '+e.rank+' · ':''}${_esc(e.student.tier||'Student')}</small></div></div><b>${_esc(e.scoreLabel)}</b></li>`;
+      }).join('')}</ol>${_holPagination(_holPage,totalPages,ranked.length,start+1,start+shown.length)}`:'<div class="learning-empty"><h3>No scores recorded yet</h3><p>Rankings will appear as your class participates.</p></div>'}</section>`}`;
+  }
+
 // MAIN PATCH: renderLeaderboard
 // All five tabs — hall, overall, recitation, boss, academic — share this
 // one pipeline. 'hall' is class-wide XP/level standing (no period concept,
@@ -512,6 +538,9 @@ function _holTargetPageId() {
 export const renderLeaderboard = function (activeTab, activePeriod) {
   activeTab    = activeTab    || window._eqlActiveTab    || 'hall';
   activePeriod = activePeriod || window._eqlActivePeriod || 'all';
+  if (!Object.prototype.hasOwnProperty.call(HOL_CAT,activeTab)) activeTab='hall';
+  if (!HOL_PERIODS.some(p=>p.key===activePeriod)) activePeriod='all';
+  if (typeof currentRole !== 'undefined' && currentRole === 'student' && activeTab === 'overall') activeTab='hall';
   window._eqlActiveTab    = activeTab;
   window._eqlActivePeriod = activePeriod;
 
@@ -530,7 +559,7 @@ export const renderLeaderboard = function (activeTab, activePeriod) {
   // Build entries with period filter applied
   let entries = [];
   if (enabled) {
-    const allStudents = AppStore.getSlice(s => s.students) || [];
+    const allStudents = (AppStore.getSlice(s => s.students) || []).filter(student=>isStaffViewer || (student.classId || 'default-class') === (currentUser?.classId || 'default-class'));
     // Shared across the whole roster below — same rationale as
     // eqlBuildCategory's cache in eql-engine.js: without this,
     // eqlComputeRecitation/Boss/Academic/Overall would each clone
@@ -598,6 +627,8 @@ export const renderLeaderboard = function (activeTab, activePeriod) {
 
   const pg = document.getElementById(_holTargetPageId());
   if (!pg) return;
+
+  if (!isStaffViewer) {pg.innerHTML=_holRenderStudent(entries,activeTab,activePeriod,enabled);return;}
 
   pg.innerHTML = `
     <div class="page-hero">

@@ -1,0 +1,113 @@
+/* Student records: shared spacing, clear labels, functional color, both themes. */
+:is(#s-attendance,#s-leaderboard) {max-width:1120px;margin-inline:auto}
+.learning-header {margin:0 0 24px;padding:4px 0}
+.learning-header .learning-eyebrow {font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px}
+.learning-header h1 {font:650 clamp(26px,4vw,36px)/1.15 var(--fh);letter-spacing:-.035em;color:var(--text);margin-bottom:8px}
+.learning-header p {font-size:13px;line-height:1.6;color:var(--text-muted)}
+.learning-period {display:inline-block;font-size:11px;color:var(--text-muted);margin-top:10px}
+.learning-tabs.prog-tabs {margin-bottom:22px;overflow:visible;gap:8px}
+.learning-tabs .prog-tab {flex:1;justify-content:center;padding:12px 8px;min-height:44px;letter-spacing:0;font-size:13px}
+.learning-tabs .prog-tab.active {color:var(--text);border-bottom-color:var(--text)}
+.learning-metrics {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:24px}
+.learning-metrics-two {grid-template-columns:repeat(2,minmax(0,1fr))}
+.learning-metric {display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:8px;padding:20px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);min-width:0;font-family:var(--fb)}
+button.learning-metric {cursor:pointer}
+button.learning-metric:hover {border-color:var(--border2)}
+.learning-metric>span:first-child {font-size:12px;font-weight:600}
+.learning-metric strong {font-size:30px;font-weight:650;line-height:1.2;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.learning-metric small {font-size:11px;color:var(--text-muted);line-height:1.5}
+.learning-metric .learning-metric-link {margin-top:auto;padding-top:6px;font-size:11px;font-weight:600}
+.learning-section {background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:20px;min-width:0}
+.learning-section h2 {font-size:17px;font-weight:650;color:var(--text)}
+.learning-section-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.learning-section-heading h2 {font-size:16px;font-weight:650;letter-spacing:-.01em;color:var(--text)}
+.learning-section-heading>span {font-size:11px;color:var(--text-muted);flex-shrink:0}
+.learning-help {font-size:12px;line-height:1.65;color:var(--text-muted);margin:10px 0 18px}
+.learning-records {list-style:none;padding:0;margin:0}
+.learning-records li {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--border)}
+.learning-records li:last-child {border-bottom:0;padding-bottom:0}
+.learning-records li>div {min-width:0}
+.learning-records strong {display:block;font-size:13px;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.learning-records :is(time,span) {display:block;margin-top:4px;color:var(--text-muted);font-size:11px;line-height:1.4}
+.learning-records b {font-size:13px;color:var(--success);white-space:nowrap;font-variant-numeric:tabular-nums}
+.learning-empty {text-align:center;padding:30px 12px;color:var(--text)}
+.learning-empty h3 {font-size:16px;margin-bottom:8px}
+.learning-empty p {font-size:13px;line-height:1.6;color:var(--text-muted);max-width:420px;margin-inline:auto}
+#s-attendance :is(.cal-grid-wrap,.cal-legend,.cal-day-detail) {background:var(--surface)!important;border-color:var(--border)!important;box-shadow:none!important;border-radius:6px}
+#s-attendance .cal-day {background:transparent;color:var(--text);font:inherit;border:0;border-bottom:1px solid var(--border);border-right:1px solid var(--border);border-radius:0;min-width:0}
+#s-attendance button.cal-day {cursor:pointer}
+#s-attendance button.cal-day:hover {background:var(--surface-high)}
+#s-attendance .cal-nav-btn {width:44px;height:44px}
+#s-attendance .cal-month-label {font-size:16px}
+#s-attendance .cal-day.today .cal-day-num {background:var(--text);color:var(--bg)}
+#s-dashboard .student-shortcuts {display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;margin:20px 0 24px}
+.student-participation-card,.student-shortcut {min-width:0;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:18px}
+.student-participation-values {display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.student-participation-values strong {display:block;font-size:28px;line-height:1.2;font-weight:650;font-variant-numeric:tabular-nums}
+.student-participation-values span {display:block;font-size:11px;color:var(--text-muted);margin-top:5px}
+.student-participation-card>.btn {font-size:12px;width:100%}
+.student-shortcut {display:flex;flex-direction:column;align-items:flex-start;gap:10px;text-align:left;cursor:pointer;font-family:var(--fb)}
+.student-shortcut:hover {border-color:var(--border2)}
+.student-shortcut>span {font-size:20px}
+.student-shortcut strong {font-size:15px;font-weight:650}
+.student-shortcut small {font-size:12px;line-height:1.5;color:var(--text-muted)}
+.student-shortcut>b {margin-top:auto;font-weight:400}
+.student-ranking-controls {display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px}
+.student-ranking-controls label,.student-ranking-period {display:flex;flex-direction:column;gap:7px;font-size:11px;font-weight:600;color:var(--text-muted);flex:1;min-width:130px}
+.student-ranking-controls select {min-height:44px;width:100%;padding:10px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:13px var(--fb)}
+.student-ranking-period strong {display:flex;align-items:center;min-height:44px;color:var(--text);font-size:13px;font-weight:500}
+.student-standing {display:flex;align-items:center;justify-content:space-between;gap:18px;background:var(--surface-high);border:1px solid var(--border2);border-radius:8px;padding:22px;margin:20px 0}
+.student-standing span {display:block;font-size:12px;color:var(--text-muted)}
+.student-standing strong {display:block;font-size:30px;font-weight:650;margin:8px 0;color:var(--text)}
+.student-standing p {font-size:12px;color:var(--text-muted);line-height:1.6}
+.student-rank-columns,.student-rank-row {display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:12px;align-items:center}
+.student-rank-columns {font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);padding:8px}
+.student-rank-list {padding:0;margin:0;list-style:none}
+.student-rank-row {padding:14px 8px;border-bottom:1px solid var(--border);color:var(--text);font-size:13px;min-width:0}
+.student-rank-row.is-you {background:var(--primary-container);box-shadow:inset 2px 0 var(--text)}
+.student-rank-position {font-size:12px;font-variant-numeric:tabular-nums;color:var(--text-muted)}
+.student-rank-person {display:flex;align-items:center;gap:10px;min-width:0}
+.student-rank-person>div {min-width:0}
+.student-rank-person strong {font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.student-rank-person small {display:block;margin-top:4px;font-size:10px;color:var(--text-muted)}
+.student-rank-avatar {display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;background:var(--surface-highest);flex-shrink:0;font-size:12px}
+.student-you-label {font-size:9px;font-weight:500;padding:2px 5px;border:1px solid var(--border2);border-radius:3px}
+.student-rank-row>b {font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+#s-leaderboard .hol-page-btn {background:var(--surface);color:var(--text);border-color:var(--border);min-height:44px;min-width:40px;box-shadow:none}
+#s-leaderboard .hol-page-btn.active {background:var(--text);color:var(--bg)}
+#s-leaderboard .hol-pagination {flex-wrap:wrap;gap:6px;margin-top:16px}
+@media(max-width:700px) {
+  #s-dashboard .student-shortcuts {grid-template-columns:1fr 1fr;gap:10px;margin:14px 0 20px}
+  .student-participation-card {grid-column:1/-1}
+  .student-shortcut {padding:14px;gap:6px}
+  .student-shortcut strong {font-size:14px}
+  .student-shortcut small {font-size:11px}
+  .student-shortcut>b {display:none}
+  .learning-metrics {grid-template-columns:1fr;gap:10px}
+  .learning-metric {padding:16px;display:grid;grid-template-columns:1fr auto;column-gap:12px;row-gap:5px}
+  .learning-metric strong {grid-column:2;grid-row:1/4;font-size:28px;align-self:center}
+  .learning-metric small,.learning-metric .learning-metric-link {grid-column:1}
+  .learning-metric .learning-metric-link {padding-top:3px}
+  .learning-header {margin-bottom:18px}
+  .learning-header h1 {font-size:28px}
+  .learning-section {padding:14px}
+  .learning-tabs.prog-tabs {gap:0;margin-bottom:18px}
+  .learning-tabs .prog-tab {font-size:12px;padding-inline:5px}
+  .student-standing {padding:16px;align-items:flex-start;flex-direction:column;gap:12px}
+  .student-standing .btn {width:100%}
+  .student-rank-columns,.student-rank-row {grid-template-columns:32px minmax(0,1fr) auto;gap:7px}
+  .student-rank-avatar {display:none}
+  .student-rank-row>b {font-size:11px}
+}
+.learning-history-footer {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;font-size:11px;color:var(--text-muted)}
+#s-attendance .cal-dot.late {background:var(--warning);border-radius:0}
+#s-attendance .cal-dot.excused {background:transparent;border:1px solid var(--info);border-radius:50%}
+#s-attendance .cal-day.late .cal-day-num {color:var(--warning)}
+#s-attendance .cal-day.excused .cal-day-num {color:var(--info)}
+.theme-nocturne #s-attendance .cal-day.late .cal-day-num {color:var(--warning)}
+.student-rank-avatar {position:relative;overflow:hidden}
+.student-rank-avatar img {position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.theme-nocturne #s-attendance .cal-day.today .cal-day-num {background:var(--text);color:var(--bg)}
+.student-quest-empty {padding:18px;border:1px solid var(--border);border-radius:8px;background:var(--surface);margin-bottom:24px}
+.student-quest-empty strong {font-size:14px;font-weight:600;color:var(--text)}
+.student-quest-empty p {font-size:12px;line-height:1.6;color:var(--text-muted);margin-top:6px}

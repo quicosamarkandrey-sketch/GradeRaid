@@ -144,3 +144,33 @@ Validation: `node tests/browser/classroom-tools.cjs` boots the real app offline,
 intercepts RPC calls with fixture responses, and checks these interactions without
 writing to a hosted backend. The existing application-theme and seating-editor
 checks cover themes, role routes and the earlier multi-selection/history controls.
+
+### Student learning pages
+
+Dashboard, My Progress and Hall of Fame share a simple record-focused hierarchy.
+Dashboard shows participation points and the number of recorded contributions, with
+an explicit shortcut that opens My Progress on Participation. Repeated ranking,
+goal and statistic widgets are removed. Empty quest lists say No available quests,
+rather than claiming that the student completed quests which may never have existed.
+
+My Progress has three tabs: Overview, Attendance, Participation. The overview shows
+attendance rate, contribution count and recitation points, followed by five recent
+records. Missing attendance is displayed as a dash, not 0%. Attendance explains
+its denominator and preserves Late and Excused labels in calendar details. History
+uses actual timestamps, Philippine calendar dates and a Show more control after
+20 entries. Tabs and recorded calendar dates work with the keyboard. Milestone and
+showcase panels are no longer rendered here; the existing Achievements page is the
+home for badges and rewards. No earned records or claims are removed.
+
+Student Hall of Fame uses a personal-standing card and a ten-row paginated class
+ranking list. Category descriptions and explicit time-period controls replace the
+animated podium. Students see their own section; staff retains the existing view.
+Equal scores share ranks. Zero-score students are not presented as ranked winners.
+The redundant weighted Overall category is omitted from the student selector.
+All XP, participation, quest and boss calculations retain the existing scoring rules.
+
+Browser validation: `node tests/browser/student-learning.cjs` uses the real app and
+fixture records to check totals, direct history links, chronology, attendance labels,
+timezone boundaries, pagination, ties, section scope, disabled/empty states, keyboard
+navigation, responsive layouts and both appearance modes. It verifies that student
+records and achievement unlocks stay unchanged and does not write to hosted services.

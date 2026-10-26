@@ -64,15 +64,7 @@ const root=path.resolve(__dirname,'../..');
     }
    }
   }
-  await page.evaluate(()=>{
-   window.fixtureOriginalStudent=currentUser;
-   currentUser={...currentUser,attendance:80,quizAvg:50};renderStudentDashboard();
-  });
-  assert.equal(await page.locator('.dash-hero .val[data-progress-status=warning]').textContent(),'80%');
-  assert.equal(await page.locator('.dash-hero .val[data-progress-status=warning]').evaluate(el=>getComputedStyle(el).color),'rgb(139, 100, 28)');
-  assert.equal(await page.locator('.dash-hero .val[data-progress-status=danger]').textContent(),'50%');
-  assert.equal(await page.locator('.dash-hero .val[data-progress-status=danger]').evaluate(el=>getComputedStyle(el).color),'rgb(163, 60, 60)');
-  await page.evaluate(()=>{currentUser=fixtureOriginalStudent;renderStudentDashboard();});
+  assert.equal(await page.locator('#s-dashboard .dash-hero-stats').count(),0,'Repeated dashboard statistics removed');
   // Presentation is idempotent and does not rewrite fields, user prose,
   // uploaded photos, selected values, or attendance status colors.
   await page.evaluate(()=>{

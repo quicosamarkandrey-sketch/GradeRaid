@@ -25,7 +25,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']});
  try{
  const page=await browser.newPage();await page.emulateMedia({reducedMotion:'reduce'});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.route(baseURL+'/',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html class="theme-nocturne"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${['base','modules/shop','modules/recitation','modules/student-mobile','modules/nocturne'].map(p=>`<link rel="stylesheet" href="/styles/${p}.css">`).join('')}</head><body>${['s-dashboard','s-my-section','s-inventory','s-store','s-attendance','s-mail'].map(id=>`<div id="${id}" class="page active"></div>`).join('')}</body></html>`}));
+ await page.route(baseURL+'/',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html class="theme-nocturne"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${['base','modules/shop','modules/recitation','modules/student-mobile','modules/nocturne','modules/student-learning'].map(p=>`<link rel="stylesheet" href="/styles/${p}.css" ${p.endsWith('student-learning')?'data-preserve-theme':''}>`).join('')}</head><body>${['s-dashboard','s-my-section','s-inventory','s-store','s-attendance','s-mail'].map(id=>`<div id="${id}" class="page active"></div>`).join('')}</body></html>`}));
  await page.goto(baseURL+'/');
  await page.evaluate(()=>{
  window.currentUser={id:'s1',name:'Alexandra Rivera Santos',init:'AR',color:'#a78bfa',tier:'Scholar',classId:'c1',xp:12345,coins:1500,level:12,attendance:96,quizAvg:88,completedQuizzes:[]};
@@ -60,7 +60,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
     assert.ok(Math.abs(result.height-beforeDesktop)<1,'Desktop layout changed: '+id);
    }
    if(width===390){
-    if(id!=='s-dashboard')assert.equal(await page.locator('#'+id).evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),true,'Emoji icons missing on '+id);
+    if(id!=='s-dashboard' && id!=='s-attendance')assert.equal(await page.locator('#'+id).evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),true,'Emoji icons missing on '+id);
     const after=result.height;
     await page.evaluate(()=>document.querySelector('link[href*="student-mobile"]').disabled=true);
     const before=await page.locator('#'+id).evaluate(el=>el.getBoundingClientRect().height);
@@ -73,7 +73,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  // Every progress panel must fit, including its wide calendar and history.
  await page.setViewportSize({width:320,height:844});
  await page.evaluate(()=>document.querySelectorAll('.page').forEach(el=>el.style.display=el.id==='s-attendance'?'block':'none'));
- for(const tab of ['calendar','recitation','milestones','showcase']){
+ for(const tab of ['streaks','calendar','recitation']){
   await page.evaluate(tab=>progSwitchTab(tab),tab);
   if(await page.evaluate(()=>document.documentElement.scrollWidth>321)) console.log(tab,await page.locator('#s-attendance .prog-panel.active').evaluate(el=>[...el.querySelectorAll('*')].filter(n=>n.getBoundingClientRect().right>321).slice(0,8).map(n=>({cls:n.className,style:n.getAttribute('style'),width:n.getBoundingClientRect().width}))));
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=321),'Progress tab overflow: '+tab);

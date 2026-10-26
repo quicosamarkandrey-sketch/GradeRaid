@@ -33,7 +33,7 @@ function renderStudentDashboard(){
     })),
   ]
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-    .slice(0, 8);
+    .slice(0, 5);
   // Phase 27: same section-scoping gate as renderStudentQuizzes() below —
   // this dashboard widget reads DB.quizzes independently and has its own
   // clickable "Begin Quest" cards, so it needs the same filter or a
@@ -45,8 +45,8 @@ function renderStudentDashboard(){
     return !assigned || assigned.length === 0 || assigned.includes(dashMyClassId);
   };
   const pending=DB.quizzes.filter(q=>!st.completedQuizzes.includes(q.id) && dashInMySection(q));
-  const sorted=[...DB.students].sort((a,b)=>b.xp-a.xp);
-  const myRank=sorted.findIndex(s=>s.id===st.id)+1;
+  const dashRecitations=(DB.recitationLog || []).filter(r=>r.studentId===st.id);
+  const dashRecitationPoints=dashRecitations.reduce((sum,r)=>sum+(Number(r.pts)||0),0);
   const r=44,circ=2*Math.PI*r,dashOff=circ-(circ*(xpPct/100));
   const qrIdx=DB.students.indexOf(st);
 
@@ -76,7 +76,7 @@ function renderStudentDashboard(){
       </div>
       <div class="dash-hero-info">
         <div class="dash-hero-name">${st.name}</div>
-        <div class="dash-hero-sub" style="margin-bottom:14px">${st.tier} &nbsp;·&nbsp; <span style="color:var(--primary)">Rank #${myRank}</span> &nbsp;·&nbsp; Level ${st.level} → ${st.level+1}</div>
+        <div class="dash-hero-sub" style="margin-bottom:14px">${_esc(st.tier)} · Level ${st.level} → ${st.level+1}</div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
           <div class="stat-bar" id="dash-xp-bar" style="flex:1">
             <div class="stat-bar-fill"></div>
@@ -93,14 +93,16 @@ function renderStudentDashboard(){
         <button class="btn btn-orange btn-block" onclick="navTo('s-store')"><span class="eq-emoji" aria-hidden="true">🛍️</span> Visit Armory</button>
       </div>
     </div>
-    <!-- Combined academic snapshot — same focal card as the XP ring above, not a separate stat-grid -->
-    <div class="dash-hero-stats">
-      <div class="dash-hero-stat-chip"><div class="val" style="color:var(--primary)">${st.xp.toLocaleString()}</div><div class="lbl">Total XP</div></div>
-      <div class="dash-hero-stat-chip"><div class="val" data-progress-status="${st.attendance >= 90 ? 'good' : st.attendance >= 75 ? 'warning' : 'danger'}" style="color:var(--secondary)">${st.attendance}%</div><div class="lbl">Attendance</div></div>
-      <div class="dash-hero-stat-chip"><div class="val" data-progress-status="${st.quizAvg >= 75 ? 'good' : st.quizAvg >= 60 ? 'warning' : 'danger'}" style="color:var(--tertiary)">${st.quizAvg}%</div><div class="lbl">Quiz Avg</div></div>
-      <div class="dash-hero-stat-chip"><div class="val" style="color:var(--tertiary)">#${myRank}</div><div class="lbl">Class Rank</div></div>
-    </div>
   </div>
+  <section class="student-shortcuts" aria-label="Your learning shortcuts">
+    <div class="student-participation-card"><div class="learning-section-heading"><h2>Class participation</h2><span>All recorded</span></div>
+      <div class="student-participation-values"><div><strong data-student-recitation="points">${dashRecitationPoints.toLocaleString()}</strong><span>Recitation points</span></div><div><strong data-student-recitation="count">${dashRecitations.length}</strong><span>Recorded contributions</span></div></div>
+      ${dashRecitations.length?'':'<p class="learning-help">No participation recorded yet.</p>'}
+      <button class="btn btn-ghost" onclick="openStudentProgress('recitation')">View recitation history →</button>
+    </div>
+    <button class="student-shortcut" onclick="openStudentProgress('streaks')"><span aria-hidden="true">📊</span><strong>My Progress</strong><small>Attendance and participation</small><b aria-hidden="true">→</b></button>
+    <button class="student-shortcut" onclick="navTo('s-leaderboard')"><span aria-hidden="true">🏆</span><strong>Hall of Fame</strong><small>Your standing and class rankings</small><b aria-hidden="true">→</b></button>
+  </section>
 
   <!-- ATTENTION PANEL: unclaimed achievements + unread mail -->
   ${(()=>{
@@ -156,23 +158,17 @@ function renderStudentDashboard(){
         </div>`).join('')}
       </div>` : `
       <div class="section-header"><span class="eq-emoji" aria-hidden="true">📚</span><h2>Active Quests</h2></div>
-      <div style="text-align:center;padding:48px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;margin-bottom:24px;backdrop-filter:blur(12px)">
-        <div style="font-size:48px;margin-bottom:12px"><span class="eq-emoji" aria-hidden="true">✅</span></div>
-        <div style="font-family:var(--fh);font-size:16px;font-weight:800;margin-bottom:6px">All Quests Complete!</div>
-        <div style="color:var(--text-muted);font-size:13px">Check back when new quests are posted.</div>
-      </div>`}
+      <div class="student-quest-empty"><strong>No available quests</strong><p>New quests from your teacher will appear here.</p></div>`}
 
       <!-- OVERALL ACTIVITY (Phase 67 — was "Point Activity"; now merges every
            reward/purchase source, not just DB.pointLog, and shows a live
            relative time via window.eqTimeAgo() instead of a frozen string) -->
-      <div class="section-header"><span class="eq-emoji" aria-hidden="true">📊</span><h2>Overall Activity</h2></div>
+      <div class="section-header"><span class="eq-emoji" aria-hidden="true">📊</span><h2>Recent activity</h2></div>
       <div class="glass-card" style="padding:16px">
         <div class="pt-events">
           ${activityFeed.length ? activityFeed.map(e=>`
           <div class="pt-event">
-            <div class="pt-icon" style="font-size:18px"><span class="eq-emoji" aria-hidden="true">📊</span></div>
-            <div class="pt-delta" style="color:${e.pts>0?'var(--secondary)':e.pts<0?'#ffb4ab':'var(--text-muted)'}">${e.pts>0?'+':''}${e.pts||0}</div>
-            <div class="pt-info"><div class="pt-what">${e.label}</div><div class="pt-when">${window.eqTimeAgo(e.createdAt)}</div></div>
+            <div class="pt-info"><div class="pt-what">${_esc(e.label || 'Activity recorded')}</div><div class="pt-when">${window.eqTimeAgo(e.createdAt)}</div></div>
           </div>`).join('') : '<div style="color:var(--text-muted);text-align:center;padding:16px;font-size:13px">No activity yet</div>'}
         </div>
       </div>
@@ -180,20 +176,6 @@ function renderStudentDashboard(){
 
     <!-- SIDEBAR COL -->
     <div style="display:flex;flex-direction:column;gap:16px">
-      <!-- LEADERBOARD MINI -->
-      <div class="section-header"><span class="eq-emoji" aria-hidden="true">🏆</span><h2>Rankings</h2></div>
-      <div class="glass-card" style="padding:16px">
-        ${sorted.slice(0,5).map((s,i)=>{
-          const medals=['1','2','3','4','5'];const isMe=s.id===st.id;
-          return `<div class="lb-row" style="padding:8px 10px;background:${isMe?'rgba(208,188,255,0.08)':'transparent'};border:${isMe?'1px solid rgba(208,188,255,0.2)':'1px solid transparent'};margin-bottom:6px">
-            <div class="lb-rank">${i<3?medals[i]:`<span style="font-size:12px;font-weight:700;color:var(--text-muted)">${medals[i]}</span>`}</div>
-            <div class="lb-av" style="background:${s.color+'22'};color:${s.color};border-color:${s.color+'44'}">${s.init}</div>
-            <div class="lb-name">${s.name.split(' ')[0]}${isMe?` <span class="badge-pill bp-primary" style="font-size:9px;padding:1px 6px">You</span>`:''}</div>
-            <div class="lb-xp">${s.xp.toLocaleString()}</div>
-          </div>`;}).join('')}
-        <button class="btn btn-ghost btn-block btn-sm" style="margin-top:8px" onclick="navTo('s-leaderboard')">Full Rankings →</button>
-      </div>
-
       <!-- QR CODE -->
       <div class="glass-card dash-qr-card">
         <h3><span class="eq-emoji" aria-hidden="true">📷</span> Your QR Code</h3>
@@ -219,16 +201,6 @@ function renderStudentDashboard(){
         </div>
       </div>
 
-      <!-- GOALS -->
-      <div class="glass-card">
-        <h3><span class="eq-emoji" aria-hidden="true">🎯</span> Active Goals</h3>
-        <div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:12px">Perfect Attendance</span><span class="badge-pill bp-green">${st.attendance}%</span></div>
-          <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden;margin-bottom:14px"><div style="height:100%;border-radius:20px;width:${st.attendance}%;background:linear-gradient(90deg,var(--secondary),#06b6d4);box-shadow:0 0 8px rgba(78,222,163,.5)"></div></div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:12px">Reach Level ${st.level+1}</span><span class="badge-pill bp-primary">${xpPct}%</span></div>
-          <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden"><div style="height:100%;border-radius:20px;width:${xpPct}%;background:linear-gradient(90deg,#a8a8a8,var(--primary));box-shadow:0 0 8px rgba(139,92,246,.5)"></div></div>
-        </div>
-      </div>
     </div>
   </div>`;
   updateTopbar();
