@@ -43,7 +43,7 @@ const root=path.resolve(__dirname,'../..');
      await page.evaluate(id=>navTo(id),id);await page.waitForTimeout(80);
      assert.ok(await page.locator('#'+id).isVisible(),role+': '+id+' not visible');
      assert.ok(await page.locator('#'+id).evaluate(el=>el.textContent.trim().length>0),id+' empty');
-     assert.equal(await page.locator('#sidebar .material-symbols-outlined').evaluateAll(nodes=>nodes.every(el=>el.querySelector('.eq-emoji'))),true,'Icon-font dependency in navigation');
+     assert.equal(await page.locator('#sidebar .material-symbols-outlined').evaluateAll(nodes=>nodes.every(el=>el.querySelector('svg.eq-line-icon') && !el.querySelector('.eq-emoji'))),true,'Icon-font dependency in navigation');
      if(id==='a-dashboard'||id==='s-dashboard'){await page.waitForTimeout(400);await page.screenshot({path:`/workspace/balanced-${role}-${width}.png`,fullPage:true});}
      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),role+' '+id+' overflows at '+width);
      if(id==='a-classroom-monitor'){
@@ -84,6 +84,7 @@ const root=path.resolve(__dirname,'../..');
   });
   assert.equal(await page.locator('#theme-probe h2').textContent(),'📊 Reports');
   assert.equal(await page.locator('#theme-probe .student-name').textContent(),'⭐ Alex');
+  assert.ok(await page.locator('#theme-probe button .eq-emoji').count(),'Non-sidebar controls should keep emoji');
   assert.equal(await page.locator('#theme-probe textarea').inputValue(),'🔥 Draft message');
   assert.equal(await page.locator('#theme-probe select').inputValue(),'keep');
   assert.equal(await page.locator('#theme-probe img').getAttribute('alt'),'Uploaded photo');
@@ -111,6 +112,7 @@ const root=path.resolve(__dirname,'../..');
      await page.evaluate(id=>navTo(id),id);await page.waitForTimeout(100);
      assert.ok(await page.locator('#'+id).isVisible());
      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),role+' light '+id+' overflows at '+width);
+     assert.equal(await page.locator('#sidebar .material-symbols-outlined').evaluateAll(nodes=>nodes.every(el=>el.querySelector('svg.eq-line-icon') && !el.querySelector('.eq-emoji'))),true,'Sidebar line icons in light mode');
      const header=await page.locator('#topbar').evaluate(el=>getComputedStyle(el).backgroundColor);
      assert.equal(header,'rgb(246, 246, 246)');
      if(id==='a-classroom-monitor'){
@@ -131,6 +133,6 @@ const root=path.resolve(__dirname,'../..');
   assert.equal(await page.evaluate(()=>UITheme.getMode()),'light');
   await page.evaluate(()=>UITheme.setMode('dark'));
   assert.deepEqual(errors,[]);
-  console.log(`PASS: ${count} full-app page visits across admin, teacher, student and two widths; emoji navigation and persisted dark/light modes; user content and attendance metadata preserved; no page errors.`);
+  console.log(`PASS: ${count} full-app page visits across admin, teacher, student and two widths; sidebar line icons, emoji elsewhere and persisted dark/light modes; user content and attendance metadata preserved; no page errors.`);
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exit(1)});

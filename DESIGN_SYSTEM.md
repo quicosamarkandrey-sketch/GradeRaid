@@ -116,5 +116,6 @@ Present seats use a stronger emerald border and tinted fill. The text beneath
 student names is removed; hover titles and accessible seat names retain attendance
 information. Dashed, dotted and double borders still distinguish attendance states.
 Recitation/selection highlights take priority over attendance borders. Shared UI
-icons now use emoji again, including navigation and dashboard decorations; uploaded
-photos, custom content, QR graphics and game art retain their original rendering.
+icons use emoji for dashboard decorations and other controls, while sidebar
+navigation and sign-out use local line icons in both themes. Uploaded photos,
+custom content, QR graphics and game art retain their original rendering.
