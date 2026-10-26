@@ -1029,9 +1029,9 @@ function renderStudentDashboard(){
     <div class="student-participation-card"><div class="learning-section-heading"><h2>Class participation</h2><span>All recorded</span></div>
       <div class="student-participation-values"><div><strong data-student-recitation="points">${dashRecitationPoints.toLocaleString()}</strong><span>Recitation points</span></div><div><strong data-student-recitation="count">${dashRecitations.length}</strong><span>Recorded contributions</span></div></div>
       ${dashRecitations.length?'':'<p class="learning-help">No participation recorded yet.</p>'}
-      <button class="btn btn-ghost" onclick="openStudentProgress('recitation')">View recitation history →</button>
+      <button class="btn btn-ghost" onclick="navTo('s-attendance');progSwitchTab('recitation')">View recitation history →</button>
     </div>
-    <button class="student-shortcut" onclick="openStudentProgress('streaks')"><span aria-hidden="true">📊</span><strong>My Progress</strong><small>Attendance and participation</small><b aria-hidden="true">→</b></button>
+    <button class="student-shortcut" onclick="navTo('s-attendance');progSwitchTab('streaks')"><span aria-hidden="true">📊</span><strong>My Progress</strong><small>Attendance and participation</small><b aria-hidden="true">→</b></button>
     <button class="student-shortcut" onclick="navTo('s-leaderboard')"><span aria-hidden="true">🏆</span><strong>Hall of Fame</strong><small>Your standing and class rankings</small><b aria-hidden="true">→</b></button>
   </section>
 

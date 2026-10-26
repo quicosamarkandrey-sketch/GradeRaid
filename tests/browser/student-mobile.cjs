@@ -73,7 +73,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  // Every progress panel must fit, including its wide calendar and history.
  await page.setViewportSize({width:320,height:844});
  await page.evaluate(()=>document.querySelectorAll('.page').forEach(el=>el.style.display=el.id==='s-attendance'?'block':'none'));
- for(const tab of ['streaks','calendar','recitation']){
+ for(const tab of ['streaks','calendar','recitation','milestones','showcase']){
   await page.evaluate(tab=>progSwitchTab(tab),tab);
   if(await page.evaluate(()=>document.documentElement.scrollWidth>321)) console.log(tab,await page.locator('#s-attendance .prog-panel.active').evaluate(el=>[...el.querySelectorAll('*')].filter(n=>n.getBoundingClientRect().right>321).slice(0,8).map(n=>({cls:n.className,style:n.getAttribute('style'),width:n.getBoundingClientRect().width}))));
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=321),'Progress tab overflow: '+tab);
