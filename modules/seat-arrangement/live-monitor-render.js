@@ -181,6 +181,8 @@
       el.dataset.seatId = vm.seatId;
       el.dataset.attendanceStatus = vm.attendanceStatus || 'Unscanned';
       el.dataset.studentId = vm.studentId || '';
+      el.setAttribute('aria-label', vm.studentId ? `${vm.studentName || 'Student'}: ${vm.attendanceStatus || 'Unscanned'}` : 'Empty seat');
+      el.title = vm.studentId ? `${vm.studentName || 'Student'} · ${vm.attendanceStatus || 'Unscanned'}` : 'Empty seat';
       el.style.left = vm.xCoord + 'px';
       el.style.top  = vm.yCoord + 'px';
       el.style.transform = `translate(-50%,-50%) rotate(${vm.rotation || 0}deg)`;
@@ -206,8 +208,7 @@
         : '';
       el.innerHTML = vm.studentId
         ? `<div class="lm-seat-init${badgeHtml ? ' lm-score-avatar' : ''}" style="background:${studentColor}"><span class="lm-avatar-identity">${photoHtml}${_esc(vm.studentInit || '?')}</span>${badgeHtml}</div>
-           <div class="lm-seat-name">${_esc((vm.studentName||'').split(' ')[0])}</div>
-           <span class="lm-seat-status-tag">${_esc(vm.attendanceStatus || 'Unscanned')}</span>`
+           <div class="lm-seat-name">${_esc((vm.studentName||'').split(' ')[0])}</div>`
         : `<div style="font-size:18px;opacity:.25">🪑</div>`;
 
       // Spatial-block targeting: only seats that could actually win a roll
@@ -287,19 +288,19 @@
 
       <div class="lm-scoreboard">
         <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:#4edea3">${counts.Present}</div>
+          <div class="lm-stat-num" style="color:var(--monitor-present,#48d597)">${counts.Present}</div>
           <div class="lm-stat-label">Present</div>
         </div>
         <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:#ffb95f">${counts.Late}</div>
+          <div class="lm-stat-num" style="color:var(--warning,#d7b16b)">${counts.Late}</div>
           <div class="lm-stat-label">Late</div>
         </div>
         <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:#ffb4ab">${counts.Absent}</div>
+          <div class="lm-stat-num" style="color:var(--danger,#e09393)">${counts.Absent}</div>
           <div class="lm-stat-label">Absent</div>
         </div>
         <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:#93c5fd">${counts.Excused}</div>
+          <div class="lm-stat-num" style="color:var(--info,#8caee0)">${counts.Excused}</div>
           <div class="lm-stat-label">Excused</div>
         </div>
       </div>
@@ -351,9 +352,9 @@
   function _lmFeedItem(log, student) {
     const time = log.scannedAt ? new Date(log.scannedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
     const name = student ? (student.name || student.displayName || 'Unknown') : 'Unknown student';
-    const statusTag = log.status === 'Late' ? ' <span style="color:#ffb95f;font-weight:700">[Marked Late]</span>'
-      : log.status === 'Absent'  ? ' <span style="color:#ffb4ab;font-weight:700">[Absent]</span>'
-      : log.status === 'Excused' ? ' <span style="color:#93c5fd;font-weight:700">[Excused]</span>'
+    const statusTag = log.status === 'Late' ? ' <span style="color:var(--warning,#d7b16b);font-weight:700">[Marked Late]</span>'
+      : log.status === 'Absent'  ? ' <span style="color:var(--danger,#e09393);font-weight:700">[Absent]</span>'
+      : log.status === 'Excused' ? ' <span style="color:var(--info,#8caee0);font-weight:700">[Excused]</span>'
       : '';
     const verb = (log.entryMethod === 'RFID' || log.entryMethod === 'NFC') ? 'scanned in' : 'recorded';
     return `

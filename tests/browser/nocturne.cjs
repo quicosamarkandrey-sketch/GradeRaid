@@ -25,7 +25,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']});
  try{
  const page=await browser.newPage();await page.emulateMedia({reducedMotion:'reduce'});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.route(baseURL+'/',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html class="theme-nocturne"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${['base','modules/shop','modules/recitation','modules/world-boss','modules/notifications','modules/student-mobile','modules/nocturne'].map(p=>`<link rel="stylesheet" href="/styles/${p}.css">`).join('')}</head><body><div id="main-app">${html.slice(html.indexOf('  <!-- TOP BAR -->'),html.indexOf('  <!-- MAIN CONTENT -->'))}<main id="main-content">${['s-dashboard','s-my-section','s-inventory','s-store','s-attendance','s-mail'].map(id=>`<div id="${id}" class="page active"></div>`).join('')}</main></div></body></html>`}));
+ await page.route(baseURL+'/',r=>r.fulfill({contentType:'text/html',body:`<!doctype html><html class="theme-nocturne"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${['base','modules/shop','modules/recitation','modules/world-boss','modules/notifications','modules/student-mobile','modules/nocturne','modules/color-modes'].map(p=>`<link rel="stylesheet" href="/styles/${p}.css" ${p.endsWith('color-modes')?'data-preserve-theme':''}>`).join('')}</head><body><div id="main-app">${html.slice(html.indexOf('  <!-- TOP BAR -->'),html.indexOf('  <!-- MAIN CONTENT -->'))}<main id="main-content">${['s-dashboard','s-my-section','s-inventory','s-store','s-attendance','s-mail'].map(id=>`<div id="${id}" class="page active"></div>`).join('')}</main></div></body></html>`}));
  await page.goto(baseURL+'/');
  await page.evaluate(()=>{
  window.currentUser={id:'s1',name:'Alexandra Rivera Santos',init:'AR',color:'#a78bfa',tier:'Scholar',classId:'c1',xp:12345,coins:1500,level:12,attendance:96,quizAvg:88,completedQuizzes:[]};
@@ -59,7 +59,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
   assert.equal(await page.locator('#s-dashboard .quest-btn').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(242, 242, 242)');
   assert.equal(await page.locator('#s-dashboard .quest-btn').evaluate(el=>getComputedStyle(el).color),'rgb(17, 17, 17)');
   assert.ok(await page.locator('#s-dashboard .quest-btn').evaluate(el=>el.getBoundingClientRect().height>=44));
-  assert.equal(await page.locator('#s-dashboard').evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),false,'Decorative emoji remains');
+  assert.equal(await page.locator('#s-dashboard').evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),true,'Emoji icons missing');
   await page.locator('#wb-topbar-widget').evaluate(el=>el.style.display='flex');
   assert.ok(await page.locator('#topbar').evaluate(el=>[...el.querySelectorAll('.topbar-right>div,.hamburger,.logo')].filter(n=>n.getBoundingClientRect().width).every(n=>n.getBoundingClientRect().right<=innerWidth+1)),'Header overflow with an active raid at '+width);
   await page.screenshot({path:`/workspace/monochrome-${width}.png`,fullPage:true});

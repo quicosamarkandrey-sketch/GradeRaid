@@ -1,0 +1,315 @@
+/* Mode-specific surfaces and semantic colors. Photos and artwork keep their colors. */
+:root.theme-nocturne {color-scheme:dark;--monitor-present:#48d597;--monitor-present-bg:#123b2b}
+:root.theme-nocturne[data-color-mode=light] {
+  color-scheme:light;
+  --bg:#f6f6f3;--bg-low:#eeeeeb;--surface:#fff;--surface-high:#f0f0ed;--surface-highest:#e6e6e2;
+  --midnight:#fff;--deep-indigo:#f4f4f1;--text:#202420;--on-surface:#202420;--text-muted:#626962;
+  --primary:#202420;--primary-dark:#414941;--primary-container:#2024200c;--tertiary:#61695f;
+  --border:#d8dcd6;--border2:#a7afa5;--accent:#202420;--accent-ink:#fff;--accent-soft:#e9ece7;
+  --success:#227448;--positive:#227448;--secondary:#227448;--secondary-dark:#195a37;
+  --warning:#8b6019;--danger:#ad3d3d;--negative:#ad3d3d;--error:#ad3d3d;--info:#3567a6;
+  --monitor-present:#167c4c;--monitor-present-bg:#d9f0e2;
+}
+.eq-emoji {display:inline-flex;align-items:center;justify-content:center;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;font-style:normal;font-weight:400;line-height:1.2;vertical-align:middle;flex-shrink:0}
+.material-symbols-outlined:has(>.eq-emoji) {font-family:inherit;display:inline-flex;align-items:center;justify-content:center;width:1.2em;vertical-align:middle}
+.eq-emoji {font-size:1em}
+#color-mode-toggle {flex-shrink:0;font-size:20px;border:1px solid var(--border);color:var(--text);background:var(--surface);width:44px;height:44px}
+.theme-nocturne :is(.lm-seat,.cb-seat)[data-attendance-status="On Time"],
+.theme-nocturne :is(.lm-seat,.cb-seat)[data-attendance-status="Early"] {border:2px solid var(--monitor-present)!important;background:var(--monitor-present-bg)!important}
+.theme-nocturne .lm-seat[data-attendance-status="On Time"] .lm-seat-name,
+.theme-nocturne .lm-seat[data-attendance-status="Early"] .lm-seat-name {color:#b5f5d4;font-weight:700}
+.theme-nocturne .lm-seat-status-tag {display:none}
+.theme-nocturne :is(.lm-seat.flash-cycle,.lm-seat.flash-confirm,.lm-seat.flash-winner) {border-color:var(--text)!important;background:var(--surface-highest)!important}
+:root[data-color-mode=light] :is(.lm-seat,.cb-seat) {background:#fff!important;border-color:#abb4ac!important;color:#202420}
+:root[data-color-mode=light] .lm-seat-name {color:#202420}
+:root[data-color-mode=light] .lm-seat:is([data-attendance-status="On Time"],[data-attendance-status="Early"]) .lm-seat-name {color:#175c39}
+:root[data-color-mode=light] :is(.lm-seat,.cb-seat):is([data-attendance-status="On Time"],[data-attendance-status="Early"]) {border-color:var(--monitor-present)!important;background:var(--monitor-present-bg)!important}
+:root[data-color-mode=light] :is(.lm-seat,.cb-seat)[data-attendance-status="Late"] {border-color:#98691d!important;background:#fff1d8!important}
+:root[data-color-mode=light] :is(.lm-seat,.cb-seat)[data-attendance-status="Absent"] {border-color:#b34242!important;background:#fbe7e7!important}
+:root[data-color-mode=light] :is(.lm-seat,.cb-seat)[data-attendance-status="Excused"] {border-color:#376fa9!important;background:#e4eefb!important}
+:root[data-color-mode=light] :is(.lm-seat.flash-cycle,.lm-seat.flash-confirm,.lm-seat.flash-winner) {border-color:#202420!important;background:#fff!important}
+:root[data-color-mode=light] :is(.lm-seat-init,.cb-seat-init,.cb-chip-avatar) {background:#e4e9e2!important;color:#202420!important}
+:root[data-color-mode=light] .lm-recitation-badge {color:#17251c;text-shadow:0 1px 3px #fff}
+:root[data-color-mode=light] .lm-seat.targeted {outline-color:#202420}
+:root[data-color-mode=light] .cb-seat.selected {outline-color:#202420}
+:root[data-color-mode=light] .btn-success {background:#e1f0e6;color:#1c623a;border-color:#81ad90}
+:root[data-color-mode=light] .btn-danger {background:#fbe9e9;color:#9b3030;border-color:#d29b9b}
+:root[data-color-mode=light] :is(.badge-success,.bp-green) {background:#e1f0e6;color:#1c623a;border-color:#81ad90}
+:root[data-color-mode=light] :is(.badge-danger,.bp-red) {background:#fbe9e9;color:#9b3030;border-color:#d29b9b}
+:root[data-color-mode=light] :is(.badge-warning,.bp-gold) {background:#fff1d8;color:#805819;border-color:#c6a46b}
+:root[data-color-mode=light] :is(.badge-info,.bp-blue) {background:#e4eefb;color:#305f97;border-color:#90aed3}
+:root[data-color-mode=light] :is(button,a,input,select,textarea):focus-visible {outline-color:#202420}
+/* Featured white cards stay white in either mode, including their local text. */
+:root.theme-nocturne :is(.dash-hero,.cc-quote-panel) {
+  --ui-tone-0:0;
+  --ui-tone-1:1;
+  --ui-tone-2:2;
+  --ui-tone-3:3;
+  --ui-tone-4:4;
+  --ui-tone-5:5;
+  --ui-tone-6:6;
+  --ui-tone-7:7;
+  --ui-tone-8:8;
+  --ui-tone-9:9;
+  --ui-tone-10:10;
+  --ui-tone-11:11;
+  --ui-tone-12:12;
+  --ui-tone-13:13;
+  --ui-tone-14:14;
+  --ui-tone-15:15;
+  --ui-tone-16:16;
+  --ui-tone-17:17;
+  --ui-tone-18:18;
+  --ui-tone-19:19;
+  --ui-tone-20:20;
+  --ui-tone-21:21;
+  --ui-tone-22:22;
+  --ui-tone-23:23;
+  --ui-tone-24:24;
+  --ui-tone-25:25;
+  --ui-tone-26:26;
+  --ui-tone-27:27;
+  --ui-tone-28:28;
+  --ui-tone-29:29;
+  --ui-tone-30:30;
+  --ui-tone-31:31;
+  --ui-tone-32:32;
+  --ui-tone-33:33;
+  --ui-tone-34:34;
+  --ui-tone-35:35;
+  --ui-tone-36:36;
+  --ui-tone-37:37;
+  --ui-tone-38:38;
+  --ui-tone-39:39;
+  --ui-tone-40:40;
+  --ui-tone-41:41;
+  --ui-tone-42:42;
+  --ui-tone-43:43;
+  --ui-tone-44:44;
+  --ui-tone-45:45;
+  --ui-tone-46:46;
+  --ui-tone-47:47;
+  --ui-tone-48:48;
+  --ui-tone-49:49;
+  --ui-tone-50:50;
+  --ui-tone-51:51;
+  --ui-tone-52:52;
+  --ui-tone-53:53;
+  --ui-tone-54:54;
+  --ui-tone-55:55;
+  --ui-tone-56:56;
+  --ui-tone-57:57;
+  --ui-tone-58:58;
+  --ui-tone-59:59;
+  --ui-tone-60:60;
+  --ui-tone-61:61;
+  --ui-tone-62:62;
+  --ui-tone-63:63;
+  --ui-tone-64:64;
+  --ui-tone-65:65;
+  --ui-tone-66:66;
+  --ui-tone-67:67;
+  --ui-tone-68:68;
+  --ui-tone-69:69;
+  --ui-tone-70:70;
+  --ui-tone-71:71;
+  --ui-tone-72:72;
+  --ui-tone-73:73;
+  --ui-tone-74:74;
+  --ui-tone-75:75;
+  --ui-tone-76:76;
+  --ui-tone-77:77;
+  --ui-tone-78:78;
+  --ui-tone-79:79;
+  --ui-tone-80:80;
+  --ui-tone-81:81;
+  --ui-tone-82:82;
+  --ui-tone-83:83;
+  --ui-tone-84:84;
+  --ui-tone-85:85;
+  --ui-tone-86:86;
+  --ui-tone-87:87;
+  --ui-tone-88:88;
+  --ui-tone-89:89;
+  --ui-tone-90:90;
+  --ui-tone-91:91;
+  --ui-tone-92:92;
+  --ui-tone-93:93;
+  --ui-tone-94:94;
+  --ui-tone-95:95;
+  --ui-tone-96:96;
+  --ui-tone-97:97;
+  --ui-tone-98:98;
+  --ui-tone-99:99;
+  --ui-tone-100:100;
+  --ui-tone-101:101;
+  --ui-tone-102:102;
+  --ui-tone-103:103;
+  --ui-tone-104:104;
+  --ui-tone-105:105;
+  --ui-tone-106:106;
+  --ui-tone-107:107;
+  --ui-tone-108:108;
+  --ui-tone-109:109;
+  --ui-tone-110:110;
+  --ui-tone-111:111;
+  --ui-tone-112:112;
+  --ui-tone-113:113;
+  --ui-tone-114:114;
+  --ui-tone-115:115;
+  --ui-tone-116:116;
+  --ui-tone-117:117;
+  --ui-tone-118:118;
+  --ui-tone-119:119;
+  --ui-tone-120:120;
+  --ui-tone-121:121;
+  --ui-tone-122:122;
+  --ui-tone-123:123;
+  --ui-tone-124:124;
+  --ui-tone-125:125;
+  --ui-tone-126:126;
+  --ui-tone-127:127;
+  --ui-tone-128:128;
+  --ui-tone-129:129;
+  --ui-tone-130:130;
+  --ui-tone-131:131;
+  --ui-tone-132:132;
+  --ui-tone-133:133;
+  --ui-tone-134:134;
+  --ui-tone-135:135;
+  --ui-tone-136:136;
+  --ui-tone-137:137;
+  --ui-tone-138:138;
+  --ui-tone-139:139;
+  --ui-tone-140:140;
+  --ui-tone-141:141;
+  --ui-tone-142:142;
+  --ui-tone-143:143;
+  --ui-tone-144:144;
+  --ui-tone-145:145;
+  --ui-tone-146:146;
+  --ui-tone-147:147;
+  --ui-tone-148:148;
+  --ui-tone-149:149;
+  --ui-tone-150:150;
+  --ui-tone-151:151;
+  --ui-tone-152:152;
+  --ui-tone-153:153;
+  --ui-tone-154:154;
+  --ui-tone-155:155;
+  --ui-tone-156:156;
+  --ui-tone-157:157;
+  --ui-tone-158:158;
+  --ui-tone-159:159;
+  --ui-tone-160:160;
+  --ui-tone-161:161;
+  --ui-tone-162:162;
+  --ui-tone-163:163;
+  --ui-tone-164:164;
+  --ui-tone-165:165;
+  --ui-tone-166:166;
+  --ui-tone-167:167;
+  --ui-tone-168:168;
+  --ui-tone-169:169;
+  --ui-tone-170:170;
+  --ui-tone-171:171;
+  --ui-tone-172:172;
+  --ui-tone-173:173;
+  --ui-tone-174:174;
+  --ui-tone-175:175;
+  --ui-tone-176:176;
+  --ui-tone-177:177;
+  --ui-tone-178:178;
+  --ui-tone-179:179;
+  --ui-tone-180:180;
+  --ui-tone-181:181;
+  --ui-tone-182:182;
+  --ui-tone-183:183;
+  --ui-tone-184:184;
+  --ui-tone-185:185;
+  --ui-tone-186:186;
+  --ui-tone-187:187;
+  --ui-tone-188:188;
+  --ui-tone-189:189;
+  --ui-tone-190:190;
+  --ui-tone-191:191;
+  --ui-tone-192:192;
+  --ui-tone-193:193;
+  --ui-tone-194:194;
+  --ui-tone-195:195;
+  --ui-tone-196:196;
+  --ui-tone-197:197;
+  --ui-tone-198:198;
+  --ui-tone-199:199;
+  --ui-tone-200:200;
+  --ui-tone-201:201;
+  --ui-tone-202:202;
+  --ui-tone-203:203;
+  --ui-tone-204:204;
+  --ui-tone-205:205;
+  --ui-tone-206:206;
+  --ui-tone-207:207;
+  --ui-tone-208:208;
+  --ui-tone-209:209;
+  --ui-tone-210:210;
+  --ui-tone-211:211;
+  --ui-tone-212:212;
+  --ui-tone-213:213;
+  --ui-tone-214:214;
+  --ui-tone-215:215;
+  --ui-tone-216:216;
+  --ui-tone-217:217;
+  --ui-tone-218:218;
+  --ui-tone-219:219;
+  --ui-tone-220:220;
+  --ui-tone-221:221;
+  --ui-tone-222:222;
+  --ui-tone-223:223;
+  --ui-tone-224:224;
+  --ui-tone-225:225;
+  --ui-tone-226:226;
+  --ui-tone-227:227;
+  --ui-tone-228:228;
+  --ui-tone-229:229;
+  --ui-tone-230:230;
+  --ui-tone-231:231;
+  --ui-tone-232:232;
+  --ui-tone-233:233;
+  --ui-tone-234:234;
+  --ui-tone-235:235;
+  --ui-tone-236:236;
+  --ui-tone-237:237;
+  --ui-tone-238:238;
+  --ui-tone-239:239;
+  --ui-tone-240:240;
+  --ui-tone-241:241;
+  --ui-tone-242:242;
+  --ui-tone-243:243;
+  --ui-tone-244:244;
+  --ui-tone-245:245;
+  --ui-tone-246:246;
+  --ui-tone-247:247;
+  --ui-tone-248:248;
+  --ui-tone-249:249;
+  --ui-tone-250:250;
+  --ui-tone-251:251;
+  --ui-tone-252:252;
+  --ui-tone-253:253;
+  --ui-tone-254:254;
+  --ui-tone-255:255;
+}
+.theme-nocturne :is(.lm-coldcall-btn,.lm-recitation-toggle,.lm-award-submit,.lm-override-submit) {background:var(--primary);color:var(--bg);border-color:var(--primary)}
+.theme-nocturne .lm-recitation-toggle.active {background:var(--monitor-present-bg);color:var(--monitor-present);border:1px solid var(--monitor-present);box-shadow:none}
+:root[data-color-mode=light] :is(.lm-toolbar,.lm-sidebar,.cb-toolbar,.cb-sidebar) {background:#fff;border-color:var(--border)}
+:root[data-color-mode=light] :is(.lm-canvas-wrap,.cb-canvas-wrap) {background:#f2f4f0}
+:root[data-color-mode=light] .lm-stat-card {background:#f3f5f1;border:1px solid var(--border)}
+:root[data-color-mode=light] .lm-stat-label {color:#596259}
+:root[data-color-mode=light] .lm-spotlight :is(.lm-spotlight-stat-num,.lm-spotlight-name) {color:var(--text)}
+:root[data-color-mode=light] .lm-spotlight :is(.lm-spotlight-stat-label,.lm-spotlight-headline-label) {color:var(--text-muted)}
+.theme-nocturne #s-dashboard .quest-img-placeholder>.eq-emoji {font-size:38px}
+@media(max-width:480px) {
+  .theme-nocturne #topbar-coins {display:none!important}
+}
+@media(max-width:380px) {
+  .theme-nocturne #topbar .logo span {display:none}
+}

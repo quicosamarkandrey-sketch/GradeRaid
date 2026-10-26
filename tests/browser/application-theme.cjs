@@ -43,14 +43,15 @@ const root=path.resolve(__dirname,'../..');
      await page.evaluate(id=>navTo(id),id);await page.waitForTimeout(80);
      assert.ok(await page.locator('#'+id).isVisible(),role+': '+id+' not visible');
      assert.ok(await page.locator('#'+id).evaluate(el=>el.textContent.trim().length>0),id+' empty');
-     assert.equal(await page.locator('#sidebar .material-symbols-outlined').evaluateAll(nodes=>nodes.every(el=>el.querySelector('svg'))),true,'Icon-font dependency in navigation');
+     assert.equal(await page.locator('#sidebar .material-symbols-outlined').evaluateAll(nodes=>nodes.every(el=>el.querySelector('.eq-emoji'))),true,'Icon-font dependency in navigation');
      if(id==='a-dashboard'||id==='s-dashboard'){await page.waitForTimeout(400);await page.screenshot({path:`/workspace/balanced-${role}-${width}.png`,fullPage:true});}
      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),role+' '+id+' overflows at '+width);
      if(id==='a-classroom-monitor'){
       const seat=page.locator('.lm-seat').first();
       assert.equal(await seat.getAttribute('data-attendance-status'),'On Time');
-      assert.equal(await seat.locator('.lm-seat-status-tag').textContent(),'On Time');
-      assert.equal(await seat.evaluate(el=>getComputedStyle(el).borderTopColor),'rgb(129, 184, 149)');
+      assert.equal(await seat.locator('.lm-seat-status-tag').count(),0);
+      assert.match(await seat.getAttribute('aria-label'),/On Time/);
+      assert.equal(await seat.evaluate(el=>getComputedStyle(el).borderTopColor),'rgb(72, 213, 151)');
      }
      assert.ok(await page.locator('#sidebar .nav-btn.active').evaluateAll(nodes=>nodes.every(el=>{const c=getComputedStyle(el).borderRightColor.match(/\d+/g).map(Number);return c[0]===c[1]&&c[1]===c[2];})),'Navigation tint remains');
      assert.ok(await page.locator('#topbar').evaluate(el=>{const c=getComputedStyle(el).backgroundColor.match(/\d+/g).map(Number);return c[0]===c[1]&&c[1]===c[2];}),'Header tint remains');
@@ -81,7 +82,7 @@ const root=path.resolve(__dirname,'../..');
    const style=document.createElement('style');style.id='theme-injection-probe';style.textContent='.theme-legacy-probe{background:rgb(35,31,56);color:#d0bcff}';document.head.append(style);
    const probe=document.createElement('div');probe.className='theme-legacy-probe';el.append(probe);
   });
-  assert.ok(await page.locator('#theme-probe h2 svg').count());
+  assert.equal(await page.locator('#theme-probe h2').textContent(),'📊 Reports');
   assert.equal(await page.locator('#theme-probe .student-name').textContent(),'⭐ Alex');
   assert.equal(await page.locator('#theme-probe textarea').inputValue(),'🔥 Draft message');
   assert.equal(await page.locator('#theme-probe select').inputValue(),'keep');
@@ -97,7 +98,39 @@ const root=path.resolve(__dirname,'../..');
   const before=await page.locator('#theme-probe').innerHTML();
   await page.evaluate(()=>UIPresentation.refresh(document.getElementById('theme-probe')));
   assert.equal(await page.locator('#theme-probe').innerHTML(),before);
+  await page.evaluate(()=>{document.getElementById('theme-probe').remove();document.getElementById('semantic-colors').remove();});
+  await page.locator('#color-mode-toggle').click();
+  assert.equal(await page.evaluate(()=>UITheme.getMode()),'light');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('eduquest-color-mode')),'light');
+  assert.equal(await page.locator('#color-mode-toggle').getAttribute('aria-label'),'Switch to dark mode');
+  for(const [role,ids] of Object.entries(routes)){
+   await page.evaluate(role=>{currentRole=role;currentUser=AppStore.getSlice(s=>role==='student'?s.students[0]:s.admin);setupSidebar();updateTopbar();},role);
+   for(const width of [390,1440]){
+    await page.setViewportSize({width,height:1000});
+    for(const id of ids){
+     await page.evaluate(id=>navTo(id),id);await page.waitForTimeout(100);
+     assert.ok(await page.locator('#'+id).isVisible());
+     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),role+' light '+id+' overflows at '+width);
+     const header=await page.locator('#topbar').evaluate(el=>getComputedStyle(el).backgroundColor);
+     assert.equal(header,'rgb(246, 246, 246)');
+     if(id==='a-classroom-monitor'){
+      assert.equal(await page.locator('.lm-seat').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(217, 240, 226)');
+      assert.equal(await page.locator('.lm-seat-status-tag').count(),0);
+     }
+     if(['a-classroom-monitor','s-dashboard','a-dashboard'].includes(id)){await page.waitForTimeout(400);await page.screenshot({path:`/workspace/light-${role}-${id}-${width}.png`,fullPage:true});}
+     count++;
+    }
+   }
+  }
+  await page.locator('#color-mode-toggle').click();
+  assert.equal(await page.evaluate(()=>UITheme.getMode()),'dark');
+  assert.equal(await page.locator('#topbar').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(9, 9, 9)');
+  // A fresh boot restores the saved preference without requiring sign-in.
+  await page.evaluate(()=>UITheme.setMode('light'));
+  await page.reload();await page.waitForFunction(()=>window.UITheme);
+  assert.equal(await page.evaluate(()=>UITheme.getMode()),'light');
+  await page.evaluate(()=>UITheme.setMode('dark'));
   assert.deepEqual(errors,[]);
-  console.log(`PASS: ${count} full-app page visits across admin, teacher, student and two widths; offline SVG navigation; user content and attendance metadata preserved; no page errors.`);
+  console.log(`PASS: ${count} full-app page visits across admin, teacher, student and two widths; emoji navigation and persisted dark/light modes; user content and attendance metadata preserved; no page errors.`);
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exit(1)});

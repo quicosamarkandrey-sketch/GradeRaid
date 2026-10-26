@@ -103,3 +103,18 @@ preserved. Dashboard attendance and quiz summary colors follow their numeric
 values; stored statistics and business logic are unchanged. Browser checks
 verify light-card contrast, semantic actions and attendance color alongside
 the existing navigation, user-content and mobile checks.
+
+### Appearance modes and monitor clarity
+
+The top-bar sun/moon button switches the whole app between dark and light modes,
+and saves `eduquest-color-mode` locally. Dark remains the default. Legacy neutral
+CSS and inline colors use reversible neutral tokens; no page-wide image filter is
+applied. White dashboard feature cards keep their own dark text in either mode.
+Semantic green, amber, red and blue adapt to light backgrounds for readable states.
+
+Present seats use a stronger emerald border and tinted fill. The text beneath
+student names is removed; hover titles and accessible seat names retain attendance
+information. Dashed, dotted and double borders still distinguish attendance states.
+Recitation/selection highlights take priority over attendance borders. Shared UI
+icons now use emoji again, including navigation and dashboard decorations; uploaded
+photos, custom content, QR graphics and game art retain their original rendering.

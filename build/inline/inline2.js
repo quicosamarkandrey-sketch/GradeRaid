@@ -87,10 +87,10 @@ function renderStudentDashboard(){
       </div>
       <div class="dash-hero-right">
         <div class="coin-display">
-          <div class="val float"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M15 8h-4a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9 M12 6v12"/></svg> ${st.coins.toLocaleString()}</div>
+          <div class="val float"><span class="eq-emoji" aria-hidden="true">🪙</span> ${st.coins.toLocaleString()}</div>
           <div class="lbl">Coins Available</div>
         </div>
-        <button class="btn btn-orange btn-block" onclick="navTo('s-store')"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 7h12l1 14H5L6 7Z M9 7V5a3 3 0 0 1 6 0v2"/></svg> Visit Armory</button>
+        <button class="btn btn-orange btn-block" onclick="navTo('s-store')"><span class="eq-emoji" aria-hidden="true">🛍️</span> Visit Armory</button>
       </div>
     </div>
     <!-- Combined academic snapshot — same focal card as the XP ring above, not a separate stat-grid -->
@@ -116,7 +116,7 @@ function renderStudentDashboard(){
     if(!notifs.length) return '';
     return `<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px">`+
       notifs.map(n=>`<div class="dashboard-alert" style="background:${n.bg};border:1px solid ${n.border};border-radius:14px;padding:13px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <div style="font-size:24px;flex-shrink:0;animation:achBadgePulse 2s ease-in-out infinite"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18v14H3V5Z M3 5l9 8 9-8"/></svg></div>
+        <div style="font-size:24px;flex-shrink:0;animation:achBadgePulse 2s ease-in-out infinite"><span class="eq-emoji" aria-hidden="true">✉️</span></div>
         <div style="flex:1;min-width:0">
           <div style="font-family:var(--fh);font-size:14px;font-weight:900;color:${n.color}">${n.title}</div>
           <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${n.sub}</div>
@@ -130,7 +130,7 @@ function renderStudentDashboard(){
       <!-- ACTIVE QUESTS -->
       ${pending.length ? `
       <div class="section-header">
-        <svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v15h-7l-1 2-1-2H4V4Z M12 6v15"/></svg>
+        <span class="eq-emoji" aria-hidden="true">📚</span>
         <h2>Active Quests</h2>
         <span class="badge-pill bp-green">${pending.length} available</span>
       </div>
@@ -138,7 +138,7 @@ function renderStudentDashboard(){
         ${pending.slice(0,2).map((q,qi)=>`
         <div class="quest-card" onclick="startQuiz('${q.id}')">
           <div class="quest-img-wrap">
-            <div class="quest-img-placeholder"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v15h-7l-1 2-1-2H4V4Z M12 6v15"/></svg></div>
+            <div class="quest-img-placeholder"><span class="eq-emoji" aria-hidden="true">📚</span></div>
             ${qi===0?'<div class="quest-badge hot">Available</div>':'<div class="quest-badge new">New</div>'}
           </div>
           <div class="quest-body">
@@ -151,13 +151,13 @@ function renderStudentDashboard(){
               </div>
               <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
             </div>
-            <button class="quest-btn primary"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v15h-7l-1 2-1-2H4V4Z M12 6v15"/></svg> Begin Quest</button>
+            <button class="quest-btn primary"><span class="eq-emoji" aria-hidden="true">📚</span> Begin Quest</button>
           </div>
         </div>`).join('')}
       </div>` : `
-      <div class="section-header"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7l1 2 1-2h7v15h-7l-1 2-1-2H4V4Z M12 6v15"/></svg><h2>Active Quests</h2></div>
+      <div class="section-header"><span class="eq-emoji" aria-hidden="true">📚</span><h2>Active Quests</h2></div>
       <div style="text-align:center;padding:48px;background:rgba(35,31,56,0.7);border:1px solid var(--border);border-radius:16px;margin-bottom:24px;backdrop-filter:blur(12px)">
-        <div style="font-size:48px;margin-bottom:12px"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4 4L19 6"/></svg></div>
+        <div style="font-size:48px;margin-bottom:12px"><span class="eq-emoji" aria-hidden="true">✅</span></div>
         <div style="font-family:var(--fh);font-size:16px;font-weight:800;margin-bottom:6px">All Quests Complete!</div>
         <div style="color:var(--text-muted);font-size:13px">Check back when new quests are posted.</div>
       </div>`}
@@ -165,12 +165,12 @@ function renderStudentDashboard(){
       <!-- OVERALL ACTIVITY (Phase 67 — was "Point Activity"; now merges every
            reward/purchase source, not just DB.pointLog, and shows a live
            relative time via window.eqTimeAgo() instead of a frozen string) -->
-      <div class="section-header"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16 M4 12h10 M4 18h16"/></svg><h2>Overall Activity</h2></div>
+      <div class="section-header"><span class="eq-emoji" aria-hidden="true">📊</span><h2>Overall Activity</h2></div>
       <div class="glass-card" style="padding:16px">
         <div class="pt-events">
           ${activityFeed.length ? activityFeed.map(e=>`
           <div class="pt-event">
-            <div class="pt-icon" style="font-size:18px"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16 M4 12h10 M4 18h16"/></svg></div>
+            <div class="pt-icon" style="font-size:18px"><span class="eq-emoji" aria-hidden="true">📊</span></div>
             <div class="pt-delta" style="color:${e.pts>0?'var(--secondary)':e.pts<0?'#ffb4ab':'var(--text-muted)'}">${e.pts>0?'+':''}${e.pts||0}</div>
             <div class="pt-info"><div class="pt-what">${e.label}</div><div class="pt-when">${window.eqTimeAgo(e.createdAt)}</div></div>
           </div>`).join('') : '<div style="color:var(--text-muted);text-align:center;padding:16px;font-size:13px">No activity yet</div>'}
@@ -181,7 +181,7 @@ function renderStudentDashboard(){
     <!-- SIDEBAR COL -->
     <div style="display:flex;flex-direction:column;gap:16px">
       <!-- LEADERBOARD MINI -->
-      <div class="section-header"><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V11h5v10 M9 21V4h6v17 M15 21v-7h5v7"/></svg><h2>Rankings</h2></div>
+      <div class="section-header"><span class="eq-emoji" aria-hidden="true">🏆</span><h2>Rankings</h2></div>
       <div class="glass-card" style="padding:16px">
         ${sorted.slice(0,5).map((s,i)=>{
           const medals=['1','2','3','4','5'];const isMe=s.id===st.id;
@@ -196,7 +196,7 @@ function renderStudentDashboard(){
 
       <!-- QR CODE -->
       <div class="glass-card dash-qr-card">
-        <h3><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h6v6H3V3Z M15 3h6v6h-6V3Z M3 15h6v6H3v-6Z M15 15h2v2h-2z M19 19h2v2h-2z M15 21v-2 M21 15h-2"/></svg> Your QR Code</h3>
+        <h3><span class="eq-emoji" aria-hidden="true">📷</span> Your QR Code</h3>
         <div class="qr-card">
           <div class="qr-svg-wrap">
             <svg width="82" height="82" viewBox="0 0 80 80">
@@ -221,7 +221,7 @@ function renderStudentDashboard(){
 
       <!-- GOALS -->
       <div class="glass-card">
-        <h3><svg class="eq-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z M12 10v4 M10 12h4"/></svg> Active Goals</h3>
+        <h3><span class="eq-emoji" aria-hidden="true">🎯</span> Active Goals</h3>
         <div>
           <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:12px">Perfect Attendance</span><span class="badge-pill bp-green">${st.attendance}%</span></div>
           <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden;margin-bottom:14px"><div style="height:100%;border-radius:20px;width:${st.attendance}%;background:linear-gradient(90deg,var(--secondary),#06b6d4);box-shadow:0 0 8px rgba(78,222,163,.5)"></div></div>

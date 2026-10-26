@@ -1,20 +1,10 @@
 import { uiIcon } from '../../dom.js';
 /* Shared presentation for legacy renderers, across student and staff views.
-   Icons and palette changes affect rendered UI only, never stored records.
+   Emoji and palette changes affect rendered UI only, never stored records.
    New renderers can call refresh(root) directly; observation also covers older
    templates and asynchronous feeds without wrapping DOM or service APIs. */
 ;(function () {
   'use strict';
-  const aliases = {
-    '👥':'users','👤':'users','🧑‍🏫':'users','👨‍🏫':'users','👩‍🏫':'users','🏫':'users',
-    '📊':'chart','📈':'chart','📉':'chart','📋':'calendar','📅':'calendar','🗓️':'calendar','⏰':'calendar','🕐':'calendar',
-    '🎯':'award','🏆':'award','🥇':'award','🥈':'award','🥉':'award','🏅':'award','🎖️':'award','👑':'award','⭐':'award','🌟':'award','✨':'award','💎':'award',
-    '🔥':'flame','💀':'privilege','⚔️':'privilege','⚔':'privilege','🛡️':'privilege','⚡':'chart',
-    '📦':'box','🎁':'box','🎒':'bag','🛍️':'bag','🛒':'bag','🏪':'bag','🍔':'food','🍕':'food','🍎':'food',
-    '📚':'book','📖':'book','📝':'book','✏️':'edit','✉️':'mail','📬':'mail','📨':'mail','📩':'mail','💌':'mail',
-    '🎤':'mic','✅':'check','✔️':'check','✓':'check','❌':'close','❎':'close','⚠️':'warning','🔒':'lock','🔓':'lock',
-    '🗑':'delete','🗑️':'delete','🗄':'box','🗄️':'box','🔁':'refresh','🔍':'search','💾':'save','📷':'camera','🖼️':'image','⚙️':'settings','🔧':'settings','🪑':'chair','🚪':'door','🪟':'box','📡':'chart','🪙':'coin','💰':'coin'
-  };
   const material = {
     "home": "home",
     "groups": "users",
@@ -212,41 +202,69 @@ import { uiIcon } from '../../dom.js';
   for (const [before,after] of Object.entries(hex)) palette.set(triplet(before),triplet(after));
   function neutralize(value) {
     if (/url\(/i.test(value)) return value; // uploaded artwork and SVG data URLs
-    return value.replace(/(#[\da-f]{6})([\da-f]{2})?\b/gi, (value,base,alpha) => {
+    const normalized = value.replace(/(#[\da-f]{6})([\da-f]{2})?\b/gi, (value,base,alpha) => {
       return hex[base.toLowerCase()] ? hex[base.toLowerCase()]+(alpha || '') : value;
     })
       .replace(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/g, (v,r,g,b) => {
         const replacement = palette.get(`${r},${g},${b}`);
         return replacement ? v.slice(0,v.indexOf('(')+1)+replacement : v;
       });
+    const semantic = new Map([['129,184,149','success'],['215,177,107','warning'],['224,147,147','danger'],['140,174,224','info']]);
+    const semanticColor = (r,g,b,alpha) => {
+      const name = semantic.get(`${r},${g},${b}`);
+      if (!name) return null;
+      return alpha === undefined ? `var(--${name})` : `color-mix(in srgb,var(--${name}) ${Number(alpha)*100}%,transparent)`;
+    };
+    const themed = normalized.replace(/#([\da-f]{6})([\da-f]{2})?\b/gi,(original,base,alpha)=>{
+      const values = [0,2,4].map(i=>parseInt(base.slice(i,i+2),16));
+      return semanticColor(...values,alpha === undefined ? undefined : parseInt(alpha,16)/255) || original;
+    }).replace(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([.\d]+))?\s*\)/g,(original,r,g,b,a)=>semanticColor(r,g,b,a)||original);
+    return tonalize(themed);
   }
-  const emoji = /\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?)*/gu;
-  const textLabel = /^(H[1-6]|BUTTON|LABEL|SUMMARY)$/;
-  function decorateText(node) {
-    const el = node.parentElement;
-    if (!el || el.closest(skip+','+art)) return;
-    const value = node.nodeValue;
-    const matches = [...value.matchAll(emoji)];
-    if (!matches.length) return;
-    const iconOnly = !value.replace(emoji,'').trim();
-    const label = textLabel.test(el.tagName) || /(?:icon|emoji|placeholder|badge|label|title|empty|stat|toolbar|btn|button|tab|nav|action|logo|heading|greeting|chip|pill|status)/i.test(el.className);
-    const prefix = matches[0].index === 0 && aliases[matches[0][0]] && /^\s/.test(value.slice(matches[0][0].length));
-    if (!iconOnly && !label && !prefix) return;
-    // Do not rewrite mixed user prose, names, form values or existing media.
-    const fragment = document.createDocumentFragment();
-    let cursor = 0;
-    for (const match of matches) {
-      fragment.append(value.slice(cursor,match.index));
-      const wrapper = document.createElement('span');
-      wrapper.className = 'ui-symbol';
-      wrapper.setAttribute('aria-hidden','true');
-      wrapper.innerHTML = uiIcon(aliases[match[0]] || 'award'); // closed SVG registry
-      fragment.append(wrapper);
-      cursor = match.index + match[0].length;
+  // Legacy renderers contain literal neutral colors. Give them reversible
+  // tokens so both existing and newly rendered pages follow the chosen mode.
+  const tones = new Map();
+  let mode = 'dark';
+  try { if (localStorage.getItem('eduquest-color-mode') === 'light') mode = 'light'; } catch {}
+  function toneValue(shade) { return mode === 'light' ? 255 - shade : shade; }
+  function tone(shade) {
+    const key = '--ui-tone-' + shade;
+    if (!tones.has(shade)) {
+      tones.set(shade,key);
+      document.documentElement.style.setProperty(key,String(toneValue(shade)));
     }
-    fragment.append(value.slice(cursor));
-    node.replaceWith(fragment);
+    return key;
   }
+  function tonalize(value) {
+    if (/url\(/i.test(value)) return value;
+    const neutral = (r,g,b,a) => {
+      if (+r !== +g || +g !== +b) return null;
+      const token = `var(${tone(+r)})`;
+      return `rgb(${token} ${token} ${token}${a === undefined ? '' : ' / '+a})`;
+    };
+    return value.replace(/#([\da-f]{3,8})\b/gi,(original,hex) => {
+      if (![3,4,6,8].includes(hex.length)) return original;
+      if (hex.length < 5) hex = [...hex].map(c=>c+c).join('');
+      const rgb = [0,2,4].map(i=>parseInt(hex.slice(i,i+2),16));
+      return neutral(...rgb,hex.length===8 ? parseInt(hex.slice(6),16)/255 : undefined) || original;
+    }).replace(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([.\d]+))?\s*\)/g,(original,r,g,b,a)=>neutral(r,g,b,a)||original);
+  }
+  function setMode(next, persist = true) {
+    mode = next === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.colorMode = mode;
+    for (const [shade,key] of tones) document.documentElement.style.setProperty(key,String(toneValue(shade)));
+    const button = document.getElementById('color-mode-toggle');
+    if (button) {
+      button.textContent = mode === 'dark' ? '☀️' : '🌙';
+      button.setAttribute('aria-label', 'Switch to ' + (mode === 'dark' ? 'light' : 'dark') + ' mode');
+      button.title = button.getAttribute('aria-label');
+      button.setAttribute('aria-pressed',String(mode === 'light'));
+    }
+    if (persist) try { localStorage.setItem('eduquest-color-mode',mode); } catch {}
+  }
+  document.getElementById('color-mode-toggle')?.addEventListener('click',()=>setMode(mode === 'dark' ? 'light' : 'dark'));
+  setMode(mode,false);
+  window.UITheme = Object.freeze({setMode,getMode:()=>mode});
   function decorateMaterial(el) {
     if (!el?.matches('.material-symbols-outlined') || el.children.length || el.closest(art)) return;
     const name = el.textContent.trim();
@@ -258,7 +276,7 @@ import { uiIcon } from '../../dom.js';
   }
   function refresh(root) {
     if (!root || !document.documentElement.classList.contains('theme-nocturne')) return;
-    if (root.nodeType === Node.TEXT_NODE) { decorateMaterial(root.parentElement); if(root.isConnected)decorateText(root); return; }
+    if (root.nodeType === Node.TEXT_NODE) { decorateMaterial(root.parentElement);  return; }
     if (root.nodeType !== Node.ELEMENT_NODE || root.closest(skip)) return;
     decorateMaterial(root);
     root.querySelectorAll('.material-symbols-outlined').forEach(decorateMaterial);
@@ -267,21 +285,18 @@ import { uiIcon } from '../../dom.js';
       if (el.closest(skip+','+art+',.cb-seat,.lm-seat,.cal-day,.cal-dot,[class*=avatar],[class*=photo],[class*=ts-badge],[class*=title-preview]')) continue;
       for (const property of ['color','background','background-color','border','border-color','border-left','border-right','border-top','border-bottom','box-shadow','text-shadow']) {
         const before = el.style.getPropertyValue(property);
-        const after = neutralize(before);
+        const after = /shadow/.test(property) ? before : neutralize(before);
         if (after !== before) el.style.setProperty(property,after,el.style.getPropertyPriority(property));
       }
     }
-    const walker = document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    nodes.forEach(decorateText);
+
   }
   // Normalize legacy CSS declarations too, including styles injected later by
   // staff tools. CSSOM edits leave selectors, layout, stored palettes and media
   // untouched; custom badge/art rules and attendance states are excluded.
   const styled = new WeakSet();
   function stylesheet(sheet) {
-    if (!sheet || styled.has(sheet)) return;
+    if (!sheet || styled.has(sheet) || sheet.ownerNode?.hasAttribute('data-preserve-theme')) return;
     let rules;
     try { rules = sheet.cssRules; } catch { return; } // cross-origin font sheet
     styled.add(sheet);
@@ -291,7 +306,7 @@ import { uiIcon } from '../../dom.js';
         if (rule.style) {
           for (const property of ['color','background','background-color','border','border-color','box-shadow','text-shadow','--glow','--rc','--rg']) {
             const before = rule.style.getPropertyValue(property);
-            let after = neutralize(before);
+            let after = /shadow/.test(property) ? before : neutralize(before);
             if ((property === 'box-shadow' || property === 'text-shadow') && /^(?:0px|0) (?:0px|0) /.test(before) && after !== before) after = 'none';
             if (after !== before) rule.style.setProperty(property,after,rule.style.getPropertyPriority(property));
           }

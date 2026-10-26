@@ -60,7 +60,7 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
     assert.ok(Math.abs(result.height-beforeDesktop)<1,'Desktop layout changed: '+id);
    }
    if(width===390){
-    if(id!=='s-dashboard')assert.equal(await page.locator('#'+id).evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),false,'Decorative emoji remains on '+id);
+    if(id!=='s-dashboard')assert.equal(await page.locator('#'+id).evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),true,'Emoji icons missing on '+id);
     const after=result.height;
     await page.evaluate(()=>document.querySelector('link[href*="student-mobile"]').disabled=true);
     const before=await page.locator('#'+id).evaluate(el=>el.getBoundingClientRect().height);
@@ -77,7 +77,6 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
   await page.evaluate(tab=>progSwitchTab(tab),tab);
   if(await page.evaluate(()=>document.documentElement.scrollWidth>321)) console.log(tab,await page.locator('#s-attendance .prog-panel.active').evaluate(el=>[...el.querySelectorAll('*')].filter(n=>n.getBoundingClientRect().right>321).slice(0,8).map(n=>({cls:n.className,style:n.getAttribute('style'),width:n.getBoundingClientRect().width}))));
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=321),'Progress tab overflow: '+tab);
-  assert.equal(await page.locator('#s-attendance .prog-panel.active').evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),false,'Progress emoji: '+tab);
  }
  await page.evaluate(()=>document.querySelectorAll('.page').forEach(el=>el.style.display=el.id==='s-inventory'?'block':'none'));
  await page.locator('#inv-search').fill('no-such-item');assert.equal(await page.locator('.inv-card').count(),0);
