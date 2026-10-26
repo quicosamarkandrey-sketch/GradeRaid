@@ -277,7 +277,9 @@ const LMView = window.LMView = (() => {
     const canvas = document.getElementById('lm-canvas');
     if (!wrap || !canvas) return;
     if (!wrap.clientWidth || !wrap.clientHeight) {
-      if (_lmMounted) requestAnimationFrame(_lmScaleCanvas);
+      // Routing reveals the page after rendering. Retry once without polling
+      // forever when a later resize happens while this page is hidden.
+      requestAnimationFrame(() => {if (wrap.clientWidth && wrap.clientHeight) LMView.fitCanvas();});
       return;
     }
     LMView.fitCanvas();
