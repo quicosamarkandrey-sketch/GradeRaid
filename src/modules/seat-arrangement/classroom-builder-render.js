@@ -271,6 +271,10 @@ export function _cbRenderCanvas() {
     const el = document.createElement('div');
     el.className  = 'cb-seat' + (seat.isLocked ? ' locked' : '') + (_cbSelectedSeatIds.has(seat.id) ? ' selected' : '');
     el.dataset.seatId = seat.id;
+    el.dataset.studentId = vm.studentId || '';
+    const displaySize=typeof _cbEditorSeatSize !== 'undefined' ? _cbEditorSeatSize : 120;
+    el.style.width=displaySize+'px';el.style.height=displaySize+'px';
+    if (_cbMode === 'assign') {el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label',vm.studentId ? `Select ${vm.studentName || 'student'} to move or swap` : 'Empty seat: move selected student here');}
     el.dataset.attendanceStatus = vm.attendanceStatus || 'Unscanned';
     el.style.left     = seat.xCoord + 'px';
     el.style.top      = seat.yCoord + 'px';
@@ -335,16 +339,14 @@ export function _cbRenderCanvas() {
         el.title = (seat.isLocked ? '🔒 Locked — ' : '') + 'Drag to move/swap, or drop on the sidebar to unseat ' + (vm.studentName || '');
         el.addEventListener('dragstart', e => _cbSeatOccupantDragStart(e, seat.id, vm.studentId));
         el.addEventListener('dragend',   _cbSeatOccupantDragEnd);
-        // Click is kept as a quick one-tap unassign for non-drag users.
-        el.addEventListener('click', (e) => {
-          if (e.target.closest('.cb-lock-btn')) return;
-          _cbUnassign(seat.id);
-        });
+
       }
     }
 
     canvas.appendChild(el);
   });
+
+  window.CBPlacement?.sync();
 
   // Show/hide empty state.
   const empty = document.getElementById('cb-empty');
@@ -497,9 +499,9 @@ export function _cbStudentChip(student, isAssigned, log) {
   const chipColor  = isAssigned ? 'rgba(255,255,255,.03)' : 'rgba(255,255,255,.04)';
   return `
     <div class="cb-student-chip ${isAssigned?'assigned':''}"
-      draggable="${isAssigned?'false':'true'}"
+      draggable="${isAssigned?'false':'true'}" tabindex="0" role="button"
       data-student-id="${_esc(student.id)}"
-      title="${isAssigned?'Already seated — drag them off their seat on the canvas to unseat':'Drag to a seat'}">
+      title="${isAssigned?'Select to move or swap':'Select or drag to a seat'}">
       <div class="cb-chip-avatar" style="background:${_cssColor(student.color)}">${_esc(student.init||'?')}</div>
       <div class="cb-chip-info">
         <div class="cb-chip-name">${_esc(student.name||student.displayName||student.id)}</div>

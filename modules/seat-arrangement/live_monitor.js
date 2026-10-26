@@ -460,6 +460,7 @@ body.lm-kiosk-mode .lm-page{height:100vh!important}
 
   window.unmountClassroomMonitor = function () {
     _lmMounted = false;
+    window.LMView?.cleanup();
     _lmClearCycle();
     _lmTargetedSeatIds.clear();
     _lmStopRecitationSession(); // safe no-op if a session was never started

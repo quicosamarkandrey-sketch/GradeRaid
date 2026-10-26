@@ -1,6 +1,8 @@
 // Local build-mode editing tools. Server writes remain in ClassroomService.
 let _cbEditorSeatSize = 120;
 let _cbEditorSelectMode = false;
+let _cbEditorSnap = false;
+let _cbEditorGrid = 20;
 const _cbEditorUndo = [];
 const _cbEditorRedo = [];
 function _cbEditorSnapshot() {
@@ -27,23 +29,37 @@ function _cbEditorToolbar() {
   const page = document.getElementById('a-classroom');
   if (!page) return;
   let bar = page.querySelector('.cb-editor-tools');
-  if (_cbMode !== 'build') { if (bar) bar.remove(); return; }
+  if (!['build','assign'].includes(_cbMode)) { if(bar)bar.remove();return; }
   if (!bar) {
     bar = document.createElement('div');
     bar.className = 'cb-toolbar cb-editor-tools';
     page.querySelector('.cb-toolbar')?.after(bar);
   }
+  if (_cbMode === 'assign') {window.CBPlacement?.toolbar(bar);return;}
+  const count = _cbSelectedSeatIds.size;
+  const canvas = document.getElementById('cb-canvas');
+  canvas?.classList.toggle('cb-snap-grid',_cbEditorSnap);
+  canvas?.style.setProperty('--cb-grid-size',_cbEditorGrid+'px');
   bar.innerHTML = `
     <button class="btn btn-ghost btn-sm" data-editor="undo" ${_cbEditorUndo.length ? '' : 'disabled'}>↶ Undo</button>
     <button class="btn btn-ghost btn-sm" data-editor="redo" ${_cbEditorRedo.length ? '' : 'disabled'}>↷ Redo</button>
     <button class="btn btn-ghost btn-sm" data-editor="select" aria-pressed="${_cbEditorSelectMode}">${_cbEditorSelectMode ? '✓ Select seats: On' : 'Select multiple seats'}</button>
     <button class="btn btn-ghost btn-sm" data-editor="fit">Fit all seats</button>
+    <button class="btn btn-ghost btn-sm" data-editor="snap" aria-pressed="${_cbEditorSnap}">Snap to grid: ${_cbEditorSnap ? 'On' : 'Off'}</button>
+    <label>Grid <select aria-label="Grid spacing" data-editor="grid">${[10,20,40].map(n=>`<option value="${n}" ${n===_cbEditorGrid?'selected':''}>${n}px</option>`).join('')}</select></label>
+    <label>${count} selected <select aria-label="Align selected seats" data-editor="align" ${count<2?'disabled':''}>
+      <option value="">Align selected…</option><option value="left">Align left</option><option value="right">Align right</option><option value="top">Align top</option><option value="bottom">Align bottom</option><option value="center-x">Align centers vertically</option><option value="center-y">Align centers horizontally</option>
+      <option value="space-x" ${count<3?'disabled':''}>Space evenly horizontally</option><option value="space-y" ${count<3?'disabled':''}>Space evenly vertically</option>
+    </select></label>
     <label>Seat display size <input aria-label="Seat display size" type="range" min="40" max="120" step="10" value="${_cbEditorSeatSize}"> <output>${_cbEditorSeatSize}px</output></label>
     <span style="font-size:12px">Drag empty space to select. Drag a selected seat to move the group. Undo applies to unsaved edits.</span>`;
   bar.querySelector('[data-editor="undo"]').onclick = () => _cbEditorRestore(_cbEditorUndo, _cbEditorRedo);
   bar.querySelector('[data-editor="redo"]').onclick = () => _cbEditorRestore(_cbEditorRedo, _cbEditorUndo);
   bar.querySelector('[data-editor="select"]').onclick = () => { _cbEditorSelectMode = !_cbEditorSelectMode; _cbEditorToolbar(); };
   bar.querySelector('[data-editor="fit"]').onclick = _cbEditorFit;
+  bar.querySelector('[data-editor="snap"]').onclick=()=>{_cbEditorSnap=!_cbEditorSnap;_cbEditorToolbar();};
+  bar.querySelector('[data-editor="grid"]').onchange=e=>{_cbEditorGrid=Number(e.target.value);_cbEditorToolbar();};
+  bar.querySelector('[data-editor="align"]').onchange=e=>_cbEditorAlign(e.target.value);
   bar.querySelector('input').oninput = e => {
     _cbEditorSeatSize = Number(e.target.value);
     bar.querySelector('output').textContent = _cbEditorSeatSize + 'px';
@@ -64,6 +80,7 @@ for (const name of ['_cbAddSeat', '_cbDeleteSeat', '_cbRotateSeat', '_cbDuplicat
 for (const name of ['_cbOnClassChange', '_cbOnLayoutChange', '_cbNewLayout', '_cbDeleteLayout', '_cbSave', '_cbSubmitBlueprintWizard']) {
   const original = window[name];
   window[name] = function (...args) {
+    window.CBPlacement?.clear();
     _cbEditorUndo.length = _cbEditorRedo.length = 0;
     _cbEditorToolbar();
     return original.apply(this, args);
@@ -107,6 +124,7 @@ function _cbEditorFinish(cancel) {
   }
   if (!cancel && !g.moved && !g.seats) _cbSelectedSeatIds.clear();
   g.box?.remove();
+  g.canvas.querySelectorAll('.cb-snap-guide').forEach(el=>el.remove());
   if (g.canvas.hasPointerCapture?.(g.pointerId)) g.canvas.releasePointerCapture(g.pointerId);
   _cbRenderCanvas();
   _cbEditorToolbar();
@@ -138,6 +156,17 @@ document.addEventListener('pointermove', e => {
     const half = _cbEditorSeatSize / 2;
     g.dx = Math.max(half - Math.min(...seats.map(s => s.xCoord)), Math.min(p.x - g.start.x, CB_CANVAS_W - half - Math.max(...seats.map(s => s.xCoord))));
     g.dy = Math.max(half - Math.min(...seats.map(s => s.yCoord)), Math.min(p.y - g.start.y, CB_CANVAS_H - half - Math.max(...seats.map(s => s.yCoord))));
+    g.canvas.querySelectorAll('.cb-snap-guide').forEach(el=>el.remove());
+    if (_cbEditorSnap) {
+      const anchor=seats.find(s=>s.id===g.seatId)||seats[0];
+      for (const [axis,delta,limit] of [['xCoord','dx',CB_CANVAS_W],['yCoord','dy',CB_CANVAS_H]]) {
+        let target=Math.round((anchor[axis]+g[delta])/_cbEditorGrid)*_cbEditorGrid;
+        const neighbor=_cbLocalSeats.filter(s=>!g.ids.has(s.id)).sort((a,b)=>Math.abs(a[axis]-target)-Math.abs(b[axis]-target))[0];
+        if(neighbor && Math.abs(neighbor[axis]-target)<=6) target=neighbor[axis];
+        g[delta]=Math.max(half-Math.min(...seats.map(s=>s[axis])),Math.min(target-anchor[axis],limit-half-Math.max(...seats.map(s=>s[axis]))));
+        const guide=document.createElement('div');guide.className='cb-snap-guide '+(axis==='xCoord'?'vertical':'horizontal');guide.style[axis==='xCoord'?'left':'top']=anchor[axis]+g[delta]+'px';g.canvas.append(guide);
+      }
+    }
     g.canvas.querySelectorAll('.cb-seat').forEach(el => {
       const seat = seats.find(s => s.id === el.dataset.seatId);
       if (seat) { el.style.left = seat.xCoord + g.dx + 'px'; el.style.top = seat.yCoord + g.dy + 'px'; el.style.opacity = '.7'; }
@@ -189,5 +218,127 @@ window.addEventListener('blur', () => _cbEditorFinish(true));
 const _cbEditorOriginalUnmount = window.unmountClassroomBuilder;
 window.unmountClassroomBuilder = function () {
   _cbEditorFinish(true);
+  window.CBPlacement?.clear();
   return _cbEditorOriginalUnmount();
 };
+
+function _cbEditorAlign(action) {
+  const seats=_cbLocalSeats.filter(s=>_cbSelectedSeatIds.has(s.id));
+  if(seats.length<2 || !action)return;
+  const before=_cbEditorSnapshot();
+  const axis=['left','right','center-x','space-x'].includes(action)?'xCoord':'yCoord';
+  const values=seats.map(s=>s[axis]), min=Math.min(...values), max=Math.max(...values);
+  if(action.startsWith('space-')) {
+    if(seats.length<3)return;
+    seats.sort((a,b)=>a[axis]-b[axis]).forEach((s,i)=>s[axis]=Math.round(min+(max-min)*i/(seats.length-1)));
+  } else {
+    const target=action==='left'||action==='top'?min:action==='right'||action==='bottom'?max:Math.round(values.reduce((a,b)=>a+b,0)/values.length);
+    seats.forEach(s=>s[axis]=target);
+  }
+  _cbEditorRemember(before);_cbRenderCanvas();_cbEditorToolbar();
+}
+
+// Assign-mode pointer and keyboard controls share the existing atomic server RPC.
+window.CBPlacement = (() => {
+  let selected = null, gesture = null, busy = false, ignoreClickUntil = 0;
+  function student(id) {return (AppStore.getState().students || []).find(s=>s.id === id);}
+  function name(id) {const s=student(id);return s?.name || s?.displayName || 'Student';}
+  function clear() { selected=null;cancelGesture();sync(); }
+  function validSelection() {
+    if (selected && (selected.layoutId !== _cbLayoutId || _cbMode !== 'assign')) selected=null;
+  }
+  function sync() {
+    validSelection();
+    if (_cbMode !== 'assign') cancelGesture();
+    document.querySelectorAll('#cb-canvas .cb-seat').forEach(el=>el.classList.toggle('cb-assignment-selected',el.dataset.studentId === selected?.studentId));
+    const status=document.getElementById('cb-placement-status');
+    if(status) status.textContent=busy ? 'Saving assignment…' : selected ? `${name(selected.studentId)} selected. Choose another seat to move or swap.` : 'Drag a student onto another seat to swap, or select a student and then a destination. Changes save immediately.';
+    document.querySelectorAll('[data-placement="cancel"],[data-placement="unseat"]').forEach(b=>b.disabled=!selected || busy);
+  }
+  function toolbar(bar) {
+    validSelection();
+    bar.innerHTML='<span id="cb-placement-status" role="status" aria-live="polite"></span><button class="btn btn-ghost" data-placement="cancel">Cancel selection</button><button class="btn btn-ghost" data-placement="unseat">Return to unassigned</button>';
+    bar.querySelector('[data-placement="cancel"]').onclick=clear;
+    bar.querySelector('[data-placement="unseat"]').onclick=()=>move(null);
+    sync();
+  }
+  async function move(targetSeatId) {
+    validSelection();
+    if (!selected || busy || !_cbLayoutId) return;
+    const source=selected, layoutId=_cbLayoutId;
+    const currentSeat=(AppStore.getState().seatAssignments || []).find(a=>a.layoutId===layoutId && a.studentId===source.studentId)?.seatId;
+    if(targetSeatId && currentSeat === targetSeatId){clear();return;}
+    busy=true;sync();
+    try {
+      const result=await ClassroomService.manualMoveStudent(source.studentId,targetSeatId,layoutId);
+      if(!result.ok) {toast(result.error || 'Could not save assignment.', 'var(--error)');return;}
+      selected=null;
+      toast(result.swapped ? 'Students swapped' : targetSeatId ? 'Student moved' : 'Student returned to unassigned pool');
+    } catch {toast('Could not save assignment. Please try again.', 'var(--error)');}
+    finally {
+      busy=false;
+      if(_cbMounted && _cbLayoutId===layoutId && _cbMode==='assign') {_cbRenderCanvas();_cbRenderSidebar();sync();}
+    }
+  }
+  function choose(el) {
+    if(busy)return;
+    validSelection();
+    if(el.matches('.cb-seat') && selected) {move(el.dataset.seatId);return;}
+    const studentId=el.dataset.studentId;
+    if(!studentId)return;
+    const assignment=(AppStore.getState().seatAssignments||[]).find(a=>a.layoutId===_cbLayoutId && a.studentId===studentId);
+    selected={studentId,sourceSeatId:assignment?.seatId||null,layoutId:_cbLayoutId};sync();
+  }
+  function targetAt(x,y) {return document.elementFromPoint(x,y)?.closest('#cb-canvas .cb-seat,#cb-pool-zone');}
+  function cancelGesture() {
+    if (gesture?.moved) ignoreClickUntil=Date.now()+600;
+    if(gesture?.source?.hasPointerCapture?.(gesture.id)) gesture.source.releasePointerCapture(gesture.id);
+    gesture?.ghost?.remove();gesture=null;
+    document.querySelectorAll('.cb-swap-target').forEach(el=>el.classList.remove('cb-swap-target'));
+  }
+  document.addEventListener('pointerdown',e=>{
+    if(_cbMode!=='assign' || busy || e.button!==0 || e.target.closest('button'))return;
+    const el=e.target.closest('#cb-canvas .cb-seat,#cb-sidebar .cb-student-chip');
+    if(!el?.dataset.studentId)return;
+    gesture={id:e.pointerId,source:el,studentId:el.dataset.studentId,layoutId:_cbLayoutId,x:e.clientX,y:e.clientY,moved:false};
+    el.setPointerCapture(e.pointerId);
+  },true);
+  document.addEventListener('dragstart',e=>{if(_cbMode==='assign'&&e.target.closest('.cb-seat,.cb-student-chip'))e.preventDefault();},true);
+  document.addEventListener('pointermove',e=>{
+    const g=gesture;if(!g||g.id!==e.pointerId)return;
+    if(Math.hypot(e.clientX-g.x,e.clientY-g.y)<7 && !g.moved)return;
+    g.moved=true;e.preventDefault();
+    if(!g.ghost){g.ghost=document.createElement('div');g.ghost.className='cb-assignment-ghost';document.body.append(g.ghost);}
+    const target=targetAt(e.clientX,e.clientY);
+    document.querySelectorAll('.cb-swap-target').forEach(el=>el.classList.remove('cb-swap-target'));
+    target?.classList.add('cb-swap-target');
+    const same=target?.dataset.studentId===g.studentId;
+    const destination=target?.matches('#cb-pool-zone') ? 'Return to unassigned pool' : target ? same ? 'Current seat' : target.dataset.studentId ? `Swap with ${name(target.dataset.studentId)}` : 'Move to empty seat' : 'Choose a seat';
+    g.ghost.textContent=`${name(g.studentId)} · ${destination}`;
+    g.ghost.style.left=Math.max(8,Math.min(innerWidth-240,e.clientX+16))+'px';g.ghost.style.top=Math.max(8,Math.min(innerHeight-60,e.clientY+16))+'px';
+  },{capture:true,passive:false});
+  document.addEventListener('pointerup',e=>{
+    const g=gesture;if(!g||g.id!==e.pointerId)return;
+    const target=targetAt(e.clientX,e.clientY), moved=g.moved;
+    cancelGesture();
+    if(moved){
+      ignoreClickUntil=Date.now()+600;
+      if(target && _cbMode==='assign' && g.layoutId===_cbLayoutId){selected={studentId:g.studentId,sourceSeatId:g.source.dataset.seatId||null,layoutId:g.layoutId};move(target.matches('#cb-pool-zone')?null:target.dataset.seatId);}
+    }
+  },true);
+  document.addEventListener('pointercancel',()=>cancelGesture(),true);
+  window.addEventListener('blur',cancelGesture);
+  document.addEventListener('click',e=>{
+    if(_cbMode!=='assign' || e.target.closest('button'))return;
+    const el=e.target.closest('#cb-canvas .cb-seat,#cb-sidebar .cb-student-chip');
+    if(!el)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    if(Date.now()>=ignoreClickUntil)choose(el);
+  },true);
+  document.addEventListener('keydown',e=>{
+    if(!_cbMounted || _cbMode!=='assign')return;
+    if(e.key==='Escape'){clear();return;}
+    if((e.key==='Enter'||e.key===' ')&&e.target.matches('#cb-canvas .cb-seat,#cb-sidebar .cb-student-chip')){e.preventDefault();choose(e.target);}
+  });
+  return {toolbar,sync,clear};
+})();

@@ -47,6 +47,112 @@
 
 'use strict';
 
+// View-only state: filters never change attendance or the random picker pool.
+const LMView = window.LMView = (() => {
+  const view = {projection:false, scores:false, filter:'All', zoom:1, panX:0, panY:0, key:null, kiosk:null};
+  let gesture = null;
+  const group = status => ['Early','On Time','Present'].includes(status) ? 'Present' : ['Late','Absent','Excused'].includes(status) ? status : 'Unscanned';
+  function controls() {
+    return `<div class="lm-view-tools" role="group" aria-label="Monitor display controls">
+      <button class="btn btn-ghost" data-lm-action="projection" aria-pressed="${view.projection}">${view.projection ? 'Exit projection view' : 'Projection view'}</button>
+      <button class="btn btn-ghost" data-lm-action="fit">Center & fit seats</button>
+      <span class="lm-zoom-controls"><button class="btn btn-ghost" data-lm-action="out" aria-label="Zoom out">−</button>
+      <output id="lm-zoom-label" aria-label="Zoom relative to fit">100%</output>
+      <button class="btn btn-ghost" data-lm-action="in" aria-label="Zoom in">+</button></span>
+      <label><input type="checkbox" id="lm-show-scores" ${view.scores ? 'checked' : ''}> Show scores in projection</label>
+      <span class="lm-pan-hint">Drag empty space to pan</span>
+    </div><div class="lm-attendance-filters" id="lm-attendance-filters" role="group" aria-label="Highlight attendance"></div>
+    <div class="lm-filter-summary" id="lm-filter-summary" role="status" aria-live="polite"></div>`;
+  }
+  function stats() {
+    const state = AppStore.getState(), today = isoDate();
+    const roster = (state.students || []).filter(s=>(s.classId || 'default-class') === _lmClassId);
+    const byStudent = new Map((state.attendanceLogs || []).filter(l=>l.classId === _lmClassId && l.logDate === today).map(l=>[l.studentId,l.status]));
+    const counts = {All:roster.length,Present:0,Late:0,Absent:0,Excused:0,Unscanned:0};
+    roster.forEach(s=>counts[group(byStudent.get(s.id))]++);
+    return counts;
+  }
+  function highlight() {
+    const seats = [...document.querySelectorAll('#lm-canvas .lm-seat')];
+    let matched = 0;
+    seats.forEach(el=>{
+      const matches = !!el.dataset.studentId && (view.filter === 'All' || group(el.dataset.attendanceStatus) === view.filter);
+      el.classList.toggle('lm-filter-muted',view.filter !== 'All' && !matches);
+      el.classList.toggle('lm-filter-match',view.filter !== 'All' && matches);
+      if (matches) matched++;
+    });
+    const summary = document.getElementById('lm-filter-summary');
+    if (summary) {
+      const counts = stats(), total = counts[view.filter];
+      summary.textContent = view.filter === 'All' ? 'Showing all seats · Attendance highlights do not change who can be picked.' : `${view.filter === 'Unscanned' ? 'Not checked in' : view.filter}: ${matched} seated · ${Math.max(0,total-matched)} without a seat. Highlight only; picker eligibility stays unchanged.`;
+    }
+  }
+  function filters() {
+    const bar = document.getElementById('lm-attendance-filters');
+    if (!bar) return;
+    bar.innerHTML = Object.entries(stats()).map(([key,count])=>`<button type="button" class="lm-attendance-chip" data-status="${key}" aria-pressed="${view.filter === key}"><span>${key === 'Unscanned' ? 'Not checked in' : key}</span><strong>${count}</strong></button>`).join('');
+    bar.querySelectorAll('button').forEach(button=>button.onclick=()=>{view.filter = view.filter === button.dataset.status ? 'All' : button.dataset.status;filters();});
+    highlight();
+  }
+  function applyMode() {
+    document.body.classList.toggle('lm-projection-mode',view.projection);
+    document.body.classList.toggle('lm-private-scores',view.projection && !view.scores);
+    document.querySelector('.lm-page')?.classList.toggle('lm-projection',view.projection);
+  }
+  function fitCanvas() {
+    const canvas = document.getElementById('lm-canvas'), wrap = document.getElementById('lm-canvas-wrap');
+    if (!canvas || !wrap || wrap.clientWidth <= 0 || wrap.clientHeight <= 0) return;
+    const seats = [...canvas.querySelectorAll('.lm-seat')];
+    const points = seats.map(el=>({x:parseFloat(el.style.left),y:parseFloat(el.style.top)})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+    const left = points.length ? Math.min(...points.map(p=>p.x))-90 : 0;
+    const top = points.length ? Math.min(...points.map(p=>p.y))-90 : 0;
+    const right = points.length ? Math.max(...points.map(p=>p.x))+90 : CB_CANVAS_W;
+    const bottom = points.length ? Math.max(...points.map(p=>p.y))+90 : CB_CANVAS_H;
+    const base = Math.max(.03,Math.min(1.6,(wrap.clientWidth-40)/(right-left),(wrap.clientHeight-40)/(bottom-top)));
+    const scale = base * view.zoom;
+    const x = wrap.clientWidth/2-(left+right)/2*scale+view.panX;
+    const y = wrap.clientHeight/2-(top+bottom)/2*scale+view.panY;
+    canvas.style.transform = `translate(${x}px,${y}px) scale(${scale})`;
+    canvas.style.transformOrigin = '0 0';
+    const label = document.getElementById('lm-zoom-label');
+    if (label) label.textContent = Math.round(view.zoom*100)+'%';
+  }
+  function reset() { view.zoom=1;view.panX=0;view.panY=0;fitCanvas(); }
+  function mount() {
+    const key = `${_lmClassId}:${_lmLayoutId}`;
+    if (key !== view.key) {view.key=key;view.zoom=1;view.panX=0;view.panY=0;view.filter='All';}
+    if (view.kiosk !== _lmKioskMode) {view.kiosk=_lmKioskMode;view.zoom=1;view.panX=0;view.panY=0;}
+    document.querySelectorAll('[data-lm-action]').forEach(button=>button.onclick=()=>{
+      const action=button.dataset.lmAction;
+      if (action === 'projection') {
+        view.projection=!view.projection;applyMode();reset();
+        button.textContent=view.projection ? 'Exit projection view' : 'Projection view';button.setAttribute('aria-pressed',String(view.projection));
+      } else if (action === 'fit') reset();
+      else {view.zoom=Math.max(.5,Math.min(3,view.zoom+(action==='in'?.15:-.15)));fitCanvas();}
+    });
+    const checkbox=document.getElementById('lm-show-scores');
+    if (checkbox) checkbox.onchange=()=>{view.scores=checkbox.checked;applyMode();};
+    const wrap=document.getElementById('lm-canvas-wrap');
+    if (wrap) {
+      wrap.onpointerdown=e=>{
+        if (e.button!==0 || e.target.closest('.lm-seat,button,input,select')) return;
+        gesture={id:e.pointerId,x:e.clientX,y:e.clientY,panX:view.panX,panY:view.panY};
+        wrap.setPointerCapture(e.pointerId);wrap.classList.add('lm-panning');e.preventDefault();
+      };
+      wrap.onpointermove=e=>{if(!gesture||e.pointerId!==gesture.id)return;view.panX=gesture.panX+e.clientX-gesture.x;view.panY=gesture.panY+e.clientY-gesture.y;fitCanvas();};
+      wrap.onpointerup=wrap.onpointercancel=e=>{if(gesture?.id!==e.pointerId)return;gesture=null;wrap.classList.remove('lm-panning');};
+    }
+    applyMode();filters();requestAnimationFrame(fitCanvas);
+  }
+  function cleanup() {gesture=null;view.projection=false;view.scores=false;view.key=null;document.body.classList.remove('lm-projection-mode','lm-private-scores');}
+  document.addEventListener('keydown',e=>{
+    if (e.key!=='Escape' || !document.getElementById('a-classroom-monitor')?.classList.contains('active')) return;
+    if (view.projection) {view.projection=false;applyMode();document.querySelector('[data-lm-action="projection"]')?.setAttribute('aria-pressed','false');const b=document.querySelector('[data-lm-action="projection"]');if(b)b.textContent='Projection view';reset();}
+    else if (_lmKioskMode) window._lmToggleKioskMode();
+  });
+  return {controls,mount,fitCanvas,highlight,filters,cleanup};
+})();
+
   function _lmRender(page, classIds, state) {
     _lmClearCycle();
     const layouts = (state.classroomLayouts || []).filter(l => l.classId === _lmClassId);
@@ -109,6 +215,7 @@
           ` : ''}
         </div>
 
+        ${LMView.controls()}
         <div class="lm-workspace">
           <div class="lm-canvas-wrap" id="lm-canvas-wrap">
             <div class="lm-canvas" id="lm-canvas"></div>
@@ -120,6 +227,7 @@
 
     _lmRenderCanvas();
     _lmRenderSidebar();
+    LMView.mount();
     _lmScaleCanvas();
     if (!_lmResizeListenerAttached) {
       window.addEventListener('resize', _lmScaleCanvas);
@@ -131,25 +239,11 @@
     const wrap   = document.getElementById('lm-canvas-wrap');
     const canvas = document.getElementById('lm-canvas');
     if (!wrap || !canvas) return;
-    // Fill the available space instead of capping at native 1200x800 size.
-    // The old `Math.min(1, ...)` cap meant this screen — which exists
-    // specifically to be displayed/projected — could never render any
-    // bigger than its native pixel size, so on a large monitor most of the
-    // screen just sat empty. Scale up (or down) to fit both width and
-    // height of whatever room the container actually has.
-    const scaleW = (wrap.clientWidth  - 24) / CB_CANVAS_W;
-    const scaleH = (wrap.clientHeight - 24) / CB_CANVAS_H;
-    const scale  = scaleH > 0 ? Math.min(scaleW, scaleH) : scaleW;
-    // Same "mounted while the page is still display:none" issue as the
-    // Builder (nav.js renders before showPage() makes the page visible) —
-    // self-heal by retrying next frame instead of committing scale(0)/NaN.
-    if (!isFinite(scale) || scale <= 0) {
-      requestAnimationFrame(_lmScaleCanvas);
+    if (!wrap.clientWidth || !wrap.clientHeight) {
+      if (_lmMounted) requestAnimationFrame(_lmScaleCanvas);
       return;
     }
-    canvas.style.transform = `scale(${scale})`;
-    canvas.style.transformOrigin = 'top left';
-    wrap.style.minHeight = (CB_CANVAS_H * scale + 24) + 'px';
+    LMView.fitCanvas();
   }
 
   // ── Canvas (read-only seating map) ───────────────────────────────────────────
@@ -240,6 +334,7 @@
 
       canvas.appendChild(el);
     });
+    LMView.highlight();
   }
 
   // ── Sidebar: Scoreboard + Arrival Feed (Phase 1/2, unchanged) ───────────────
@@ -266,14 +361,6 @@
     const logs    = (state.attendanceLogs || [])
       .filter(l => l.classId === _lmClassId && l.logDate === today);
 
-    const counts = { Present: 0, Late: 0, Absent: 0, Excused: 0 };
-    logs.forEach(l => {
-      if (l.status === 'Early' || l.status === 'On Time') counts.Present++;
-      else if (l.status === 'Late')    counts.Late++;
-      else if (l.status === 'Absent')  counts.Absent++;
-      else if (l.status === 'Excused') counts.Excused++;
-    });
-
     // Arrival feed: every log with a scannedAt timestamp today, newest first.
     const feedLogs = logs
       .filter(l => l.scannedAt)
@@ -286,24 +373,6 @@
     sidebar.innerHTML = `
       ${_lmOverridePanelHtml(roster, { collapsible: false })}
 
-      <div class="lm-scoreboard">
-        <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:var(--monitor-present,#48d597)">${counts.Present}</div>
-          <div class="lm-stat-label">Present</div>
-        </div>
-        <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:var(--warning,#d7b16b)">${counts.Late}</div>
-          <div class="lm-stat-label">Late</div>
-        </div>
-        <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:var(--danger,#e09393)">${counts.Absent}</div>
-          <div class="lm-stat-label">Absent</div>
-        </div>
-        <div class="lm-stat-card">
-          <div class="lm-stat-num" style="color:var(--info,#8caee0)">${counts.Excused}</div>
-          <div class="lm-stat-label">Excused</div>
-        </div>
-      </div>
 
       <div class="lm-feed-header">Arrival Feed</div>
       <div class="lm-feed" id="lm-feed">

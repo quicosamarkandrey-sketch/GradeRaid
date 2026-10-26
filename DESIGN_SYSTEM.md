@@ -119,3 +119,28 @@ Recitation/selection highlights take priority over attendance borders. Shared UI
 icons use emoji for dashboard decorations and other controls, while sidebar
 navigation and sign-out use local line icons in both themes. Uploaded photos,
 custom content, QR graphics and game art retain their original rendering.
+
+### Classroom interaction controls
+
+- Live Monitor attendance chips highlight matching seats; All clears the highlight.
+  Totals include the whole class, and the status line identifies students without
+  a seat. These display filters never alter attendance records or picker eligibility.
+- Projection view hides the staff sidebar and individual scores by default. The
+  Show scores checkbox explicitly reveals them. Escape exits projection, then
+  fullscreen. Leaving Live Monitor clears its projection privacy classes.
+- Fullscreen and viewport resize fit the bounds of the actual seats. Center & fit
+  resets zoom/pan; plus/minus adjust size, and dragging empty space pans the view.
+  Viewing transformations never change stored seat positions.
+- Build mode offers optional 10/20/40px grid snapping, visible drag guides, alignment
+  for two or more selected seats, and even spacing for three or more. These edits
+  participate in the existing undo/redo history and save through the existing Save.
+- Assign mode supports pointer dragging on mouse/touch, with a destination preview,
+  and select-then-select moves/swaps using click, Enter or Space. Selecting a student
+  no longer unseats them. Return to unassigned is explicit. Assignments save
+  immediately through the existing atomic manualMoveStudent RPC; failed saves
+  retain the current assignments. Build positions remain unchanged.
+
+Validation: `node tests/browser/classroom-tools.cjs` boots the real app offline,
+intercepts RPC calls with fixture responses, and checks these interactions without
+writing to a hosted backend. The existing application-theme and seating-editor
+checks cover themes, role routes and the earlier multi-selection/history controls.
