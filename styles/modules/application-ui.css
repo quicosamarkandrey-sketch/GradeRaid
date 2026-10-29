@@ -1,0 +1,91 @@
+/* Shared product foundation. Uses theme tokens directly; never transforms art. */
+:root.theme-nocturne {
+  --fh:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --fb:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --fm:ui-monospace,'SFMono-Regular',Consolas,monospace;
+  --ui-space-xs:4px;--ui-space-sm:8px;--ui-space-md:16px;--ui-space-lg:24px;--ui-space-xl:32px;
+  --ui-radius-control:8px;--ui-radius-card:12px;--ui-radius-dialog:14px;
+  --ui-control-bg:var(--surface-high);--ui-focus:var(--text);
+  --ui-shadow-dialog:0 24px 72px #0006;
+}
+:root.theme-nocturne[data-color-mode=light] {--ui-control-bg:#fff;--ui-shadow-dialog:0 20px 64px #0002}
+.theme-nocturne body {font-family:var(--fb);font-size:14px;line-height:1.5;text-rendering:optimizeLegibility}
+.theme-nocturne :is(button,input,select,textarea) {font-family:var(--fb)}
+.theme-nocturne :is(button,a,input,select,textarea,[tabindex]):focus-visible {outline:2px solid var(--ui-focus);outline-offset:3px}
+.theme-nocturne #topbar {border-bottom:1px solid var(--border)}
+.theme-nocturne #topbar .logo {font-size:17px;font-weight:700;letter-spacing:.015em}
+.theme-nocturne #topbar .logo span {color:var(--text-muted)}
+.theme-nocturne #sidebar {border-right:1px solid var(--border)}
+.theme-nocturne .sidebar-player {padding:20px 16px}
+.theme-nocturne .sidebar-player-name {font-size:14px;font-weight:650;line-height:1.4}
+.theme-nocturne .sidebar-player-sub {font-size:11px;letter-spacing:0;line-height:1.5}
+.theme-nocturne .sidebar-nav {padding:12px 10px}
+.theme-nocturne #sidebar .nav-btn {min-height:44px;padding:10px 12px!important;border-radius:var(--ui-radius-control)!important;font-size:13px!important;letter-spacing:0!important;line-height:1.4;transform:none!important;gap:10px!important}
+.theme-nocturne #sidebar .nav-btn:not(.active):hover {background:var(--surface-high)!important;color:var(--text)!important}
+.theme-nocturne #sidebar .nav-btn.active {background:var(--primary-container)!important;color:var(--text)!important;border-right-color:var(--text)!important;font-weight:650!important}
+.theme-nocturne #sidebar .nav-group-label {font-size:10px!important;line-height:1.5;font-weight:600!important;letter-spacing:.05em!important;color:var(--text-muted)!important;padding:16px 12px 6px!important;margin:0!important}
+.theme-nocturne .sidebar-logout {min-height:44px;border-radius:var(--ui-radius-control);font-size:13px}
+.theme-nocturne .topbar-avatar {width:40px;height:40px;padding:0;font:600 12px var(--fb);flex-shrink:0}
+.theme-nocturne .icon-btn {min-width:44px;min-height:44px;border-radius:var(--ui-radius-control);color:var(--text-muted);transition:background .15s,color .15s}
+.theme-nocturne .icon-btn:hover {background:var(--surface-high);color:var(--text)}
+.theme-nocturne #color-mode-toggle {border-color:var(--border);background:var(--surface)}
+.theme-nocturne :is(.page-hero,.cc-hero) h1 {font-family:var(--fh)!important;font-size:clamp(26px,3vw,34px)!important;font-weight:650!important;line-height:1.2!important;letter-spacing:-.025em!important}
+.theme-nocturne .page-hero {background:transparent!important;border:0!important;border-bottom:1px solid var(--border)!important;padding:0 0 24px!important;margin-bottom:24px;border-radius:0!important;box-shadow:none!important;backdrop-filter:none}
+.theme-nocturne .page-hero-label {font-size:10px;letter-spacing:.08em;font-weight:600;color:var(--text-muted);margin-bottom:8px}
+.theme-nocturne .page-hero p {font-size:13px;line-height:1.65;max-width:65ch}
+.theme-nocturne .section-header {gap:10px;margin-bottom:16px}
+.theme-nocturne .section-header h2 {font-size:18px;font-weight:650;letter-spacing:-.015em;line-height:1.35}
+.theme-nocturne :is(.glass-card,.stat-card,.metric-card,.sec-card,.cc-action-card,.cc-tl-card,.cc-empty-card,.teacher-card,.health-card,.analytics-card,.pos-card,.shop-admin-card,.enroll-card) {border-radius:var(--ui-radius-card)!important;box-shadow:none;backdrop-filter:none}
+.theme-nocturne .glass-card h3 {font-size:16px;font-weight:650;letter-spacing:-.01em;line-height:1.4}
+.theme-nocturne .btn {min-height:44px;padding:10px 16px;border-radius:var(--ui-radius-control);font:600 13px/1.35 var(--fb);letter-spacing:0;text-transform:none;gap:8px;box-shadow:none;transition:background .15s,border-color .15s,color .15s;white-space:normal}
+.theme-nocturne .btn:hover {transform:none}
+.theme-nocturne :is(.btn-primary,.btn-orange) {background:var(--text)!important;color:var(--bg)!important;border:1px solid var(--text)!important}
+.theme-nocturne .btn-ghost {background:transparent;border:1px solid var(--border2);color:var(--text);backdrop-filter:none}
+.theme-nocturne .btn-ghost:hover {background:var(--surface-high);border-color:var(--text-muted)}
+.theme-nocturne .btn-sm {font-size:12px;padding:8px 12px}
+.theme-nocturne .btn-xs {font-size:11px;padding:6px 10px}
+.theme-nocturne :is(.btn:disabled,button:disabled) {opacity:.5;transform:none!important;box-shadow:none!important;cursor:not-allowed}
+.theme-nocturne :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]):not([type=reset]),select,textarea) {
+  min-height:44px;min-width:0;max-width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:var(--ui-radius-control);background:var(--ui-control-bg);color:var(--text);font:400 14px/1.5 var(--fb);transition:border-color .15s,box-shadow .15s;
+}
+.theme-nocturne :is(input,select,textarea):focus {border-color:var(--text-muted)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--text) 12%,transparent)}
+.theme-nocturne :is(input,textarea)::placeholder {color:var(--text-muted);opacity:1}
+.theme-nocturne :is(input,select,textarea):disabled {opacity:.6;cursor:not-allowed}
+.theme-nocturne :is(input,select,textarea)[aria-invalid=true] {border-color:var(--danger)!important}
+.theme-nocturne .form-group {margin-bottom:18px}
+.theme-nocturne .form-label {font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--text);margin-bottom:8px;line-height:1.5}
+.theme-nocturne :is(.form-help,.field-help,.help-text,.input-hint) {font-size:12px;line-height:1.5;color:var(--text-muted);margin-top:6px}
+.theme-nocturne :is(.form-error,.field-error) {font-size:12px;line-height:1.5;color:var(--danger);margin-top:6px}
+.theme-nocturne input[type=file]::file-selector-button {min-height:40px;background:var(--surface-high);color:var(--text);border:1px solid var(--border2);border-radius:var(--ui-radius-control);padding:8px 12px;font:600 12px var(--fb);margin-right:12px;cursor:pointer}
+.theme-nocturne :is(input[type=checkbox],input[type=radio]) {accent-color:var(--text);width:16px;height:16px;flex-shrink:0}
+.theme-nocturne table {border-collapse:collapse;font-size:13px;line-height:1.5}
+.theme-nocturne :is(th,td) {padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+.theme-nocturne th {background:var(--surface-high);color:var(--text-muted);font:600 11px/1.5 var(--fb);letter-spacing:.025em;text-transform:none;text-align:left;white-space:nowrap}
+.theme-nocturne tbody tr:hover {background:var(--primary-container)}
+.theme-nocturne :is(.table-wrap,.table-container) {max-width:100%;overflow-x:auto;border-radius:var(--ui-radius-control)}
+.theme-nocturne .modal-overlay {background:#000a;backdrop-filter:blur(4px);padding:16px}
+.theme-nocturne .modal-box {background:var(--surface);border:1px solid var(--border2);border-radius:var(--ui-radius-dialog);box-shadow:var(--ui-shadow-dialog);padding:24px;max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain;min-width:0}
+.theme-nocturne :is(.modal-h2,.modal-box h2) {font:650 21px/1.3 var(--fh);letter-spacing:-.02em;color:var(--text);margin-bottom:18px}
+.theme-nocturne :is(.modal-footer,.modal-actions) {display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:10px;margin-top:24px}
+.theme-nocturne .badge-pill {font:600 11px/1.3 var(--fb);letter-spacing:0;border-radius:5px;padding:4px 8px;box-shadow:none}
+.theme-nocturne #toast {max-width:min(420px,calc(100vw - 32px));padding:14px 18px;background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:var(--ui-radius-card);font:500 13px/1.5 var(--fb);box-shadow:0 8px 32px #0003!important;overflow-wrap:anywhere}
+.ui-control-icon {display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;flex-shrink:0;line-height:1}
+.ui-control-icon .eq-line-icon {width:18px;height:18px}
+.material-symbols-outlined:has(>.eq-line-icon) {font-family:var(--fb);display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;flex-shrink:0}
+@media(max-width:640px) {
+  .theme-nocturne .page-hero {padding-bottom:20px!important;margin-bottom:20px}
+  .theme-nocturne :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]):not([type=reset]),select,textarea) {font-size:16px}
+  .theme-nocturne .modal-box {padding:20px;max-height:calc(100dvh - 24px)}
+  .theme-nocturne .modal-overlay {padding:12px}
+  .theme-nocturne #toast {bottom:16px;right:16px}
+  .theme-nocturne :is(th,td) {padding:10px 12px}
+}
+@media(prefers-reduced-motion:reduce) {
+  .theme-nocturne :is(.btn,.icon-btn,input,select,textarea,.nav-btn) {transition:none!important}
+}
+/* Custom toolbars share control geometry without changing their state colors. */
+.theme-nocturne :is(.lm-coldcall-btn,.lm-recitation-toggle,.lm-fullscreen-btn,.lm-award-submit,.lm-override-submit,.cb-mode-btn,.ach-filter-btn,.ach-claim-btn,.hol-cat-btn,.hol-period-btn,.store-redeem-btn,.inv-use-btn,.inv-detail-btn,.inv-code-btn) {
+  min-height:44px;border-radius:var(--ui-radius-control);font-family:var(--fb);font-size:13px;font-weight:600;letter-spacing:0;line-height:1.35;text-transform:none;box-shadow:none;
+}
+.theme-nocturne :is(#s-my-section,#s-inventory,#s-store,#s-attendance) {--fh:var(--fb)}
+.theme-nocturne #sidebar .nav-btn.active {border-right:2px solid var(--text)!important}

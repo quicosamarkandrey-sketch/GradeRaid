@@ -33,6 +33,7 @@
 <link rel="stylesheet" href="./styles/modules/color-modes.css" data-preserve-theme>
 <link rel="stylesheet" href="./styles/modules/classroom-tools.css" data-preserve-theme>
 <link rel="stylesheet" href="./styles/modules/student-learning.css" data-preserve-theme>
+<link rel="stylesheet" href="./styles/modules/application-ui.css" data-preserve-theme>
 </head>
 <body>
 <div id="app">
@@ -160,7 +161,7 @@
         </button>
         <div class="notif-panel" id="notif-panel" style="display:none"></div>
       </div>
-      <div class="topbar-avatar" id="topbar-av" title="View Profile" style="cursor:pointer;position:relative;overflow:hidden"></div>
+      <button type="button" class="topbar-avatar" id="topbar-av" title="View Profile" aria-label="View Profile" style="cursor:pointer;position:relative;overflow:hidden"></button>
     </div>
   </div>
 
@@ -249,7 +250,7 @@
 </div>
 
 <!-- TOAST -->
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <!-- ═══ BOSS STUDIO — FULL-SCREEN EDITOR OVERLAY ═══ -->
 <div id="bs-editor-overlay">

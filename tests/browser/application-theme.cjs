@@ -65,6 +65,9 @@ const root=path.resolve(__dirname,'../..');
    }
   }
   assert.equal(await page.locator('#s-dashboard .dash-hero-stats').count(),0,'Repeated dashboard statistics removed');
+  const selectedNav=await page.locator('#sidebar .nav-btn.active').getAttribute('id');
+  await page.evaluate(()=>setupSidebar());
+  assert.equal(await page.locator('#sidebar .nav-btn[aria-current=page]').getAttribute('id'),selectedNav,'Sidebar refresh retains the current page');
   // Presentation is idempotent and does not rewrite fields, user prose,
   // uploaded photos, selected values, or attendance status colors.
   await page.evaluate(()=>{
@@ -76,7 +79,7 @@ const root=path.resolve(__dirname,'../..');
   });
   assert.equal(await page.locator('#theme-probe h2').textContent(),'📊 Reports');
   assert.equal(await page.locator('#theme-probe .student-name').textContent(),'⭐ Alex');
-  assert.ok(await page.locator('#theme-probe button .eq-emoji').count(),'Non-sidebar controls should keep emoji');
+  assert.ok(await page.locator('#theme-probe button .eq-line-icon').count(),'Functional controls use local line icons');
   assert.equal(await page.locator('#theme-probe textarea').inputValue(),'🔥 Draft message');
   assert.equal(await page.locator('#theme-probe select').inputValue(),'keep');
   assert.equal(await page.locator('#theme-probe img').getAttribute('alt'),'Uploaded photo');
@@ -125,6 +128,6 @@ const root=path.resolve(__dirname,'../..');
   assert.equal(await page.evaluate(()=>UITheme.getMode()),'light');
   await page.evaluate(()=>UITheme.setMode('dark'));
   assert.deepEqual(errors,[]);
-  console.log(`PASS: ${count} full-app page visits across admin, teacher, student and two widths; sidebar line icons, emoji elsewhere and persisted dark/light modes; user content and attendance metadata preserved; no page errors.`);
+  console.log(`PASS: ${count} full-app page visits across admin, teacher, student and two widths; functional line icons, reward emoji and persisted dark/light modes; user content and attendance metadata preserved; no page errors.`);
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exit(1)});

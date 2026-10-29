@@ -170,6 +170,7 @@ export function setupSidebar(){
     currentRole === 'teacher' ? dsmGetTeacherNav() :
     dsmGetStudentNav();
 
+  const activeNavId=document.querySelector('#sidebar-nav .nav-btn.active')?.id;
   document.getElementById('sidebar-nav').innerHTML = tabs.map(t => {
     const cfg = t._cfg || {};
     const isGroup = t._group;
@@ -194,6 +195,11 @@ export function setupSidebar(){
     b.onmouseover=function(){if(!this.classList.contains('active')){this.style.background='rgba(255,255,255,0.06)';this.style.color='var(--on-surface)';this.style.transform='translateX(3px)';}};
     b.onmouseout=function(){if(!this.classList.contains('active')){this.style.background='none';this.style.color='var(--text-muted)';this.style.transform='none';}};
   });
+
+  if(activeNavId){
+    const active=document.getElementById(activeNavId);
+    if(active){active.classList.add('active');active.setAttribute('aria-current','page');}
+  }
 
   // Event-Driven Communication (Continuation Plan §3, Category A) — replaces
   // shop_inventory.js's setupSidebar monkey-patch (the only confirmed patch
@@ -255,12 +261,14 @@ export function _navToCore(id){
   if(id!=='a-dashboard'&&typeof unmountCommandCenter==='function'){ unmountCommandCenter(); }
   document.querySelectorAll('.nav-btn').forEach(b=>{
     b.classList.remove('active');
+    b.removeAttribute('aria-current');
     b.style.background='none';b.style.color='var(--text-muted)';b.style.transform='none';
     b.style.borderRight='none';b.style.borderRadius='4px';
   });
   const btn=document.getElementById('nav-'+id);
   if(btn){
     btn.classList.add('active');
+    btn.setAttribute('aria-current','page');
     btn.style.background='var(--primary-container)';btn.style.color='var(--primary)';btn.style.transform='none';
     btn.style.borderRight='2px solid var(--primary)';btn.style.borderRadius='4px';
   }

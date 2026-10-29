@@ -156,3 +156,34 @@ including all five progress tabs and the existing rankings presentation and scop
 Browser validation: `node tests/browser/student-learning.cjs` checks dashboard totals,
 direct links into the restored progress tabs, Hall of Fame navigation, responsive
 layouts and both themes. Fixture checks verify that records and unlocks are unchanged.
+
+### Shared application foundation
+
+`styles/modules/application-ui.css` loads last and uses appearance tokens directly
+(`data-preserve-theme`). It standardizes the existing pages rather than replacing
+page structures. My Progress and Hall of Fame retain their restored renderers.
+
+- System sans-serif typography, restrained heading weights, sentence-case form
+  labels, consistent section spacing and a quieter shared page-header treatment.
+- Controls use 8px corners, cards 12px, dialogs 14px. Primary/secondary/destructive
+  actions remain distinguishable. Touch controls are at least 44px; phone text
+  fields use 16px text to avoid automatic browser zoom.
+- Dark and light modes share geometry and use their own readable surface/control
+  colors. Attendance, selection and recitation state colors remain intact.
+- Functional controls and navigation use the closed local SVG registry. Emoji in
+  reward imagery and celebrations remain. Uploaded pictures, game art, custom
+  badges, form values and user prose are protected from presentation rewriting.
+- Single-field form groups receive missing label associations. Existing IDs,
+  explicit labels and input values are retained. Invalid fields have a visible
+  semantic error border; no validation or save rules are changed.
+- Shared dialogs have an accessible name, initial focus, Tab/Shift+Tab containment,
+  Escape dismissal and focus restoration. The profile trigger is a native button,
+  active navigation exposes aria-current, and toast messages use a polite status
+  region. Tool shortcuts respect a dialog's handled Escape key.
+- Staff quick-action descriptions use concrete wording such as Record attendance
+  and Arrange seats and students.
+
+`tests/browser/application-ui.cjs` checks label associations, icons, dialog focus,
+contrast, target sizes, phone inputs, both modes, reduced motion and toast semantics
+in the real app with external services blocked. The application-theme, classroom,
+student-mobile and dashboard regression checks cover the existing workflows.

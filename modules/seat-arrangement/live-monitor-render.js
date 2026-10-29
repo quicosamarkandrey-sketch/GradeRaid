@@ -146,7 +146,7 @@ const LMView = window.LMView = (() => {
   }
   function cleanup() {gesture=null;view.projection=false;view.scores=false;view.key=null;document.body.classList.remove('lm-projection-mode','lm-private-scores');}
   document.addEventListener('keydown',e=>{
-    if (e.key!=='Escape' || !document.getElementById('a-classroom-monitor')?.classList.contains('active')) return;
+    if (e.defaultPrevented || e.key!=='Escape' || !document.getElementById('a-classroom-monitor')?.classList.contains('active')) return;
     if (view.projection) {view.projection=false;applyMode();document.querySelector('[data-lm-action="projection"]')?.setAttribute('aria-pressed','false');const b=document.querySelector('[data-lm-action="projection"]');if(b)b.textContent='Projection view';reset();}
     else if (_lmKioskMode) window._lmToggleKioskMode();
   });

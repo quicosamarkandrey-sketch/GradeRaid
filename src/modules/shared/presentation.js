@@ -1,4 +1,3 @@
-import { uiIcon } from '../../dom.js';
 /* Shared presentation for legacy renderers, across student and staff views.
    Emoji and palette changes affect rendered UI only, never stored records.
    New renderers can call refresh(root) directly; observation also covers older
@@ -7,6 +6,7 @@ import { uiIcon } from '../../dom.js';
   'use strict';
   const material = {
     "home": "home",
+    "map": "map",
     "groups": "users",
     "group": "users",
     "person": "users",
@@ -255,7 +255,7 @@ import { uiIcon } from '../../dom.js';
     for (const [shade,key] of tones) document.documentElement.style.setProperty(key,String(toneValue(shade)));
     const button = document.getElementById('color-mode-toggle');
     if (button) {
-      button.textContent = mode === 'dark' ? '☀️' : '🌙';
+      button.innerHTML = lineIcon(mode === 'dark' ? 'sun' : 'moon');
       button.setAttribute('aria-label', 'Switch to ' + (mode === 'dark' ? 'light' : 'dark') + ' mode');
       button.title = button.getAttribute('aria-label');
       button.setAttribute('aria-pressed',String(mode === 'light'));
@@ -265,8 +265,8 @@ import { uiIcon } from '../../dom.js';
   document.getElementById('color-mode-toggle')?.addEventListener('click',()=>setMode(mode === 'dark' ? 'light' : 'dark'));
   setMode(mode,false);
   window.UITheme = Object.freeze({setMode,getMode:()=>mode});
-  // Sidebar navigation keeps the previous local line icons; other UI keeps emoji.
-function sidebarIcon(name) {
+  // Functional controls use one closed local SVG registry. Rewards retain emoji.
+function lineIcon(name) {
   const paths = {
     "users": "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z M17 4a4 4 0 0 1 0 8 M22 21v-2a4 4 0 0 0-3-4",
     "book": "M4 4h7l1 2 1-2h7v15h-7l-1 2-1-2H4V4Z M12 6v15",
@@ -316,7 +316,10 @@ function sidebarIcon(name) {
     "palette": "M12 3a9 9 0 1 0 0 18h1c3 0 2-4 5-4 4 0 5-14-6-14Z M7 9h.01 M11 6h.01 M16 8h.01 M6 14h.01",
     "flag": "M5 22V3h14l-3 5 3 5H5",
     "circle": "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z",
-    "stop": "M5 5h14v14H5V5Z"
+    "stop": "M5 5h14v14H5V5Z",
+    "sun": "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z M12 2v2 M12 20v2 M2 12h2 M20 12h2 M5 5l1 1 M18 18l1 1 M5 19l1-1 M18 6l1-1",
+    "moon": "M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z",
+    "map": "M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z M9 3v15 M15 6v15"
 };
   const aliases = { supplies: 'box', unknown: 'box' };
   const key = Object.prototype.hasOwnProperty.call(aliases, name) ? aliases[name] : name;
@@ -328,17 +331,58 @@ function sidebarIcon(name) {
     const name = el.textContent.trim();
     if (!/^[a-z0-9_]+$/.test(name)) return;
     const icon = material[name] || 'settings';
-    el.innerHTML = el.closest('#sidebar') ? sidebarIcon(icon) : uiIcon(icon);
+    el.innerHTML = lineIcon(icon);
     el.setAttribute('aria-hidden','true');
     const button = el.closest('button');
     if (button && !button.textContent.trim() && !button.hasAttribute('aria-label')) button.setAttribute('aria-label',button.title || name.replaceAll('_',' '));
   }
+  const controlEmoji = new Map(Object.entries({'🏛️':'award','🏆':'award','⚔️':'privilege','🎒':'bag','🏫':'users','📝':'edit','📈':'chart','🔄':'refresh','📋':'calendar','🪑':'chair','📡':'chart','👥':'users','📊':'chart','📅':'calendar','🎤':'mic','📦':'box','🛍️':'bag','🛒':'bag','📚':'book','✏️':'edit','📨':'mail','✉️':'mail','🔍':'search','💾':'save','🗑️':'delete','⚙️':'settings','🔧':'settings','📷':'camera','🔒':'lock','🔓':'lock','✅':'check','❌':'close','🎯':'award','📱':'scan','🚪':'door'}));
+  function decorateActionText(node) {
+    const el=node.parentElement, button=el?.closest('button');
+    if(!button || el.closest(skip+','+art+',.ui-control-icon,svg,.ach-badge-icon-wrap,.ts-badge,.quiz-options,.camp-options,[class*=avatar],[class*=photo],[class*=title-preview]'))return;
+    const value=node.nodeValue, trimmed=value.trimStart();
+    for(const [emoji,name] of controlEmoji) {
+      if(!trimmed.startsWith(emoji))continue;
+      const rest=trimmed.slice(emoji.length);
+      if(rest && !/^\s/.test(rest))continue;
+      const icon=document.createElement('span');icon.className='ui-control-icon';icon.setAttribute('aria-hidden','true');icon.innerHTML=lineIcon(name);
+      node.replaceWith(value.slice(0,value.length-trimmed.length),icon,rest);
+      if(!button.textContent.trim()&&!button.hasAttribute('aria-label'))button.setAttribute('aria-label',button.title||name);
+      if(el.classList.contains('eq-emoji'))el.className='ui-control-icon';
+      break;
+    }
+  }
+  let fieldCounter=0;
+  function associateFields(root) {
+    if(root.closest('script,style,[contenteditable],[data-user-content]'))return;
+    const groups=new Set([root.closest('.form-group'),...root.querySelectorAll('.form-group')]);
+    for(const group of groups) {
+      if(!group)continue;
+      const label=group.querySelector('.form-label');
+      const fields=[...group.querySelectorAll('input:not([type=hidden]),select,textarea')];
+      if(!label||fields.length!==1)continue;
+      const field=fields[0];
+      if(label.tagName==='LABEL') {
+        if(label.htmlFor)continue;
+        if(!field.id){do {field.id='eq-ui-field-'+(++fieldCounter);}while(document.querySelectorAll('[id="'+field.id+'"]').length>1);}
+        label.htmlFor=field.id;
+      } else if(!field.hasAttribute('aria-label')&&!field.hasAttribute('aria-labelledby')) {
+        if(!label.id)label.id='eq-ui-label-'+(++fieldCounter);
+        field.setAttribute('aria-labelledby',label.id);
+      }
+    }
+  }
   function refresh(root) {
     if (!root || !document.documentElement.classList.contains('theme-nocturne')) return;
-    if (root.nodeType === Node.TEXT_NODE) { decorateMaterial(root.parentElement);  return; }
-    if (root.nodeType !== Node.ELEMENT_NODE || root.closest(skip)) return;
+    if (root.nodeType === Node.TEXT_NODE) { decorateMaterial(root.parentElement); if(root.isConnected)decorateActionText(root); return; }
+    if (root.nodeType !== Node.ELEMENT_NODE) return;
+    associateFields(root);
+    if(root.closest(skip))return;
     decorateMaterial(root);
     root.querySelectorAll('.material-symbols-outlined').forEach(decorateMaterial);
+    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT), actionNodes=[];
+    while(walker.nextNode())actionNodes.push(walker.currentNode);
+    actionNodes.forEach(decorateActionText);
     const elements = [root,...root.querySelectorAll('[style]')];
     for (const el of elements) {
       if (el.closest(skip+','+art+',.cb-seat,.lm-seat,.cal-day,.cal-dot,[class*=avatar],[class*=photo],[class*=ts-badge],[class*=title-preview]')) continue;

@@ -366,12 +366,12 @@ function _ccScheduleHTML(sections) {
 // ── 3. QUICK ACTIONS ─────────────────────────────────────────────────────
 function _ccQuickActionsHTML() {
   const actions = [
-    { icon: 'qr_code_scanner',   label: 'Scanner',             sub: 'Hardware scan console', glow: 'var(--secondary)',   go: `navTo('a-scanner')` },
-    { icon: 'record_voice_over', label: 'Recitation',          sub: 'Randomizer drawer',     glow: 'var(--primary)',     go: `navTo('a-classroom-monitor')` },
-    { icon: 'grid_view',         label: 'Seating Arrangement', sub: 'Layout map grid',       glow: '#22d3ee',            go: `navTo('a-classroom')` },
-    { icon: 'military_tech',     label: 'Hall of Fame',        sub: 'Section honors ledger', glow: 'var(--tertiary)',    go: `navTo('a-hall-of-fame')` },
-    { icon: 'add_task',          label: 'Quest Builder',       sub: 'Assignment architect',  glow: '#8b5cf6',            go: `navTo('a-quizzes')` },
-    { icon: 'monitoring',        label: 'Deep Analytics',      sub: 'Historic logs',         glow: 'var(--error)',       go: `navTo('a-analytics')` },
+    { icon: 'qr_code_scanner',   label: 'Scanner',             sub: 'Record attendance', glow: 'var(--secondary)',   go: `navTo('a-scanner')` },
+    { icon: 'record_voice_over', label: 'Recitation',          sub: 'Run a participation session',     glow: 'var(--primary)',     go: `navTo('a-classroom-monitor')` },
+    { icon: 'grid_view',         label: 'Seating Layout', sub: 'Arrange seats and students',       glow: '#22d3ee',            go: `navTo('a-classroom')` },
+    { icon: 'military_tech',     label: 'Hall of Fame',        sub: 'View student rankings', glow: 'var(--tertiary)',    go: `navTo('a-hall-of-fame')` },
+    { icon: 'add_task',          label: 'Quest Builder',       sub: 'Create and manage quests',  glow: '#8b5cf6',            go: `navTo('a-quizzes')` },
+    { icon: 'monitoring',        label: 'Analytics',      sub: 'Review class performance',         glow: 'var(--error)',       go: `navTo('a-analytics')` },
   ];
   return `
   <div class="cc-actions-row">
