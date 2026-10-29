@@ -358,7 +358,7 @@
   background:rgba(255,255,255,.03);cursor:pointer;font-weight:800;font-size:12px;
   color:var(--on-surface);transition:background .15s,border-color .15s;
 }
-.lm-points-btn.selected{background:#ffd166;color:#1a1625;border-color:#ffd166}
+.lm-points-btn.selected{background:var(--text,#fff);color:var(--bg,#111);border-color:var(--text,#fff)}
 .lm-award-submit{
   width:100%;padding:10px;border-radius:10px;border:none;font-weight:900;font-size:12px;
   cursor:pointer;background:linear-gradient(135deg,#8b5cf6,#d0bcff);color:#1a1625;
@@ -372,7 +372,7 @@
 .lm-recitation-feed-main{flex:1;min-width:0}
 .lm-recitation-feed-name{font-weight:700;color:var(--on-surface)}
 .lm-recitation-feed-meta{color:var(--text-muted);font-size:10px;margin-top:1px}
-.lm-recitation-feed-pts{font-weight:900;color:#ffd166;font-size:13px;flex-shrink:0}
+.lm-recitation-feed-pts{font-weight:700;color:var(--text,#fff);font-size:13px;flex-shrink:0}
 .lm-undo-btn{
   flex-shrink:0;background:rgba(255,180,171,.15);color:#ffb4ab;
   border:1px solid rgba(255,180,171,.3);border-radius:6px;padding:3px 9px;

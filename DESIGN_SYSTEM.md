@@ -192,7 +192,8 @@ student-mobile and dashboard regression checks cover the existing workflows.
 
 The floating +N indicator uses a compact monochrome chip that adapts to dark/light
 mode. A short rise/fade, restrained total-number pulse and thin avatar ring replace
-the orange glow and oversized floating text. Rapid awards in the same paint combine
+the orange glow and oversized floating text. Point-selection controls and history
+point labels use the same neutral palette. Rapid awards in the same paint combine
 into one chip. Effects clean up after completion, remain static for reduced motion,
 and are suppressed when projection scores are private. Animation does not write
 points or change the displayed session total.

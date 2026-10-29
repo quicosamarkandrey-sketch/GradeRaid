@@ -21,7 +21,7 @@ const root=path.resolve(__dirname,'../..');
    AppStore.updateState(d=>{
     d.admin={...d.admin,id:'teacher',name:'Morgan Reyes'};
     d.students=[{id:'student',name:'Alex Rivera',init:'AR',classId:'class',xp:100,coins:100,completedQuizzes:[]}];
-    d.classSections=[{id:'class',label:'Science 10',adviserId:'teacher',isArchived:false}];
+    d.classSections=[{id:'class',label:'Science 10',gradeLevel:'10',sectionName:'Science',adviserId:'teacher',isArchived:false}];
     d.classroomLayouts=[{id:'layout',classId:'class',name:'Science room',roomData:[],seatOverlapFixed:true}];
     d.seats=[{id:'seat',layoutId:'layout',xCoord:400,yCoord:300}];
     d.seatAssignments=[{id:'assignment',layoutId:'layout',seatId:'seat',studentId:'student'}];
@@ -33,9 +33,11 @@ const root=path.resolve(__dirname,'../..');
    _lmRecitationMode=true;_lmSessionStartAt=new Date(Date.now()-60000).toISOString();
    _lmRender(document.getElementById('a-classroom-monitor'),getActiveClassIds(AppStore.getState()),AppStore.getState());
   });
+  await page.waitForTimeout(400);
   const state=await page.evaluate(()=>JSON.stringify(AppStore.getState().recitationLog));
   for(const mode of ['dark','light']){
    await page.evaluate(mode=>UITheme.setMode(mode),mode);
+   assert.ok(await page.locator('.lm-recitation-feed-pts').evaluate(el=>{const c=getComputedStyle(el).color.match(/\d+/g).map(Number);return Math.max(...c)-Math.min(...c)<=8;}),'History count is neutral');
    await page.evaluate(()=>_lmSpawnFloatingPoint('student',2));
    assert.equal(await page.locator('.lm-float-point').textContent(),'+2');
    assert.equal(await page.locator('.lm-recitation-badge').textContent(),'7','Animation must not change totals');
