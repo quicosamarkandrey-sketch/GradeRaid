@@ -567,23 +567,30 @@ const LMView = window.LMView = (() => {
   }
 
   export function _lmSpawnFloatingPoint(studentId, pts) {
-    const seatEl = document.querySelector(`.lm-seat[data-student-id="${studentId}"]`);
-    if (!seatEl) return;
+    const amount=Number(pts);
+    if(!Number.isFinite(amount)||amount<=0||document.body.classList.contains('lm-private-scores'))return;
+    const seatEl=[...document.querySelectorAll('.lm-seat')].find(el=>el.dataset.studentId===String(studentId));
+    if(!seatEl)return;
+    const badgeEl=seatEl.querySelector('.lm-recitation-badge');
+    seatEl.classList.remove('lm-score-updated');
+    badgeEl?.classList.remove('bump');
+    void seatEl.offsetWidth;
+    seatEl.classList.add('lm-score-updated');
+    badgeEl?.classList.add('bump');
+    clearTimeout(seatEl._lmScoreTimer);
+    seatEl._lmScoreTimer=setTimeout(()=>seatEl.classList.remove('lm-score-updated'),650);
 
-    const badgeEl = seatEl.querySelector('.lm-recitation-badge');
-    if (badgeEl) {
-      badgeEl.classList.remove('bump');
-      // Force reflow so re-adding the class restarts the animation even if
-      // two points land on the same student back-to-back.
-      void badgeEl.offsetWidth;
-      badgeEl.classList.add('bump');
-    }
-
-    const floatEl = document.createElement('div');
-    floatEl.className = 'lm-float-point';
-    floatEl.textContent = `+${pts}`;
+    // Combine awards arriving in the same paint instead of overlapping labels.
+    const previous=seatEl.querySelector('.lm-float-point');
+    const total=amount+(Number(previous?.dataset.points)||0);
+    previous?.remove();
+    const floatEl=document.createElement('div');
+    floatEl.className='lm-float-point';floatEl.dataset.points=String(total);
+    floatEl.textContent='+'+total;floatEl.setAttribute('aria-hidden','true');
     seatEl.appendChild(floatEl);
-    setTimeout(() => floatEl.remove(), 1500);
+    floatEl.addEventListener('animationend',()=>floatEl.remove(),{once:true});
+    // Also clean up when motion is disabled or an animation is cancelled.
+    setTimeout(()=>floatEl.remove(),1300);
   }
 
 // ── Phase 7 (2026-08-10, session 7): explicit window exports ──

@@ -283,25 +283,42 @@
   text-shadow:0 2px 8px #000,0 0 24px rgba(165,180,252,.6);
   pointer-events:none;overflow:hidden;
 }
-.lm-recitation-badge.bump{animation:lm-badge-bump .35s ease}
-@keyframes lm-badge-bump{0%,100%{scale:1}45%{scale:1.15}}
-
-/* Task 4 — Floating +1 (or +N for manual awards). Spawned as a child of the
-   seat element and removed after the animation completes — see
-   _lmSpawnFloatingPoint(). */
-.lm-float-point{
-  position:absolute;left:50%;top:0;transform:translate(-50%,0);
-  font-family:var(--fh);font-weight:900;font-size:44px;color:#ffd166;
-  -webkit-text-stroke:1.5px rgba(26,22,37,.9);
-  pointer-events:none;z-index:6;
-  text-shadow:0 0 10px rgba(255,209,102,.9),0 0 22px rgba(255,209,102,.6),0 3px 8px rgba(0,0,0,.6);
-  animation:floating-point-up 1.7s cubic-bezier(.2,.8,.3,1) forwards;
+.lm-recitation-badge.bump{animation:lm-badge-bump .44s cubic-bezier(.2,.8,.2,1)}
+@keyframes lm-badge-bump{
+  0%,100%{scale:1}
+  35%{scale:1.14}
+  65%{scale:.98}
 }
-@keyframes floating-point-up{
-  0%   {opacity:0;   transform:translate(-50%,0)     scale(.4)}
-  12%  {opacity:1;   transform:translate(-50%,-14px) scale(1.5)}
-  25%  {              transform:translate(-50%,-22px) scale(1.2)}
-  100% {opacity:0;   transform:translate(-50%,-110px) scale(1.3)}
+.lm-seat.lm-score-updated .lm-seat-init::after{
+  content:'';position:absolute;inset:3px;border:2px solid var(--text,#fff);
+  border-radius:inherit;pointer-events:none;z-index:3;
+  animation:lm-score-ring .62s ease-out both;
+}
+@keyframes lm-score-ring{
+  from{opacity:.65;transform:scale(.85)}
+  to{opacity:0;transform:scale(1.12)}
+}
+
+/* A compact, high-contrast receipt for the award, rather than a glowing score. */
+.lm-float-point{
+  position:absolute;left:50%;top:20px;display:flex;align-items:center;justify-content:center;
+  min-width:52px;min-height:32px;padding:5px 12px;border-radius:9px;
+  font:700 20px/1.1 var(--fb);font-variant-numeric:tabular-nums;white-space:nowrap;
+  background:var(--text,#fff);color:var(--bg,#111);border:1px solid var(--border2,#555);
+  -webkit-text-stroke:0;text-shadow:none;box-shadow:0 4px 12px #0003;
+  pointer-events:none;z-index:9;transform:translate(-50%,0);
+  animation:lm-award-lift 1.1s cubic-bezier(.22,.75,.25,1) both;
+}
+@keyframes lm-award-lift{
+  0%{opacity:0;transform:translate(-50%,12px) scale(.82)}
+  18%{opacity:1;transform:translate(-50%,-8px) scale(1.05)}
+  32%{opacity:1;transform:translate(-50%,-12px) scale(1)}
+  70%{opacity:1;transform:translate(-50%,-24px) scale(1)}
+  100%{opacity:0;transform:translate(-50%,-44px) scale(.96)}
+}
+@media(prefers-reduced-motion:reduce){
+  .lm-float-point{animation:none;transform:translate(-50%,-12px)}
+  .lm-seat.lm-score-updated .lm-seat-init::after{display:none}
 }
 
 /* Task 3 — Sidebar Command Center */
