@@ -23,6 +23,10 @@ const root=path.resolve(__dirname,'../..');
   assert.equal(await page.locator('#login-user').getAttribute('autocomplete'),'username');
   assert.equal(await page.locator('#login-pass').getAttribute('autocomplete'),'current-password');
   assert.equal(await page.locator('#login-form').count(),1);
+  assert.equal(await page.locator('#landing-title').textContent(),'Make learning more rewarding.');
+  assert.equal(await page.locator('.landing-learning-preview').count(),1);
+  assert.equal(await page.locator('.landing-reward-token').count(),2);
+  assert.equal(await page.locator('.landing-seat-grid').count(),0);
   for(const mode of ['dark','light']){
    await page.evaluate(mode=>UITheme.setMode(mode),mode);
    assert.equal(await page.locator('#landing-color-mode-toggle').getAttribute('aria-label'),'Switch to '+(mode==='dark'?'light':'dark')+' mode');

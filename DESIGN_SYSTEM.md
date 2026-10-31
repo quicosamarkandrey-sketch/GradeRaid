@@ -204,8 +204,8 @@ rapid-award grouping, unchanged records/totals, cleanup, reduced motion and priv
 ### Public landing and sign-in
 
 The unauthenticated screen is a responsive EduQuest landing page with a concise
-product introduction, an explicitly illustrative seating preview, three feature
-summaries, and the existing sign-in/registration entry points. Phone layouts hide
+learning-first introduction, an explicitly illustrative quest/XP/coin journey,
+three feature summaries, and the existing sign-in/registration entry points. Phone layouts hide
 the illustration and put the form before the feature sections. A white sign-in
 panel has scoped light tokens and native light color-scheme in either page theme.
 
@@ -225,3 +225,8 @@ loaded onto the landing page.
 submission/loading/error/pending states with local auth responses, password reveal,
 registration/back/status flows, public focus links and persisted theme synchronization.
 External services are blocked; real credentials are not used.
+
+The landing page leads with Make learning more rewarding. Its visual story follows
+quests, participation, XP, levels and classroom rewards rather than attendance
+management. Example reward tiles are illustrations, never a visitor's account data.
+The restrained black/white foundation and small semantic green accents are retained.
