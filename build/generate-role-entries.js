@@ -30,7 +30,7 @@ const ROOT = path.join(__dirname, '..');
 
 function main() {
   const split = JSON.parse(fs.readFileSync(path.join(ROOT, 'dist', 'role-split.json'), 'utf8'));
-  const safeDefaultShared = new Set([...split.neitherRole, 'modules/shared/presentation.js']);
+  const safeDefaultShared = new Set([...split.neitherRole, 'modules/shared/presentation.js', 'modules/rewards/learning-rewards.js']);
 
   const studentSet = new Set([...split.shared, ...split.studentOnly, ...safeDefaultShared]);
   const adminSet = new Set([...split.shared, ...split.adminOnly, ...safeDefaultShared, 'modules/seat-arrangement/classroom-editor.js']);

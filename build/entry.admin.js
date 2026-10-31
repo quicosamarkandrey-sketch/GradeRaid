@@ -18,6 +18,7 @@ import '../dom.js';
 import '../modules/shared/presentation.js';
 import '../utils.js';
 import '../student-stats.js';
+import '../modules/rewards/learning-rewards.js';
 import '../modules/quest-engine.js';
 import '../modules/quest-mascot-lines.js';
 import '../modules/quest-chains.js';

@@ -5,13 +5,15 @@
   "description": "EduQuest — gamified classroom management app (vanilla JS + Supabase)",
   "scripts": {
     "test": "npm run test:unit && npm run test:smoke",
-    "test:unit": "node --test tests/unit/**/*.test.js",
+    "test:unit": "node --test 'tests/unit/**/*.test.js'",
     "test:smoke": "playwright test",
     "test:smoke:headed": "playwright test --headed",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "test:rewards-db": "node tests/database/learning-rewards.cjs"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.13",
     "@playwright/test": "^1.48.0",
     "acorn-walk": "^8.3.5",
     "dotenv": "^17.4.2",

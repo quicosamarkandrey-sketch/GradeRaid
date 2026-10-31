@@ -87,7 +87,7 @@ function renderStudentDashboard(){
       </div>
       <div class="dash-hero-right">
         <div class="coin-display">
-          <div class="val float"><span class="eq-emoji" aria-hidden="true">🪙</span> ${st.coins.toLocaleString()}</div>
+          <div class="val float"><span class="eq-emoji" aria-hidden="true">🪙</span> <span data-learning-coins>${st.coins.toLocaleString()}</span></div>
           <div class="lbl">Coins Available</div>
         </div>
         <button class="btn btn-orange btn-block" onclick="navTo('s-store')"><span class="eq-emoji" aria-hidden="true">🛍️</span> Visit Armory</button>
@@ -99,6 +99,7 @@ function renderStudentDashboard(){
       <div class="student-participation-values"><div><strong data-student-recitation="points">${dashRecitationPoints.toLocaleString()}</strong><span>Recitation points</span></div><div><strong data-student-recitation="count">${dashRecitations.length}</strong><span>Recorded contributions</span></div></div>
       ${dashRecitations.length?'':'<p class="learning-help">No participation recorded yet.</p>'}
       <button class="btn btn-ghost" onclick="navTo('s-attendance');progSwitchTab('recitation')">View recitation history →</button>
+      <button class="learning-reward-guide-link" onclick="LearningRewards.openGuide()">How to earn coins</button>
     </div>
     <button class="student-shortcut" onclick="navTo('s-attendance');progSwitchTab('streaks')"><span aria-hidden="true">📊</span><strong>My Progress</strong><small>Attendance and participation</small><b aria-hidden="true">→</b></button>
     <button class="student-shortcut" onclick="navTo('s-leaderboard')"><span aria-hidden="true">🏆</span><strong>Hall of Fame</strong><small>Your standing and class rankings</small><b aria-hidden="true">→</b></button>
@@ -149,7 +150,7 @@ function renderStudentDashboard(){
             <div class="quest-meta">
               <div class="quest-rewards">
                 <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
-                <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${q.coinReward}</div>
+                <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${window.LearningRewards?.active()?LearningRewards.questBudget(q):q.coinReward}</div>
               </div>
               <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
             </div>
@@ -335,7 +336,7 @@ function renderQuestCard(q, qi, cadenceTag, isNext){
         <div class="quest-meta">
           <div class="quest-rewards">
             <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
-            <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${q.coinReward}</div>
+            <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${window.LearningRewards?.active()?LearningRewards.questBudget(q):q.coinReward}</div>
           </div>
           <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
         </div>
@@ -367,7 +368,7 @@ function renderChainStepCard(q, status, stepIndex){
         <div class="quest-meta">
           <div class="quest-rewards">
             <div class="reward-pill xp"><span class="material-symbols-outlined" style="font-size:13px">bolt</span>+${q.xpReward} XP</div>
-            <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${q.coinReward}</div>
+            <div class="reward-pill coin"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">monetization_on</span>${window.LearningRewards?.active()?LearningRewards.questBudget(q):q.coinReward}</div>
           </div>
           ${status==='done' ? `<div class="quest-time">${entry?entry.score+'%':'✓'} CLEARED</div>` : `<div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>`}
         </div>
@@ -1614,7 +1615,7 @@ function abortQuiz(){
 window.addEventListener('beforeunload', function(){
   if (activeQuiz && !quizFinishing) { try { abortQuiz(); } catch(e) {} }
 });
-function finishQuiz() {
+async function finishQuiz() {
   clearInterval(quizTimer);
   // Phase 5 — same backdrop-loop cleanup as abortQuiz(); see comment there.
   if (typeof window._eqQuizIntensityBackdropStop === 'function') {
@@ -1631,6 +1632,12 @@ function finishQuiz() {
   // SAME attempt (e.g. a double Enter/click racing the timer's own call).
   if (quizFinishing || !activeQuiz) { return; }
   quizFinishing = true;
+  const finishingQuest=activeQuiz,finishingStudent=currentUser.id;
+  const rewardMode=window.LearningRewards?await LearningRewards.ready():'legacy';
+  if(activeQuiz!==finishingQuest||currentUser?.id!==finishingStudent)return;
+  const balancedCoins=rewardMode!=='legacy';
+  const learningAttempt={id:'qh_'+uid(),quizId:activeQuiz.id,completedAt:new Date().toISOString(),date:isoDate(),attempt:quizAttemptNumber};
+
 
   let correct = 0;
   // Phase 1/3 — eqGradeAnswer() dispatches by question type and returns a
@@ -1657,7 +1664,8 @@ function finishQuiz() {
   const retryMult = eqRetryMultiplier(quizAttemptNumber);
   const totalMult = comboMult * retryMult;
   const xpGain   = Math.round(baseXpGain   * totalMult);
-  const coinGain = Math.round(baseCoinGain * totalMult);
+  let coinGain = balancedCoins?0:Math.round(baseCoinGain * totalMult);
+  let learningCoinsPending=false;
   const isRetry  = quizAttemptNumber > 1;
 
   // Grant rewards + log the attempt — all in one AppStore draft so this
@@ -1692,7 +1700,7 @@ function finishQuiz() {
     // `score` ad hoc at render time; renderStudentQuizzes() reads this to
     // tell a genuinely "completed (passed)" node apart from a "completed
     // (failed, retry available)" one.
-    draft.quizHistory[currentUser.id].push({ id: 'qh_'+uid(), quizId: activeQuiz.id, score, passed: eqQuizPassed(score), completedAt: new Date().toISOString(), date: isoDate(), attempt: quizAttemptNumber, results });
+    draft.quizHistory[currentUser.id].push({ ...learningAttempt,score,passed:eqQuizPassed(score),results,...(balancedCoins?{learningRewardPending:true}:{}),...(rewardMode==='balanced'?{learningRewardVersion:1}:{}) });
 
     // ── Safe Quiz Average Calculation (Prevents NaN%) ──
     const history = draft.quizHistory[currentUser.id];
@@ -1724,7 +1732,15 @@ function finishQuiz() {
   // already calls this right after its local mutation; Quest Board never
   // had it — see syncStudentStatsToServer()'s note in utils.js for why that
   // matters (a stale tab's bulk profile upsert can otherwise clobber it).
-  syncStudentStatsToServer(currentUser.id, xpGain, coinGain);
+  const statsSync=syncStudentStatsToServer(currentUser.id, xpGain, coinGain);
+  if(balancedCoins && window.LearningRewards){
+    learningAttempt.score=score;learningAttempt.results=results;
+    document.getElementById('s-quiz-active').innerHTML='<div class="glass-card" role="status">Saving your result and confirming coin rewards…</div>';
+    const settlement=await LearningRewards.recordQuest(learningAttempt,statsSync);
+    if(activeQuiz!==finishingQuest||currentUser?.id!==finishingStudent)return;
+    coinGain=settlement.coinsEarned||0;learningCoinsPending=!settlement.ok;
+  }
+
 
   const pass = eqQuizPassed(score);
   // Visual-polish pass — S/A/B/C/D rank badge alongside the existing raw
@@ -1737,7 +1753,8 @@ function finishQuiz() {
   // first-attempt, no-combo run looks exactly like it always has.
   const bonusBits = [];
   if (comboMult > 1) bonusBits.push(`🔥 Combo x${quizComboMax} bonus (${comboMult}x)`);
-  if (isRetry) bonusBits.push(`↻ Attempt #${quizAttemptNumber} (${Math.round(retryMult*100)}% reward)`);
+  if (isRetry) bonusBits.push(`↻ Attempt #${quizAttemptNumber} (${Math.round(retryMult*100)}% XP reward)`);
+  if(balancedCoins)bonusBits.push(learningCoinsPending?'Coins pending synchronization':`+${coinGain} coins · best-score reward`);
   // Phase 7 — §6/§10: "relieved/celebrating" on a pass, "sad-but-supportive"
   // on a fail. This reuses the same emoji + line pool as the in-quiz dock
   // (.results-mascot-line, base.css) rather than calling fireMascotEvent()

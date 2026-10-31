@@ -849,7 +849,7 @@ export const TableSyncRepository = (function () {
         const rows = [];
         Object.keys(src).forEach(sid => {
           (src[sid] || []).forEach(h => {
-            if (!h.id || !h.quizId) return;
+            if (!h.id || !h.quizId || h.learningRewardPending) return;
             rows.push({
               id: h.id, student_id: sid, quiz_id: h.quizId,
               score: h.score || 0, attempt: h.attempt || 1,
@@ -861,6 +861,7 @@ export const TableSyncRepository = (function () {
               // Phase 63: without this, abortQuiz()'s aborted:true never
               // left the browser, so a walked-away attempt looked complete.
               aborted: !!h.aborted,
+              ...(h.learningRewardVersion===1?{learning_reward_version:1}:{}),
             });
           });
         });

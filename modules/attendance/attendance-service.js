@@ -303,6 +303,7 @@ window.AttendanceService = (function () {
       }
     }, { type: 'attendance:scan-recorded', payload: { studentId: data.student_id, status: data.status, alreadyRecorded: !!data.already_recorded } });
 
+    await window.LearningRewards?.refreshStudent(data.student_id);
     const student = AppStore.getStudent(data.student_id);
     return {
       ok: true,
@@ -373,6 +374,7 @@ window.AttendanceService = (function () {
       }
     }, { type: 'attendance:override', payload: { studentId, classId, status } });
 
+    await window.LearningRewards?.refreshStudent(studentId);
     return data.removed ? { ok: true, removed: true } : { ok: true, log: data.log };
   }
 

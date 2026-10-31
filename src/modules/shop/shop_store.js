@@ -78,7 +78,7 @@ export const renderStudentStore = function (cat = 'all') {
     <div class="student-catalog-intro">
       <span class="store-banner-tag">Reward catalog</span>
       <div class="store-banner-title">Choose your next reward</div>
-      <div class="store-banner-sub">Browse your adviser's available items and privileges.</div>
+      <div class="store-banner-sub">Use the coins you earn from learning to choose your adviser’s available items and privileges.</div>
     </div>
   </div>
 
@@ -87,13 +87,13 @@ export const renderStudentStore = function (cat = 'all') {
     <div>
       <div style="font-family:var(--fm);font-size:10px;color:var(--text-muted);letter-spacing:.12em;margin-bottom:6px">THE ARMORY // REWARD_EXCHANGE</div>
       <div style="font-family:var(--fh);font-size:28px;font-weight:900;letter-spacing:-.5px;color:var(--on-surface)">The Armory</div>
-      <div style="font-size:13px;color:var(--text-muted);margin-top:4px">Exchange your coins for legendary rewards</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-top:4px">Spend your learning coins on available items and privileges.</div><button class="learning-reward-guide-link" onclick="LearningRewards.openGuide()">How to earn coins</button>
     </div>
     <div style="display:flex;align-items:center;gap:10px;background:rgba(42,40,54,0.9);border:1px solid rgba(202,202,194,0.25);padding:14px 20px;border-radius:16px;box-shadow:0 0 20px rgba(202,202,194,0.12)">
       <span class="material-symbols-outlined" style="color:var(--tertiary);font-size:28px;font-variation-settings:'FILL' 1">monetization_on</span>
       <div>
         <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.08em;text-transform:uppercase">Balance</div>
-        <div style="font-family:var(--fh);font-size:24px;font-weight:900;color:var(--tertiary);line-height:1" class="float">${st.coins.toLocaleString()}</div>
+        <div style="font-family:var(--fh);font-size:24px;font-weight:900;color:var(--tertiary);line-height:1" class="float" data-learning-coins>${st.coins.toLocaleString()}</div>
       </div>
     </div>
   </div>
@@ -137,6 +137,7 @@ export const renderStudentStore = function (cat = 'all') {
 // ── Cart engine ───────────────────────────────────────────────────────────────
 // Session-only (in memory). Keys = item id, value = { item, qty }
 export const _CART = {};
+let _learningCartBusy=false;
 
 export const cartAdd = function (id) {
   const item = (AppStore.getSlice(s => s.store) || []).find(i => i.id === id);
@@ -250,7 +251,7 @@ export function _cartRenderModal() {
   </div>
   <div style="display:flex;gap:10px">
     <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Keep Shopping</button>
-    <button class="btn btn-primary" style="flex:1;background:linear-gradient(135deg,#96968e,#EC4899)" ${canAfford ? '' : 'disabled'} onclick="cartCheckout()">Checkout</button>
+    <button id="cart-checkout-btn" class="btn btn-primary" style="flex:1;background:linear-gradient(135deg,#96968e,#EC4899)" ${canAfford ? '' : 'disabled'} onclick="cartCheckout()">Checkout</button>
   </div>
   `, 'md');
 }
@@ -281,6 +282,25 @@ export function _cartRenderModal() {
 export const cartCheckout = async function () {
   const entries = Object.values(_CART);
   if (!entries.length) return;
+  const rewardMode=window.LearningRewards?await LearningRewards.ready():'legacy';
+  if(rewardMode==='balanced'){
+    if(_learningCartBusy)return;
+    _learningCartBusy=true;
+    const checkoutButton=document.getElementById('cart-checkout-btn');
+    if(checkoutButton&&typeof eqButtonLoading==='function')eqButtonLoading(checkoutButton,true,{label:'Confirming purchase…'});
+    try {
+      const purchase=await LearningRewards.checkout(entries);
+      if(!purchase.ok){toast(_esc(purchase.error),'var(--error)');return;}
+      if(!purchase.recovered)purchase.items.forEach(item=>{if(_CART[item.id]?.qty===item.qty)delete _CART[item.id];});
+      renderStudentStore();updateTopbar();if(typeof invUpdateSidebarBadge==='function')invUpdateSidebarBadge();
+      const codes=(purchase.data.orders||[]).map(o=>`<div class="learning-claim-code"><strong>${_esc(o.item_name)}</strong><code>${_esc(o.claim_code)}</code></div>`).join('');
+      showModal(`<h2>${purchase.recovered?'Previous checkout confirmed':'Your rewards are reserved'}</h2><p>Show these claim codes to your teacher to collect your rewards.</p>${codes}<p class="form-help">${purchase.data.total} coins spent. ${currentUser.coins} coins remaining.</p><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModalForce()">Close</button><button class="btn btn-primary" onclick="closeModalForce();navTo('s-orders')">View My Orders</button></div>`,'md');
+      if(typeof achCheckAndAward==='function')achCheckAndAward(currentUser.id);
+    } finally { _learningCartBusy=false;if(checkoutButton&&typeof eqButtonLoading==='function')eqButtonLoading(checkoutButton,false); }
+    return;
+  }
+  if(rewardMode!=='legacy'){toast('Please reconnect so your coin balance can be confirmed.');return;}
+
   const student = (AppStore.getSlice(s => s.students) || []).find(s => s.id === currentUser.id);
   if (!student) return;
 

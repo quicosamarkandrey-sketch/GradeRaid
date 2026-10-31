@@ -215,7 +215,7 @@ export function productForm(item = null) {
     <div class="form-group"><label class="form-label">Name</label><input type="text" id="pf-name" placeholder="Product name" value="${_esc(item?.name || '')}" style="width:100%"></div>
     <div class="form-group"><label class="form-label">Description</label><input type="text" id="pf-desc" placeholder="Short description..." value="${_esc(item?.desc || '')}" style="width:100%"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group"><label class="form-label">Coin Cost</label><input type="number" id="pf-cost" min="1" value="${item?.cost || 100}" style="width:100%"></div>
+      <div class="form-group"><label class="form-label">Coin Cost</label><p class="form-help">Suggested prices: 50–100 for small rewards, 150–250 for larger rewards, and 400+ for special privileges. Students earn coins from attendance, participation and quests when balanced rewards are enabled.</p><input type="number" id="pf-cost" min="1" value="${item?.cost || 100}" style="width:100%"></div>
       <div class="form-group"><label class="form-label">Stock</label><input type="number" id="pf-stock" min="0" value="${item?.stock || 10}" style="width:100%"></div>
     </div>
     <div style="display:flex;gap:10px;margin-top:6px">

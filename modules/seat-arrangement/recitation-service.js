@@ -153,6 +153,7 @@ window.RecitationService = (function () {
       if (mapped) _bumpCachedXp(draft, mapped.studentId, mapped.pts);
     }, { type: 'recitation:point-logged', payload: { studentId: card.studentId, classId, source: 'scan' } });
 
+    await window.LearningRewards?.refreshStudent(card.studentId);
     return { ok: true, log: mapped, studentId: card.studentId };
   }
 
@@ -185,6 +186,7 @@ window.RecitationService = (function () {
       if (mapped) _bumpCachedXp(draft, mapped.studentId, mapped.pts);
     }, { type: 'recitation:point-logged', payload: { studentId, classId, source: 'manual' } });
 
+    await window.LearningRewards?.refreshStudent(studentId);
     return { ok: true, log: mapped };
   }
 
@@ -209,14 +211,16 @@ window.RecitationService = (function () {
       return { ok: false, error: 'That entry was already removed.' };
     }
 
+    const undoStudentId=AppStore.getSlice(s=>(s.recitationLog||[]).find(r=>r.id===logId)?.studentId);
     AppStore.updateState(draft => {
       if (!Array.isArray(draft.recitationLog)) return;
       const removed = draft.recitationLog.find(r => r.id === logId);
       draft.recitationLog = draft.recitationLog.filter(r => r.id !== logId);
       // Mirror the trigger's DELETE branch: undo reverses the xp it granted.
       if (removed) _bumpCachedXp(draft, removed.studentId, -(removed.pts || 0));
-    }, { type: 'recitation:point-undone', payload: { logId } });
+    }, { type: 'recitation:point-undone', payload: { logId,studentId:undoStudentId } });
 
+    await window.LearningRewards?.refreshStudent(undoStudentId);
     return { ok: true };
   }
 

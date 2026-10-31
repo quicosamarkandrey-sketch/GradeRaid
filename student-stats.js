@@ -195,7 +195,7 @@ function syncStudentStatsToServer(studentId, xpDelta, coinsDelta) {
   if (!xpDelta && !coinsDelta) return;
   if (typeof DBService === 'undefined' || typeof DBService.rpc !== 'function') return;
 
-  DBService.rpc('adjust_student_stats', {
+  return DBService.rpc('adjust_student_stats', {
     p_student_id: studentId,
     p_xp_delta: xpDelta,
     p_coins_delta: coinsDelta,

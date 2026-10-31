@@ -1,0 +1,12 @@
+.learning-reward-guide-link {display:inline-flex;align-items:center;min-height:44px;padding:8px 0;border:0;background:none;color:var(--text);font:600 12px var(--fb);text-decoration:underline;text-underline-offset:4px;cursor:pointer}
+.learning-reward-guide-link:focus-visible {outline:2px solid var(--text);outline-offset:4px;border-radius:3px}
+.learning-reward-intro {font-size:13px;line-height:1.7;color:var(--text-muted);margin:16px 0}
+.learning-reward-table {width:100%;border-collapse:collapse;font-size:12px;line-height:1.65}
+.learning-reward-table th {text-align:left;font-weight:600;color:var(--text-muted)}
+.learning-reward-table th,.learning-reward-table td {padding:14px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+.learning-reward-table td:first-child {font-weight:600;min-width:95px}
+.learning-reward-table td:nth-child(2) {min-width:85px;font-variant-numeric:tabular-nums}
+.learning-reward-footnote,.landing-reward-note {font-size:11px;line-height:1.7;color:var(--text-muted);margin-top:20px}
+.learning-claim-code {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--border);font-size:13px}
+.learning-claim-code code {font-size:16px;letter-spacing:.06em;color:var(--text);user-select:all}
+@media(max-width:480px){.learning-reward-table th,.learning-reward-table td{padding:10px 5px;font-size:11px}.learning-reward-table td:first-child{min-width:65px}.learning-reward-table td:nth-child(2){min-width:65px}.learning-claim-code{flex-wrap:wrap}}

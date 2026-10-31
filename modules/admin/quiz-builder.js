@@ -208,7 +208,7 @@ window.openQuizBuilder = function(editId = null, templateQuestions = null) {
   draftQuiz = existing
     ? JSON.parse(JSON.stringify(existing))
     : {
-        id: uid(), ownerTeacherId: currentUser.id, title: '', desc: '', xpReward: 100, coinReward: 50, timeLimit: 10,
+        id: uid(), ownerTeacherId: currentUser.id, title: '', desc: '', xpReward: 100, coinReward: 20, timeLimit: 10,
         rarity: 'Common', cadence: 'standing', chainId: null, chainOrder: 1, chainLabel: '',
         startDate: null, endDate: null,
         // Phase 3 (Improvement Plan §2) — per-stage per-question timer
@@ -304,7 +304,7 @@ function renderQuizBuilderModal() {
     <div class="form-group"><label class="form-label">Description</label><input type="text" id="qb-desc" value="${_esc(draftQuiz.desc)}" placeholder="Brief description..." style="width:100%" oninput="draftQuiz.desc=this.value"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
       <div class="form-group"><label class="form-label">XP Reward</label><input type="number" id="qb-xp" value="${draftQuiz.xpReward}" min="0" style="width:100%" oninput="draftQuiz.xpReward=parseInt(this.value)||0"></div>
-      <div class="form-group"><label class="form-label">Coin Reward</label><input type="number" id="qb-coins" value="${draftQuiz.coinReward}" min="0" style="width:100%" oninput="draftQuiz.coinReward=parseInt(this.value)||0"></div>
+      <div class="form-group"><label class="form-label">Quest coin budget (0–40)</label><input type="number" id="qb-coins" value="${draftQuiz.coinReward}" min="0" max="40" style="width:100%" oninput="draftQuiz.coinReward=Math.max(0,Math.min(40,parseInt(this.value)||0))"></div>
       <div class="form-group"><label class="form-label">Time (min)</label><input type="number" id="qb-time" value="${draftQuiz.timeLimit}" min="1" style="width:100%" oninput="draftQuiz.timeLimit=parseInt(this.value)||5"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -565,6 +565,7 @@ window.removeOption = function(qi, oi) {
 };
 
 window.saveQuiz = async function() {
+  draftQuiz.coinReward=Math.max(0,Math.min(40,Number(draftQuiz.coinReward)||0));
   if (!draftQuiz.title.trim()) { toast('❌ Title required', '#ffb4ab'); return; }
   if (draftQuiz.questions.length === 0) { toast('❌ Add at least 1 question', '#ffb4ab'); return; }
   // Phase 4 — chain fields sanitize: an empty/whitespace chainId is treated

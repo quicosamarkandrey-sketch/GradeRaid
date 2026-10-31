@@ -366,6 +366,7 @@
         id: row.id, quizId: row.quiz_id, score: row.score, attempt: row.attempt,
         completedAt: row.completed_at, date: row.date_label,
         results: Array.isArray(row.question_results) ? row.question_results : undefined,
+        ...(row.learning_reward_version===1?{learningRewardVersion:1}:{}),
         aborted: !!row.aborted,
       });
       if (!row.aborted) {

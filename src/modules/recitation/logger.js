@@ -72,7 +72,7 @@ export const logRecitation = function () {
     const s = (draft.students || []).find(x => x.id === sid);
     if (s) s.xp = (s.xp || 0) + pts;
     if (!Array.isArray(draft.recitationLog)) draft.recitationLog = [];
-    draft.recitationLog.unshift({ id: 'rec_' + uid(), studentId: sid, pts, note, when: nowStr() });
+    draft.recitationLog.unshift({ id: 'rec_' + uid(), studentId: sid, pts, note, when: nowStr(), createdAt:new Date().toISOString() });
     if (!Array.isArray(draft.pointLog)) draft.pointLog = [];
     draft.pointLog.unshift({
       id: 'pl_' + uid(),
@@ -88,7 +88,8 @@ export const logRecitation = function () {
   // authoritative server-computed totals back in once the RPC resolves (see
   // utils.js's syncStudentStatsToServer header comment) — same order as the
   // pre-migration code (local mutation first, then fire the RPC).
-  syncStudentStatsToServer(sid, pts, 0);
+  const statsSync=syncStudentStatsToServer(sid, pts, 0);
+  if(window.LearningRewards)Promise.resolve(statsSync).then(()=>LearningRewards.flushLegacy(sid));
 
   toast(`🎤 +${pts} pts → ${_esc(student.name)}`);
   // Phase 7 (2026-08-10, session 4 dependency-map pass): was `renderScanner()`
