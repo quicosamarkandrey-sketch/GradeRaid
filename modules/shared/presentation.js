@@ -253,8 +253,7 @@
     mode = next === 'light' ? 'light' : 'dark';
     document.documentElement.dataset.colorMode = mode;
     for (const [shade,key] of tones) document.documentElement.style.setProperty(key,String(toneValue(shade)));
-    const button = document.getElementById('color-mode-toggle');
-    if (button) {
+    for (const button of document.querySelectorAll('#color-mode-toggle,[data-color-mode-toggle]')) {
       button.innerHTML = lineIcon(mode === 'dark' ? 'sun' : 'moon');
       button.setAttribute('aria-label', 'Switch to ' + (mode === 'dark' ? 'light' : 'dark') + ' mode');
       button.title = button.getAttribute('aria-label');
@@ -262,7 +261,7 @@
     }
     if (persist) try { localStorage.setItem('eduquest-color-mode',mode); } catch {}
   }
-  document.getElementById('color-mode-toggle')?.addEventListener('click',()=>setMode(mode === 'dark' ? 'light' : 'dark'));
+  document.querySelectorAll('#color-mode-toggle,[data-color-mode-toggle]').forEach(button=>button.addEventListener('click',()=>setMode(mode === 'dark' ? 'light' : 'dark')));
   setMode(mode,false);
   window.UITheme = Object.freeze({setMode,getMode:()=>mode});
   // Functional controls use one closed local SVG registry. Rewards retain emoji.

@@ -537,8 +537,10 @@ export function bootApp(){
   // showLoginScreen() back when restoreSession() found no session).
   const boot = document.getElementById('boot-loading');
   if(boot) boot.style.display='none';
+  const wasLandingVisible=document.getElementById('login-screen').getClientRects().length>0;
   document.getElementById('login-screen').style.display='none';
   document.getElementById('main-app').style.display='block';
+  if(wasLandingVisible)window.scrollTo(0,0);
   updateTopbar();setupSidebar();
   // System Health presence heartbeat (ADMIN_SYSTEM_HEALTH.md Phase 2): starts
   // on every bootApp() call — both a fresh doLogin() and a restoreSession()

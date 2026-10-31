@@ -200,3 +200,28 @@ points or change the displayed session total.
 
 `node tests/browser/recitation-count.cjs` checks both themes, readable contrast,
 rapid-award grouping, unchanged records/totals, cleanup, reduced motion and privacy.
+
+### Public landing and sign-in
+
+The unauthenticated screen is a responsive EduQuest landing page with a concise
+product introduction, an explicitly illustrative seating preview, three feature
+summaries, and the existing sign-in/registration entry points. Phone layouts hide
+the illustration and put the form before the feature sections. A white sign-in
+panel has scoped light tokens and native light color-scheme in either page theme.
+
+Authentication still controls `login-screen` visibility and retains all existing
+field/error/button IDs. A native form submits through doLogin, including Enter;
+validation, pending-account checks and role resolution stay in the existing auth
+service. Password reveal is keyboard-accessible and password-manager autocomplete
+is enabled. Registration and status lookup call the original functions. Recovery
+and invitation screens are unchanged. The session-check loader uses neutral styling
+and still prevents an unauthenticated landing flash for restored sessions.
+
+The public and in-app theme switches share the existing saved preference. No live
+classroom records, demo credentials, marketing statistics or external media are
+loaded onto the landing page.
+
+`node tests/browser/landing.cjs` checks five viewport widths in both themes, login
+submission/loading/error/pending states with local auth responses, password reveal,
+registration/back/status flows, public focus links and persisted theme synchronization.
+External services are blocked; real credentials are not used.

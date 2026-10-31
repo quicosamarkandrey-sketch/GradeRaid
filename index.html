@@ -34,72 +34,64 @@
 <link rel="stylesheet" href="./styles/modules/classroom-tools.css" data-preserve-theme>
 <link rel="stylesheet" href="./styles/modules/student-learning.css" data-preserve-theme>
 <link rel="stylesheet" href="./styles/modules/application-ui.css" data-preserve-theme>
+<link rel="stylesheet" href="./styles/modules/landing.css" data-preserve-theme>
 </head>
 <body>
 <div id="app">
 
-<!-- ═══════════════ BOOT LOADING ═══════════════
-     BUGFIX (login screen flash on refresh): this is now the TRUE default
-     state on page load — #login-screen starts hidden (display:none inline
-     below) instead of being the default-visible element. Without this,
-     getSession() (a fast, but not instant, localStorage read — see
-     restoreSession() in auth.js) meant the login form rendered first and
-     then got swapped for the main app a moment later on every refresh of an
-     already-logged-in session, which read as "getting logged out and back
-     in." Now nothing auth-gated is shown until we positively know whether
-     there's a valid session: restoreSession() either calls bootApp() (which
-     hides this) or, if there's no session, calls showLoginScreen() (which
-     also hides this and reveals the login form instead).
-
-     Logo mark below uses the same gradient-text treatment as #login-screen's
-     .login-logo-text (base.css) — inlined here rather than referencing that
-     class, since this screen is visible before styles/base.css is
-     guaranteed to have painted, and before any other module has loaded. -->
-<div id="boot-loading" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:#13121e;background-image:radial-gradient(circle at 30% 30%,rgba(139,92,246,.14) 0%,transparent 50%),radial-gradient(circle at 70% 70%,rgba(78,222,163,.06) 0%,transparent 45%);">
-  <div style="text-align:center">
-    <div style="font-family:'Poppins',system-ui,sans-serif;font-size:30px;font-weight:900;letter-spacing:.08em;background:linear-gradient(135deg,#d0bcff,#8b5cf6,#4edea3);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">EDUQUEST</div>
-    <div style="color:#9a95ab;font-size:13px;margin-top:8px;font-family:system-ui,sans-serif;">⚔️ Gamified Classroom Experience</div>
-  </div>
-  <div style="width:36px;height:36px;border-radius:50%;border:3px solid rgba(255,255,255,0.15);border-top-color:#d0bcff;animation:boot-spin 0.8s linear infinite;"></div>
+<!-- Session check: auth.js controls boot and landing visibility. -->
+<div id="boot-loading" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;background:#090909;color:#f2f2f2">
+  <div style="text-align:center"><div class="landing-boot-brand">EDUQUEST</div><div class="landing-boot-note">Getting your classroom ready</div></div>
+  <div class="landing-boot-spinner" role="status" aria-label="Checking your session"></div>
 </div>
 <style>@keyframes boot-spin{to{transform:rotate(360deg)}}</style>
 
-<!-- ═══════════════ LOGIN ═══════════════ -->
+<!-- Public landing and sign-in. Auth retains control of this container's visibility. -->
 <div id="login-screen" style="display:none">
-  <div class="login-card">
-    <div class="login-logo">
-      <div class="login-logo-text">EDUQUEST</div>
-      <div class="login-logo-sub">⚔️ Gamified Classroom Experience</div>
-    </div>
-    <div class="login-demo" id="demo-creds" style="margin-top:4px">
-      <div id="demo-text">
-        <b style="color:#d0bcff">Log in with your email and password.</b><br>
-        <span style="font-size:12px;color:var(--text-muted)">New student? Register below to request an account.</span>
+  <a class="landing-skip-link" href="#login-user">Skip to sign in</a>
+  <div class="landing-shell">
+    <header class="landing-header">
+      <a class="landing-brand" href="#" aria-label="EduQuest home"><svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 5h8v8H4z M16 5h8v8h-8z M4 17h8v6H4z M16 17h8v6h-8z"/></svg><span>EDUQUEST</span></a>
+      <nav class="landing-nav" aria-label="Welcome page"><a href="#landing-features">Explore</a><button id="landing-color-mode-toggle" data-color-mode-toggle type="button" class="icon-btn" aria-label="Switch to light mode" title="Switch to light mode" aria-pressed="false"></button><a class="landing-nav-signin" href="#login-user">Sign in <svg class="landing-nav-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 12l8-8 M4 4h8v8"/></svg></a></nav>
+    </header>
+    <main class="landing-main">
+      <div class="landing-hero">
+        <section class="landing-story" aria-labelledby="landing-title">
+          <p class="landing-eyebrow">For teachers. For students. For every class.</p>
+          <h1 id="landing-title">A clearer view of every class.</h1>
+          <p class="landing-intro">Bring attendance, classroom participation, and student progress together. Spend less time keeping track and more time moving learning forward.</p>
+          <div class="landing-preview" role="img" aria-label="Illustrative seating map showing six example seats, with attendance and participation together in one view.">
+            <div class="landing-preview-heading"><span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3 4h14v10H3z M7 17h6 M10 14v3"/></svg> A class, at a glance</span><span class="landing-example">Example view</span></div>
+            <div class="landing-room-board">Front of classroom</div>
+            <div class="landing-seat-grid" aria-hidden="true"><span class="landing-seat is-present"><b>AM</b><small>Present</small></span><span class="landing-seat is-present"><b>JL</b><small>Present</small></span><span class="landing-seat"><b>KN</b><small>Not checked in</small></span><span class="landing-seat is-present"><b>RS</b><small>Present</small></span><span class="landing-seat is-present"><b>DT</b><small>Present</small></span><span class="landing-seat is-present"><b>BC</b><small>Present</small></span></div>
+            <div class="landing-preview-caption"><span class="landing-status-dot" aria-hidden="true"></span> Attendance and participation, in the same view.</div>
+          </div>
+        </section>
+        <section class="login-card landing-signin" aria-labelledby="landing-signin-title">
+          <p class="landing-card-eyebrow">Your classroom starts here</p>
+          <h2 id="landing-signin-title">Welcome back.</h2>
+          <div id="demo-creds"><p id="demo-text" class="landing-signin-intro">Sign in with your email and password.</p></div>
+          <form id="login-form" onsubmit="event.preventDefault();doLogin()" novalidate aria-labelledby="landing-signin-title">
+            <div class="form-group"><label class="form-label" for="login-user">Email address</label><input type="email" id="login-user" name="email" placeholder="you@school.edu" autocomplete="username" autocapitalize="none" spellcheck="false" inputmode="email"></div>
+            <div class="form-group"><label class="form-label" for="login-pass">Password</label><div class="landing-password-field"><input type="password" id="login-pass" name="password" placeholder="Enter your password" autocomplete="current-password"><button type="button" class="reg-pw-toggle-btn" aria-label="Show password" onclick="regTogglePasswordVisibility('login-pass', this)"><span class="material-symbols-outlined">visibility</span></button></div></div>
+            <div id="login-err" class="landing-form-error" role="alert" style="display:none">Incorrect email or password.</div>
+            <div id="login-pending-err" class="landing-form-pending" role="status" aria-live="polite" style="display:none">Your account is awaiting approval from your teacher.</div>
+            <button type="submit" id="login-submit-btn" class="btn btn-primary btn-block">Sign in <span aria-hidden="true">→</span></button>
+          </form>
+          <div class="landing-registration"><p>New student?</p><button type="button" class="landing-register-btn" onclick="showRegScreen()">Request a student account <span aria-hidden="true">→</span></button><button type="button" class="landing-text-link" onclick="showRegStatusScreen()">Check registration status</button></div>
+          <p class="landing-signin-help">Need help signing in? Contact your teacher or school administrator.</p>
+        </section>
       </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Email</label>
-      <input type="email" id="login-user" placeholder="Enter email" autocomplete="off" style="width:100%">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Password</label>
-      <div style="position:relative">
-        <input type="password" id="login-pass" placeholder="Enter password" style="width:100%;padding-right:40px" onkeydown="if(event.key==='Enter')doLogin()">
-        <button type="button" class="reg-pw-toggle-btn" tabindex="-1" aria-label="Show password" onclick="regTogglePasswordVisibility('login-pass', this)">
-          <span class="material-symbols-outlined" style="font-size:18px">visibility</span>
-        </button>
-      </div>
-    </div>
-    <div id="login-err" style="color:#ffb4ab;font-size:13px;margin-bottom:10px;display:none">❌ Incorrect email or password.</div>
-    <div id="login-pending-err" style="color:#ffb95f;font-size:13px;margin-bottom:10px;display:none;background:rgba(255,185,95,.08);border:1px solid rgba(255,185,95,.25);padding:10px 14px;border-radius:10px">⏳ Your account is awaiting approval from your teacher.</div>
-    <button id="login-submit-btn" class="btn btn-primary btn-block" style="padding:13px;font-size:15px;position:relative;overflow:hidden" onclick="doLogin()">
-      Log In →
-    </button>
-    <div style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted)">
-      New student? <a style="color:var(--primary);font-weight:700;cursor:pointer;text-decoration:none" onclick="showRegScreen()">Create an account →</a>
-      <br>
-      <a style="color:var(--primary);font-weight:700;cursor:pointer;text-decoration:none;display:inline-block;margin-top:6px" onclick="showRegStatusScreen()">Check my registration status →</a>
-    </div>
+      <section class="landing-features" id="landing-features" aria-labelledby="landing-features-title">
+        <div class="landing-features-heading"><p class="landing-eyebrow">One connected classroom</p><h2 id="landing-features-title">From the first check-in to the next milestone.</h2></div>
+        <div class="landing-feature-grid">
+          <article><span class="landing-feature-number">01 / Attendance</span><h3>Start with a clear picture.</h3><p>See attendance on your seating map, follow arrivals, and keep classroom records together.</p></article>
+          <article><span class="landing-feature-number">02 / Participation</span><h3>Make contributions count.</h3><p>Run recitation sessions and record classroom contributions, with a history students can revisit.</p></article>
+          <article><span class="landing-feature-number">03 / Progress</span><h3>Give learning a direction.</h3><p>Students can find their quests, follow their progress, and collect the rewards they earn.</p></article>
+        </div>
+      </section>
+    </main>
+    <footer class="landing-footer"><span class="landing-footer-brand">EDUQUEST</span><p>A shared space for teaching and learning.</p><a href="#login-user">Go to your classroom <svg class="landing-nav-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 12l8-8 M4 4h8v8"/></svg></a></footer>
   </div>
 </div>
 
