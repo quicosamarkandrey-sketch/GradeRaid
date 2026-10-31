@@ -84,7 +84,7 @@ export function _qbPagination(page, totalPages, totalCount, rangeStart, rangeEnd
 }
 
 export function _qbQuizCard(q) {
-  const completions = DB.students.filter(s => s.completedQuizzes.includes(q.id)).length;
+  const completions = DB.students.filter(s => (s.completedQuizzes||[]).includes(q.id)).length;
   const assignedIds = (DB.quizSectionAssignments && DB.quizSectionAssignments[q.id]) || [];
   const sectionsLabel = assignedIds.length
     ? assignedIds.map(cid => (typeof getClassLabel === 'function' ? getClassLabel(cid) : cid)).join(', ')
@@ -119,23 +119,24 @@ export function _qbQuizCard(q) {
         </div>
       </div>
       <div class="admin-quest-card-actions" style="display:flex;gap:8px;flex-shrink:0">
+        <button class="btn btn-ghost btn-sm" data-quest-preview="${_esc(q.id)}">Study preview</button>
         <button class="btn btn-ghost btn-sm" onclick="openQuizAnalytics('${q.id}')" title="Analytics">📊</button>
         <button class="btn btn-ghost btn-sm" onclick="cloneQuiz('${q.id}')" title="Clone this quest">📋 Clone</button>
         <button class="btn btn-ghost btn-sm" onclick="openEditQuiz('${q.id}')">✏️ Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteQuiz('${q.id}')">🗑</button>
       </div>
     </div>
-    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+    <details class="qs-question-disclosure"><summary>Review ${q.questions.length} questions and answers</summary><div>
       ${q.questions.map((qq, i) => {
         const qqType = eqQType(qq);
         const typeTag = qqType === 'id' ? 'ID' : qqType === 'tf' ? 'T/F' : qqType === 'enum' ? 'ENUM' : qqType === 'match' ? 'MATCH' : 'MC';
         const answerLabel = qqType === 'id' ? _esc(qq.answer || '')
           : qqType === 'enum' ? (Array.isArray(qq.answers) ? qq.answers.map(_esc).join(', ') : '')
           : qqType === 'match' ? (Array.isArray(qq.pairs) ? qq.pairs.map(p => `${_esc(p.left)}→${_esc(p.right)}`).join(', ') : '')
-          : (qq.opts && qq.opts[qq.answer] !== undefined ? qq.opts[qq.answer] : '');
-        return `<div style="font-size:12px;color:var(--text-muted);padding:3px 0"><span style="opacity:.55">[${typeTag}]</span> ${i + 1}. ${qq.q} <span style="color:#d0bcff">→ ${answerLabel}</span></div>`;
+          : (qq.opts && qq.opts[qq.answer] !== undefined ? _esc(qq.opts[qq.answer]) : '');
+        return `<div style="font-size:12px;color:var(--text-muted);padding:3px 0"><span style="opacity:.55">[${typeTag}]</span> ${i + 1}. ${_esc(qq.q)} <span style="color:#d0bcff">→ ${answerLabel}</span></div>`;
       }).join('')}
-    </div>
+    </div></details>
   </div>`;
 }
 
@@ -170,13 +171,14 @@ export function _qbRenderList() {
 export const renderAdminQuizzes = function() {
   document.getElementById('a-quizzes').innerHTML = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
-    <div><div style="font-family:var(--fh);font-size:26px;font-weight:900">📝 Quest Builder</div>
+    <div><div style="font-family:var(--fh);font-size:26px;font-weight:900">Quest library</div>
       <div style="color:var(--text-muted);font-size:13px;margin-top:4px">${DB.quizzes.length} quests published</div></div>
     <button class="btn btn-primary" onclick="openQuestTemplateChooser()">＋ Create Quest</button>
   </div>
   <div style="margin-bottom:16px;max-width:280px">
     <input type="text" placeholder="Search quests…" value="${_esc(_qbSearch)}" oninput="qbSetSearch(this.value)">
   </div>
+  <p class="qs-authoring-note">Create once, teach in three ways. Published questions become student flashcards, untimed practice, and a scored quiz. Use Study preview to check how your questions and answers read before sharing them.</p>
   <div id="qb-quiz-list"></div>`;
   _qbRenderList();
 };
@@ -336,6 +338,7 @@ export function renderQuizBuilderModal() {
   ).join('');
 
   showModal(`<div class="modal-h2">${DB.quizzes.find(q => q.id === draftQuiz.id) ? '✏️ Edit Quest' : '📝 Create Quest'}</div>
+    <p class="form-help" style="margin-bottom:20px">This set supports flashcards, practice, and scored quiz modes. Write clear questions and complete answers so students can study independently.</p>
     <div class="form-group"><label class="form-label">Quest Title</label><input type="text" id="qb-title" value="${_esc(draftQuiz.title)}" placeholder="e.g. Science Chapter 5 Quiz" style="width:100%" oninput="draftQuiz.title=this.value"></div>
     <div class="form-group"><label class="form-label">Description</label><input type="text" id="qb-desc" value="${_esc(draftQuiz.desc)}" placeholder="Brief description..." style="width:100%" oninput="draftQuiz.desc=this.value"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">

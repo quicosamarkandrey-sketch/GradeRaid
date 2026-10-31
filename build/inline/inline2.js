@@ -139,7 +139,7 @@ function renderStudentDashboard(){
       </div>
       <div class="quest-grid" style="margin-bottom:24px">
         ${pending.slice(0,2).map((q,qi)=>`
-        <div class="quest-card" onclick="startQuiz('${q.id}')">
+        <div class="quest-card" onclick="if(window.QuestStudy){QuestStudy.open('${q.id}')}else{startQuiz('${q.id}')}">
           <div class="quest-img-wrap">
             <div class="quest-img-placeholder"><span class="eq-emoji" aria-hidden="true">📚</span></div>
             ${qi===0?'<div class="quest-badge hot">Available</div>':'<div class="quest-badge new">New</div>'}
@@ -154,7 +154,7 @@ function renderStudentDashboard(){
               </div>
               <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
             </div>
-            <button class="quest-btn primary"><span class="eq-emoji" aria-hidden="true">📚</span> Begin Quest</button>
+            <button class="quest-btn primary"><span class="eq-emoji" aria-hidden="true">📚</span> Study set</button>
           </div>
         </div>`).join('')}
       </div>` : `
@@ -322,7 +322,7 @@ function renderQuestCard(q, qi, cadenceTag, isNext){
   const swordRow = QUEST_TIER_ORDER.slice(0,5).map((_,i)=>
     `<span class="material-symbols-outlined${i<=tierIdx?' lit':''}">swords</span>`).join('');
   return `
-    <div class="quest-card state-available${isNext ? ' quest-next' : ''}" style="--rc:${rs.color};--rg:${rs.glow}" onclick="startQuiz('${q.id}')">
+    <div class="quest-card state-available${isNext ? ' quest-next' : ''}" style="--rc:${rs.color};--rg:${rs.glow}" onclick="if(window.QuestStudy){QuestStudy.open('${q.id}')}else{startQuiz('${q.id}')}">
       ${isNext ? `<div class="quest-next-flag"><span class="material-symbols-outlined" style="font-size:11px">bolt</span>Start Here</div>` : ''}
       <div class="quest-img-wrap">
         <div class="quest-img-placeholder">${['🧬','🔢','🌍','⚗️','💻','🔭','📐','🦠'][qi%8]}</div>
@@ -340,7 +340,7 @@ function renderQuestCard(q, qi, cadenceTag, isNext){
           </div>
           <div class="quest-time"><span class="material-symbols-outlined">schedule</span>${q.timeLimit} MIN</div>
         </div>
-        <button class="quest-btn primary">⚔ Begin Quest</button>
+        <button class="quest-btn primary">${window.QuestStudy?'Study set →':'⚔ Begin Quest'}</button>
       </div>
     </div>`;
 }
@@ -449,6 +449,7 @@ function renderTopQuestersPanel(){
 }
 
 function renderStudentQuizzes(){
+  if(window.QuestStudy)return QuestStudy.renderLibrary();
   const st=currentUser;
   // Phase 27 (closes the gap flagged in quiz-builder.js's Phase 15 comment
   // and SYNC_AUDIT_REPORT.md): same "opt-in scoping" semantics as
@@ -853,6 +854,7 @@ window.updateMascotAmbientMood = updateMascotAmbientMood;
 
 function startQuiz(qid){
   const quiz=DB.quizzes.find(q=>q.id===qid);if(!quiz)return;
+  if(window.QuestStudy){const blocked=QuestStudy.availability(quiz);if(blocked){toast(blocked);return;}}
   // Critical Fix #5 (fresh-load) still applies. Retries are no longer
   // unlimited — Phase 60 (Improvement Plan §7) caps scored attempts at 4,
   // gated by eqQuizAttemptStatus() below; the old "no hard lock, just a
@@ -976,10 +978,10 @@ function quizTimeout(){
   // Phase 6 — timeout breaks the combo the same way a wrong tap does (per
   // §10's animation map: "Wrong answer or timeout" both trigger the combo
   // band's shatter), so it gets the same one-shot animation flag.
-  if(quizCombo>=2){ toast('💥 Combo broken — time\'s up!','#ffb4ab'); quizComboLastEvent='break'; }
+  if(quizCombo>=2){ toast('Correct-answer streak ended.','#888888'); quizComboLastEvent='break'; }
   else { quizComboLastEvent=null; }
   quizCombo=0;
-  toast("⏱ Time's up on that one!",'#ffb4ab');
+  toast('Time is up. Review the answer before continuing.','#888888');
   // Phase 7 — §4: "time-out = counts as wrong, same 'wrong' feedback beat
   // as an incorrect tap." Same mascot reaction quizNext() fires for a miss.
   fireMascotEvent('wrong', eqQuestionStage(activeQuiz.questions.length, quizCurrent));
@@ -991,7 +993,7 @@ function quizTimeout(){
 }
 function renderQuizQuestion(){
   const q=activeQuiz.questions[quizCurrent];const total=activeQuiz.questions.length;
-  const fillPct=Math.round((quizCurrent+1)/total*100);
+  const fillPct=Math.round(quizLocked.filter(Boolean).length/total*100);
   // Phase 6 — consume the one-shot combo animation event (see quizNext()/
   // quizTimeout()) right at the top, before anything else can early-return
   // or re-render: whatever happens below, this event has now been "used",
@@ -1123,7 +1125,7 @@ function renderQuizQuestion(){
           return `
         <button class="quiz-opt${isElim?' eliminated':''}${revealCls}" id="opt-${i}" ${isDisabled?'disabled':''} onclick="${isDisabled?'':'selectOpt('+i+')'}">
           <div class="quiz-opt-letter">${letters[i]}</div>
-          <span class="quiz-opt-text">${opt}</span>
+          <span class="quiz-opt-text">${_esc(opt)}</span>
           ${isElim?'<span class="quiz-opt-elim-tag">Eliminated</span>':''}
           ${isCorrectOpt?'<span class="quiz-opt-reveal-tag correct">✓ Correct</span>':''}
           ${isWrongPick?'<span class="quiz-opt-reveal-tag wrong">✕ Your pick</span>':''}
@@ -1167,7 +1169,7 @@ function renderQuizQuestion(){
          through or that blocks the next interaction. -->
     <div class="quiz-reveal-flash${revealEvent?' flash-'+revealEvent:''}"></div>
     <div class="quiz-arena-content">
-    <div class="quiz-title-label">[ ${activeQuiz.title.toUpperCase().replace(/\s+/g,'_')} ]</div>
+    <div class="quiz-title-label">${_esc(activeQuiz.title)} · Scored quiz · Attempt ${quizAttemptNumber}</div>
     <!-- Phase 9 — Widescreen Arena: on landscape/desktop this splits into a
          persistent HUD rail (progress, timer, stage, streak, hints, mascot
          companion) plus a generous main column for the question + options,
@@ -1181,7 +1183,7 @@ function renderQuizQuestion(){
             <div class="quiz-progress-bar"><div class="quiz-progress-fill" style="width:${fillPct}%"></div></div>
             <div class="quiz-progress-labels">
               <span style="color:var(--text-muted)">Q.${String(quizCurrent+1).padStart(2,'0')} / ${String(total).padStart(2,'0')}</span>
-              <span style="color:var(--primary)">${fillPct}% COMPLETE</span>
+              <span style="color:var(--primary)">${fillPct}% answered</span>
             </div>
           </div>
           <div class="quiz-timer stage-${stageIdx}" id="quiz-timer">--</div>
@@ -1189,9 +1191,9 @@ function renderQuizQuestion(){
         <div class="quiz-hud-divider"></div>
         <!-- Phase 4 — meta row: secondary/ambient stats (stage, streak, hints). -->
         <div class="quiz-meta-row">
-          <div class="quiz-stage-badge stage-${stageIdx}">${stageIdx===0?'🌱':stageIdx===1?'⚡':'🔥'} ${stageName}</div>
-          <div class="quiz-meta-chip">🔥 ${quizStreakSnapshot} Day Streak</div>
-          <div class="quiz-meta-chip${canHint?' quiz-hint-btn':' quiz-hint-btn disabled'}" ${canHint?'onclick="useHint()"':''} title="${hintReason}">✨ ${quizHintsRemaining} Hint${quizHintsRemaining===1?'':'s'} (${HINT_COST}🪙)</div>
+          <div class="quiz-stage-badge stage-${stageIdx}">${stageName}</div>
+          <div class="quiz-meta-chip">${quizStreakSnapshot}-day study streak</div>
+          <button type="button" class="quiz-meta-chip${canHint?' quiz-hint-btn':' quiz-hint-btn disabled'}" ${canHint?'onclick="useHint()"':'disabled'} title="${hintReason}">${quizHintsRemaining} hint${quizHintsRemaining===1?'':'s'} · ${HINT_COST} coins</button>
         </div>
         <div class="quiz-hud-divider"></div>
         <!-- Phase 7 — mascot companion now docks in the HUD rail (was the
@@ -1212,21 +1214,21 @@ function renderQuizQuestion(){
              background/border/text stay stable, only a faint stage-tinted
              border accent (chrome, not text) is allowed to shift. -->
         <div class="quiz-question-card${revealEvent?' card-flash-'+revealEvent:''}">
-          <div class="quiz-q-label">QUESTION_${String(quizCurrent+1).padStart(2,'0')} // ${qType==='id'?'TYPE THE CORRECT ANSWER':qType==='enum'?'FILL IN ALL ANSWERS':qType==='match'?'MATCH EACH ITEM':'SELECT CORRECT RESPONSE'}${isLocked?' · 🔒 LOCKED IN':''}</div>
-          <div class="quiz-q-text">${q.q}</div>
+          <div class="quiz-q-label">Question ${quizCurrent+1} · ${qType==='id'?'Type your answer':qType==='enum'?'Name all answers':qType==='match'?'Match each item':'Choose an answer'}${isLocked?' · Answer submitted':''}</div>
+          <div class="quiz-q-text">${_esc(q.q)}</div>
         </div>
         ${optionsHTML}
         <div class="quiz-nav">
           ${quizCurrent>0?`<button class="quiz-nav-prev" onclick="quizPrev()">← Prev</button>`:''}
           <button class="quiz-nav-next" id="btn-next" disabled onclick="quizNext()">
-            ${quizCurrent===total-1?'▶ Submit Quest':'Next →'}
+            ${quizCurrent===total-1?'Finish quiz':isLocked?'Next question →':'Check answer →'}
           </button>
         </div>
         <!-- Abort stays deliberately far from the mascot/companion (now
              clear across the layout in the HUD rail), same intent as
              before: leaving should never be near the "fun" elements. -->
         <div class="quiz-footer-row">
-          <button class="quiz-abort" onclick="confirmAbortQuiz()">✕ Abort</button>
+          <button class="quiz-abort" onclick="confirmAbortQuiz()">Leave quiz</button>
         </div>
       </div>
     </div>
@@ -1235,7 +1237,7 @@ function renderQuizQuestion(){
     <div class="quiz-combo-band combo-level-${comboLevel}${comboEvent==='grow'?' combo-pop':comboEvent==='break'?' combo-shatter':''}" id="quiz-combo-band">
       <span class="quiz-combo-label">COMBO</span>
       <span class="quiz-combo-value">${quizCombo>0?'x'+quizCombo:'—'}</span>
-      <span class="quiz-combo-mult">${eqComboMultiplier(quizCombo)}× reward</span>
+      <span class="quiz-combo-mult">${eqComboMultiplier(quizCombo)}× XP bonus</span>
     </div>
     </div>
   </div>`;
@@ -1250,7 +1252,7 @@ function renderQuizQuestion(){
     window._eqQuizIntensityBackdropStop = null;
   }
   const qiCanvas = document.getElementById('quiz-intensity-canvas');
-  if (qiCanvas && typeof startAmbientBackdrop === 'function') {
+  if (!window.QuestStudy && qiCanvas && typeof startAmbientBackdrop === 'function') {
     window._eqQuizIntensityBackdropStop = startAmbientBackdrop(qiCanvas, QI_STAGE_CFG);
   }
   // Phase 6 (Improvement Plan §5) — milestone particle burst: fires ON TOP
@@ -1291,8 +1293,8 @@ function renderQuizQuestion(){
   } else {
     if(stageIdx!==quizLastAnnouncedStage){
       if(quizLastAnnouncedStage!==-1){
-        const stageMsg=stageIdx===1?'⚡ Stage 2: Surge!':stageIdx===2?'🔥 Stage 3: Overdrive!':'🌱 Stage 1: Warm-Up!';
-        const stageColor=stageIdx===1?'#ffb95f':stageIdx===2?'#ffb4ab':'#4EDEA3';
+        const stageMsg='Stage '+(stageIdx+1)+' · '+eqQuizStageSeconds(activeQuiz)[stageIdx]+' seconds per question';
+        const stageColor='#888888';
         toast(stageMsg, stageColor);
         // Phase 7 — §6: "hiding" reaction on the gear-change into a harder
         // stage. Only stages 1/2 exist as a "transition INTO" per
@@ -1471,14 +1473,14 @@ function quizNext(){
     // top of it if this exact streak count is a milestone.
     quizComboLastEvent = 'grow';
     quizComboMilestoneHit = eqIsComboMilestone(quizCombo);
-    if(quizCombo>=5) toast(`🔥 COMBO x${quizCombo}! Max multiplier reached!`,'#ffb95f');
-    else if(quizCombo>=3) toast(`⚡ Combo x${quizCombo}!`,'#d0bcff');
+    if(quizCombo>=5) toast(`${quizCombo} correct in a row · XP bonus active`,'#888888');
+    else if(quizCombo>=3) toast(`${quizCombo} correct in a row · XP bonus active`,'#888888');
     // A milestone streak gets its own hyped line instead of the plain
     // per-stage "correct" one — matches the admin editor's separate
     // 🔥 Combo Milestone pool.
     fireMascotEvent(quizComboMilestoneHit ? 'milestone' : 'correct', mascotStageIdx);
   } else if(quizCombo>=2){
-    toast('💥 Combo broken!','#ffb4ab');
+    toast('Correct-answer streak ended.','#888888');
     quizCombo=0;
     // Phase 6 — "shatter" mount animation, not a silent reset, per §5.
     quizComboLastEvent = 'break';
@@ -1528,14 +1530,13 @@ function confirmAbortQuiz(){
   if(!activeQuiz) return;
   showModal(`
     <div style="text-align:center;padding:4px">
-      <div style="font-size:34px;margin-bottom:10px">⚠️</div>
-      <div class="modal-h2" style="text-align:center">Leave this quest?</div>
+      <div class="modal-h2" style="text-align:center">Leave this scored quiz?</div>
       <div style="color:var(--text-muted);margin-bottom:22px;font-size:13px;line-height:1.6">
-        Leaving now counts as a loss. Your score won't count, and rewards will be reduced if you retry.
+        Leaving now uses an attempt and earns no XP or coins. A retry follows your class’s attempt and XP rules. You can study freely in Practice instead.
       </div>
       <div style="display:flex;flex-direction:column;gap:10px">
-        <button class="btn btn-primary" style="width:100%" onclick="closeModalForce()">Stay &amp; Finish</button>
-        <button style="width:100%;background:none;border:none;color:var(--text-muted);font-size:12px;padding:6px;cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="closeModalForce();abortQuiz()">Abort Anyway</button>
+        <button class="btn btn-primary" style="width:100%" onclick="closeModalForce()">Stay in quiz</button>
+        <button style="width:100%;background:none;border:none;color:var(--text-muted);font-size:12px;padding:6px;cursor:pointer;text-decoration:underline;text-underline-offset:3px" onclick="closeModalForce();abortQuiz()">Leave quiz anyway</button>
       </div>
     </div>`, 'sm');
 }
@@ -1551,6 +1552,7 @@ function confirmAbortQuiz(){
 // only a brand-new (further-penalized, or locked) one via startQuiz().
 function abortQuiz(){
   clearInterval(quizTimer);
+  clearTimeout(quizAdvanceTimer);quizAdvanceTimer=null;
   // Phase 5 — stop the ambient intensity backdrop the instant this attempt
   // ends; #s-quiz-active's innerHTML is about to be replaced with the
   // results screen (or navTo() will replace it again), which detaches
@@ -1602,7 +1604,7 @@ function abortQuiz(){
   currentUser = AppStore.getStudent(currentUser.id);
   updateTopbar();
 
-  toast('🚩 Quest aborted — counted as a loss.', '#ffb4ab');
+  toast('Quiz ended early. One attempt used; no XP or coins awarded.', '#888888');
   activeQuiz = null;
   navTo('s-quizzes');
 }
@@ -1617,6 +1619,7 @@ window.addEventListener('beforeunload', function(){
 });
 async function finishQuiz() {
   clearInterval(quizTimer);
+  clearTimeout(quizAdvanceTimer);quizAdvanceTimer=null;
   // Phase 5 — same backdrop-loop cleanup as abortQuiz(); see comment there.
   if (typeof window._eqQuizIntensityBackdropStop === 'function') {
     window._eqQuizIntensityBackdropStop();
@@ -1637,6 +1640,7 @@ async function finishQuiz() {
   if(activeQuiz!==finishingQuest||currentUser?.id!==finishingStudent)return;
   const balancedCoins=rewardMode!=='legacy';
   const learningAttempt={id:'qh_'+uid(),quizId:activeQuiz.id,completedAt:new Date().toISOString(),date:isoDate(),attempt:quizAttemptNumber};
+  window.QuestStudy?.rememberAttempt(activeQuiz,learningAttempt.id);
 
 
   let correct = 0;
@@ -1767,18 +1771,18 @@ async function finishQuiz() {
   document.getElementById('s-quiz-active').innerHTML = `
   <div class="results-wrap fade-in">
     <div class="results-emoji">${pass ? '🏆' : '💀'}</div>
-    <div class="results-title" style="color:${pass ? '#4edea3' : '#ffb4ab'}">${pass ? 'Quest Complete!' : 'Quest Failed'}</div>
-    <div class="results-sub">${activeQuiz.title.toUpperCase().replace(/\s+/g, '_')}</div>
+    <div class="results-title" style="color:${pass ? '#4edea3' : '#ffb4ab'}">Quiz complete.</div>
+    <div class="results-sub">${_esc(activeQuiz.title)}</div>
     <div class="results-score-card" style="--rc:${_rc}">
       <div class="results-rank-badge">${rankLetter}</div>
       <div class="results-big-score" style="color:${score >= 80 ? '#4edea3' : score >= 60 ? '#ffb95f' : '#ffb4ab'}">${score}<span style="font-size:28px">%</span></div>
-      <div class="results-sub-score">${correctDisplay} / ${total} CORRECT</div>
+      <div class="results-sub-score">${correctDisplay} / ${total} correct · ${pass?'Passed':'Not passed yet'}</div>
       ${bonusBits.length ? `<div class="results-bonus-row">${bonusBits.map(b=>`<span class="results-bonus-chip">${b}</span>`).join('')}</div>` : ''}
       ${_resultsMascotLine ? `<div class="results-mascot-line"><span class="results-mascot-emoji">${_resultsMascotEmoji}</span><span>${_eqEsc(_resultsMascotLine)}</span></div>` : ''}
     </div>
     <div style="display:flex;gap:12px;margin-top:8px">
-      <button class="btn btn-ghost" style="flex:1" onclick="navTo('s-quizzes')">← Quest Board</button>
-      <button class="btn btn-primary" style="flex:1" onclick="navTo('s-dashboard')">🏠 Dashboard</button>
+      <button class="btn btn-ghost" style="flex:1" onclick="navTo('s-quizzes')">← Study library</button>
+      ${window.QuestStudy?`<button class="btn btn-primary" style="flex:1" data-quest-review="${_esc(activeQuiz.id)}">Review &amp; practice</button>`:`<button class="btn btn-primary" style="flex:1" onclick="navTo('s-dashboard')">🏠 Dashboard</button>`}
     </div>
   </div>`;
   updateTopbar();
