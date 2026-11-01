@@ -126,12 +126,10 @@ export const tsShowTitleUnlockPopup = function (title) {
   const d = document.createElement('div');
   d.id        = 'ts-unlock-popup';
   d.className = 'ts-unlock-popup';
-  d.innerHTML = `<div style="font-size:36px;flex-shrink:0">${title.icon || '🏆'}</div>` +
-    `<div><div style="font-size:10px;font-weight:800;color:#ffb95f;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">Title Unlocked!</div>` +
-    `<div style="font-family:var(--fh);font-size:15px;font-weight:900;color:#fff;margin-bottom:6px">${_esc(title.name)}</div>` +
-    `<div>${tsBuildBadgeHTML(title, { small: true, noParticles: true })}</div></div>`;
-  d.style.cursor = 'pointer';
-  d.addEventListener('click', () => navTo('s-badges'));
+  d.innerHTML = `<span class="tc-unlock-icon" aria-hidden="true">${_esc(title.icon || '🏅')}</span><div><span class="tc-unlock-label">Title unlocked</span><strong class="tc-unlock-name">${_esc(title.name)}</strong>${tsBuildBadgeHTML(title,{small:true,noParticles:true})}</div>`;
+  d.tabIndex=0;d.setAttribute('role','button');d.setAttribute('aria-label','View unlocked title: '+title.name);
+  d.addEventListener('click',()=>{window._tsOpenTitlesTab=true;navTo('s-badges');d.remove();});
+  d.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();d.click();}});
   document.body.appendChild(d);
   setTimeout(() => {
     d.style.animation = 'achPopOut .4s ease forwards';

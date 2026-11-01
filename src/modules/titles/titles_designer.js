@@ -290,24 +290,15 @@ export const tsAdminOpenDesigner = function (titleId) {
       </div>
 
       <div class="ts3-preview-pane">
-        <div class="ts3-preview-label">⚡ Live Preview</div>
+        <div class="ts3-preview-label">Live title preview</div>
         <div class="ts3-preview-stage" id="ts3-preview-stage">
-          <div class="ts3-preview-player">PlayerName</div>
+          <div class="ts3-preview-player">Alex Rivera</div>
           <div id="ts3-preview-badge"></div>
         </div>
-        <div style="margin-top:10px"><div style="font-size:9px;color:rgba(255,255,255,.3);margin-bottom:6px;text-align:center;letter-spacing:.08em;text-transform:uppercase">Leaderboard context</div>
-          <div style="background:rgba(35,31,56,.9);border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            <div style="font-family:var(--fm);font-size:11px;font-weight:900;color:var(--tertiary);width:20px">1</div>
-            <div style="width:26px;height:26px;border-radius:7px;background:rgba(139,92,246,.3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:var(--primary)">A</div>
-            <div style="flex:1"><div style="font-size:12px;font-weight:800;color:var(--on-surface);margin-bottom:2px">StudentName</div><div id="ts3-preview-sm"></div></div>
-            <div style="font-family:var(--fh);font-size:13px;font-weight:900;color:var(--primary)">12,400 XP</div>
-          </div>
-          <div style="font-size:9px;color:rgba(255,255,255,.3);margin-bottom:6px;text-align:center;letter-spacing:.08em;text-transform:uppercase">Profile context</div>
-          <div style="background:rgba(35,31,56,.9);border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px">
-            <div style="width:30px;height:30px;border-radius:8px;background:rgba(139,92,246,.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:var(--primary)">A</div>
-            <div><div style="font-size:11px;font-weight:800;color:var(--on-surface);margin-bottom:2px">PlayerName</div><div style="transform:scale(.48);transform-origin:left center"><div id="ts3-preview-xs"></div></div></div>
-          </div>
-        </div>
+        <details class="ts3-contexts"><summary>See compact previews</summary>
+          <span class="ts3-context-label">Leaderboard</span><div class="ts3-context-sample"><span class="ts3-context-avatar">AR</span><div><strong>Alex Rivera</strong><div id="ts3-preview-sm"></div></div></div>
+          <span class="ts3-context-label">Profile</span><div class="ts3-context-sample"><span class="ts3-context-avatar">AR</span><div><strong>Alex Rivera</strong><div id="ts3-preview-xs"></div></div></div>
+        </details>
         <div style="margin-top:10px"><div style="font-size:9px;color:rgba(255,255,255,.3);margin-bottom:6px;text-align:center;letter-spacing:.08em;text-transform:uppercase">Quick Rarity</div>
           <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center">
             ${Object.entries(_TS3_RARITY_COLORS).map(([r, col]) =>
@@ -433,6 +424,7 @@ export const ts3SetRarity = function (rarity) {
 export const ts3Preview = function () {
   const d = window._tsDraft;
   if (!d) return;
+  document.querySelectorAll('.ts3-template-card,.ts3-pick-item').forEach(el=>{el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-pressed',String(el.classList.contains('selected')));el.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();el.click();}};});
   const pv = document.getElementById('ts3-preview-badge');
   if (pv) pv.innerHTML = tsBuildBadgeHTML(d);
   const pvSm = document.getElementById('ts3-preview-sm');

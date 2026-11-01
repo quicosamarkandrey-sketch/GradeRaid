@@ -134,9 +134,9 @@ export const tsDefaultTitle = function () {
     id: uid(), name: '', description: '', icon: '🏆', rarity: 'Common', active: true,
     achievementId: null,
     frameShape: 'classic',
-    primaryColor: '#d0bcff', secondaryColor: '#8b5cf6', accentColor: '#a78bfa',
-    borderColor: '#8b5cf6', glowColor: '#8b5cf6', textColor: '#ffffff',
-    bgColor: '#1a1438', gradientFrom: '#8b5cf6', gradientTo: '#4edea3',
+    primaryColor: '#8dbbff', secondaryColor: '#4268b5', accentColor: '#c6dfff',
+    borderColor: '#6b94dc', glowColor: '#5681c7', textColor: '#f4f8ff',
+    bgColor: '#121e34', gradientFrom: '#4268b5', gradientTo: '#243a63',
     frameStyle: 'none', effect: 'none', animation: 'none',
     borderStyle: 'solid', frameTemplate: 'solid', particles: 'none',
     bgEffect: 'none', customBorderCSS: '', customAnimationCSS: '', customBgCSS: '',
@@ -163,6 +163,10 @@ export const tsGetFrameStyle = function (id) {
 
 // ── MMORPG Template Library ───────────────────────────────────────────────────
 export const TS_MMORPG_TEMPLATES = [
+  { id:'study_scholar', cat:'nameplate', label:'Cobalt Scholar', icon:'📘', frameShape:'rectangle', frameStyle:'metal', effect:'none', animation:'none', rarity:'Rare', primaryColor:'#8dbbff', secondaryColor:'#4268b5', accentColor:'#c6dfff', borderColor:'#6b94dc', glowColor:'#5681c7', textColor:'#f4f8ff', bgColor:'#121e34', gradientFrom:'#4268b5', gradientTo:'#243a63' },
+  { id:'study_sage', cat:'nameplate', label:'Emerald Sage', icon:'🌿', frameShape:'capsule', frameStyle:'none', effect:'none', animation:'none', rarity:'Uncommon', primaryColor:'#83d4b4', secondaryColor:'#28735d', accentColor:'#c2f2dd', borderColor:'#5eaa8d', glowColor:'#32826b', textColor:'#edfff5', bgColor:'#102b24', gradientFrom:'#28735d', gradientTo:'#1c4438' },
+  { id:'study_luminary', cat:'achievement', label:'Golden Luminary', icon:'☀️', frameShape:'royal', frameStyle:'royal', effect:'none', animation:'none', rarity:'Legendary', primaryColor:'#efc679', secondaryColor:'#976428', accentColor:'#ffe7b1', borderColor:'#ca9d59', glowColor:'#a77a38', textColor:'#fff6df', bgColor:'#302417', gradientFrom:'#976428', gradientTo:'#594020' },
+  { id:'study_nova', cat:'achievement', label:'Stellar Mind', icon:'✦', frameShape:'celestial', frameStyle:'none', effect:'stars', animation:'none', rarity:'Mythic', primaryColor:'#c6a6f0', secondaryColor:'#7154a0', accentColor:'#efdcff', borderColor:'#a88aca', glowColor:'#7f5eac', textColor:'#faf1ff', bgColor:'#261b38', gradientFrom:'#7154a0', gradientTo:'#40305b' },
   { id:'np_warrior',   cat:'nameplate',   label:'Warrior',       icon:'⚔️',  frameShape:'classic',   frameStyle:'metal',    effect:'glow',       animation:'pulse',        rarity:'Rare',      primaryColor:'#ef4444', secondaryColor:'#b91c1c', accentColor:'#fca5a5', borderColor:'#dc2626', glowColor:'#ef4444', textColor:'#fff5f5', bgColor:'#1a0808', gradientFrom:'#dc2626', gradientTo:'#7f1d1d' },
   { id:'np_mage',      cat:'nameplate',   label:'Arcane Mage',   icon:'🔮',  frameShape:'arcane',    frameStyle:'arcane',   effect:'runes',      animation:'glow-pulse',   rarity:'Epic',      primaryColor:'#a855f7', secondaryColor:'#7c3aed', accentColor:'#d8b4fe', borderColor:'#9333ea', glowColor:'#c084fc', textColor:'#fdf4ff', bgColor:'#0d0621', gradientFrom:'#7c3aed', gradientTo:'#4c1d95' },
   { id:'np_paladin',   cat:'nameplate',   label:'Holy Paladin',  icon:'✨',  frameShape:'shield',    frameStyle:'royal',    effect:'glow',       animation:'glow-pulse',   rarity:'Legendary', primaryColor:'#fbbf24', secondaryColor:'#d97706', accentColor:'#fef08a', borderColor:'#f59e0b', glowColor:'#fbbf24', textColor:'#fffbeb', bgColor:'#1a1200', gradientFrom:'#d97706', gradientTo:'#92400e' },
@@ -202,22 +206,28 @@ export const TS_MMORPG_TEMPLATES = [
 export const tsBuildBadgeHTML = function (title, opts) {
   if (!title) return '';
   opts = opts || {};
-  const rCfg   = TS_RARITY[title.rarity] || TS_RARITY.Common;
-  const bg       = title.bgColor      || '#1a1438';
-  const border   = _cssColor(title.borderColor, '#8b5cf6');
-  const glow     = _cssColor(title.glowColor, '#8b5cf6');
-  const text     = title.textColor    || '#ffffff';
-  const gradFrom = title.gradientFrom || '#8b5cf6';
-  const gradTo   = title.gradientTo   || '#4edea3';
-  const spread   = opts.small ? rCfg.shadowSpread * 0.6 : rCfg.shadowSpread;
-  const alpha    = opts.small ? rCfg.glowMul * 0.7      : rCfg.glowMul;
-
-  function h2rgba(hex, a) {
-    const r = parseInt((hex || '#8b5cf6').slice(1, 3), 16) || 139;
-    const g = parseInt((hex || '#8b5cf6').slice(3, 5), 16) || 92;
-    const b = parseInt((hex || '#8b5cf6').slice(5, 7), 16) || 246;
-    return `rgba(${r},${g},${b},${a})`;
+  const rCfg = Object.hasOwn(TS_RARITY,title.rarity)?TS_RARITY[title.rarity]:TS_RARITY.Common;
+  const bg = _cssColor(title.bgColor, '#121e34');
+  const border = _cssColor(title.borderColor, '#6b94dc');
+  const glow = _cssColor(title.glowColor, border);
+  const gradFrom = _cssColor(title.gradientFrom, border);
+  const gradTo = _cssColor(title.gradientTo, '#243a63');
+  const primary = _cssColor(title.primaryColor, border);
+  const accent = _cssColor(title.accentColor, gradTo);
+  let text = _cssColor(title.textColor, '#f4f8ff');
+  // Recover readable text from low-contrast legacy palettes. Authored colors
+  // stay untouched in storage and remain editable in the designer.
+  function luminance(color) {
+    let hex = /^#[a-f\d]{3}$/i.test(color) ? '#'+color.slice(1).split('').map(c=>c+c).join('') : color;
+    if (!/^#[a-f\d]{6}$/i.test(hex)) return null;
+    const channels = [1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255).map(v=>v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4));
+    return channels[0]*.2126+channels[1]*.7152+channels[2]*.0722;
   }
+  const bgL=luminance(bg),fgL=luminance(text);
+  if(bgL!==null && fgL!==null && (Math.max(bgL,fgL)+.05)/(Math.min(bgL,fgL)+.05)<4.5)text=bgL>.179?'#000000':'#ffffff';
+  const spread = opts.small || opts.xs ? 6 : Math.min(16,rCfg.shadowSpread*.55);
+  const alpha = rCfg.glowMul*((opts.small||opts.xs)?0.12:0.3);
+  function h2rgba(color,a) {return `color-mix(in srgb, ${color} ${Math.round(a*100)}%, transparent)`;}
 
   const glowShadow = `0 0 ${spread}px ${h2rgba(glow, alpha)}`;
   const glowMax    = `0 0 ${spread * 2}px ${h2rgba(glow, Math.min(1, alpha * 1.6))}`;
@@ -225,8 +235,8 @@ export const tsBuildBadgeHTML = function (title, opts) {
   const cssVars = [
     `--ts-bg:${bg}`, `--ts-border:${border}`, `--ts-glow:${glow}`,
     `--ts-grad-from:${gradFrom}`, `--ts-grad-to:${gradTo}`,
-    `--ts-primary:${title.primaryColor || '#d0bcff'}`,
-    `--ts-accent:${title.accentColor || gradTo || '#fde047'}`,
+    `--ts-primary:${primary}`,
+    `--ts-accent:${accent}`,
     `--ts-glow-shadow:${glowShadow}`, `--ts-glow-shadow-max:${glowMax}`,
     `--ts-text:${text}`,
   ].join(';');
@@ -255,14 +265,14 @@ export const tsBuildBadgeHTML = function (title, opts) {
   const frameStyleId   = (title.frameStyle || 'none').toString().toLowerCase();
   const frameClass     = 'ts-frame-' + frameShape;
   const styleClass     = frameStyleId !== 'none' ? 'ts-style-' + frameStyleId : '';
-  const wrapperClasses = ['ts-badge-wrap', frameClass, styleClass, useLegacyBorderClass ? borderClass : '', bgClass, animClass, effectClass, rarityClass, sizeClass].filter(Boolean).join(' ');
+  const wrapperClasses = ['ts-badge-wrap', 'ts-plate-v2', title.bgEffect==='custom'?'ts-custom-surface':'', frameClass, styleClass, useLegacyBorderClass ? borderClass : '', bgClass, animClass, effectClass, rarityClass, sizeClass].filter(Boolean).join(' ');
   const wrapperInlineStyle = [cssVars, `background:${customBgStyle ? '' : 'transparent'}`, customBgStyle, `border-color:${border}`, `box-shadow:${glowShadow}`, customBorderStyle, customAnimStyle, opts.style || ''].filter(Boolean).join(';');
   const innerInlineStyle   = [`color:${text}`].join(';');
 
   // ── SVG Frame builder ──────────────────────────────────────────────────────
   function buildFrameSVG(shape) {
     const gId = 'g-' + (Math.random() + '').slice(2, 8);
-    const stroke = title.borderColor || '#8b5cf6';
+    const stroke = border;
     switch ((shape || 'classic')) {
       case 'solid': case 'double': case 'dashed': case 'dotted': case 'custom': case 'classic':
         return `<svg class="ts-frame-svg" viewBox="0 0 220 72" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="${gId}" x1="0" x2="1"><stop offset="0" stop-color="${stroke}" stop-opacity=".9"/><stop offset="1" stop-color="${gradTo||stroke}" stop-opacity=".45"/></linearGradient></defs><rect x="10" y="10" width="200" height="52" rx="20" fill="url(#${gId})" stroke="${stroke}" stroke-width="3"/><path d="M24 22 H84" stroke="rgba(255,255,255,.28)" stroke-width="4" stroke-linecap="round"/><path d="M24 50 H84" stroke="rgba(255,255,255,.16)" stroke-width="3" stroke-linecap="round"/></svg>`;
@@ -308,7 +318,7 @@ export const tsBuildBadgeHTML = function (title, opts) {
   // ── Particles ──────────────────────────────────────────────────────────────
   const pColors = { embers:'#f97316', smoke:'#9ca3af', mist:'#e0f2fe', stars:'#fde68a', bubbles:'#93c5fd', lightning:'#fbbf24', leaves:'#4ade80', snow:'#e2e8f0', sparkles:'#f0abfc' };
   let particlesHTML = '';
-  if (title.particles && title.particles !== 'none' && !opts.noParticles) {
+  if (title.particles && title.particles !== 'none' && !opts.noParticles && !opts.small && !opts.xs) {
     const pc  = pColors[title.particles] || '#ffffff';
     const cnt = Math.max(2, Math.round((opts.small ? 3 : 5) * (1 + (rCfg.glowMul || 0) * 2)));
     let ph = '';
@@ -325,7 +335,7 @@ export const tsBuildBadgeHTML = function (title, opts) {
 
   // ── FX layer ───────────────────────────────────────────────────────────────
   let fxLayerHTML = '';
-  if (title.effect && title.effect !== 'none') {
+  if (title.effect && title.effect !== 'none' && !opts.noParticles && !opts.small && !opts.xs) {
     const eff = title.effect;
     let fxInner = '';
     if (eff === 'embers') {
@@ -354,10 +364,11 @@ export const tsBuildBadgeHTML = function (title, opts) {
   else if ((title.rarity || '').toLowerCase() === 'mythic')
     rarityOverlayInner = `<svg class="ts-mythic-burst" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="${_mid}" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="rgba(255,220,255,0.95)"/><stop offset=".5" stop-color="rgba(255,120,200,0.35)"/><stop offset="1" stop-color="rgba(255,120,200,0)"/></radialGradient></defs><circle cx="50" cy="50" r="50" fill="url(#${_mid})"/></svg>`;
 
-  const rarityOverlay = rarityOverlayInner ? `<span class="ts-rarity-overlay-host">${rarityOverlayInner}</span>` : '';
+  const rarityOverlay = rarityOverlayInner && !opts.noParticles && !opts.small && !opts.xs ? `<span class="ts-rarity-overlay-host" aria-hidden="true">${rarityOverlayInner}</span>` : '';
 
-  return `<span class="${wrapperClasses}" style="${wrapperInlineStyle}" title="${_esc(title.name || '')} (${_esc(title.rarity || '')})">` +
-    buildFrameSVG(frameShape) + rarityOverlay + particlesHTML + fxLayerHTML +
+  return `<span class="${_esc(wrapperClasses)}" style="${_esc(wrapperInlineStyle)}" title="${_esc(title.name || '')} (${_esc(title.rarity || '')})">` +
+    buildFrameSVG(frameShape).replace('<svg ', '<svg aria-hidden="true" focusable="false" ') + rarityOverlay + particlesHTML + fxLayerHTML +
+    `<span class="ts-plate-icon" aria-hidden="true">${_esc(title.icon || '🏅')}</span>` +
     `<span class="ts-badge ts-badge-text" style="${innerInlineStyle}">${_esc(title.name || 'Title')}</span>` +
     `</span>`;
 };

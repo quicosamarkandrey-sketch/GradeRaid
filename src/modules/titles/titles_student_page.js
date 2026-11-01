@@ -50,14 +50,14 @@ export function _getTitleReqText(t) {
 // of sync with each other. See renderTitlesPage's inline comment for the
 // full reasoning (mirrors ach_student_page.js's inMySection).
 export function _tsTitleVisibleToStudent(t, st, unlockedIds) {
-  if (t.achievementId) return true; // inherits the linked achievement's own scoping
   if (unlockedIds.has(t.id)) return true; // already-earned titles never disappear
-  const assigned = (AppStore.getSlice(s => s.titleSectionAssignments) || {})[t.id];
+  const assigned = t.achievementId ? (AppStore.getSlice(s=>s.achievementSectionAssignments)||{})[t.achievementId] : (AppStore.getSlice(s => s.titleSectionAssignments) || {})[t.id];
   const myClassId = st.classId || 'default-class';
   return !assigned || assigned.length === 0 || assigned.includes(myClassId);
 }
 
 export function _buildStudentTitlesHTML(st, allTitles, unlocked, equippedId) {
+  if(window.TitleCollection)return TitleCollection.build(st,allTitles,unlocked,equippedId);
   const us = new Set(unlocked.map(t => t.id));
 
   if (!allTitles.length) {
@@ -120,6 +120,7 @@ export function _buildStudentTitlesHTML(st, allTitles, unlocked, equippedId) {
  */
 export const renderTitlesPage = function () {
   if (!currentUser) return;
+  const keepTitles=document.getElementById('ts-tab-titles')?.classList.contains('active');
   const st          = currentUser;
   const unlocked    = tsGetUnlockedTitles(st.id);
   // Phase 21 (closing the deferred gap noted in ach_admin_page.js/
@@ -150,12 +151,13 @@ export const renderTitlesPage = function () {
       <p style="font-size:13px;color:var(--text-muted)">Earn achievements to unlock unique titles. Equip your favourite to display it across EduQuest.</p>
     </div>
   </div>
-  <div class="ts-form-tabs">
-    <button class="ts-form-tab active" id="tab-badges-btn" onclick="tsTabSwitch('badges')">🏅 Badges <span style="background:rgba(208,188,255,.12);border:1px solid rgba(208,188,255,.2);padding:2px 7px;border-radius:10px;font-size:10px;margin-left:4px">${unlockCount}</span></button>
-    <button class="ts-form-tab" id="tab-titles-btn" onclick="tsTabSwitch('titles')">👑 Titles <span style="background:rgba(255,185,95,.12);border:1px solid rgba(255,185,95,.2);padding:2px 7px;border-radius:10px;font-size:10px;margin-left:4px">${unlocked.length}</span></button>
+  <div class="ts-form-tabs" role="tablist" aria-label="Achievements and titles">
+    <button class="ts-form-tab active" id="tab-badges-btn" role="tab" aria-controls="ts-tab-badges" aria-selected="true" tabindex="0" onclick="tsTabSwitch('badges')">Badges <span style="background:rgba(208,188,255,.12);border:1px solid rgba(208,188,255,.2);padding:2px 7px;border-radius:10px;font-size:10px;margin-left:4px">${unlockCount}</span></button>
+    <button class="ts-form-tab" id="tab-titles-btn" role="tab" aria-controls="ts-tab-titles" aria-selected="false" tabindex="-1" onclick="tsTabSwitch('titles')">Titles <span style="background:rgba(255,185,95,.12);border:1px solid rgba(255,185,95,.2);padding:2px 7px;border-radius:10px;font-size:10px;margin-left:4px">${allTitles.filter(t=>unlockedIds.has(t.id)).length}</span></button>
   </div>
-  <div id="ts-tab-badges" class="ts-form-panel active">${badgesContent}</div>
-  <div id="ts-tab-titles" class="ts-form-panel">${_buildStudentTitlesHTML(st, allTitles, unlocked, equippedId)}</div>`;
+  <div id="ts-tab-badges" role="tabpanel" aria-labelledby="tab-badges-btn" class="ts-form-panel active">${badgesContent}</div>
+  <div id="ts-tab-titles" role="tabpanel" aria-labelledby="tab-titles-btn" class="ts-form-panel">${_buildStudentTitlesHTML(st, allTitles, unlocked, equippedId)}</div>`;
+  if(keepTitles)tsTabSwitch('titles');
 };
 
 // ── Tab switcher ──────────────────────────────────────────────────────────────
@@ -165,7 +167,7 @@ export const tsTabSwitch = function (tab) {
     const p = document.getElementById('ts-tab-' + t);
     const b = document.getElementById('tab-' + t + '-btn');
     if (p) p.classList.toggle('active', t === tab);
-    if (b) b.classList.toggle('active', t === tab);
+    if (b) {b.classList.toggle('active', t === tab);b.setAttribute('aria-selected',String(t===tab));b.tabIndex=t===tab?0:-1;}
   });
 };
 
@@ -203,7 +205,7 @@ export const _tsRefreshStudentTitlesPanel = function () {
   if (tabBtn) {
     tabBtn.innerHTML = tabBtn.innerHTML.replace(
       /<span[^>]*>\d+<\/span>/,
-      `<span style="background:rgba(255,185,95,.12);border:1px solid rgba(255,185,95,.2);padding:2px 7px;border-radius:10px;font-size:10px;margin-left:4px">${unlocked.length}</span>`
+      `<span style="background:rgba(255,185,95,.12);border:1px solid rgba(255,185,95,.2);padding:2px 7px;border-radius:10px;font-size:10px;margin-left:4px">${allTitles.filter(t=>unlockedIds.has(t.id)).length}</span>`
     );
   }
 
@@ -223,11 +225,16 @@ export const _tsRefreshStudentTitlesPanel = function () {
 ;(function () {
   const _orig = window.renderBadges;
   window.renderBadges = function () {
+    const keepTitles=document.getElementById('ts-tab-titles')?.classList.contains('active');
     if (typeof _orig === 'function') _orig();
     renderTitlesPage();
-    if (window._tsOpenTitlesTab) { tsTabSwitch('titles'); window._tsOpenTitlesTab = false; }
+    if (keepTitles || window._tsOpenTitlesTab) { tsTabSwitch('titles'); window._tsOpenTitlesTab = false; }
     setTimeout(() => { tsRefreshSidebarTitle(); tsRefreshProfileTitle(); }, 80);
   };
 })();
 
 console.log('[EduQuest] titles/student-page.js loaded — renderTitlesPage, tsTabSwitch, tsStudentEquip/Unequip, _tsRefreshStudentTitlesPanel registered. renderBadges patched.');
+
+// Shared by the collection presentation module and bundled entry points.
+window._tsTitleVisibleToStudent=_tsTitleVisibleToStudent;
+window._getTitleReqText=_getTitleReqText;

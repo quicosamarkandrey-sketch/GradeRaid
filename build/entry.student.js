@@ -61,6 +61,7 @@ import '../modules/achievements/ach_engine.js';
 import '../modules/achievements/ach_student_page.js';
 import '../modules/achievements/ach_index.js';
 import '../modules/titles/titles_badge_renderer.js';
+import '../modules/titles/titles-collection.js';
 import '../modules/titles/titles_designer.js';
 import '../modules/titles/titles_student_page.js';
 import '../modules/titles/titles_sidebar_refresh.js';
