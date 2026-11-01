@@ -80,6 +80,8 @@ export const tsAdminOpenDesigner = function (titleId) {
   const existing = isEdit ? (AppStore.getSlice(s => s.titles) || []).find(t => t.id === titleId) : null;
   const d        = existing ? JSON.parse(JSON.stringify(existing)) : tsDefaultTitle();
   window._tsDraft              = d;
+  window._tsCollectionDraft={family:'',stage:1,season:'',...(window.TitleRecords?.meta(d.id)||{})};
+  window._tsCollectionInitial=JSON.stringify(window._tsCollectionDraft);
   window._ts3ActiveTemplate    = null;
 
   // Phase 21: "assign to section(s)" picker — mirrors ach_admin_page.js's
@@ -101,6 +103,12 @@ export const tsAdminOpenDesigner = function (titleId) {
     `<option value="${cid}" ${window._tsDraftSections.includes(cid) ? 'selected' : ''}>${_esc(typeof getClassLabel === 'function' ? getClassLabel(cid) : cid)}</option>`
   ).join('');
 
+  window.TitleRecords?.ready().then(ok=>{
+    if(window._tsDraft!==d)return;const fields=document.getElementById('ts3-collection-fields');if(!fields)return;fields.disabled=!ok;
+    document.getElementById('ts3-collection-note').textContent=ok?'Group stages into a family; each title keeps its own achievement or teacher-grant requirement.':'Account collection details are not enabled yet. You can still design and save the title.';
+    if(ok){window._tsCollectionDraft={family:'',stage:1,season:'',...TitleRecords.meta(d.id)};window._tsCollectionInitial=JSON.stringify(window._tsCollectionDraft);for(const key of ['family','stage','season'])document.getElementById('ts3-'+key).value=window._tsCollectionDraft[key];}
+  });
+
   // ── Internal helpers (modal-scoped) ─────────────────────────────────────────
   function shapeMinSVG(shape, color) {
     const c = _cssColor(color, '#8b5cf6');
@@ -115,6 +123,7 @@ export const tsAdminOpenDesigner = function (titleId) {
       diamond:    `<polygon points="27,4 50,12 27,22 4,12" fill="${c}" fill-opacity=".25" stroke="${c}" stroke-width="1.5"/>`,
       dragon:     `<path d="M2 22 C6 10 12 8 20 10 L22 4 L25 10 C32 6 38 6 44 10 L46 4 L49 10 C54 8 58 12 52 22 L52 26 Q52 28 50 28 H4 Q2 28 2 26 Z" fill="${c}" fill-opacity=".25" stroke="${c}" stroke-width="1.5"/>`,
       flame:      `<path d="M2 26 C3 18 6 12 12 14 C14 6 18 2 22 8 C24 2 28 0 30 6 C32 0 36 2 38 10 C40 2 44 4 46 14 C50 8 52 14 52 22 L52 26 Z" fill="${c}" fill-opacity=".35" stroke="${c}" stroke-width="1.5"/>`,
+      smoke:      `<path d="M2 9Q7 2 16 7Q26 1 34 8Q47 2 52 10L50 20Q39 26 29 21Q14 27 3 20Z" fill="${c}" fill-opacity=".2" stroke="${c}" stroke-width="1.4"/>`,
       ghost:      `<ellipse cx="27" cy="13" rx="24" ry="9" fill="${c}" fill-opacity=".25" stroke="${c}" stroke-width="1.5"/>`,
       crystal:    `<path d="M4 10 L14 4 L40 4 L50 10 L50 22 L4 22 Z" fill="${c}" fill-opacity=".25" stroke="${c}" stroke-width="1.5"/>`,
       poison:     `<path d="M2 14 Q2 6 8 6 C10 2 14 2 16 6 C18 0 22 0 24 6 C26 0 30 2 32 6 C34 0 38 2 40 6 C42 2 48 4 50 10 Q52 14 50 18 L50 22 L4 22 Z" fill="${c}" fill-opacity=".3" stroke="${c}" stroke-width="1.4"/>`,
@@ -238,13 +247,18 @@ export const tsAdminOpenDesigner = function (titleId) {
             <input type="text" id="ts3-name" placeholder="e.g. Dragon Emperor" value="${_esc(d.name || '')}" style="width:100%" oninput="window._tsDraft.name=this.value;ts3Preview()">
           </div>
           <div style="margin-bottom:12px"><label class="form-label" for="ts3-desc">Description</label><input type="text" id="ts3-desc" placeholder="How it's earned" value="${_esc(d.description || '')}" style="width:100%" oninput="window._tsDraft.description=this.value"></div>
+          <fieldset id="ts3-collection-fields" class="ts3-collection-fields" disabled>
+            <legend>Collection &amp; evolution</legend><p id="ts3-collection-note" class="form-help">Checking account collection details…</p>
+            <label class="form-label" for="ts3-family">Title family</label><input id="ts3-family" maxlength="80" placeholder="e.g. Science Scholars" oninput="window._tsCollectionDraft.family=this.value">
+            <div class="ts3-collection-row"><div><label class="form-label" for="ts3-stage">Stage</label><input id="ts3-stage" type="number" min="1" max="100" value="1" oninput="window._tsCollectionDraft.stage=Math.max(1,Math.min(100,parseInt(this.value)||1))"></div><div><label class="form-label" for="ts3-season">Season / class year</label><input id="ts3-season" maxlength="80" placeholder="Optional" oninput="window._tsCollectionDraft.season=this.value"></div></div>
+          </fieldset>
           <div style="margin-bottom:12px"><label class="form-label">Rarity</label><div class="ts3-rarity-bar" id="ts3-rarity-bar">${rarityBar}</div></div>
           <div class="form-group">
             <label class="form-label">Unlock via Achievement</label>
             <select id="ts3-ach" style="width:100%" onchange="window._tsDraft.achievementId=this.value||null">
               <option value="">— Manual grant only —</option>${achOpts}
             </select>
-            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">Auto-unlocks when achievement is earned</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">Leave this unlinked for teacher-granted recognition. Linking an achievement keeps its existing unlock rules.</div>
           </div>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px">
             <input type="checkbox" id="ts3-active" ${d.active !== false ? 'checked' : ''} onchange="window._tsDraft.active=this.checked" style="width:16px;height:16px"> Active
@@ -278,7 +292,7 @@ export const tsAdminOpenDesigner = function (titleId) {
           <div style="margin-bottom:14px"><label class="form-label">Visual Effect</label>
             <div class="ts3-pick-grid ts3-pick-grid-sm" id="ts3-effect-grid">${buildEffectPicker()}</div>
           </div>
-          <div><label class="form-label">Animation</label>
+          <p class="form-help" style="margin-bottom:12px">Material frames have built-in motion. Choose Still material to freeze the frame, or add a separate badge animation below.</p><div><label class="form-label">Animation</label>
             <div class="ts3-pick-grid ts3-pick-grid-sm" id="ts3-anim-grid">${buildAnimPicker()}</div>
           </div>
         </div>
@@ -480,15 +494,17 @@ export const tsAdminSave = async function (titleId) {
   }
   if (errEl) errEl.style.display = 'none';
 
+  const savingUser=currentUser.id,collectionDraft=JSON.parse(JSON.stringify(window._tsCollectionDraft||{})),initialCollection=window._tsCollectionInitial;
   // Sanitize achievementId
   if (d.achievementId && !(AppStore.getSlice(s => s.achievements) || []).some(a => a.id === d.achievementId)) d.achievementId = null;
 
+  const effectiveId=titleId||((AppStore.getSlice(s=>s.titles)||[]).some(t=>t.id===d.id)?d.id:null);
   AppStore.updateState(draft => {
     if (!Array.isArray(draft.titles)) draft.titles = [];
-    if (titleId) {
-      const idx = draft.titles.findIndex(t => t.id === titleId);
-      if (idx >= 0) draft.titles[idx] = { ...draft.titles[idx], ...d, id: titleId };
-      else { d.id = titleId; draft.titles.push(d); }
+    if (effectiveId) {
+      const idx = draft.titles.findIndex(t => t.id === effectiveId);
+      if (idx >= 0) draft.titles[idx] = { ...draft.titles[idx], ...d, id: effectiveId };
+      else { d.id = effectiveId; draft.titles.push(d); }
     } else {
       // Phase 21: d.id was already stamped by tsDefaultTitle() when the
       // designer opened — kept stable here (not regenerated) so the section
@@ -505,6 +521,15 @@ export const tsAdminSave = async function (titleId) {
     }
   }, { type: titleId ? 'titles:title-updated' : 'titles:title-created', payload: { id: d.id } });
 
+  if(window.TitleRecords?.available()&&JSON.stringify(collectionDraft)!==initialCollection){
+    AppStore.flushNow?.();await DBService.flushPendingUpload?.();
+    if(currentUser?.id!==savingUser)return;
+    let outcome;try{outcome=await TitleRecords.save(d.id,collectionDraft);}catch{outcome={ok:false,message:'Collection details could not sync. Please reconnect and save again.'};}
+    if(!outcome.ok){if(errEl){errEl.textContent=outcome.message;errEl.style.display='block';}else toast(outcome.message);return;}
+    if(window._tsDraft===d)window._tsCollectionInitial=JSON.stringify(collectionDraft);
+  }
+
+  if(window._tsDraft!==d||currentUser?.id!==savingUser)return;
   toast(titleId ? `Title "${name}" updated!` : `Title "${name}" created!`);
   closeModalForce();
   const savedId     = d.id;

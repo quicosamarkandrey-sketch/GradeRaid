@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test:rewards-db": "node tests/database/learning-rewards.cjs",
-    "test:study-db": "node tests/database/study-progress.cjs"
+    "test:study-db": "node tests/database/study-progress.cjs",
+    "test:titles-db": "node tests/database/title-collections.cjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.13",

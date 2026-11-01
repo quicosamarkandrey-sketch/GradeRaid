@@ -8,7 +8,7 @@ Badges/Titles tabs use tab roles, keyboard arrows/Home/End and preserve the sele
 
 The teacher designer gains four optional palettes: Cobalt Scholar, Emerald Sage, Golden Luminary and Stellar Mind. They are templates, not automatically created titles. Compact samples display at actual size, and the mobile live preview moves above the controls. Shape/template pickers support keyboard activation. New title defaults use a deep blue palette; existing catalog records are unchanged until the teacher saves an edit.
 
-No database migration is required. Classic and ESM source twins and role bundle entries are updated.
+The visual refresh needs no database migration. Classic and ESM source twins and role bundle entries are updated. Optional collection metadata and award history require the migration described below.
 
 Validation:
 
@@ -19,3 +19,28 @@ Validation:
 - `npx esbuild build/entry.full.js --bundle --outfile=/tmp/graderaid-titles.js`
 
 Emoji icons are no longer rendered on title nameplates, title unlock notifications, title reward rows or designer controls. The designer uses text labels and existing vector frame previews. The obsolete icon input is removed; stored legacy icon fields are retained for compatibility. User-authored title names and reward/unlock data are preserved.
+
+
+## Material frames and recognition collections
+
+Flame, shield, crystal, shadow and smoke use integrated SVG frames rather than emoji. Flames and embers rise along the frame, a highlight travels around the shield, crystal facets catch moving light, shadows flow around the edges, and layered smoke drifts around the nameplate. Built-in frame motion keeps the text still and readable. Compact badges are still; reduced-motion preferences stop animation. Teachers can choose **Still material** in the designer. Separately selected legacy badge animations remain supported.
+
+The designer adds five optional presets: Flameforged, Aegis, Prismatic, Nightfall and Veil of Mist. These do not create catalog records or change existing awards. Supported existing frame shapes/styles receive the corresponding material treatment automatically.
+
+Locked achievement-linked titles display progress using the existing achievement statistics, where a numeric target exists. Unlinked titles explicitly say **Teacher grant only**; linked manual achievements retain their recognition requirement. Progress is read-only and does not grant, equip, revoke or purchase anything.
+
+Teachers can optionally set a collection family, stage number and season in the title designer. A student can filter collections and preview their rank path. Stages describe an ordered collection, not an automatic upgrade: every stage retains its own achievement or teacher-grant requirement, and earning one never awards or equips the next. Seasonal labels organize existing titles; they do not schedule expiration or issue awards.
+
+## Enabling account-backed metadata and history
+
+Run [supabase/phase74_title_collections.sql](supabase/phase74_title_collections.sql) in the project's Supabase SQL editor after the existing title/achievement schema migrations. The migration is repeatable. It adds staff-owned collection metadata, scoped read/write RPCs and an award-history trigger on existing title unlocks. It preserves the current grant/revoke RPCs and earning rules. Direct table access is denied to anonymous and authenticated clients.
+
+This SQL has been tested locally with PostgreSQL/PGlite; it has **not been applied to the production database**. Without it, material frames, presets and read-only unlock progress still work. The optional collection editor stays disabled until its account RPC is available.
+
+New grants and revocations record the date, title name/description snapshot, source and the granting staff member when present. Students can read their own recent history (up to 500 events). Existing awards show their recorded unlock date; missing historical actors and explanations are not invented. The description snapshot is the title's recorded description, not a new per-student teacher comment.
+
+Additional validation:
+
+- `npm run test:titles-db` — migration reapply, staff ownership, unique stage numbers, private tables, student isolation, legacy dates, grant/revoke audit and unchanged wallets.
+- `node tests/browser/title-materials.cjs` — real app material motion/text stability, compact/still/reduced-motion behavior, mobile/desktop in both themes, teacher grant requirements, achievement progress, collection paths, history and teacher metadata save. Remote services are intercepted.
+- `npm run test:unit` — includes material markup/escaping and progress rules that preserve manual awards.

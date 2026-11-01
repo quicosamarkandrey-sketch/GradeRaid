@@ -29,6 +29,7 @@ window.TS_FRAME_SHAPES_REGISTRY = [
   { id:'crystal',   label:'Crystal',    icon:'💎' },
   { id:'ghost',     label:'Ghost',      icon:'👻' },
   { id:'poison',    label:'Poison',     icon:'☠️' },
+  { id:'smoke',     label:'Smoke',      icon:'' },
   { id:'shadow',    label:'Shadow',     icon:'🌑' },
   { id:'royal',     label:'Royal',      icon:'👑' },
   { id:'arcane',    label:'Arcane',     icon:'🔮' },
@@ -62,6 +63,7 @@ window.TS_EFFECTS_REGISTRY = [
 ];
 
 window.TS_ANIMATIONS_REGISTRY = [
+  { id:'material-static', label:'Still material' },
   { id:'none',            label:'None'           },
   { id:'pulse',           label:'Pulse'          },
   { id:'glow-pulse',      label:'Glow Pulse'     },
@@ -137,6 +139,11 @@ window.tsGetFrameStyle = function (id) {
 
 // ── MMORPG Template Library ───────────────────────────────────────────────────
 window.TS_MMORPG_TEMPLATES = [
+  { id:'material_flame', cat:'nameplate', label:'Flameforged', icon:'', frameShape:'flame', frameStyle:'fire', effect:'embers', animation:'none', rarity:'Legendary', primaryColor:'#ff8b46', secondaryColor:'#aa3f23', accentColor:'#ffd696', borderColor:'#dd6734', glowColor:'#aa3f23', textColor:'#fff3df', bgColor:'#27120e', gradientFrom:'#a94324', gradientTo:'#512017' },
+  { id:'material_shield', cat:'nameplate', label:'Aegis', icon:'', frameShape:'shield', frameStyle:'metal', effect:'none', animation:'none', rarity:'Epic', primaryColor:'#9fbeda', secondaryColor:'#54728e', accentColor:'#e1f1ff', borderColor:'#7898b9', glowColor:'#54728e', textColor:'#f1f8ff', bgColor:'#152332', gradientFrom:'#54728e', gradientTo:'#253f58' },
+  { id:'material_crystal', cat:'nameplate', label:'Prismatic', icon:'', frameShape:'crystal', frameStyle:'crystal', effect:'none', animation:'none', rarity:'Mythic', primaryColor:'#92dbea', secondaryColor:'#467b9b', accentColor:'#e4faff', borderColor:'#72b5d4', glowColor:'#467b9b', textColor:'#f1fdff', bgColor:'#112634', gradientFrom:'#467b9b', gradientTo:'#21495f' },
+  { id:'material_shadow', cat:'nameplate', label:'Nightfall', icon:'', frameShape:'shadow', frameStyle:'shadow', effect:'none', animation:'none', rarity:'Rare', primaryColor:'#ab91d5', secondaryColor:'#5c427f', accentColor:'#d4c3f3', borderColor:'#705496', glowColor:'#5c427f', textColor:'#f1eaff', bgColor:'#110e1d', gradientFrom:'#5c427f', gradientTo:'#2a1c40' },
+  { id:'material_smoke', cat:'nameplate', label:'Veil of Mist', icon:'', frameShape:'smoke', frameStyle:'none', effect:'smoke', animation:'none', rarity:'Rare', primaryColor:'#abc3ce', secondaryColor:'#607e8e', accentColor:'#d7e6eb', borderColor:'#77929f', glowColor:'#607e8e', textColor:'#f0f6fa', bgColor:'#152129', gradientFrom:'#607e8e', gradientTo:'#2c414e' },
   { id:'study_scholar', cat:'nameplate', label:'Cobalt Scholar', icon:'📘', frameShape:'rectangle', frameStyle:'metal', effect:'none', animation:'none', rarity:'Rare', primaryColor:'#8dbbff', secondaryColor:'#4268b5', accentColor:'#c6dfff', borderColor:'#6b94dc', glowColor:'#5681c7', textColor:'#f4f8ff', bgColor:'#121e34', gradientFrom:'#4268b5', gradientTo:'#243a63' },
   { id:'study_sage', cat:'nameplate', label:'Emerald Sage', icon:'🌿', frameShape:'capsule', frameStyle:'none', effect:'none', animation:'none', rarity:'Uncommon', primaryColor:'#83d4b4', secondaryColor:'#28735d', accentColor:'#c2f2dd', borderColor:'#5eaa8d', glowColor:'#32826b', textColor:'#edfff5', bgColor:'#102b24', gradientFrom:'#28735d', gradientTo:'#1c4438' },
   { id:'study_luminary', cat:'achievement', label:'Golden Luminary', icon:'☀️', frameShape:'royal', frameStyle:'royal', effect:'none', animation:'none', rarity:'Legendary', primaryColor:'#efc679', secondaryColor:'#976428', accentColor:'#ffe7b1', borderColor:'#ca9d59', glowColor:'#a77a38', textColor:'#fff6df', bgColor:'#302417', gradientFrom:'#976428', gradientTo:'#594020' },
@@ -239,7 +246,9 @@ window.tsBuildBadgeHTML = function (title, opts) {
   const frameStyleId   = (title.frameStyle || 'none').toString().toLowerCase();
   const frameClass     = 'ts-frame-' + frameShape;
   const styleClass     = frameStyleId !== 'none' ? 'ts-style-' + frameStyleId : '';
-  const wrapperClasses = ['ts-badge-wrap', 'ts-plate-v2', title.bgEffect==='custom'?'ts-custom-surface':'', frameClass, styleClass, useLegacyBorderClass ? borderClass : '', bgClass, animClass, effectClass, rarityClass, sizeClass].filter(Boolean).join(' ');
+  const material=typeof tsTitleMaterial==='function'?tsTitleMaterial(title):'';
+  const quiet=!!(opts.small||opts.xs||title.animation==='material-static');
+  const wrapperClasses = ['ts-badge-wrap', material?'ts-material ts-material-'+material:'', quiet?'ts-material-still':'', 'ts-plate-v2', title.bgEffect==='custom'?'ts-custom-surface':'', frameClass, material?'':styleClass, useLegacyBorderClass ? borderClass : '', bgClass, animClass, effectClass, rarityClass, sizeClass].filter(Boolean).join(' ');
   const wrapperInlineStyle = [cssVars, `background:${customBgStyle ? '' : 'transparent'}`, customBgStyle, `border-color:${border}`, `box-shadow:${glowShadow}`, customBorderStyle, customAnimStyle, opts.style || ''].filter(Boolean).join(';');
   const innerInlineStyle   = [`color:${text}`].join(';');
 
@@ -292,7 +301,7 @@ window.tsBuildBadgeHTML = function (title, opts) {
   // ── Particles ──────────────────────────────────────────────────────────────
   const pColors = { embers:'#f97316', smoke:'#9ca3af', mist:'#e0f2fe', stars:'#fde68a', bubbles:'#93c5fd', lightning:'#fbbf24', leaves:'#4ade80', snow:'#e2e8f0', sparkles:'#f0abfc' };
   let particlesHTML = '';
-  if (title.particles && title.particles !== 'none' && !opts.noParticles && !opts.small && !opts.xs) {
+  if (!material && title.particles && title.particles !== 'none' && !opts.noParticles && !opts.small && !opts.xs) {
     const pc  = pColors[title.particles] || '#ffffff';
     const cnt = Math.max(2, Math.round((opts.small ? 3 : 5) * (1 + (rCfg.glowMul || 0) * 2)));
     let ph = '';
@@ -309,7 +318,7 @@ window.tsBuildBadgeHTML = function (title, opts) {
 
   // ── FX layer ───────────────────────────────────────────────────────────────
   let fxLayerHTML = '';
-  if (title.effect && title.effect !== 'none' && !opts.noParticles && !opts.small && !opts.xs) {
+  if (!material && title.effect && title.effect !== 'none' && !opts.noParticles && !opts.small && !opts.xs) {
     const eff = title.effect;
     let fxInner = '';
     if (eff === 'embers') {
@@ -338,10 +347,10 @@ window.tsBuildBadgeHTML = function (title, opts) {
   else if ((title.rarity || '').toLowerCase() === 'mythic')
     rarityOverlayInner = `<svg class="ts-mythic-burst" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="${_mid}" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="rgba(255,220,255,0.95)"/><stop offset=".5" stop-color="rgba(255,120,200,0.35)"/><stop offset="1" stop-color="rgba(255,120,200,0)"/></radialGradient></defs><circle cx="50" cy="50" r="50" fill="url(#${_mid})"/></svg>`;
 
-  const rarityOverlay = rarityOverlayInner && !opts.noParticles && !opts.small && !opts.xs ? `<span class="ts-rarity-overlay-host" aria-hidden="true">${rarityOverlayInner}</span>` : '';
+  const rarityOverlay = !material && rarityOverlayInner && !opts.noParticles && !opts.small && !opts.xs ? `<span class="ts-rarity-overlay-host" aria-hidden="true">${rarityOverlayInner}</span>` : '';
 
   return `<span class="${_esc(wrapperClasses)}" style="${_esc(wrapperInlineStyle)}" title="${_esc(title.name || '')} (${_esc(title.rarity || '')})">` +
-    buildFrameSVG(frameShape).replace('<svg ', '<svg aria-hidden="true" focusable="false" ') + rarityOverlay + particlesHTML + fxLayerHTML +
+    (material?tsBuildMaterialFrame(material,{primary,accent,border,bg},quiet):buildFrameSVG(frameShape).replace('<svg ', '<svg aria-hidden="true" focusable="false" ')) + rarityOverlay + particlesHTML + fxLayerHTML +
     `<span class="ts-badge ts-badge-text" style="${innerInlineStyle}">${_esc(title.name || 'Title')}</span>` +
     `</span>`;
 };

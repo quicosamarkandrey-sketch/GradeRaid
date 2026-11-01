@@ -1,0 +1,70 @@
+/* Material frames: restrained, bounded motion around a stable text plane. */
+.ts-badge-wrap.ts-plate-v2.ts-material{height:58px;min-width:180px;padding:16px 26px;border:0;border-radius:8px;isolation:isolate;box-shadow:none!important}
+.ts-plate-v2.ts-material .ts-frame-svg{display:none}
+.ts-material-art{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;overflow:hidden}
+.ts-material.ts-plate-v2 .ts-badge-text{position:relative;z-index:3;text-shadow:0 1px 3px var(--ts-bg),0 0 6px var(--ts-bg);font-weight:650;letter-spacing:.02em;min-width:0}
+.ts-plate-v2.ts-material:not(.ts-custom-surface){background:var(--ts-bg)!important}
+.ts-plate-v2.ts-material-shield{clip-path:polygon(6% 0,94% 0,100% 16%,97% 74%,84% 89%,50% 100%,16% 89%,3% 74%,0 16%);border-radius:0;padding-inline:30px}
+.ts-plate-v2.ts-material-crystal{clip-path:polygon(7% 0,93% 0,100% 25%,97% 76%,89% 100%,11% 100%,1% 73%,0 25%);border-radius:0}
+.ts-plate-v2.ts-material-shadow{clip-path:polygon(4% 0,23% 0,28% 5%,74% 5%,78% 0,96% 5%,100% 30%,97% 49%,100% 72%,93% 100%,74% 95%,70% 100%,24% 100%,19% 95%,3% 90%,0 60%,3% 40%,0 16%);border-radius:0}
+.ts-plate-v2.ts-material-smoke{border-radius:20px;clip-path:none}
+.ts-plate-v2.ts-material-flame{background:linear-gradient(0deg,var(--ts-bg) 64%,transparent)!important;border-radius:10px 10px 6px 6px}
+.tsm-flame-tongue{transform-box:fill-box;transform-origin:center bottom;animation:tsm-flame var(--tsm-duration,1.8s) ease-in-out var(--tsm-delay,0s) infinite alternate}
+.tsm-ember-track{animation:tsm-embers 2.8s ease-out infinite}
+.tsm-shield-ward{animation:tsm-ward 4.8s linear infinite}
+.tsm-crystal-refraction{animation:tsm-refract 6s ease-in-out infinite}
+.tsm-crystal-spark{animation:tsm-spark 4s ease-in-out infinite}
+.tsm-shadow-ribbon{animation:tsm-shadow 5.5s ease-in-out infinite alternate}
+.tsm-shadow-lower{animation-direction:alternate-reverse;animation-duration:6.8s}
+.tsm-shadow-edge{animation:tsm-edge 8s linear infinite}
+.tsm-smoke-roll{animation:tsm-smoke 7s ease-in-out infinite alternate}
+.tsm-smoke-return{animation-duration:9s;animation-direction:alternate-reverse}
+.tsm-smoke-curl{animation:tsm-curl 6s ease-in-out infinite alternate}
+.ts-material-still .ts-material-art *,.ts-material .tsm-static{animation:none!important}
+.ts-badge-wrap.ts-material.ts-size-sm{height:32px;min-width:0;max-width:min(100%,210px);padding:7px 15px;font-size:10px}
+.ts-badge-wrap.ts-material.ts-size-xs{height:25px;min-width:0;max-width:min(100%,165px);padding:5px 12px;font-size:9px}
+.ts-material.ts-size-sm .ts-material-art *,.ts-material.ts-size-xs .ts-material-art *{animation:none!important}
+.ts-material.ts-size-sm,.ts-material.ts-size-xs{clip-path:none;border-radius:7px}
+.ts-material.ts-size-sm .ts-material-art,.ts-material.ts-size-xs .ts-material-art{opacity:.8}
+@keyframes tsm-flame{0%{transform:scaleY(.72) skewX(-3deg);opacity:.7}55%{transform:scaleY(1.05) skewX(2deg);opacity:1}100%{transform:scaleY(.87) skewX(-1deg);opacity:.86}}
+@keyframes tsm-embers{0%{transform:translateY(4px);opacity:0}30%{opacity:.8}100%{transform:translate(5px,-20px);opacity:0}}
+@keyframes tsm-ward{to{stroke-dashoffset:-780}}
+@keyframes tsm-refract{0%,30%{transform:translateX(0) skewX(-16deg);opacity:0}40%{opacity:.5}72%{transform:translateX(530px) skewX(-16deg);opacity:0}100%{transform:translateX(530px);opacity:0}}
+@keyframes tsm-spark{0%,70%,100%{opacity:.1}80%{opacity:.95}90%{opacity:.35}}
+@keyframes tsm-shadow{0%{transform:translate(-8px,-2px);opacity:.12}100%{transform:translate(10px,3px);opacity:.4}}
+@keyframes tsm-edge{to{stroke-dashoffset:-174}}
+@keyframes tsm-smoke{0%{transform:translate(-12px,-2px) scale(1);opacity:.15}100%{transform:translate(14px,2px) scale(1.08);opacity:.35}}
+@keyframes tsm-curl{0%{transform:translateX(-6px);opacity:.3}100%{transform:translateX(8px);opacity:.75}}
+@media(prefers-reduced-motion:reduce){.ts-material,.ts-material *{animation:none!important;transition:none!important}}
+.tc-unlock-progress{font-size:10px;line-height:1.65;color:var(--text-muted);padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-high)}
+.tc-unlock-progress strong,.tc-unlock-progress span{display:block;font-weight:400;overflow-wrap:anywhere}
+.tc-unlock-progress strong{font-weight:600;color:var(--text)}
+.tc-unlock-progress span{margin-top:6px}
+.tc-progress-track{height:4px;border-radius:3px;background:var(--border2);margin-top:10px;overflow:hidden}
+.tc-progress-track i{display:block;height:100%;background:var(--tc-accent,#83addd)}
+.tc-family-filter{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-muted)}
+.theme-nocturne .tc-family-filter select{font-size:12px;max-width:200px;min-height:44px}
+.tc-evolution,.tc-award-history{margin-top:24px;padding-top:20px;border-top:1px solid var(--border)}
+.tc-evolution h3,.tc-award-history h3{font:600 15px var(--fb);color:var(--text);margin-bottom:12px}
+.tc-evolution p,.tc-award-history p{font-size:12px;line-height:1.7;color:var(--text-muted)}
+.tc-evolution ol{list-style:none;padding:0;display:flex;flex-direction:column;gap:12px;margin:16px 0}
+.tc-evolution li{display:flex;align-items:center;gap:12px;color:var(--text-muted);font-size:12px}
+.tc-evolution li>span{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;border:1px solid var(--border2);font-size:11px;flex-shrink:0}
+.tc-evolution li.is-earned>span{background:var(--surface-high);border-color:var(--success);color:var(--success)}
+.tc-evolution li.is-current strong{color:var(--text)}
+.tc-evolution strong,.tc-evolution small{display:block;font-weight:500}
+.tc-evolution small{font-size:10px;margin-top:4px;color:var(--text-muted)}
+.tc-award-history>div{padding:14px 0;border-bottom:1px solid var(--border);font-size:12px}
+.tc-award-history time,.tc-award-history span{display:block;font-size:10px;color:var(--text-muted);margin-top:6px}
+@media(max-width:580px){.tc-family-filter{width:100%}.theme-nocturne .tc-family-filter select{flex:1;max-width:none}}
+.ts3-collection-fields{border:1px solid var(--border);border-radius:9px;padding:16px;margin:16px 0}
+.ts3-collection-fields legend{font:600 12px var(--fb);padding:0 6px;color:var(--text)}
+.ts3-collection-fields .form-help{margin-bottom:14px}
+.ts3-collection-fields>input{width:100%}
+.ts3-collection-fields:disabled{opacity:.65}
+.ts3-collection-row{display:grid;grid-template-columns:80px minmax(0,1fr);gap:12px;margin-top:14px}
+.ts3-collection-row input{width:100%}
+
+.ts-plate-v2.ts-material.ts-material-flame:not(.ts-custom-surface){background:linear-gradient(0deg,var(--ts-bg) 64%,transparent)!important}
+.ts-plate-v2.ts-material.ts-material-smoke:not(.ts-custom-surface){background:transparent!important}
+.ts-material-still{animation:none!important}
