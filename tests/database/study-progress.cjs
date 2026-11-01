@@ -1,0 +1,28 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const {PGlite}=require('@electric-sql/pglite');
+(async()=>{const db=new PGlite();try{
+ await db.exec(`create role anon;create role authenticated;create schema auth;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('app.uid',true),'')::uuid$$;
+ create table profiles(id text primary key,role text,class_id text,is_active boolean default true,coins integer default 100,xp integer default 200);
+ create table quizzes(id text primary key);create table quiz_sections(quiz_id text,class_id text);create table quiz_history(id text primary key,student_id text,quiz_id text,score integer);
+ insert into profiles(id,role,class_id) values('00000000-0000-4000-8000-000000000001','student','a'),('00000000-0000-4000-8000-000000000002','student','b'),('00000000-0000-4000-8000-000000000003','teacher','a');insert into quizzes values('open'),('restricted');insert into quiz_sections values('restricted','b');`);
+ const sql=fs.readFileSync('supabase/phase73_study_progress.sql','utf8');await db.exec(sql);await db.exec(sql);
+ const scalar=async(q,args=[])=>(await db.query(q,args)).rows[0];
+ const as=async n=>db.query(`select set_config('app.uid',$1,false)`,[n?'00000000-0000-4000-8000-00000000000'+n:'']);
+ const apply=async(id,patch,signature='v1',quiz='open')=>(await scalar('select study_progress_apply($1,$2,$3,$4::jsonb) data',[id,quiz,signature,JSON.stringify(patch)])).data;
+ const pull=async()=>(await scalar('select study_progress_pull() data')).data;
+ await as(1);const before=(await db.query('select * from profiles order by id')).rows;
+ await db.exec('set role authenticated');await apply('device-a',{known:{0:true},starred:{1:true},position:2,saved:true,opened:true});
+ await apply('device-b',{known:{2:true},starred:{3:true}});let data=await pull();let version=data.sets[0].versions[0];assert.deepEqual(version.known,{'0':true,'2':true});assert.equal(data.sets[0].saved,true);
+ await apply('device-c',{known:{0:false},starred:{1:false},saved:false});await apply('device-a',{known:{0:true},starred:{1:true},position:2,saved:true,opened:true});
+ data=await pull();version=data.sets[0].versions[0];assert.equal(version.known['0'],false,'Retry never replays an older mark');assert.equal(version.starred['1'],false);assert.equal(data.sets[0].saved,false);
+ await assert.rejects(()=>apply('device-a',{known:{9:true}}),/different changes/);
+ await apply('new-content',{known:{1:true},position:1},'v2');data=await pull();assert.equal(data.sets[0].versions.length,2);assert.equal(data.sets[0].versions.find(v=>v.signature==='v1').known['2'],true);
+ await assert.rejects(()=>apply('invalid',{known:{'-1':true}}),/Invalid card/);await assert.rejects(()=>apply('invalid-type',{known:[]}),/Invalid card/);await assert.rejects(()=>apply('invalid-bool',{known:{1:'true'}}),/Invalid card/);await assert.rejects(()=>apply('invalid-position',{position:1.5}),/Invalid card/);await assert.rejects(()=>apply('fake-coins',{coins:999}),/Unsupported/);
+ await assert.rejects(()=>apply('scope',{saved:true},'v1','restricted'),/unavailable/);
+ await assert.rejects(()=>db.query('select * from student_study_sets'),/permission denied/);await assert.rejects(()=>db.query("select _study_snapshot('00000000-0000-4000-8000-000000000001')"),/permission denied/);
+ await as(2);assert.equal((await pull()).sets.length,0);await apply('device-a',{known:{4:true}});assert.equal((await pull()).sets[0].versions[0].known['4'],true,'Operation IDs scoped to account');
+ await as(1);assert.equal((await pull()).sets[0].versions.find(v=>v.signature==='v1').known['4'],undefined);
+ await as(3);await assert.rejects(pull,/student account/);await as(null);await assert.rejects(pull,/student account/);
+ await db.exec('reset role');assert.deepEqual((await db.query('select * from profiles order by id')).rows,before,'Study does not modify XP, coins or profiles');assert.equal((await scalar('select count(*)::integer n from quiz_history')).n,0);
+ console.log('PASS: study migration/reapply, authenticated RPCs, account isolation, per-card merging/unmark/unsave, idempotent replay, content versions, input validation, section scope, private/table ACLs, no profile/grade/reward changes.');
+}finally{await db.close();}})().catch(e=>{console.error(e);process.exit(1)});

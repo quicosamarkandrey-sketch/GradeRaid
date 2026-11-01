@@ -222,3 +222,5 @@
 .theme-nocturne #s-quiz-active .quiz-combo-band.combo-level-0{display:none!important}
 .theme-nocturne #s-quizzes .quest-studio .qs-search input{border:0!important;box-shadow:none!important;background:transparent!important}
 .theme-nocturne #s-quiz-active .quiz-meta-chip:not(.quiz-hint-btn){display:none}
+
+.quest-studio .qs-sync-retry{background:none;border:0;color:var(--text);text-decoration:underline;text-underline-offset:3px;font:600 11px var(--fb);padding:8px;min-height:44px;cursor:pointer}

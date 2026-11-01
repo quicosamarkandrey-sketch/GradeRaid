@@ -1,0 +1,38 @@
+// Two isolated browser contexts simulate two devices. RPC server is a local fixture.
+const {chromium}=require('@playwright/test'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'../..'),accounts=new Map(),receipts=new Map();
+function snapshot(id){if(!accounts.has(id))accounts.set(id,{studentId:id,sets:[]});return accounts.get(id);}
+function rpc(id,name,args){
+ const state=snapshot(id);if(name==='study_progress_pull')return {data:state};if(name!=='study_progress_apply')return {error:{code:'PGRST202'}};
+ const key=id+':'+args.p_operation_id;if(receipts.has(key))return {data:state};
+ let row=state.sets.find(s=>s.quizId===args.p_quiz_id);if(!row){row={quizId:args.p_quiz_id,saved:false,versions:[]};state.sets.push(row);}let version=row.versions.find(v=>v.signature===args.p_signature);if(!version){version={signature:args.p_signature,known:{},starred:{},position:0};row.versions.push(version);}
+ const patch=args.p_patch;for(const field of ['known','starred'])Object.assign(version[field],patch[field]||{});if(patch.position!==undefined)version.position=patch.position;if(patch.saved!==undefined)row.saved=patch.saved;if(patch.opened)row.lastOpenedAt=new Date().toISOString();receipts.set(key,true);return {data:state};
+}
+(async()=>{
+ const server=http.createServer((req,res)=>{
+  if(req.url==='/__study_rpc'){let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{const {id,name,args}=JSON.parse(body);res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(rpc(id,name,args)));});return;}
+  const file=path.resolve(root,'.'+(req.url==='/'?'/index.html':req.url.split('?')[0]));if(!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}fs.readFile(file,(e,data)=>{res.writeHead(e?404:200,{'Content-Type':file.endsWith('.css')?'text/css':file.endsWith('.js')?'application/javascript':'text/html'});res.end(e?'Missing':data);});
+ });await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
+ const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});
+ try{
+ const a=await browser.newPage({viewport:{width:1440,height:1000}}),b=await browser.newPage({viewport:{width:390,height:844}}),errors=[];
+ async function seed(page){await page.evaluate(()=>{
+  DBService.rpc=async(name,args)=>window.studyOffline?{error:{code:'NETWORK'}}:fetch('/__study_rpc',{method:'POST',body:JSON.stringify({id:currentUser.id,name,args})}).then(r=>r.json());
+  AppStore.updateState(d=>{d.students=[{id:'student',name:'Alex',init:'AR',classId:'science',coins:100,xp:200,level:0,tier:'Novice',completedQuizzes:[]}];d.quizzes=[{id:'q',active:true,title:'A small step in science',desc:'Discover how living things work.',xpReward:100,coinReward:20,questions:[{type:'id',q:'The basic unit of life?',answer:'Cell'},{type:'id',q:'The structure that contains genetic material?',answer:'Nucleus'}]}];d.quizSectionAssignments={};d.quizHistory={};d.pointLog=[];});
+  currentUser=AppStore.getStudent('student');currentRole='student';document.getElementById('boot-loading').style.display='none';document.getElementById('login-screen').style.display='none';document.getElementById('main-app').style.display='block';setupSidebar();navTo('s-quizzes');
+ });}
+ for(const page of [a,b]){page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',r=>r.request().url().startsWith(origin)?r.continue():r.fulfill({contentType:'application/javascript',body:''}));await page.goto(origin);await page.waitForFunction(()=>window.StudySync&&window.QuestStudy);await seed(page);await page.getByText('Saved to your account',{exact:true}).waitFor();}
+ await a.getByRole('button',{name:'Save A small step in science',exact:true}).click();await a.evaluate(()=>QuestStudy.open('q'));await a.getByRole('button',{name:'Open flashcards'}).click();await a.locator('.qs-flashcard').click();await a.getByRole('button',{name:'I know this',exact:false}).click();await a.evaluate(()=>StudySync.refresh());await a.getByText('Saved to your account',{exact:true}).waitFor();
+ await b.evaluate(()=>StudySync.refresh());await b.getByRole('button',{name:'Unsave A small step in science',exact:true}).waitFor();await b.evaluate(()=>QuestStudy.open('q'));assert.match(await b.locator('.qs-detail-meta').textContent(),/1 marked known/);await b.getByRole('button',{name:'Open flashcards'}).click();assert.equal(await b.locator('.qs-session-heading h1 span').textContent(),'2 / 2');
+ // Device A edits offline while device B adds different marks online.
+ await a.evaluate(()=>{window.studyOffline=true;});await a.getByRole('button',{name:'Previous',exact:false}).click();await a.locator('.qs-flashcard').click();await a.getByRole('button',{name:'Still learning',exact:true}).click();await a.evaluate(()=>QuestStudy.renderLibrary());await a.getByRole('button',{name:'Unsave A small step in science',exact:true}).click();await a.evaluate(()=>StudySync.refresh());
+ await b.getByRole('button',{name:'Star',exact:true}).click();await b.locator('.qs-flashcard').click();await b.getByRole('button',{name:'I know this',exact:false}).click();await b.evaluate(()=>StudySync.refresh());await b.getByText('Saved to your account',{exact:true}).waitFor();
+ await a.evaluate(()=>{window.studyOffline=false;return StudySync.refresh();});await a.getByText('Saved to your account',{exact:true}).waitFor();await b.evaluate(()=>QuestStudy.renderLibrary());await b.evaluate(()=>StudySync.refresh());await b.getByRole('button',{name:'Save A small step in science',exact:true}).waitFor();await b.evaluate(()=>QuestStudy.open('q'));assert.match(await b.locator('.qs-detail-meta').textContent(),/1 marked known/);assert.equal(await b.getByRole('button',{name:'Starred cards (1)',exact:true}).count(),1);
+ // Offline operation survives a reload on device B and later reconciles.
+ await b.getByRole('button',{name:'Open flashcards'}).click();await b.evaluate(()=>window.studyOffline=true);await b.locator('.qs-flashcard').click();await b.getByRole('button',{name:'Still learning',exact:true}).click();await b.evaluate(()=>StudySync.refresh());
+ await b.addInitScript(()=>window.studyOffline=true);await b.reload();await b.waitForFunction(()=>window.StudySync&&window.QuestStudy);await seed(b);await b.evaluate(()=>{window.studyOffline=false;return StudySync.refresh();});await b.getByText('Saved to your account',{exact:true}).waitFor();await a.evaluate(()=>StudySync.refresh());await a.getByText('Saved to your account',{exact:true}).waitFor();await a.evaluate(()=>QuestStudy.open('q'));assert.match(await a.locator('.qs-detail-meta').textContent(),/0 marked known/);
+ for(const page of [a,b]){assert.equal(await page.evaluate(()=>AppStore.getStudent('student').coins),100);assert.equal(await page.evaluate(()=>AppStore.getStudent('student').xp),200);assert.equal(await page.evaluate(()=>Object.keys(AppStore.getState().quizHistory).length),0);}
+ await a.evaluate(()=>QuestStudy.renderLibrary());await a.screenshot({path:'/workspace/study-sync-desktop.png',fullPage:true});await b.screenshot({path:'/workspace/study-sync-mobile.png',fullPage:true});assert.deepEqual(errors,[]);
+ console.log('PASS: two isolated real-app devices synchronize saved sets, known/starred cards and position; offline independent changes merge; unmarks/unsave persist; reload recovers pending changes; grades, XP and coins unchanged.');
+ }finally{await browser.close();await new Promise(r=>server.close(r));}
+})().catch(e=>{console.error(e);process.exit(1)});

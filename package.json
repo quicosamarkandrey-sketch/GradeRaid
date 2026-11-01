@@ -10,7 +10,8 @@
     "test:smoke:headed": "playwright test --headed",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test:rewards-db": "node tests/database/learning-rewards.cjs"
+    "test:rewards-db": "node tests/database/learning-rewards.cjs",
+    "test:study-db": "node tests/database/study-progress.cjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.13",

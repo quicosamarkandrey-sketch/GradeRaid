@@ -1,4 +1,4 @@
-/* Quest study modes. Practice state stays on this browser/account and never
+/* Quest study modes. Practice state never
    writes quiz history, XP, coins, attempts, or teacher-authored questions. */
 ;(function () {
   'use strict';
@@ -15,6 +15,8 @@
   const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${(icons[name] || icons.book).split(' M').map((p,i)=>`<path d="${i?'M':''}${p}"/>`).join('')}</svg>`;
   const button = (action, text, attrs = '', primary = false) => `<button type="button" class="qs-button${primary?' qs-primary':''}" data-qs-action="${action}" ${attrs}>${text}</button>`;
   let owner = null, memory = {}, query = '', filter = 'all', sort = 'recommended', view = 'library', selected = null, session = null, preview = null;
+  let syncStatus='Saved on this device';
+  const syncNote=()=>`<span data-study-sync-status role="status">${escape(syncStatus)}</span> <button type="button" class="qs-sync-retry" data-qs-action="sync">Sync now</button>`;
   const uid = () => typeof currentUser !== 'undefined' ? currentUser?.id : null;
   function identity() {
     if (owner === uid()) return;
@@ -23,15 +25,33 @@
     if (typeof memory!=='object' || Array.isArray(memory)) memory={};
     if (!memory.sets || typeof memory.sets !== 'object' || Array.isArray(memory.sets)) memory.sets = {};
     if (!Array.isArray(memory.saved)) memory.saved = [];
+    // Preserve pre-sync browser progress while upgrading to stable JSON keys.
+    const versions=new Map();
+    for(const quiz of all()){const old=legacySignature(quiz),next=signature(quiz);versions.set(old,next);if(memory.sets[quiz.id]?.signature===old)memory.sets[quiz.id].signature=next;}
+    if(memory.attemptVersions&&typeof memory.attemptVersions==='object')for(const id of Object.keys(memory.attemptVersions)){const next=versions.get(memory.attemptVersions[id]);if(next)memory.attemptVersions[id]=next;}
+    storeLocal();
+    syncStatus='Saved on this device';
+    window.StudySync?.connect(owner,{getMemory:()=>memory,getSignature:(id,previous)=>{const quiz=findQuiz(id);if(!quiz)return null;const next=signature(quiz);return previous&&previous!==next&&previous!==legacySignature(quiz)?null:next;},onStatus:text=>{syncStatus=text;document.querySelectorAll('[data-study-sync-status]').forEach(el=>el.textContent=text);},onMerge:remote=>{
+      const before=memory,changed=JSON.stringify([before.saved,before.lastSet,before.sets])!==JSON.stringify([remote.saved,remote.lastSet,remote.sets]);
+      memory=remote;storeLocal();if(!changed||!container()?.classList.contains('active'))return;
+      if(view==='library'){if(document.activeElement?.id==='qs-search')renderResults();else renderLibrary();}
+      else if(view==='detail')open(selected,false);
+      else if(view==='cards'){const same=['known','starred'].every(field=>JSON.stringify([...(before.sets[selected]?.[field]||[])].sort())===JSON.stringify([...(remote.sets[selected]?.[field]||[])].sort()));if(!same)renderCards(false);}
+    }});
   }
-  function persist() { try { localStorage.setItem('eduquest-study-v1-' + owner, JSON.stringify(memory)); } catch { if (!memory.warned) { memory.warned = true; toast('Study progress will last for this session. Browser storage is unavailable.'); } } }
-  function signature(quiz) {
-    const text = JSON.stringify(quiz.questions || []); let hash = 2166136261;
+  function storeLocal() { try { localStorage.setItem('eduquest-study-v1-' + owner, JSON.stringify(memory)); } catch { if (!memory.warned) { memory.warned = true; toast('Study progress will last for this session. Browser storage is unavailable.'); } } }
+  function persist() {storeLocal();window.StudySync?.capture(memory);}
+  function hashText(text) {
+    let hash = 2166136261;
     for (let i=0; i<text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
     return (hash >>> 0).toString(36);
   }
+  function stable(value){return Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,stable(value[key])])):value;}
+  function legacySignature(quiz){return hashText(JSON.stringify(quiz.questions||[]));}
+  function signature(quiz){return 'v2_'+hashText(JSON.stringify(stable(quiz.questions||[])));}
   function progress(quiz) {
     const total=quiz.questions?.length||0; const hash = signature(quiz); let saved = memory.sets[quiz.id];
+    if(saved?.signature===legacySignature(quiz))saved.signature=hash;
     if (!saved || saved.signature !== hash) saved = memory.sets[quiz.id] = {signature:hash, known:[], starred:[], position:0};
     for (const key of ['known','starred']) saved[key] = [...new Set(Array.isArray(saved[key])?saved[key]:[])].filter(i=>Number.isInteger(i) && i>=0 && i<total);
     saved.position = Math.max(0, Math.min(total-1, Number(saved.position)||0));
@@ -74,7 +94,7 @@
   function missed(quiz) {
     const record = history(quiz.id).slice().sort((a,b)=>String(a.completedAt||'').localeCompare(String(b.completedAt||''))).pop();
     const version=record && memory.attemptVersions?.['attempt:'+record.id];
-    if (version && version!==signature(quiz)) return [];
+    if (version && version!==signature(quiz) && version!==legacySignature(quiz)) return [];
     // Older records do not have revision metadata; require matching counts.
     if (!Array.isArray(record?.results) || record.results.length!==quiz.questions.length) return [];
     return record.results.flatMap((value,i)=>Number(value)<1?[i]:[]);
@@ -105,10 +125,10 @@
     identity(); view='library'; selected=session=null;
     const sets=visible(), open=sets.filter(q=>!availability(q)), completed=sets.filter(q=>history(q.id).length), last=sets.find(q=>q.id===memory.lastSet && !availability(q));
     mount(`<header class="qs-library-header"><div><p class="qs-eyebrow">Quest Board / Your learning space</p><h1>Your study library.</h1><p>Understand it. Remember it. Put it into practice.</p></div><div class="qs-library-count"><strong>${open.length}</strong><span>sets ready to explore</span></div></header>
-      <section class="qs-start-panel"><div class="qs-start-symbol">${icon('book')}</div><div><span class="qs-eyebrow">${last?'Pick up where you left off':'Make room for a little practice'}</span><h2>${last?escape(last.title):'Learn at your own pace.'}</h2><p>${last?'Your flashcard progress is saved on this browser.':'Flip through flashcards, try a practice round, then take a scored quiz when you’re ready.'}</p></div>${last?button('open','Continue studying '+icon('arrow'),`data-id="${escape(last.id)}"`,true):`<div class="qs-start-steps"><span>${icon('cards')} Flashcards</span><span>${icon('learn')} Practice</span><span>${icon('check')} Scored quiz</span></div>`}</section>
+      <section class="qs-start-panel"><div class="qs-start-symbol">${icon('book')}</div><div><span class="qs-eyebrow">${last?'Pick up where you left off':'Make room for a little practice'}</span><h2>${last?escape(last.title):'Learn at your own pace.'}</h2><p>${last?'Continue with your latest saved study progress.':'Flip through flashcards, try a practice round, then take a scored quiz when you’re ready.'}</p></div>${last?button('open','Continue studying '+icon('arrow'),`data-id="${escape(last.id)}"`,true):`<div class="qs-start-steps"><span>${icon('cards')} Flashcards</span><span>${icon('learn')} Practice</span><span>${icon('check')} Scored quiz</span></div>`}</section>
       <div class="qs-library-toolbar"><div class="qs-filter-group" role="group" aria-label="Filter study sets">${[['all','All sets',sets.length],['review','To review',sets.filter(q=>best(q)!==null && best(q)<100).length],['attempted','Attempted',completed.length],['saved','Saved',sets.filter(q=>memory.saved.includes(q.id)).length]].map(([id,label,count])=>`<button type="button" data-qs-action="filter" data-filter="${id}" aria-pressed="${filter===id}">${label}<span>${count}</span></button>`).join('')}</div>
       <div class="qs-library-controls"><label class="qs-search">${icon('search')}<input type="search" id="qs-search" aria-label="Search study sets" placeholder="Search your sets" value="${escape(query)}"></label><select id="qs-sort" aria-label="Sort study sets"><option value="recommended" ${sort==='recommended'?'selected':''}>Recommended</option><option value="title" ${sort==='title'?'selected':''}>Title A–Z</option><option value="recent" ${sort==='recent'?'selected':''}>Recently attempted</option></select></div></div>
-      <div id="qs-library-results" aria-live="polite"></div><p class="qs-storage-note">Flashcard progress and saved sets stay on this browser and account. Practice does not spend attempts or award XP and coins.</p>`);
+      <div id="qs-library-results" aria-live="polite"></div><p class="qs-storage-note">${syncNote()} Practice does not spend attempts or award XP and coins.</p>`);
     renderResults();
   }
   function renderResults() {
@@ -147,19 +167,19 @@
     const quiz=currentQuiz();if (!quiz) return;
     const state=progress(quiz), order=subset==='starred'?[...state.starred]:quiz.questions.map((_q,i)=>i).filter(i=>subset!=='learning'||!state.known.includes(i));
     if (!order.length) return;
-    memory.lastSet=quiz.id;persist();view='cards';
+    memory.lastSet=quiz.id;persist();window.StudySync?.opened(quiz.id,signature(quiz));view='cards';
     session={signature:signature(quiz),order,index:subset==='all'?Math.max(0,order.indexOf(state.position)):0,flipped:false,subset};renderCards();
   }
-  function renderCards() {
+  function renderCards(savePosition = true) {
     const quiz=currentQuiz();if (!quiz || !session) return renderLibrary();
     const state=progress(quiz), qi=session.order[session.index], q=quiz.questions[qi], starred=state.starred.includes(qi), known=state.known.includes(qi);
-    state.position=qi;persist();
+    if(savePosition){state.position=qi;persist();}
     mount(`${backBar(quiz)}<div class="qs-session-heading"><div><p class="qs-eyebrow">${escape(quiz.title)}</p><h1>Flashcards<span>${session.index+1} / ${session.order.length}</span></h1></div>${button('open','Set overview',`data-id="${escape(quiz.id)}"`)}</div>
       <div class="qs-card-tools"><span>${session.subset==='starred'?'Starred cards':session.subset==='learning'?'Still learning':state.known.length+' of '+quiz.questions.length+' marked known'}</span><div>${button('shuffle',icon('shuffle')+' Shuffle')}${button('star',icon('star')+(starred?' Starred':' Star'),`aria-pressed="${starred}"`)}</div></div>
       <button type="button" class="qs-flashcard${session.flipped?' is-flipped':''}" data-qs-action="flip" aria-label="${session.flipped?'Answer. '+escape(answer(q))+'. Show question':'Question. '+escape(prompt(q))+'. Reveal answer'}"><span class="qs-flashcard-label">${session.flipped?'Answer':'Question'}${known?' · Marked known':''}</span><span class="qs-flashcard-content">${escape(session.flipped?answer(q):prompt(q))}</span><span class="qs-flashcard-hint">${icon('flip')} ${session.flipped?'Back to question':'Tap to reveal answer'}<kbd>Space</kbd></span></button>
       <div class="qs-flashcard-nav">${button('previous',icon('back')+' Previous',session.index===0?'disabled':'')}<div class="qs-card-dots" aria-hidden="true">${session.order.slice(Math.max(0,session.index-3),session.index+4).map(i=>`<i class="${i===qi?'active':''}"></i>`).join('')}</div>${button('next','Next '+icon('arrow'),session.index===session.order.length-1?'disabled':'')}</div>
       <div class="qs-self-check"><p>How well did you remember this?</p><div>${button('learning','Still learning',`aria-pressed="${!known}" ${!session.flipped?'disabled':''}`)}${button('known',icon('check')+' I know this',`aria-pressed="${known}" ${!session.flipped?'disabled':''}`,true)}</div></div>
-      ${session.index===session.order.length-1?`<div class="qs-round-end"><span>You’re at the end of this round.</span>${button('practice','Put it into practice '+icon('arrow'))}${button('restart-cards','Go through again')}</div>`:''}<p class="qs-storage-note">Space to flip · Left and right arrows to move · K to mark known · S to star. Your progress is saved on this browser.</p>`);
+      ${session.index===session.order.length-1?`<div class="qs-round-end"><span>You’re at the end of this round.</span>${button('practice','Put it into practice '+icon('arrow'))}${button('restart-cards','Go through again')}</div>`:''}<p class="qs-storage-note">Space to flip · Left and right arrows to move · K to mark known · S to star. ${syncNote()}</p>`);
   }
   function shuffle(array) { const copy=[...array]; for(let i=copy.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[copy[i],copy[j]]=[copy[j],copy[i]];}return copy; }
   function startPractice(indices = null) {
@@ -210,6 +230,7 @@
   }
   function act(action, el) {
     identity();
+    if (action==='sync') return window.StudySync?.refresh();
     if (action==='library') return renderLibrary();
     if (action==='clear') {query='';filter='all';return renderLibrary();}
     if (action==='filter') {filter=el.dataset.filter;return renderLibrary();}
@@ -276,7 +297,7 @@
   });
   AppStore.subscribe('quest-study-session',(_state,event)=>{
     if(event?.type==='session:booted')identity();
-    if(event?.type==='nav:navigated'){session=null;view='library';}
+    if(event?.type==='nav:navigated'){session=null;view='library';if(event.payload?.id==='s-quizzes')window.StudySync?.refresh();}
   });
   window.QuestStudy=Object.freeze({renderLibrary,open,teacherPreview,answer,signature,availability,rememberAttempt});
 })();
