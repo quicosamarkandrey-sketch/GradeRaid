@@ -25,20 +25,20 @@ window.renderAdminTitles = function () {
   <div class="page-hero"><div class="page-hero-bg"></div>
     <div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
       <div>
-        <div class="page-hero-label">👑 Title Designer</div>
+        <div class="page-hero-label">Title Designer</div>
         <h1 style="font-family:var(--fh);font-size:28px;font-weight:900;color:var(--on-surface);margin-bottom:6px">Titles &amp; Nameplates</h1>
         <p style="font-size:13px;color:var(--text-muted)">${titles.length} titles · ${totalUnlocks} total unlocks · ${equipped} currently equipped</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-ghost btn-sm" onclick="tsAdminGrantModal()">🎁 Grant/Revoke</button>
+        <button class="btn btn-ghost btn-sm" onclick="tsAdminGrantModal()">Grant/Revoke</button>
         <button class="btn btn-primary" onclick="tsAdminOpenDesigner(null)">+ Create Title</button>
       </div>
     </div>
   </div>
 
   <div class="ts-form-tabs" style="margin-bottom:24px">
-    <button class="ts-form-tab active" id="tsadmtab-library" onclick="tsAdminTabSwitch('library')">📚 Title Library</button>
-    <button class="ts-form-tab" id="tsadmtab-stats"   onclick="tsAdminTabSwitch('stats')">📊 Statistics</button>
+    <button class="ts-form-tab active" id="tsadmtab-library" onclick="tsAdminTabSwitch('library')">Title Library</button>
+    <button class="ts-form-tab" id="tsadmtab-stats"   onclick="tsAdminTabSwitch('stats')">Statistics</button>
   </div>
 
   <div id="tsadm-panel-library" class="ts-form-panel active">
@@ -55,7 +55,7 @@ window.renderAdminTitles = function () {
 function _buildAdminTitlesList(titles) {
   if (!titles.length) {
     return `<div style="text-align:center;padding:72px 20px;border:2px dashed rgba(255,255,255,.07);border-radius:16px">
-      <div style="font-size:56px;margin-bottom:14px">👑</div>
+      <div style="font-size:56px;margin-bottom:14px"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 5 9l7 12 7-12-3-6 M5 9h14 M8 3h8 M12 9v12"/></svg></div>
       <div style="font-family:var(--fh);font-size:20px;font-weight:900;color:var(--on-surface);margin-bottom:8px">No Titles Created</div>
       <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px">Create your first custom title using the Visual Designer.</div>
       <button class="btn btn-primary" onclick="tsAdminOpenDesigner(null)">+ Create First Title</button>
@@ -90,17 +90,17 @@ function _buildAdminTitlesList(titles) {
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
             <span class="rarity-pill rarity-${(t.rarity || 'Common').toLowerCase()}" style="font-size:9px">${t.rarity}</span>
             <span style="font-size:9px;color:var(--text-muted);border:1px solid var(--border2);border-radius:6px;padding:2px 7px">${t.frameShape || 'classic'}</span>
-            ${linkedAch ? `<span class="badge-pill bp-primary" style="font-size:9px">🔗 ${_esc(linkedAch.name)}</span>` : `<span class="badge-pill ${assignedIds.length ? 'bp-primary' : 'bp-gray'}" style="font-size:9px" title="${_esc(sectionsLabel)}">🏫 ${assignedIds.length ? _esc(sectionsLabel) : 'All sections'}</span>`}
+            ${linkedAch ? `<span class="badge-pill bp-primary" style="font-size:9px">${_esc(linkedAch.name)}</span>` : `<span class="badge-pill ${assignedIds.length ? 'bp-primary' : 'bp-gray'}" style="font-size:9px" title="${_esc(sectionsLabel)}">${assignedIds.length ? _esc(sectionsLabel) : 'All sections'}</span>`}
           </div>
           <div style="display:flex;gap:10px;font-size:11px;margin-bottom:10px">
             <span style="color:var(--text-muted)">Unlocks: <strong style="color:var(--primary)">${unlockCount}</strong></span>
             <span style="color:var(--text-muted)">Equipped: <strong style="color:var(--secondary)">${equippedBy}</strong></span>
           </div>
           <div class="ts-admin-card-actions">
-            <button class="btn btn-ghost btn-xs" onclick="tsAdminOpenDesigner('${t.id}')" title="Edit">✏️ Edit</button>
+            <button class="btn btn-ghost btn-xs" onclick="tsAdminOpenDesigner('${t.id}')" title="Edit">Edit</button>
             <button class="btn btn-ghost btn-xs" onclick="tsAdminDuplicate('${t.id}')" title="Duplicate">⧉</button>
             <button class="ach-toggle-btn" style="border-color:${t.active ? 'rgba(255,128,128,0.3)' : 'rgba(78,222,163,0.3)'};color:${t.active ? '#ff8080' : '#4edea3'}" onclick="tsAdminToggle('${t.id}')">${t.active ? 'Disable' : 'Enable'}</button>
-            <button class="btn btn-ghost btn-xs" style="color:#ff8080" onclick="tsAdminDelete('${t.id}')">🗑</button>
+            <button class="btn btn-ghost btn-xs" style="color:#ff8080" onclick="tsAdminDelete('${t.id}')">Delete</button>
           </div>
         </div>
       </div>`;
@@ -201,7 +201,7 @@ window.tsAdminDelete = async function (titleId) {
     }
   }, { type: 'titles:title-deleted', payload: { id: titleId } });
 
-  toast('🗑 Title deleted.', '#ff8080');
+  toast('Title deleted.', '#ff8080');
   renderAdminTitles();
   // Phase 23: the `titles` row itself is now actually deleted server-side
   // (not just its unlock rows) — delete_title() cascades title_unlocks +
@@ -212,7 +212,7 @@ window.tsAdminDelete = async function (titleId) {
   // write policy.
   if (typeof DBService !== 'undefined' && typeof DBService.rpc === 'function') {
     const { error } = await DBService.rpc('delete_title', { p_title_id: titleId });
-    if (error) toast('⚠️ Removed locally, but may not have synced: ' + error.message, '#ffb95f');
+    if (error) toast('Removed locally, but may not have synced: ' + error.message, '#ffb95f');
   }
 };
 
@@ -226,7 +226,7 @@ window.tsAdminToggle = function (tid) {
     draft.titles[idx].active = !draft.titles[idx].active;
     newActive = draft.titles[idx].active;
   }, { type: 'titles:toggled', payload: { id: tid } });
-  toast(newActive ? '✅ Title enabled.' : '⏸ Title disabled.');
+  toast(newActive ? 'Title enabled.' : 'Title disabled.');
   _tsRefreshAdminTitlesPanel();
 };
 
@@ -247,15 +247,15 @@ window.tsAdminDuplicate = function (tid) {
 
 window.tsAdminGrantModal = function () {
   const titles = AppStore.getSlice(s => s.titles) || [];
-  if (!titles.length) { toast('❌ Create titles first.', '#ffb4ab'); return; }
+  if (!titles.length) { toast('Create titles first.', '#ffb4ab'); return; }
 
   const students = AppStore.getSlice(s => s.students) || [];
   const studentOpts = students.map(s => `<option value="${s.id}">${_esc(s.name)}</option>`).join('');
-  const titleOpts   = titles.map(t => `<option value="${t.id}">${t.icon || '👑'} ${_esc(t.name)}</option>`).join('');
+  const titleOpts   = titles.map(t => `<option value="${t.id}">${_esc(t.name)}</option>`).join('');
 
   showModal(`
   <div style="max-width:480px">
-    <h2 style="font-family:var(--fh);font-size:18px;font-weight:900;margin-bottom:18px">🎁 Grant / Revoke Titles</h2>
+    <h2 style="font-family:var(--fh);font-size:18px;font-weight:900;margin-bottom:18px">Grant / Revoke Titles</h2>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
       <div><label class="form-label">Student *</label><select id="tsg-student" class="form-control" style="width:100%" onchange="tsAdminGrantRefreshStudentTitles()"><option value="">Select...</option>${studentOpts}</select></div>
       <div><label class="form-label">Title *</label><select id="tsg-title" class="form-control" style="width:100%"><option value="">Select...</option>${titleOpts}</select></div>
@@ -319,15 +319,15 @@ window.tsAdminGrantConfirm = function () {
   if (!student || !title) return;
 
   if (action === 'grant') {
-    if (tsIsUnlocked(sid, tid)) { if (errEl) { errEl.textContent = '❌ Student already has this title.'; errEl.style.display = 'block'; } return; }
+    if (tsIsUnlocked(sid, tid)) { if (errEl) { errEl.textContent = 'Student already has this title.'; errEl.style.display = 'block'; } return; }
     tsUnlockTitleForStudent(sid, tid, true);
     closeModalForce();
-    toast(`✅ Granted "${_esc(title.name)}" to ${_esc(student.name)}!`);
+    toast(`Granted "${_esc(title.name)}" to ${_esc(student.name)}!`);
   } else {
-    if (!tsIsUnlocked(sid, tid)) { if (errEl) { errEl.textContent = '❌ Student does not have this title.'; errEl.style.display = 'block'; } return; }
+    if (!tsIsUnlocked(sid, tid)) { if (errEl) { errEl.textContent = 'Student does not have this title.'; errEl.style.display = 'block'; } return; }
     tsAdminRevokeTitle(sid, tid);
     closeModalForce();
-    toast(`🗑 Revoked "${_esc(title.name)}" from ${_esc(student.name)}.`, '#ff8080');
+    toast(`Revoked "${_esc(title.name)}" from ${_esc(student.name)}.`, '#ff8080');
   }
   renderAdminTitles();
 };
@@ -345,7 +345,7 @@ window.tsAdminRevokeTitle = function (sid, tid) {
 };
 
 // ── admin:achievements-rendered subscriber ─────────────────────────────────────
-// Adds a "👑 Manage Titles" shortcut button to the admin achievements page.
+// Adds a "Manage Titles" shortcut button to the admin achievements page.
 // Continuation Plan §3, Category A — replaces the old monkey-patch of
 // window.renderAdminAchievements. Confirmed single site, load-order traced
 // (ach_admin_page.js:809 defines and now emits this event; this file loads
@@ -362,7 +362,7 @@ AppStore.subscribe('titles-admin-achievements-link', function (state, event) {
   if (bar) {
     const btn          = document.createElement('button');
     btn.className      = 'btn btn-ghost btn-sm ts-ach-titles-link';
-    btn.innerHTML      = '👑 Manage Titles';
+    btn.innerHTML      = 'Manage Titles';
     btn.style.cssText  = 'margin-top:8px';
     btn.addEventListener('click', () => {
       if (typeof navTo === 'function') navTo('a-titles');

@@ -30,7 +30,7 @@ function _buildStudentTitlesHTML(st, allTitles, unlocked, equippedId) {
 
   if (!allTitles.length) {
     return `<div style="text-align:center;padding:80px 20px;border:2px dashed rgba(255,255,255,.07);border-radius:16px">
-      <div style="font-size:48px;margin-bottom:14px">👑</div>
+      <div style="font-size:48px;margin-bottom:14px"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 5 9l7 12 7-12-3-6 M5 9h14 M8 3h8 M12 9v12"/></svg></div>
       <div style="font-family:var(--fh);font-size:18px;font-weight:900;color:var(--on-surface);margin-bottom:6px">No Titles Yet</div>
       <div style="color:var(--text-muted);font-size:13px">Titles haven't been created yet. Check back soon!</div>
     </div>`;
@@ -60,13 +60,13 @@ function _buildStudentTitlesHTML(st, allTitles, unlocked, equippedId) {
       <div style="font-size:12px;color:var(--text-muted);line-height:1.5">${_esc(title.description || '')}</div>
       ${isU
         ? `<div style="font-size:10px;color:var(--secondary);display:flex;align-items:center;gap:4px"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">check_circle</span> Unlocked</div>`
-        : `<div style="font-size:10px;color:var(--text-muted)">🔒 ${_esc(reqText)}</div>`}
+        : `<div style="font-size:10px;color:var(--text-muted)">${_esc(reqText)}</div>`}
       <div class="ts-title-card-actions">
         ${isU
           ? (isE
             ? `<button class="ts-equip-btn ts-unequip" onclick="tsStudentUnequip()">✓ Equipped — Unequip</button>`
             : `<button class="ts-equip-btn" onclick="tsStudentEquip('${title.id}')">Equip Title</button>`)
-          : `<button class="btn btn-ghost btn-xs" style="flex:1;opacity:.45;cursor:not-allowed" disabled>🔒 Locked</button>`}
+          : `<button class="btn btn-ghost btn-xs" style="flex:1;opacity:.45;cursor:not-allowed" disabled>Locked</button>`}
       </div>
     </div>`;
   }).join('');
@@ -114,7 +114,7 @@ window.renderTitlesPage = function () {
   el.innerHTML = `
   <div class="page-hero" style="margin-bottom:24px"><div class="page-hero-bg"></div>
     <div style="position:relative;z-index:1">
-      <div class="page-hero-label">🏅 Rewards &amp; Recognition</div>
+      <div class="page-hero-label">Rewards &amp; Recognition</div>
       <h1 style="font-family:var(--fh);font-size:28px;font-weight:900;color:var(--on-surface);margin-bottom:6px">Achievements &amp; Titles</h1>
       <p style="font-size:13px;color:var(--text-muted)">Earn achievements to unlock unique titles. Equip your favourite to display it across EduQuest.</p>
     </div>

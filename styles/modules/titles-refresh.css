@@ -1,13 +1,10 @@
 /* Color belongs to the collectible: deep ink plates, distinct frames and clear type. */
-.ts-badge-wrap.ts-plate-v2{isolation:isolate;display:inline-flex;justify-content:flex-start;gap:10px;min-width:104px;max-width:min(100%,340px);height:46px;padding:8px 16px 8px 10px;border-width:1px;border-color:var(--ts-border);background:var(--ts-bg);font:650 13px/1.3 var(--fb);letter-spacing:.015em;overflow:hidden;vertical-align:middle;transform:none}
+.ts-badge-wrap.ts-plate-v2{isolation:isolate;display:inline-flex;justify-content:center;gap:10px;min-width:104px;max-width:min(100%,340px);height:46px;padding:8px 16px;border-width:1px;border-color:var(--ts-border);background:var(--ts-bg);font:650 13px/1.3 var(--fb);letter-spacing:.015em;overflow:hidden;vertical-align:middle;transform:none}
 .ts-plate-v2:not(.ts-custom-surface){background:linear-gradient(115deg,color-mix(in srgb,var(--ts-primary) 12%,var(--ts-bg)),var(--ts-bg))!important}
 .ts-plate-v2 .ts-frame-svg{opacity:.28;z-index:0;filter:saturate(.85)}
-.ts-plate-v2 .ts-plate-icon{position:relative;z-index:3;display:inline-flex;align-items:center;justify-content:center;width:27px;height:27px;border:1px solid color-mix(in srgb,var(--ts-border) 45%,transparent);background:color-mix(in srgb,var(--ts-bg) 70%,transparent);border-radius:7px;font-size:17px;flex-shrink:0;color:var(--ts-text)}
 .ts-plate-v2 .ts-badge-text{max-width:none;min-width:0;font:inherit;letter-spacing:inherit;color:var(--ts-text);text-shadow:0 1px 2px #0002}
-.ts-plate-v2.ts-size-sm{height:32px;min-width:0;max-width:min(100%,210px);padding:4px 10px 4px 6px;gap:6px;font-size:10px;animation:none!important;clip-path:none}
-.ts-plate-v2.ts-size-xs{height:25px;min-width:0;max-width:min(100%,165px);padding:3px 8px 3px 5px;gap:5px;font-size:9px;animation:none!important;clip-path:none}
-.ts-plate-v2.ts-size-sm .ts-plate-icon{width:21px;height:21px;font-size:13px;border-radius:5px}
-.ts-plate-v2.ts-size-xs .ts-plate-icon{width:17px;height:17px;font-size:11px;border-radius:4px}
+.ts-plate-v2.ts-size-sm{height:32px;min-width:0;max-width:min(100%,210px);padding:4px 10px;gap:6px;font-size:10px;animation:none!important;clip-path:none}
+.ts-plate-v2.ts-size-xs{height:25px;min-width:0;max-width:min(100%,165px);padding:3px 8px;gap:5px;font-size:9px;animation:none!important;clip-path:none}
 .ts-plate-v2.ts-frame-arcane{clip-path:polygon(8px 0,calc(100% - 8px) 0,100% 50%,calc(100% - 8px) 100%,8px 100%,0 50%);padding-inline:16px}
 .ts-plate-v2.ts-size-sm.ts-frame-arcane,.ts-plate-v2.ts-size-xs.ts-frame-arcane{clip-path:none;padding-inline:8px}
 .ts-plate-v2.ts-frame-ghost{border-radius:18px 18px 7px 7px;overflow:hidden}

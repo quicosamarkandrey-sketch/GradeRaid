@@ -18,7 +18,7 @@ const root=path.resolve(__dirname,'../..');
  });
  await page.locator('#tab-titles-btn').click();
  const original=await page.evaluate(()=>JSON.stringify({students:AppStore.getState().students,titles:AppStore.getState().titles,unlocks:AppStore.getState().titleUnlocks}));
- assert.equal(await page.locator('.tc-card').count(),4);assert.equal(await page.getByText('Other section secret',{exact:true}).count(),0);assert.equal(await page.getByText('Retired title',{exact:true}).count(),0);assert.equal(await page.locator('#tab-titles-btn span').textContent(),'2');
+ assert.equal(await page.locator('.tc-card').count(),4);assert.equal(await page.locator('.ts-plate-icon').count(),0);assert.equal(await page.getByText('Other section secret',{exact:true}).count(),0);assert.equal(await page.getByText('Retired title',{exact:true}).count(),0);assert.equal(await page.locator('#tab-titles-btn span').textContent(),'2');
  await page.locator('[data-tc-action=filter][data-filter=locked]').click();assert.equal(await page.locator('.tc-card').count(),2);assert.equal(await page.locator('.tc-card [data-tc-action=equip]').count(),0);
  await page.locator('[data-tc-action=filter][data-filter=unlocked]').click();assert.equal(await page.locator('.tc-card').count(),2);
  await page.locator('[data-tc-action=filter][data-filter=all]').click();await page.getByRole('searchbox',{name:'Search titles'}).fill('no match');await page.getByRole('heading',{name:'No titles match this view.'}).waitFor();await page.getByRole('button',{name:'Show all titles',exact:true}).click();
@@ -40,7 +40,7 @@ const root=path.resolve(__dirname,'../..');
  assert.equal(await page.locator('#contrast-fixture .ts-badge-text').evaluate(el=>getComputedStyle(el).color),'rgb(0, 0, 0)');assert.equal(await page.locator('#contrast-fixture .ts-badge-wrap').evaluate(el=>getComputedStyle(el).animationName),'none');
  // Teacher preview and palettes, with no draft persisted until Save.
  await page.evaluate(()=>{document.getElementById('contrast-fixture').remove();currentRole='teacher';currentUser={id:'teacher',name:'Teacher'};navTo('a-titles');tsAdminOpenDesigner('title0');});await page.waitForTimeout(150);
- assert.equal(await page.locator('.ts3-template-card').filter({hasText:'Cobalt Scholar'}).count(),1);
+ assert.equal(await page.locator('.ts3-template-card').filter({hasText:'Cobalt Scholar'}).count(),1);assert.equal(await page.locator('#ts3-icon').count(),0);assert.ok(!await page.locator('.ts3-modal').evaluate(el=>/\p{Extended_Pictographic}/u.test(el.textContent)),'Designer controls must not render emoji');
  const palette=page.locator('.ts3-template-card').filter({hasText:'Golden Luminary'});await palette.focus();await page.keyboard.press('Enter');assert.equal(await page.evaluate(()=>window._tsDraft.primaryColor),'#efc679');
  await page.screenshot({path:'/workspace/title-designer-mobile.png',fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Designer overflow');await page.keyboard.press('Escape');
  await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>{currentRole='student';currentUser=AppStore.getStudent('student');navTo('s-badges');tsTabSwitch('titles');});await page.getByRole('button',{name:'Preview Cobalt Scholar',exact:true}).click();assert.equal(await page.locator('.tc-modal-stage .ts-badge-wrap').evaluate(el=>getComputedStyle(el).animationName),'none');await page.keyboard.press('Escape');

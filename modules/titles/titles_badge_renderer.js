@@ -105,7 +105,7 @@ window.TS_BORDER_STYLES = [
 
 window.tsDefaultTitle = function () {
   return {
-    id: uid(), name: '', description: '', icon: '🏆', rarity: 'Common', active: true,
+    id: uid(), name: '', description: '', icon: '', rarity: 'Common', active: true,
     achievementId: null,
     frameShape: 'classic',
     primaryColor: '#8dbbff', secondaryColor: '#4268b5', accentColor: '#c6dfff',
@@ -320,7 +320,7 @@ window.tsBuildBadgeHTML = function (title, opts) {
       fxInner = chars.slice(0, opts.small ? 4 : 6).join(' ');
     } else if (eff === 'lightning') {
       const positions = [10, 26, 42, 58, 74, 90];
-      ['⚡','⚡','⚡','⚡','⚡'].forEach((b, i) => { const dur = (0.7 + Math.random() * 0.6).toFixed(2); const dly = (Math.random() * 1.5).toFixed(2); fxInner += `<span class="ts-fx-bolt" style="left:${positions[i]||20}%;--bdur:${dur}s;--bdly:${dly}s">${b}</span>`; });
+      [0,1,2,3,4].forEach((b, i) => { const dur = (0.7 + Math.random() * 0.6).toFixed(2); const dly = (Math.random() * 1.5).toFixed(2); fxInner += `<span class="ts-fx-bolt" style="left:${positions[i]||20}%;--bdur:${dur}s;--bdly:${dly}s"><svg viewBox="0 0 12 20" width="10" height="16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="m7 1-5 10h4l-1 8 5-11H6z"/></svg></span>`; });
     } else if (eff === 'stars') {
       [{x:5,y:50,sz:10,dur:4.0,dly:0},{x:88,y:50,sz:9,dur:3.5,dly:.8},{x:30,y:10,sz:8,dur:5.0,dly:1.4},{x:68,y:15,sz:9,dur:4.2,dly:.3},{x:15,y:80,sz:7,dur:3.8,dly:2.1},{x:82,y:75,sz:8,dur:4.6,dly:1.0}].forEach(p => { fxInner += `<span class="ts-fx-star" style="left:${p.x}%;top:${p.y}%;--sdur:${p.dur}s;--sdly:${p.dly}s;--ssz:${p.sz}px;--sox:${p.x}%;--soy:${p.y}%">★</span>`; });
     } else if (eff === 'drips') {
@@ -342,7 +342,6 @@ window.tsBuildBadgeHTML = function (title, opts) {
 
   return `<span class="${_esc(wrapperClasses)}" style="${_esc(wrapperInlineStyle)}" title="${_esc(title.name || '')} (${_esc(title.rarity || '')})">` +
     buildFrameSVG(frameShape).replace('<svg ', '<svg aria-hidden="true" focusable="false" ') + rarityOverlay + particlesHTML + fxLayerHTML +
-    `<span class="ts-plate-icon" aria-hidden="true">${_esc(title.icon || '🏅')}</span>` +
     `<span class="ts-badge ts-badge-text" style="${innerInlineStyle}">${_esc(title.name || 'Title')}</span>` +
     `</span>`;
 };

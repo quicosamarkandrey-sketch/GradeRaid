@@ -92,13 +92,13 @@ window.eqRewardPresent = function(opts = {}){
  const overlay=document.createElement('div');overlay.id='eq-reward-overlay';overlay.eqrReturnFocus=returnTo;
  overlay.innerHTML=`<section class="eqr-panel" role="dialog" aria-modal="true" aria-labelledby="eqr-heading" ${subtitle?'aria-describedby="eqr-description"':''} tabindex="-1" style="--eqr-rarity:${rCol.strip}"><div class="eqr-body">
   <div class="eqr-topline"><span class="eqr-source-label">${_esc(sourceLabel)}</span><button class="eqr-close" type="button" aria-label="Close reward summary">${svg('m6 6 12 12 M18 6 6 18')}</button></div>
-  <div class="eqr-heading-row"><span class="eqr-icon-wrap" aria-hidden="true">${safeIcon(icon)}</span><span class="eqr-rarity-badge"><i class="eqr-rarity-dot" aria-hidden="true"></i>${_esc(validRarity)}</span></div>
+  <div class="eqr-heading-row"><span class="eqr-icon-wrap" aria-hidden="true">${source==='title'?svg('M8 3 5 9l7 12 7-12-3-6 M5 9h14 M8 3h8 M12 9v12'):safeIcon(icon)}</span><span class="eqr-rarity-badge"><i class="eqr-rarity-dot" aria-hidden="true"></i>${_esc(validRarity)}</span></div>
   <h2 class="eqr-title" id="eqr-heading">${_esc(title)}</h2>${subtitle?`<p class="eqr-subtitle" id="eqr-description">${_esc(subtitle)}</p>`:''}
   ${entries.length?`<p class="eqr-rewards-label">Your rewards</p><div class="eqr-rewards-grid">${entries.map(r=>{
    const isTitle=r.type==='title',numeric=typeof r.amount==='number'&&Number.isFinite(r.amount);
    const amount=numeric?(r.amount>=0?'+':'')+r.amount.toLocaleString():String(r.amount??'');
    const label=isTitle?'Title unlocked':r.label||({xp:'Experience',coins:'Coins',item:'Item'}[r.type]||'Reward');
-   return `<div class="eqr-reward-card${isTitle?' eqr-reward-title':''}"><span class="eqr-reward-icon" aria-hidden="true">${safeIcon(r.icon)}</span><div class="eqr-reward-info"><span class="eqr-reward-label">${_esc(label)}</span>${isTitle?`<strong class="eqr-reward-amount">${_esc(r.label||'New title')}</strong>`:r.type==='xp'?'<span class="eqr-reward-caption">Learning progress</span>':r.type==='coins'?'<span class="eqr-reward-caption">For your Armory rewards</span>':''}</div>${isTitle?'':`<strong class="eqr-reward-amount">${_esc(amount)}</strong>`}</div>`;
+   return `<div class="eqr-reward-card${isTitle?' eqr-reward-title':''}"><span class="eqr-reward-icon" aria-hidden="true">${isTitle?svg('M8 3 5 9l7 12 7-12-3-6 M5 9h14 M8 3h8 M12 9v12'):safeIcon(r.icon)}</span><div class="eqr-reward-info"><span class="eqr-reward-label">${_esc(label)}</span>${isTitle?`<strong class="eqr-reward-amount">${_esc(r.label||'New title')}</strong>`:r.type==='xp'?'<span class="eqr-reward-caption">Learning progress</span>':r.type==='coins'?'<span class="eqr-reward-caption">For your Armory rewards</span>':''}</div>${isTitle?'':`<strong class="eqr-reward-amount">${_esc(amount)}</strong>`}</div>`;
   }).join('')}</div>`:'<p class="eqr-no-rewards">No additional rewards for this update.</p>'}
  </div><div class="eqr-footer"><button class="eqr-claim-btn" type="button" id="eqr-btn">Continue ${svg('M4 12h16 M14 6l6 6-6 6')}</button></div>
  </section>`;

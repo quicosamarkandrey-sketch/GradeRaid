@@ -66,7 +66,7 @@ export const tsIsUnlocked = function (sid, tid) {
 // ── Equip / Unlock ────────────────────────────────────────────────────────────
 
 export const tsEquipTitle = function (sid, tid) {
-  if (tid && !tsIsUnlocked(sid, tid)) { toast('❌ Title not unlocked yet.', '#ffb4ab'); return; }
+  if (tid && !tsIsUnlocked(sid, tid)) { toast('Title not unlocked yet.', '#ffb4ab'); return; }
   AppStore.updateState(draft => {
     if (!draft.equippedTitles) draft.equippedTitles = {};
     draft.equippedTitles[sid] = tid || null;
@@ -80,7 +80,7 @@ export const tsEquipTitle = function (sid, tid) {
     if (lbPage && lbPage.classList.contains('active') && typeof renderLeaderboard === 'function')
       renderLeaderboard(window._eqlActiveTab || 'hall', window._eqlActivePeriod || 'all');
   }
-  toast(tid ? '✅ Title equipped!' : '✅ Title unequipped.', '#4edea3');
+  toast(tid ? 'Title equipped!' : 'Title unequipped.', '#4edea3');
 };
 
 /**
@@ -126,7 +126,7 @@ export const tsShowTitleUnlockPopup = function (title) {
   const d = document.createElement('div');
   d.id        = 'ts-unlock-popup';
   d.className = 'ts-unlock-popup';
-  d.innerHTML = `<span class="tc-unlock-icon" aria-hidden="true">${_esc(title.icon || '🏅')}</span><div><span class="tc-unlock-label">Title unlocked</span><strong class="tc-unlock-name">${_esc(title.name)}</strong>${tsBuildBadgeHTML(title,{small:true,noParticles:true})}</div>`;
+  d.innerHTML = `<span class="tc-unlock-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 5 9l7 12 7-12-3-6 M5 9h14 M8 3h8 M12 9v12"/></svg></span><div><span class="tc-unlock-label">Title unlocked</span><strong class="tc-unlock-name">${_esc(title.name)}</strong>${tsBuildBadgeHTML(title,{small:true,noParticles:true})}</div>`;
   d.tabIndex=0;d.setAttribute('role','button');d.setAttribute('aria-label','View unlocked title: '+title.name);
   d.addEventListener('click',()=>{window._tsOpenTitlesTab=true;navTo('s-badges');d.remove();});
   d.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();d.click();}});

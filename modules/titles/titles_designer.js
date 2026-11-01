@@ -90,7 +90,7 @@ window.tsAdminOpenDesigner = function (titleId) {
       const isSelected = window._ts3ActiveTemplate === tmpl.id;
       return `<div class="ts3-template-card${isSelected ? ' selected' : ''}" onclick="ts3ApplyTemplate('${tmpl.id}')" title="${tmpl.label}">
         <div class="ts3-template-preview">${tsBuildBadgeHTML({ ...tmpl, name: tmpl.label }, { noParticles: true })}</div>
-        <div class="ts3-template-label">${tmpl.icon} ${tmpl.label}</div>
+        <div class="ts3-template-label">${_esc(tmpl.label)}</div>
       </div>`;
     }).join('');
   }
@@ -105,10 +105,9 @@ window.tsAdminOpenDesigner = function (titleId) {
   }
 
   function buildStylePicker() {
-    const icons = { none: '□', metal: '🔩', stone: '🪨', crystal: '💎', shadow: '🌑', fire: '🔥', poison: '☠️', arcane: '🔮', royal: '👑', celestial: '⭐' };
     return TS_FRAME_STYLES_REGISTRY.map(s =>
       `<div class="ts3-pick-item${d.frameStyle === s.id ? ' selected' : ''}" id="ts3-style-${s.id}" onclick="ts3PickStyle('${s.id}')">
-        <div class="ts3-pick-preview" style="font-size:18px">${icons[s.id] || '·'}</div>
+
         <div class="ts3-pick-label">${s.label}</div>
       </div>`
     ).join('');
@@ -117,17 +116,16 @@ window.tsAdminOpenDesigner = function (titleId) {
   function buildEffectPicker() {
     return TS_EFFECTS_REGISTRY.map(e =>
       `<div class="ts3-pick-item${d.effect === e.id ? ' selected' : ''}" id="ts3-effect-${e.id}" onclick="ts3PickEffect('${e.id}')">
-        <div class="ts3-pick-preview" style="font-size:18px">${({ none:'—', glow:'✨', pulse:'💫', embers:'🔥', smoke:'💨', runes:'ᚦ', lightning:'⚡', stars:'⭐', drips:'💧', particles:'✦' })[e.id] || '?'}</div>
+
         <div class="ts3-pick-label">${e.label}</div>
       </div>`
     ).join('');
   }
 
   function buildAnimPicker() {
-    const labels = { none: '—', pulse: '💓', 'glow-pulse': '✨', float: '🌊', wave: '〰', 'fire-flicker': '🔥', 'ghost-drift': '👻', shake: '📳', flicker: '💡', burn: '🔥', orbit: '🌀', 'spectral-drift': '🌫', 'rune-rotation': '🔮' };
     return TS_ANIMATIONS_REGISTRY.map(a =>
       `<div class="ts3-pick-item${d.animation === a.id ? ' selected' : ''}" id="ts3-anim-${a.id}" onclick="ts3PickAnim('${a.id}')">
-        <div class="ts3-pick-preview" style="font-size:18px">${labels[a.id] || '·'}</div>
+
         <div class="ts3-pick-label">${a.label}</div>
       </div>`
     ).join('');
@@ -166,7 +164,7 @@ window.tsAdminOpenDesigner = function (titleId) {
   showModal(`
   <div class="ts3-modal">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-      <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,rgba(208,188,255,.2),rgba(255,185,95,.15));border:1px solid rgba(208,188,255,.25);display:flex;align-items:center;justify-content:center;font-size:24px">🎨</div>
+      <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,rgba(208,188,255,.2),rgba(255,185,95,.15));border:1px solid rgba(208,188,255,.25);display:flex;align-items:center;justify-content:center;font-size:24px"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 5 9l7 12 7-12-3-6 M5 9h14 M8 3h8 M12 9v12"/></svg></div>
       <div>
         <div class="modal-h2" style="margin-bottom:2px">${isEdit ? 'Edit Title Plate' : 'MMORPG Title Designer'}</div>
         <div style="font-size:11px;color:var(--text-muted)">Nameplates · Achievements · Guild Ranks · Item Frames</div>
@@ -175,11 +173,11 @@ window.tsAdminOpenDesigner = function (titleId) {
 
     <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:14px;margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--on-surface)">⚔️ Template Library</div>
+        <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--on-surface)">Template Library</div>
         <div style="font-size:10px;color:var(--text-muted)">Pick a starting point, then customize</div>
       </div>
       <div class="ts3-gallery-tabs" id="ts3-gallery-tabs">
-        ${TS_TEMPLATE_CATS.map((cat, i) => `<button class="ts3-gallery-tab${i === 0 ? ' active' : ''}" id="ts3-cat-${cat.id}" onclick="ts3FilterGallery('${cat.id}')">${cat.icon} ${cat.label}</button>`).join('')}
+        ${TS_TEMPLATE_CATS.map((cat, i) => `<button class="ts3-gallery-tab${i === 0 ? ' active' : ''}" id="ts3-cat-${cat.id}" onclick="ts3FilterGallery('${cat.id}')">${_esc(cat.label)}</button>`).join('')}
       </div>
       <div class="ts3-template-grid" id="ts3-template-grid">${buildTemplateGallery('all')}</div>
     </div>
@@ -187,20 +185,17 @@ window.tsAdminOpenDesigner = function (titleId) {
     <div class="ts3-layout">
       <div>
         <div class="ts3-tabs" id="ts3-tabs">
-          <button class="ts3-tab active" onclick="ts3Tab(this,'ts3-p-basic')">📝 Basic</button>
-          <button class="ts3-tab" onclick="ts3Tab(this,'ts3-p-shape')">⬡ Frame</button>
-          <button class="ts3-tab" onclick="ts3Tab(this,'ts3-p-colors')">🎨 Colors</button>
-          <button class="ts3-tab" onclick="ts3Tab(this,'ts3-p-fx')">✨ FX</button>
+          <button class="ts3-tab active" onclick="ts3Tab(this,'ts3-p-basic')">Basic</button>
+          <button class="ts3-tab" onclick="ts3Tab(this,'ts3-p-shape')">Frame</button>
+          <button class="ts3-tab" onclick="ts3Tab(this,'ts3-p-colors')">Colors</button>
+          <button class="ts3-tab" onclick="ts3Tab(this,'ts3-p-fx')">Effects</button>
         </div>
 
         <div id="ts3-p-basic" class="ts3-tab-panel active">
           <div style="margin-bottom:12px"><label class="form-label">Title Name *</label>
             <input type="text" id="ts3-name" placeholder="e.g. Dragon Emperor" value="${_esc(d.name || '')}" style="width:100%" oninput="window._tsDraft.name=this.value;ts3Preview()">
           </div>
-          <div style="display:grid;grid-template-columns:80px 1fr;gap:10px;margin-bottom:12px">
-            <div><label class="form-label">Icon</label><input type="text" id="ts3-icon" value="${_esc(d.icon || '🏆')}" style="width:100%;font-size:20px;text-align:center" oninput="window._tsDraft.icon=this.value;ts3Preview()"></div>
-            <div><label class="form-label">Description</label><input type="text" id="ts3-desc" placeholder="How it's earned" value="${_esc(d.description || '')}" style="width:100%" oninput="window._tsDraft.description=this.value"></div>
-          </div>
+          <div style="margin-bottom:12px"><label class="form-label" for="ts3-desc">Description</label><input type="text" id="ts3-desc" placeholder="How it's earned" value="${_esc(d.description || '')}" style="width:100%" oninput="window._tsDraft.description=this.value"></div>
           <div style="margin-bottom:12px"><label class="form-label">Rarity</label><div class="ts3-rarity-bar" id="ts3-rarity-bar">${rarityBar}</div></div>
           <div class="form-group">
             <label class="form-label">Unlock via Achievement</label>
@@ -270,7 +265,7 @@ window.tsAdminOpenDesigner = function (titleId) {
     <div id="ts3-form-err" style="color:#ff8080;font-size:12px;margin-top:12px;display:none"></div>
     <div style="display:flex;gap:10px;margin-top:16px">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button>
-      <button class="btn btn-primary" style="flex:1" onclick="tsAdminSave('${titleId || ''}')">${isEdit ? '💾 Save Changes' : '✦ Create Title'}</button>
+      <button class="btn btn-primary" style="flex:1" onclick="tsAdminSave('${titleId || ''}')">${isEdit ? 'Save changes' : 'Create title'}</button>
     </div>
   </div>`, 'lg');
 
@@ -303,7 +298,7 @@ window.ts3FilterGallery = function (catId) {
     const isSelected = window._ts3ActiveTemplate === tmpl.id;
     return `<div class="ts3-template-card${isSelected ? ' selected' : ''}" onclick="ts3ApplyTemplate('${tmpl.id}')" title="${tmpl.label}">
       <div class="ts3-template-preview">${tsBuildBadgeHTML({ ...tmpl, name: tmpl.label }, { noParticles: true })}</div>
-      <div class="ts3-template-label">${tmpl.icon} ${tmpl.label}</div>
+      <div class="ts3-template-label">${_esc(tmpl.label)}</div>
     </div>`;
   }).join('');
 };
@@ -323,7 +318,7 @@ window.ts3ApplyTemplate = function (templateId) {
   document.querySelectorAll('.ts3-template-card').forEach(c => {
     c.classList.toggle('selected', c.getAttribute('onclick') === `ts3ApplyTemplate('${templateId}')`);
   });
-  toast(`🎨 Template "${tmpl.label}" applied!`, '#a78bfa');
+  toast(`Template "${tmpl.label}" applied!`, '#a78bfa');
 };
 
 window.ts3RefreshAllPickers = function () {
@@ -433,12 +428,12 @@ window.tsPreset = function (rarity) {
 
 window.tsAdminSave = async function (titleId) {
   const d = window._tsDraft;
-  if (!d) { toast('❌ Draft lost.', '#ff8080'); return; }
+  if (!d) { toast('Draft lost.', '#ff8080'); return; }
   const name  = (d.name || '').trim();
   const errEl = document.getElementById('ts3-form-err') || document.getElementById('ts-form-err');
   if (!name) {
     if (errEl) { errEl.textContent = 'Title name is required.'; errEl.style.display = 'block'; }
-    else toast('❌ Title name is required.', '#ff8080');
+    else toast('Title name is required.', '#ff8080');
     return;
   }
   if (errEl) errEl.style.display = 'none';
@@ -468,7 +463,7 @@ window.tsAdminSave = async function (titleId) {
     }
   }, { type: titleId ? 'titles:title-updated' : 'titles:title-created', payload: { id: d.id } });
 
-  toast(titleId ? `✅ Title "${name}" updated!` : `👑 Title "${name}" created!`);
+  toast(titleId ? `Title "${name}" updated!` : `Title "${name}" created!`);
   closeModalForce();
   const savedId     = d.id;
   const sectionIds  = (window._tsDraftSections || []).slice();
@@ -484,7 +479,7 @@ window.tsAdminSave = async function (titleId) {
   if (typeof DBService !== 'undefined' && typeof DBService.rpc === 'function') {
     const { error } = await DBService.rpc('set_title_sections', { p_title_id: savedId, p_class_ids: sectionIds });
     if (error) {
-      toast('⚠️ Title saved, but section assignment may not have synced: ' + error.message, '#ffb95f');
+      toast('Title saved, but section assignment may not have synced: ' + error.message, '#ffb95f');
     } else {
       // [Phase 3 migration bugfix] The pre-migration version mutated
       // DB.titleSectionAssignments directly here with no follow-up
