@@ -7,9 +7,15 @@ test('achievement-linked title progress reads the existing metric and claiming s
  const {c,state}=setup();const t={id:'t',achievementId:'auto'};assert.equal(c.TitleCollection.progressInfo(t,{id:'s'},false,{recitation_count:4}).percent,40);state.achievementUnlocks.s=[{achId:'auto'}];assert.equal(c.TitleCollection.progressInfo(t,{id:'s'},false,{}).kind,'claim');assert.equal(c.TitleCollection.progressInfo(t,{id:'s'},true,{}).kind,'owned');
 });
 test('material SVGs have distinct artwork, safe colors, unique gradient IDs and no emoji text',()=>{
- const {c}=setup(),ids=new Set();for(const kind of ['flame','shield','crystal','shadow','smoke']){const markup=c.tsBuildMaterialFrame(kind,{primary:'#99bbff',accent:'#eaf5ff',border:'#6688aa',bg:'#112233'},false),doc=new JSDOM(markup).window.document;assert.equal(doc.querySelectorAll('svg').length,1);assert.ok(doc.querySelectorAll('path').length>1);assert.ok(!/\p{Extended_Pictographic}/u.test(doc.body.textContent));for(const el of doc.querySelectorAll('[id]')){assert.equal(ids.has(el.id),false);ids.add(el.id);}}
+ const {c}=setup(),ids=new Set();for(const kind of ['flame','shield','crystal','shadow','smoke','dragon','circuit','banner','celestial']){const markup=c.tsBuildMaterialFrame(kind,{primary:'#99bbff',accent:'#eaf5ff',border:'#6688aa',bg:'#112233'},false),doc=new JSDOM(markup).window.document;assert.equal(doc.querySelectorAll('svg').length,1);assert.ok(doc.querySelectorAll('path').length>1);assert.ok(!/\p{Extended_Pictographic}/u.test(doc.body.textContent));for(const el of doc.querySelectorAll('[id]')){assert.equal(ids.has(el.id),false);ids.add(el.id);}}
  const attack=new JSDOM(c.tsBuildMaterialFrame('shield',{primary:'" onload="bad()',accent:'#fff',border:'#aaa',bg:'#000'},false)).window.document;assert.equal(attack.querySelectorAll('[onload]').length,0);
 });
 test('still/compact material rendering omits drifting, glint and ward layers',()=>{
- const {c}=setup();for(const kind of ['shield','crystal','shadow','smoke']){const d=new JSDOM(c.tsBuildMaterialFrame(kind,{primary:'#abc',accent:'#fff',border:'#aaa',bg:'#000'},true)).window.document;assert.equal(d.querySelectorAll('.tsm-shield-ward,.tsm-crystal-refraction,.tsm-shadow-ribbon,.tsm-smoke-roll').length,0);}
+ const {c}=setup();for(const kind of ['shield','crystal','shadow','smoke','dragon','circuit','banner','celestial']){const d=new JSDOM(c.tsBuildMaterialFrame(kind,{primary:'#abc',accent:'#fff',border:'#aaa',bg:'#000'},true)).window.document;assert.equal(d.querySelectorAll('.tsm-shield-ward,.tsm-crystal-refraction,.tsm-shadow-ribbon,.tsm-smoke-roll,.tsm-dragon-luster,.tsm-circuit-signal,.tsm-circuit-nodes,.tsm-banner-satin,.tsm-celestial-orbit,.tsm-celestial-stars').length,0);}
+});
+
+test('sculpted frames keep their identity when older presets also carry fire or smoke effects',()=>{
+ const {c}=setup();for(const shape of ['dragon','scale','circuit','banner','celestial'])assert.equal(c.tsTitleMaterial({frameShape:shape,frameStyle:'fire',effect:'smoke'}),shape==='scale'?'dragon':shape);
+ assert.equal(c.tsTitleMaterial({frameShape:'classic',frameStyle:'fire'}),'flame');
+ assert.equal(c.tsTitleMaterial({frameShape:'classic',effect:'smoke'}),'smoke');
 });

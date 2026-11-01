@@ -83,6 +83,8 @@ window.tsAdminOpenDesigner = function (titleId) {
       flame:      `<path d="M2 26 C3 18 6 12 12 14 C14 6 18 2 22 8 C24 2 28 0 30 6 C32 0 36 2 38 10 C40 2 44 4 46 14 C50 8 52 14 52 22 L52 26 Z" fill="${c}" fill-opacity=".35" stroke="${c}" stroke-width="1.5"/>`,
       smoke:      `<path d="M2 9Q7 2 16 7Q26 1 34 8Q47 2 52 10L50 20Q39 26 29 21Q14 27 3 20Z" fill="${c}" fill-opacity=".2" stroke="${c}" stroke-width="1.4"/>`,
       ghost:      `<ellipse cx="27" cy="13" rx="24" ry="9" fill="${c}" fill-opacity=".25" stroke="${c}" stroke-width="1.5"/>`,
+      circuit:    `<path d="M3 8 10 3H42L51 10V20L45 25H13L3 18Z M8 10H17L21 6H40M46 17 42 21H24" fill="none" stroke="${c}" stroke-width="1.5"/><path d="M13 12v5m28-5v5" stroke="${c}"/>`,
+      scale:      `<path d="M3 7Q9 20 15 7Q21 20 27 7Q33 20 39 7Q45 20 51 7M3 17Q9 30 15 17Q21 30 27 17Q33 30 39 17Q45 30 51 17" fill="none" stroke="${c}" stroke-width="1.5"/>`,
       crystal:    `<path d="M4 10 L14 4 L40 4 L50 10 L50 22 L4 22 Z" fill="${c}" fill-opacity=".25" stroke="${c}" stroke-width="1.5"/>`,
       poison:     `<path d="M2 14 Q2 6 8 6 C10 2 14 2 16 6 C18 0 22 0 24 6 C26 0 30 2 32 6 C34 0 38 2 40 6 C42 2 48 4 50 10 Q52 14 50 18 L50 22 L4 22 Z" fill="${c}" fill-opacity=".3" stroke="${c}" stroke-width="1.4"/>`,
       royal:      `<path d="M4 10 L10 4 L44 4 L50 10 L50 22 Q50 26 46 26 H8 Q4 26 4 22 Z" fill="${c}" fill-opacity=".25" stroke="${c}" stroke-width="1.5"/>`,
