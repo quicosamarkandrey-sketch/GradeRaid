@@ -43,15 +43,10 @@
   wbcUpdateTopbarWidget();AppStore.emit({type:'world-boss:student-view-rendered',payload:{bossIdx:i}});
  }
  function seconds(b){return Math.max(0,Math.ceil(((b.lootStartedAt||Date.now())+(b.lootDuration??120)*1000-Date.now()-(b._raidClockOffset||0))/1000));}
- function lootCards(i){const b=AppStore.getBossEvent(i),rec=wbcMyRecord(i),open=b.status==='loot'&&seconds(b)>0;
-  return (b.lootRewards||[]).map(r=>{const left=wblrRemaining(b,r),mine=wblrClaimedByStudent(b,r.id,currentUser.id),limit=r.claimLimit||1,key=[b._id||i,b.raidRunId||'',r.id,currentUser.id].join(':'),pending=claimPending.has(key),eligible=!!rec&&rec.totalDamage>0;
-   return `<article class="raid-loot-card" style="--loot-accent:${_cssColor(wblrRarityMeta(r.rarity).color,'#9db9d2')}"><div class="raid-loot-symbol">${icon(wblrRarityMeta(r.rarity).icon)}</div><span class="raid-eyebrow">${esc(r.rarity||'Common')}</span><h3>${esc(r.itemName)}</h3><div class="raid-loot-stock"><strong>${left}</strong><span>of ${num(r.quantity)} remaining</span></div><p>${mine?'You claimed '+mine+' · ':''}Limit ${limit} per raider</p><button class="btn btn-primary" ${!eligible||!open||!left||mine>=limit||pending?'disabled':''} onclick="wblrClaimReward(${i},${esc(JSON.stringify(r.id))},this)">${pending?'Confirming…':!open?'Loot closed':!eligible?'Contribution required':!left?'Sold out':mine>=limit?'Limit reached':'Claim reward'}</button></article>`;
-  }).join('')||'<p>No additional loot was configured for this event.</p>';
- }
  function renderLoot(i){
   const b=AppStore.getBossEvent(i),page=document.getElementById('s-world-boss');if(!b||!page||!RaidService.visible(b))return;
   wblrStopLootTimers();selected=i;const reward=b._raidReward;window.scrollTo(0,0);page.scrollTop=0;
-  page.innerHTML=`<div class="raid-page" data-raid-loot="${i}">${head('Boss defeated','Choose your spoils','Your class won. Claim from the shared loot pool before the window closes.',`<div class="raid-loot-timer">${icon('timer')}<strong id="raid-loot-clock"></strong><span>left to claim</span></div>`)}<section class="raid-victory-strip"><div class="raid-victory-art">${art(b)}</div><div><span class="raid-eyebrow">Victory belongs to your class</span><h2>${esc(b.name)}</h2><button class="btn btn-primary" onclick="RaidLootArena.open(${i},{resume:true})">Enter loot battlefield</button><p>${reward?`Victory rewards confirmed: ${num(reward.xp)} XP · ${num(reward.coins)} coins.`:'Your contribution and any confirmed rewards are saved to your account.'}</p></div><button class="btn btn-ghost" onclick="RaidExperience.openSummary(${i})">Raid results</button></section><div class="raid-notice">${icon('info')}Items are shared and have limited stock. A reward is yours once the server confirms it. Find confirmed items in My Inventory.</div><div id="raid-claim-status" role="status" aria-live="polite"></div><div class="raid-loot-grid" id="raid-loot-cards">${lootCards(i)}</div><section class="raid-panel"><div class="raid-panel-heading"><h2>Claim activity</h2><button class="btn btn-ghost" onclick="navTo('s-inventory')">My Inventory</button></div><div id="raid-claim-feed">${wblrClaimFeedHTML(i,12)}</div></section></div>`;updateLootClock();
+  page.innerHTML=`<div class="raid-page" data-raid-loot="${i}">${head('Boss defeated','Treasure on the battlefield','Return to the arena to pick up scattered treasure.',`<div class="raid-loot-timer">${icon('timer')}<strong id="raid-loot-clock"></strong><span>left to claim</span></div>`)}<section class="raid-victory-strip"><div class="raid-victory-art">${art(b)}</div><div><span class="raid-eyebrow">Victory belongs to your class</span><h2>${esc(b.name)}</h2><button class="btn btn-primary" onclick="RaidLootArena.open(${i},{resume:true})">Enter loot battlefield</button><p>${reward?`Victory rewards confirmed: ${num(reward.xp)} XP · ${num(reward.coins)} coins.`:'Your contribution and confirmed rewards are saved.'}</p></div><button class="btn btn-ghost" onclick="RaidExperience.openSummary(${i})">Raid results</button></section><section class="raid-panel"><div class="raid-panel-heading"><h2>Claim activity</h2><button class="btn btn-ghost" onclick="navTo('s-inventory')">My Inventory</button></div><div id="raid-claim-feed">${wblrClaimFeedHTML(i,12)}</div></section></div>`;updateLootClock();
  }
  function summary(i){const b=AppStore.getBossEvent(i);if(!b||!RaidService.visible(b))return '';const rec=wbcMyRecord(i),parts=Object.values(wbcGetParticipants(i)),mine=(b.lootClaims||[]).filter(c=>c.studentId===currentUser?.id),reward=b._raidReward;
   return `<div class="raid-summary"><span class="raid-eyebrow">${b.defeatedAt?'Class victory':'Raid record'}</span><h2>${esc(b.victoryTitle||(b.defeatedAt?'A challenge conquered.':'The raid has ended.'))}</h2><p>${esc(b.victoryMessage||b.name)}</p><div class="raid-overview">${stat(num(parts.reduce((n,r)=>n+(r.totalDamage||0),0)),'Class damage')}${stat(num(parts.length),'Raiders')}${stat(num(rec?.totalDamage),'Your damage')}${stat(num(mine.length),'Your loot')}</div>${reward?`<div class="raid-notice">${icon('check_circle')}${num(reward.xp)} XP and ${num(reward.coins)} coins awarded to your account.</div>`:''}${b.defeatNarrText?`<p class="raid-victory-story">${esc(b.defeatNarrText).replaceAll('\\n','<br>')}</p>`:''}${mine.length?`<h3>Your claimed loot</h3><div class="raid-summary-loot">${mine.map(c=>`<span>${icon('redeem')}${esc(c.itemName)}</span>`).join('')}</div>`:''}<h3>Raid standings</h3>${typeof wblRenderPanel==='function'?wblRenderPanel(i,'event'):''}</div>`;
@@ -85,16 +80,16 @@
    closeModalForce();renderAdmin();toast(kind==='activate'?'Raid launched.':kind==='delete'?'Event deleted.':'Event updated.');
   }catch(error){toast(error.message||'Could not update the raid. Reconnect and retry.');}finally{claimPending.delete(operation);}
  }
- async function claim(i,rewardId,button){
+ async function claim(i,rewardId,button,dropIndex){
   reset();if(currentRole!=='student'||!currentUser)return;const b=AppStore.getBossEvent(i);if(!b||!RaidService.visible(b))return;
   if(window.RaidLootArena&&Date.now()<RaidLootArena.opensAt(b)){const reason='Loot is scattering. Wait for the shared countdown.';toast(reason);return {ok:false,reason};}
-  const identity=currentUser.id,key=[b._id||i,b.raidRunId||'',rewardId,identity].join(':');if(claimPending.has(key))return;
+  const identity=currentUser.id,key=[b._id||i,b.raidRunId||'',rewardId,identity,dropIndex??'any'].join(':');if(claimPending.has(key))return;
   const reward=(b.lootRewards||[]).find(r=>r.id===rewardId);if(!reward)return;
   if(!claimKeys.has(key))claimKeys.set(key,uid());const claimId=claimKeys.get(key);claimPending.add(key);
   if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Confirming…';}
   const notice=document.getElementById('raid-claim-status');if(notice)notice.textContent='Confirming your reward…';
   try{
-   if(RaidService.managed(b)){const response=await RaidService.action(i,'claim',{rewardId,claimId});if(!response.ok)throw new Error(response.reason);}
+   if(RaidService.managed(b)){const response=await RaidService.action(i,'claim',{rewardId,claimId,...(Number.isInteger(dropIndex)?{dropIndex}:{})});if(!response.ok)throw new Error(response.reason);}
    else{
     const rec=wbcMyRecord(i);if(!rec||rec.totalDamage<=0)throw new Error('Contribute damage in this raid to claim loot.');
     const valid=LootService.validateClaim(b,rewardId,identity);if(!valid.ok)throw new Error(valid.reason);
@@ -109,7 +104,7 @@
    if(currentUser?.id!==identity)return;claimKeys.delete(key);toast('Added '+esc(reward.itemName)+' to My Inventory.');if(notice)notice.textContent=reward.itemName+' added to My Inventory.';return {ok:true,itemName:reward.itemName,claimId};
   }catch(error){if(currentUser?.id===identity){if(notice)notice.textContent=error.message;else toast(error.message);}return {ok:false,reason:error.message};}
   finally{
-   claimPending.delete(key);if(currentUser?.id===identity){const fresh=AppStore.getBossEvent(i);if(!window.RaidLootArena?.owns(i)&&document.querySelector('[data-raid-loot]')){if(fresh.status==='loot'){document.getElementById('raid-loot-cards').innerHTML=lootCards(i);document.getElementById('raid-claim-feed').innerHTML=wblrClaimFeedHTML(i,12);}else renderStudent();}updateTopbar();}
+   claimPending.delete(key);if(currentUser?.id===identity){const fresh=AppStore.getBossEvent(i);if(!window.RaidLootArena?.owns(i)&&document.querySelector('[data-raid-loot]')){renderStudent();}updateTopbar();}
    if(button?.isConnected){button.removeAttribute('aria-busy');button.disabled=false;}window.RaidLootArena?.update();
   }
  }
@@ -119,7 +114,7 @@
   polling=true;try{const indices=battle?[WBR.bossIdx]:visible().filter(x=>['active','loot','defeated'].includes(x.boss.status)).map(x=>x.index);
    for(const i of indices){const b=AppStore.getBossEvent(i);if(!RaidService.managed(b)||WBR.answerPending||claimPending.size)continue;const before=b.status;const result=await RaidService.action(i,'snapshot');if(!result.ok)continue;
     const fresh=AppStore.getBossEvent(i);if(battle){if(WBR.phase==='loot')window.RaidLootArena?.update();continue;}
-    if(studentPage){if(before!==fresh.status||!document.querySelector('[data-raid-loot]'))renderStudent();else{document.getElementById('raid-loot-cards').innerHTML=lootCards(i);document.getElementById('raid-claim-feed').innerHTML=wblrClaimFeedHTML(i,12);}}
+    if(studentPage){if(before!==fresh.status||!document.querySelector('[data-raid-loot]'))renderStudent();else renderLoot(i);}
     else if(adminPage&&document.getElementById('modal-overlay')?.style.display==='none'){const list=document.getElementById('raid-event-list');if(list)list.innerHTML=adminCards();}
    }
   }finally{polling=false;}

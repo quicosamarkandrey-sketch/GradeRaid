@@ -37,6 +37,22 @@ alter table public.boss_answer_receipts enable row level security;
 alter table public.boss_victory_rewards enable row level security;
 revoke all on public.boss_answer_receipts,public.boss_victory_rewards from anon,authenticated;
 
+alter table public.loot_claims add column if not exists drop_index integer check(drop_index>=0);
+-- Label existing receipts without changing their owner, item or inventory.
+do $slots$
+declare group_row record;receipt record;free_slot integer;
+begin
+ for group_row in select distinct boss_id,reward_id from public.loot_claims where drop_index is null loop
+   for receipt in select id from public.loot_claims where boss_id=group_row.boss_id and reward_id=group_row.reward_id and drop_index is null order by claimed_at nulls last,id loop
+     select min(slot) into free_slot from generate_series(0,(select count(*)::integer from public.loot_claims where boss_id=group_row.boss_id and reward_id=group_row.reward_id)) slot
+     where not exists(select 1 from public.loot_claims c where c.boss_id=group_row.boss_id and c.reward_id=group_row.reward_id and c.drop_index=slot);
+     update public.loot_claims set drop_index=free_slot where id=receipt.id;
+   end loop;
+ end loop;
+end;
+$slots$;
+create unique index if not exists loot_claims_unique_floor_drop on public.loot_claims(boss_id,reward_id,drop_index) where drop_index is not null;
+
 create or replace function public.world_boss_action(p_boss_id public.boss_events.id%TYPE,p_action text,p_payload jsonb default '{}')
 returns jsonb language plpgsql security definer set search_path=public as $$
 declare
@@ -44,7 +60,7 @@ declare
  staff boolean;sid text;qs jsonb;q jsonb;settings jsonb;receipt jsonb;outcome jsonb='{}';
  qi integer;choice integer;damage integer=0;critical boolean=false;correct boolean=false;
  low_dmg integer;high_dmg integer;cooldown integer;reward jsonb;stock integer;mine integer;claim_key text;
- xp_amount integer;coin_amount integer;written integer;expired boolean;claim_row public.loot_claims;
+ drop_slot integer;xp_amount integer;coin_amount integer;written integer;expired boolean;claim_row public.loot_claims;
 begin
  select * into viewer from profiles where id=auth.uid()::text and coalesce(is_active,true);
  if viewer.id is null then raise exception 'Sign in required' using errcode='42501';end if;
@@ -142,11 +158,16 @@ begin
    end if;
  elsif p_action='claim' then
    if viewer.role<>'student' then raise exception 'Student access required';end if;
+   if p_payload ? 'dropIndex' then
+     if coalesce(p_payload->>'dropIndex','')!~'^[0-9]{1,9}$' then raise exception 'Choose a valid treasure';end if;
+     drop_slot=(p_payload->>'dropIndex')::integer;
+   end if;
    claim_key=p_payload->>'claimId';if claim_key is null or length(claim_key)>180 then raise exception 'A claim reference is required';end if;
    select * into claim_row from loot_claims where id=claim_key;
    if found then
      if claim_row.student_id<>sid or claim_row.boss_id<>b.id or claim_row.reward_id is distinct from p_payload->>'rewardId' then raise exception 'Claim reference belongs to another reward';end if;
-     outcome=jsonb_build_object('claimId',claim_key,'replayed',true);
+     if drop_slot is not null and claim_row.drop_index is distinct from drop_slot then raise exception 'Claim reference belongs to another treasure';end if;
+     outcome=jsonb_build_object('claimId',claim_key,'dropIndex',claim_row.drop_index,'replayed',true);
    else
      if b.status<>'loot' or b.loot_finalized_at is not null or now()>=b.loot_started_at+make_interval(secs=>coalesce(b.loot_duration_sec,120)) then raise exception 'The loot window has closed';end if;
      if now()<b.loot_started_at+make_interval(secs=>least(4.0,greatest(0.0,coalesce(b.loot_duration_sec,120)/4.0))::double precision) then raise exception 'Loot is scattering. Wait for the shared countdown.';end if;
@@ -157,12 +178,18 @@ begin
      select count(*) into mine from loot_claims where boss_id=b.id and reward_id=reward->>'id' and student_id=sid;
      if stock>=coalesce((reward->>'quantity')::integer,0) then raise exception 'This reward is sold out';end if;
      if mine>=greatest(1,coalesce((reward->>'claimLimit')::integer,1)) then raise exception 'You have reached this reward limit';end if;
-     insert into loot_claims(id,boss_id,class_id,reward_id,item_name,rarity,student_id,student_name,student_init,student_color,claimed_at)
-     values(claim_key,b.id,b.class_id,reward->>'id',reward->>'itemName',reward->>'rarity',sid,viewer.display_name,left(viewer.display_name,2),null,now());
+     if drop_slot is null then
+       select min(slot) into drop_slot from generate_series(0,(reward->>'quantity')::integer-1) slot
+       where not exists(select 1 from loot_claims c where c.boss_id=b.id and c.reward_id=reward->>'id' and c.drop_index=slot);
+     end if;
+     if drop_slot is null or drop_slot<0 or drop_slot>=(reward->>'quantity')::integer then raise exception 'Choose a valid treasure';end if;
+     if exists(select 1 from loot_claims where boss_id=b.id and reward_id=reward->>'id' and drop_index=drop_slot) then raise exception 'A classmate already picked up that treasure';end if;
+     insert into loot_claims(id,boss_id,class_id,reward_id,item_name,rarity,student_id,student_name,student_init,student_color,claimed_at,drop_index)
+     values(claim_key,b.id,b.class_id,reward->>'id',reward->>'itemName',reward->>'rarity',sid,viewer.display_name,left(viewer.display_name,2),null,now(),drop_slot);
      insert into inventory(student_id,item_id,item_name,emoji,category,quantity,date_purchased,last_purchased,source,status)
      values(sid,'loot_'||(reward->>'id'),reward->>'itemName','', 'Boss Loot',1,(now() at time zone 'Asia/Manila')::date::text,now()::text,'Boss Loot','active')
      on conflict(student_id,item_id) do update set quantity=inventory.quantity+1,last_purchased=excluded.last_purchased,status='active';
-     outcome=jsonb_build_object('claimId',claim_key,'itemName',reward->>'itemName');
+     outcome=jsonb_build_object('claimId',claim_key,'dropIndex',drop_slot,'itemName',reward->>'itemName');
    end if;
  elsif p_action='finalize' then
    expired=b.loot_started_at is not null and now()>=b.loot_started_at+make_interval(secs=>coalesce(b.loot_duration_sec,120));
@@ -177,7 +204,7 @@ begin
  if b.status='loot' and b.loot_started_at is not null and (now()>=b.loot_started_at+make_interval(secs=>coalesce(b.loot_duration_sec,120)) or not exists(select 1 from jsonb_array_elements(coalesce(b.loot_rewards,'[]')) r where (r->>'quantity')::integer>(select count(*) from loot_claims where boss_id=b.id and reward_id=r->>'id'))) then
    update boss_events set status='ended',ended_at=now(),loot_finalized_at=now() where id=b.id returning * into b;
  end if;
- return jsonb_build_object('ok',true,'serverNow',extract(epoch from clock_timestamp())*1000,'viewerId',sid,'boss',to_jsonb(b),'outcome',outcome,
+ return jsonb_build_object('ok',true,'lootVersion',2,'serverNow',extract(epoch from clock_timestamp())*1000,'viewerId',sid,'boss',to_jsonb(b),'outcome',outcome,
  'participants',coalesce((select jsonb_agg(to_jsonb(p)||jsonb_build_object('student_name',pr.display_name,'student_init',left(pr.display_name,2))) from boss_participants p join profiles pr on pr.id=p.student_id where p.boss_id=b.id),'[]'),
  'claims',coalesce((select jsonb_agg(to_jsonb(c)) from loot_claims c where c.boss_id=b.id),'[]'),
  'wallet',(select jsonb_build_object('id',id,'xp',xp,'coins',coins,'level',level,'tier',tier) from profiles where id=sid),

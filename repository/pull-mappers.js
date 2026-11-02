@@ -162,7 +162,7 @@
           lootClaims: (lootClaimsData || [])
             .filter(c => c.boss_id === b.id)
             .map(c => ({
-              id: c.id, rewardId: c.reward_id, itemName: c.item_name, rarity: c.rarity,
+              id: c.id, rewardId: c.reward_id, dropIndex: c.drop_index, itemName: c.item_name, rarity: c.rarity,
               studentId: c.student_id, claimedAt: Date.parse(c.claimed_at),
               classId: c.class_id || 'default-class', // Phase 14: section ownership
               // Phase 44: claim_loot_reward() RPC now actually persists these —

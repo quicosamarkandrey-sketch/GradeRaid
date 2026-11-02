@@ -21,7 +21,9 @@
   AppStore.updateState(d=>{
    if(data.deleted){d.bossEvents[index]={...d.bossEvents[index],status:'deleted'};delete d.bossParticipants?.[index];return;}
    const mapped=_deriveBossEvents([data.boss],data.claims||[]).bossEventsArr[0];
-   d.bossEvents[index]={...d.bossEvents[index],...mapped,raidVersion:data.boss.raid_version||mapped.raidVersion||0,raidRunId:data.boss.raid_run_id||mapped.raidRunId,_raidReward:data.reward||null};
+   const dropSlots=new Map((data.claims||[]).map(c=>[c.id,c.drop_index]));
+   for(const claim of mapped.lootClaims||[])claim.dropIndex=dropSlots.get(claim.id);
+   d.bossEvents[index]={...d.bossEvents[index],...mapped,raidVersion:data.boss.raid_version||mapped.raidVersion||0,raidRunId:data.boss.raid_run_id||mapped.raidRunId,_raidReward:data.reward||null,_raidLootVersion:data.lootVersion||0};
    if(data.serverNow!=null&&Number.isFinite(Number(data.serverNow)))d.bossEvents[index]._raidClockOffset=Number(data.serverNow)-Date.now();
    if(previous.raidRunId!==d.bossEvents[index].raidRunId){d.bossEvents[index].activeMinions=[];d.bossEvents[index].raidFeed=[];delete d.bossEvents[index]._victoryRewardedAt;}
    if(!d.bossParticipants)d.bossParticipants={};
@@ -47,7 +49,7 @@
  }
  function action(index,kind,payload={}){
   const boss=AppStore.getBossEvent(index),identity=userId();if(!boss?._id||(!managed(boss)&&kind!=='snapshot')||!visible(boss))return Promise.resolve({ok:false,reason:'This raid is unavailable.'});
-  const key=[identity,boss._id,kind,payload.questionIdx??'',payload.rewardId??'',payload.studentId??payload.skillId??payload.kind??''].join(':');
+  const key=[identity,boss._id,kind,payload.questionIdx??'',payload.rewardId??'',payload.dropIndex??'',payload.studentId??payload.skillId??payload.kind??''].join(':');
   if(pending.has(key))return pending.get(key);
   const uuid=boss._id,body={runId:boss.raidRunId,...payload};
   const request=(queues.get(uuid)||Promise.resolve()).catch(()=>{}).then(async()=>{

@@ -32,9 +32,13 @@ async function runSchema(idType){const db=new PGlite();try{
  const legacy=historical.slice(historical.indexOf('create or replace function public.apply_boss_damage('),historical.indexOf('grant execute on function public.apply_boss_damage'));
  await db.exec(legacy.replace(/p_boss_id(\s+)uuid/, 'p_boss_id$1public.boss_events.id%TYPE').replace('status     = status',"status     = case when current_hp - p_damage <= 0 then 'defeated' else status end"));
  await assert.rejects(()=>db.query('select * from apply_boss_damage($1,$2,$3,1,false)',[boss,'science',alex]),/invalid input value for enum boss_status: "defeated"/);
- await db.exec(broken.replace(/^.*if now\(\)<b\.loot_started_at.*Loot is scattering\..*\n/m,'').replace("'serverNow',extract(epoch from clock_timestamp())*1000,",''));
+ await db.exec(broken.replace(/^.*if now\(\)<b\.loot_started_at.*Loot is scattering\..*\n/m,'').replace("'serverNow',extract(epoch from clock_timestamp())*1000,",'').replace("'lootVersion',2,",''));
  const lootRace=fs.readFileSync('supabase/phase77_world_boss_loot_race.sql','utf8');await db.exec(lootRace);await db.exec(lootRace);
  const repair=fs.readFileSync('supabase/phase76_world_boss_status_enum_fix.sql','utf8');await db.exec(repair);await db.exec(repair);
+ // Existing unnumbered receipts gain stable slots without changing ownership.
+ await db.query("insert into loot_claims(id,boss_id,reward_id,item_name,student_id,claimed_at) values('historic-a',$1,'old-reward','Old treasure',$2,now()),('historic-b',$1,'old-reward','Old treasure',$3,now())",[boss,alex,bea]);
+ const floorMigration=fs.readFileSync('supabase/phase78_world_boss_floor_treasure.sql','utf8');await db.exec(floorMigration);await db.exec(floorMigration);
+ assert.deepEqual((await db.query("select drop_index,student_id from loot_claims where reward_id='old-reward' order by id")).rows,[{drop_index:0,student_id:alex},{drop_index:1,student_id:bea}]);await db.exec("delete from loot_claims where reward_id='old-reward'");
  // Legacy final hits must leave loot initialization to start_loot_rush.
  await db.exec("begin;update boss_events set status='active'");const legacyHit=(await db.query('select * from apply_boss_damage($1,$2,$3,300,false)',[boss,'science',alex])).rows[0];assert.equal(legacyHit.new_hp,0);assert.equal(legacyHit.defeated,true);assert.equal((await db.query('select status from boss_events where id=$1',[boss])).rows[0].status,'active');await db.exec('rollback');
  const as=async id=>db.query("select set_config('app.uid',$1,false)",[id||'']);
@@ -57,7 +61,7 @@ async function runSchema(idType){const db=new PGlite();try{
  await assert.rejects(()=>action('claim',{rewardId:'voucher',claimId:'claim-1'}),/Loot is scattering/);assert.equal((await db.query('select * from inventory')).rows.length,0,'Countdown cannot create inventory');
  await db.exec("update boss_events set loot_started_at=now()-interval '5 seconds'");
  data=await action('claim',{rewardId:'voucher',claimId:'claim-1'});assert.equal(data.inventory.length,1);assert.equal(data.inventory[0].quantity,1);assert.equal(data.boss.status,'ended','Last stock closes the loot window');
- data=await action('claim',{rewardId:'voucher',claimId:'claim-1'});assert.equal(data.inventory[0].quantity,1,'Same receipt cannot add inventory twice');
+ data=await action('claim',{rewardId:'voucher',claimId:'claim-1',dropIndex:0});assert.equal(data.inventory[0].quantity,1,'Same piece receipt cannot add inventory twice');await assert.rejects(()=>action('claim',{rewardId:'voucher',claimId:'claim-1',dropIndex:1}),/another treasure/);await assert.rejects(()=>action('claim',{rewardId:'voucher',claimId:'bad-piece',dropIndex:-1}),/valid treasure/);
  await as(bea);await assert.rejects(()=>action('claim',{rewardId:'voucher',claimId:'claim-1'}),/another reward/);await assert.rejects(()=>action('claim',{rewardId:'voucher',claimId:'claim-2'}),/closed/);
  await as(teacher);data=await action('activate');const oldRun=run;run=data.boss.raid_run_id;assert.notEqual(run,oldRun);assert.equal(data.participants.length,0);assert.equal(data.claims.length,0);assert.equal((await db.query('select quantity from inventory')).rows[0].quantity,1,'New runs keep earned inventory');
  await as(alex);await assert.rejects(()=>action('join',{runId:oldRun}),/restarted/);await action('join');

@@ -23,14 +23,37 @@
   document.body.style.overflow='hidden';
   const overlay=document.getElementById('campaign-overlay');overlay.classList.add('open','raid-battle');overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');
  }
+ function random(seed){let value=2166136261;for(const ch of seed)value=Math.imul(value^ch.charCodeAt(0),16777619);return ()=>{value+=0x6D2B79F5;let n=Math.imul(value^(value>>>15),1|value);n^=n+Math.imul(n^(n>>>7),61|n);return ((n^(n>>>14))>>>0)/4294967296;};}
  function scatter(c){
-  if(!same(c))return;const width=c.field.clientWidth,cols=Math.min(c.drops.size||1,width<600?2:width<1000?3:4),rows=Math.ceil(c.drops.size/cols);
-  c.field.style.minHeight=Math.max(width<600?340:400,160+rows*174)+'px';
-  let i=0;for(const [id,node] of c.drops){let seed=0;for(const char of c.run+id)seed=(seed*31+char.charCodeAt(0))>>>0;
-   const row=Math.floor(i/cols),count=Math.min(cols,c.drops.size-row*cols),col=i%cols;
-   const x=width*(col+.5)/count+((seed%9)-4),y=175+row*174+((seed%17)-8);
-   node.style.setProperty('--drop-tilt',((seed%9)-4)+'deg');node.style.left=x+'px';node.style.top=y+'px';node.style.setProperty('--drop-from-x',(width/2-x)+'px');node.style.setProperty('--drop-from-y',(68-y)+'px');i++;
+  if(!same(c))return;const width=c.field.clientWidth,cols=Math.max(2,Math.floor((width-16)/64));
+  let height=Math.max(420,Math.min(650,innerHeight-210)),cells=[];
+  // Jittered packing keeps the complete pile around the boss with usable targets.
+  do{const rand=random(c.run+':floor'),rows=Math.max(3,Math.floor((height-16)/70)),cw=(width-16)/cols,ch=(height-16)/rows;cells=[];
+   for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){
+    const x=8+(col+.5)*cw+(rand()-.5)*Math.min(16,Math.max(0,cw-62)),y=8+(row+.5)*ch+(rand()-.5)*Math.min(14,Math.max(0,ch-66));
+    if(Math.pow((x-width/2)/(width<600?102:142),2)+Math.pow((y-height/2)/102,2)<1)continue;
+    cells.push({x,y,tilt:(rand()-.5)*12,apex:85+rand()*110,spin:(rand()>.5?1:-1)*(360+rand()*540)});
+   }
+   for(let i=cells.length-1;i>0;i--){const j=Math.floor(rand()*(i+1));[cells[i],cells[j]]=[cells[j],cells[i]];}
+   if(cells.length<c.drops.size)height+=70;
+  }while(cells.length<c.drops.size);
+  const bossY=height/2;c.field.style.minHeight=height+'px';c.field.style.setProperty('--boss-y',bossY+'px');
+  let i=0;for(const node of c.drops.values()){
+   const desired=i++%4,index=cells.findIndex(p=>(p.x>=width/2?0:1)+(p.y>=bossY?0:2)===desired),point=cells.splice(Math.max(0,index),1)[0],half=node.offsetHeight/2||28,y=point.y-half;
+   node.style.left=point.x+'px';node.style.top=y+'px';node.style.setProperty('--drop-tilt',point.tilt+'deg');node.style.setProperty('--drop-from-x',(width/2-point.x)+'px');node.style.setProperty('--drop-from-y',(bossY-y-half)+'px');node.style.setProperty('--drop-apex',point.apex+'px');node.style.setProperty('--drop-spin',point.spin+'deg');
   }
+ }
+ function claimedSlots(b){
+  const used=new Map();for(const reward of b.lootRewards||[]){const slots=new Map(),legacy=[];for(const receipt of b.lootClaims||[]){if(receipt.rewardId!==reward.id)continue;if(Number.isInteger(receipt.dropIndex))slots.set(receipt.dropIndex,receipt);else legacy.push(receipt);}
+   legacy.sort((a,b)=>(a.claimedAt||0)-(b.claimedAt||0)||String(a.id).localeCompare(String(b.id)));for(const receipt of legacy){let slot=0;while(slots.has(slot))slot++;slots.set(slot,receipt);}used.set(reward.id,slots);
+  }return used;
+ }
+ function collect(c,node,receipt){
+  if(c.taken.has(node.dataset.tokenKey))return;c.taken.add(node.dataset.tokenKey);node.disabled=true;
+  if(c.initial||motion.matches){node.remove();return;}
+  // Confirmation precedes removal. Other clients remove this exact same piece.
+  node.classList.add(receipt.studentId===c.owner?'is-collected':'is-claimed-away');schedule(c,()=>node.remove(),receipt.studentId===c.owner?520:300);
+  if(node===document.activeElement){const next=[...c.drops.values()].find(n=>n!==node&&n.isConnected&&!n.disabled);(next||c.root.querySelector('.rla-exit')).focus({preventScroll:true});}
  }
  function message(text){const el=session?.root.querySelector('#raid-loot-notice');if(el)el.textContent=text;}
  function open(index,{resume=false}={}){
@@ -42,26 +65,27 @@
   const root=document.createElement('section');root.id='raid-loot-arena';root.className=motion.matches?'is-reduced':'';
   const elapsed=Math.max(0,Date.now()+(b._raidClockOffset||0)-startTime(b));root.style.setProperty('--victory-delay',Math.max(-1900,450-elapsed)+'ms');root.style.setProperty('--collapse-delay',Math.max(-1600,-elapsed)+'ms');
   const art=typeof bveRenderBossArt==='function'?bveRenderBossArt(b,{id:'raid-loot-boss-art',stateClass:'state-defeated'}):esc(b.image||b.name);
-  root.innerHTML=`<header class="rla-header"><div><span>WORLD BOSS · SHARED LOOT</span><strong>${esc(b.name)}</strong></div><button type="button" class="rla-exit">Leave arena</button></header><div class="rla-victory"><span>THE FINAL STRIKE</span><h1>${esc(b.victoryTitle||'VICTORY')}</h1><p>${esc(b.victoryMessage||'The guardian has fallen. Claim the spoils before your classmates do.')}</p></div><div class="rla-race-bar"><div><span id="raid-loot-state">Boss defeated</span><strong id="raid-loot-countdown"></strong></div><p>Shared stock · first confirmed claim wins</p></div><div class="rla-field" aria-label="Scattered boss loot"><div class="rla-shockwave" aria-hidden="true"></div><div class="rla-boss">${art}<div class="rla-boss-seal" aria-hidden="true"></div></div><div class="rla-fragments" aria-hidden="true">${Array.from({length:motion.matches?0:12},(_,i)=>`<i style="--i:${i};--angle:${i*30}deg"></i>`).join('')}</div></div><footer class="rla-footer"><p id="raid-loot-notice" role="status" aria-live="polite"></p><div id="raid-loot-secured"></div><div id="raid-loot-latest"></div><button type="button" class="rla-results">View raid results</button><p class="rla-inventory-note">Confirmed drops are saved in My Inventory.</p></footer>`;
+  root.innerHTML=`<header class="rla-header"><div><span>WORLD BOSS · SHARED LOOT</span><strong>${esc(b.name)}</strong></div><button type="button" class="rla-exit">Leave arena</button></header><div class="rla-victory"><span>RAID COMPLETE</span><h1>${esc(b.victoryTitle||'VICTORY')}</h1><p>${esc(b.victoryMessage||'The guardian has fallen. Treasure spills across the battlefield. Pick it up before your classmates do.')}</p></div><div class="rla-race-bar"><div><span id="raid-loot-state">Boss defeated</span><strong id="raid-loot-countdown"></strong></div><p>Pick up each treasure · first confirmed claim wins</p></div><div class="rla-field" aria-label="Scattered boss loot"><div class="rla-detonation" aria-hidden="true"><i></i><b></b><em></em></div><div class="rla-shockwave" aria-hidden="true"></div><div class="rla-boss">${art}<div class="rla-boss-seal" aria-hidden="true"></div></div><div class="rla-fragments" aria-hidden="true">${Array.from({length:motion.matches?0:28},(_,i)=>`<i style="--i:${i};--angle:${i*137.5}deg;--reach:${110+(i%7)*25}px"></i>`).join('')}</div></div><footer class="rla-footer"><p id="raid-loot-notice" role="status" aria-live="polite"></p><div id="raid-loot-secured"></div><div id="raid-loot-latest"></div><button type="button" class="rla-results">View raid results</button><p class="rla-inventory-note">Confirmed drops are saved in My Inventory.</p></footer>`;
   scene.appendChild(root);
-  const c={index,owner:currentUser.id,bossId:b._id,run:b.raidRunId||'legacy',root,field:root.querySelector('.rla-field'),drops:new Map(),busy:new Set(),timers:new Set(),ready:false};session=c;
+  const c={index,owner:currentUser.id,bossId:b._id,run:b.raidRunId||'legacy',root,field:root.querySelector('.rla-field'),drops:new Map(),busy:new Set(),timers:new Set(),taken:new Set(),initial:true,ready:false};session=c;
   root.querySelector('.rla-exit').onclick=()=>wbrCloseBattle();root.querySelector('.rla-results').onclick=()=>RaidExperience.openSummary(index);
   c.keys=event=>{if(event.key==='Escape'&&!event.defaultPrevented&&!document.querySelector('#modal-overlay[style*="flex"]')){event.preventDefault();wbrCloseBattle();}};document.addEventListener('keydown',c.keys);
-  const ranks={Common:0,Rare:1,Epic:2,Legendary:3};
-  let i=0;for(const reward of [...(b.lootRewards||[])].sort((a,b)=>(ranks[b.rarity]||0)-(ranks[a.rarity]||0)||String(a.id).localeCompare(String(b.id)))){
-   const node=document.createElement('button');node.type='button';node.className='rla-drop';node.dataset.rewardId=reward.id;node.style.setProperty('--drop-delay',motion.matches?'0ms':Math.max(-1000,1000+Math.min(i*35,400)-elapsed)+'ms');
+  let i=0;for(const reward of b.lootRewards||[])for(let slot=0;slot<Math.max(0,Math.floor(Number(reward.quantity)||0));slot++){
+   const node=document.createElement('button'),key=JSON.stringify([reward.id,slot]);node.type='button';node.className='rla-drop';node.dataset.rewardId=reward.id;node.dataset.dropIndex=slot;node.dataset.tokenKey=key;
+   node.style.setProperty('--drop-delay',motion.matches?'0ms':Math.max(-2100,700+Math.min(i*19,280)-elapsed)+'ms');
    const tones={Common:'#c5d5df',Rare:'#8ecbef',Epic:'#c7a4ef',Legendary:'#ead18b'};node.style.setProperty('--drop-accent',tones[reward.rarity]||tones.Common);
-   node.onclick=()=>claim(c,reward.id,node);c.drops.set(reward.id,node);c.field.appendChild(node);i++;
+   node.onclick=()=>claim(c,reward.id,slot,node);c.drops.set(key,node);c.field.appendChild(node);i++;
   }
   if(!c.drops.size)c.field.insertAdjacentHTML('beforeend','<p class="rla-empty">Your class conquered the boss. No extra loot was configured.</p>');
   c.resize=new ResizeObserver(()=>scatter(c));c.resize.observe(c.field);scatter(c);update();c.clock=setInterval(update,200);
   if(resume||elapsed>4000)root.classList.add('is-resumed');root.querySelector('.rla-exit').focus({preventScroll:true});return true;
  }
- async function claim(c,id,node){
-  if(!same(c)||c.busy.has(id)||Date.now()<opensAt(boss())||boss().status!=='loot'||!remaining(boss()))return;
-  c.busy.add(id);update();const result=await wblrClaimReward(c.index,id);c.busy.delete(id);if(!same(c))return;
-  update();if(result?.ok){node.classList.add('is-secured');schedule(c,()=>node.classList.remove('is-secured'),850);message(result.itemName+' secured. Saved to My Inventory.');}
-  else{message(result?.reason||'Claim not confirmed. Try again.');RaidService.action(c.index,'snapshot').then(()=>{if(same(c))update();});}
+ async function claim(c,id,slot,node){
+  const key=node.dataset.tokenKey;
+  if(!same(c)||c.busy.has(key)||c.taken.has(key)||Date.now()<opensAt(boss())||boss().status!=='loot'||!remaining(boss())||boss()._raidLootVersion!==2)return;
+  c.busy.add(key);update();const result=await wblrClaimReward(c.index,id,null,slot);c.busy.delete(key);if(!same(c))return;
+  update();if(result?.ok)message(result.itemName+' picked up. Saved to My Inventory.');
+  else{message(result?.reason||'Pickup not confirmed. Try again.');RaidService.action(c.index,'snapshot').then(()=>{if(same(c))update();});}
  }
  function update(){
   const c=session;if(!c)return;if(!same(c)||!RaidService.visible(boss())){wbrCloseBattle();return;}
@@ -69,14 +93,20 @@
   c.root.dataset.stage=!live?'closed':ready?'race':'burst';
   c.root.querySelector('#raid-loot-state').textContent=!live?'Loot race finished':wait?'Loot scattering · get ready':'LOOT RACE LIVE';
   c.root.querySelector('#raid-loot-countdown').textContent=!live?'':wait?'Opens in '+wait:Math.floor(left/60)+':'+String(left%60).padStart(2,'0')+' remaining';
-  if(ready&&!c.ready){c.ready=true;message(eligible?'The loot is live. Choose a drop to claim it.':'Victory! Only raiders who dealt damage can claim limited loot.');}
+  if(ready&&!c.ready){c.ready=true;message(b._raidLootVersion!==2?'Treasure pickup needs a teacher update before the race can begin.':eligible?'Treasure is on the floor. Pick up each piece.':'Victory! Only raiders who dealt damage can pick up treasure.');}
   if(!live&&!c.finished){c.finished=true;message('The loot race has ended. Your confirmed drops are saved below.');}
-  for(const reward of b.lootRewards||[]){const node=c.drops.get(reward.id);if(!node)continue;const stock=wblrRemaining(b,reward),mine=wblrClaimedByStudent(b,reward.id,c.owner),limit=reward.claimLimit||1,busy=c.busy.has(reward.id);
-   node.disabled=!ready||!eligible||!stock||mine>=limit||busy;node.setAttribute('aria-busy',String(busy));
-   const state=busy?'Confirming…':mine>=limit?'Secured':!stock?'Taken':!live?'Closed':wait?'Get ready':!eligible?'Contribution required':'Grab loot';
-   const markup=`<span class="rla-drop-icon">${glyph(reward.rarity)}</span><span class="rla-drop-rarity">${esc(reward.rarity||'Common')}</span><strong>${esc(reward.itemName)}</strong><span class="rla-drop-stock">${stock} left · ${esc(state)}</span>`;
-   if(node._lootMarkup!==markup){node.innerHTML=markup;node._lootMarkup=markup;}node.classList.toggle('is-taken',!stock);node.setAttribute('aria-label',`${reward.itemName}, ${reward.rarity||'Common'}, ${stock} remaining. ${state}`);
+  const slots=claimedSlots(b);
+  for(const node of c.drops.values()){
+   const id=node.dataset.rewardId,slot=Number(node.dataset.dropIndex),reward=(b.lootRewards||[]).find(r=>String(r.id)===id);if(!reward)continue;
+   const receipt=slots.get(reward.id)?.get(slot);if(receipt){collect(c,node,receipt);continue;}if(!node.isConnected)continue;
+   const mine=wblrClaimedByStudent(b,reward.id,c.owner),busy=c.busy.has(node.dataset.tokenKey),limit=reward.claimLimit||1;
+   node.disabled=!ready||!eligible||mine>=limit||busy||b._raidLootVersion!==2;node.setAttribute('aria-busy',String(busy));
+   const state=busy?'Picking up…':mine>=limit?'Personal limit reached':!live?'Race finished':wait?'Get ready':!eligible?'Contribution required':'Pick up';
+   const markup=`<span class="rla-drop-dust" aria-hidden="true"></span><span class="rla-drop-icon">${glyph(reward.rarity)}</span><strong>${esc(reward.itemName)}</strong><span class="rla-drop-hint">${esc(state)}</span>`;
+   if(node._lootMarkup!==markup){node.innerHTML=markup;node._lootMarkup=markup;}
+   node.setAttribute('aria-label',`${reward.itemName}, ${reward.rarity||'Common'}. ${state}`);node.title=reward.itemName+' · '+(reward.rarity||'Common');
   }
+  c.initial=false;
   const mine=(b.lootClaims||[]).filter(x=>x.studentId===c.owner),secured=c.root.querySelector('#raid-loot-secured');
   const securedMarkup=mine.length?'<span>YOUR SECURED LOOT</span>'+mine.map(x=>`<strong>${esc(x.itemName)}</strong>`).join(''):'';if(c.securedMarkup!==securedMarkup){secured.innerHTML=securedMarkup;c.securedMarkup=securedMarkup;}
   const latest=(b.lootClaims||[]).slice().sort((a,b)=>(b.claimedAt||0)-(a.claimedAt||0))[0];c.root.querySelector('#raid-loot-latest').textContent=latest?(latest.studentId===c.owner?'You':latest.studentName||'A classmate')+' claimed '+latest.itemName:'';
