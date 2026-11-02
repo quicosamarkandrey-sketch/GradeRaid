@@ -91,7 +91,7 @@ begin
  elsif p_action='signal' then
    if b.status<>'active' then raise exception 'The battle has ended';end if;
    if p_payload->>'kind' not in ('skill','minion') or p_payload->>'kind' is null then raise exception 'Unknown battle signal';end if;
-   if p_payload->>'kind'='skill' and (p_payload->>'skillId' is null or p_payload->>'skillId' not in ('earthquake','chaos_wind','darkness','mirror_trick','berserk_roar','meteor_shower') or not coalesce((b.skills->(p_payload->>'skillId')->>'enabled')::boolean,true)) then raise exception 'Enable this skill first';end if;
+   if p_payload->>'kind'='skill' and (p_payload->>'skillId' is null or p_payload->>'skillId' not in ('earthquake','chaos_wind','darkness','mirror_trick','berserk_roar','meteor_shower','lightning_storm','glacial_prison','void_lance','gravity_well','phantom_orbit') or not coalesce((b.skills->(p_payload->>'skillId')->>'enabled')::boolean,true)) then raise exception 'Enable this skill first';end if;
    if p_payload->>'kind'='minion' and not coalesce((b.minion_settings->>'enabled')::boolean,false) then raise exception 'Enable minions first';end if;
    update boss_events set raid_signals=(select jsonb_agg(value) from(select value from jsonb_array_elements(coalesce(b.raid_signals,'[]')||jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'kind',p_payload->>'kind','skillId',p_payload->>'skillId','at',extract(epoch from now())*1000))) with ordinality order by ordinality desc limit 20) recent) where id=b.id;
  elsif p_action='revive' then

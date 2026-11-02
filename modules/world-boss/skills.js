@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //  EduQuest — modules/world-boss/skills.js
-//  World Boss Skills: 6 built-in skill effects, random fire loop, admin config.
+//  World Boss Skills: 11 built-in skill effects, random fire loop, admin config.
 //  LOAD AFTER: combat-settings.js, loot-rain.js
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -17,8 +17,13 @@ window.WBS = {
 // ── Skill defaults ────────────────────────────────────────────────────────────
 
 window.WBS_SKILL_DEFAULTS = {
+  gravity_well:{id:'gravity_well',name:'Gravity Well',emoji:'🪐',desc:'A singularity pulls and compresses moving answer choices.',enabled:true,durationSec:6,cooldownSec:55,triggerPhase:'2'},
+  phantom_orbit:{id:'phantom_orbit',name:'Phantom Orbit',emoji:'🌀',desc:'Track answer choices as they circle in opposing paths.',enabled:true,durationSec:6,cooldownSec:58,triggerPhase:'3'},
+  lightning_storm:{id:'lightning_storm',name:'Lightning Storm',emoji:'⚡',desc:'Forked lightning charges a choice. Tap to ground it.',enabled:true,durationSec:5,cooldownSec:48,triggerPhase:'any'},
+  glacial_prison:{id:'glacial_prison',name:'Glacial Prison',emoji:'❄️',desc:'Ice spires rise around the boss and freeze choices. Tap to shatter the ice.',enabled:true,durationSec:6,cooldownSec:52,triggerPhase:'2'},
+  void_lance:{id:'void_lance',name:'Void Lance',emoji:'🔮',desc:'Crimson rifts sweep the arena and seal a choice. Tap to dispel it.',enabled:true,durationSec:5,cooldownSec:55,triggerPhase:'3'},
   earthquake:   { id:'earthquake',   name:'Earthquake',    emoji:'🌋', desc:'Choices shake and fracture; tap buried choices to uncover them.',                  enabled:true, durationSec:4, cooldownSec:45, triggerPhase:'any' },
-  chaos_wind:   { id:'chaos_wind',   name:'Chaos Wind',    emoji:'🌪️', desc:'Answer choices drift in gale currents; aim to steady a choice.',        enabled:true, durationSec:8, cooldownSec:50, triggerPhase:'any', windSpeed:'medium' },
+  chaos_wind:   { id:'chaos_wind',   name:'Chaos Wind',    emoji:'🌪️', desc:'Gale currents fling answer choices across changing paths for the full duration.',        enabled:true, durationSec:8, cooldownSec:50, triggerPhase:'any', windSpeed:'medium' },
   darkness:     { id:'darkness',     name:'Darkness',      emoji:'🌑', desc:'Shadows conceal choices; tap once to reveal before answering.', enabled:true, durationSec:7, cooldownSec:40, triggerPhase:'any' },
   mirror_trick: { id:'mirror_trick', name:'Mirror Trick',  emoji:'🪞', desc:'Mirror echoes repeatedly shuffle the original answer choices.',    enabled:true, durationSec:0, cooldownSec:60, triggerPhase:'any' },
   berserk_roar: { id:'berserk_roar', name:'Berserk Roar',  emoji:'😤', desc:'A shockwave disrupts choices; tap to recover obscured text.',           enabled:true, durationSec:3, cooldownSec:35, triggerPhase:'any' },
@@ -211,7 +216,7 @@ window.wbsOpenSkillConfig = function (bossIdx) {
   const rows   = Object.values(skills).map(sk => {
     const phaseOpts = PHASES.map(p => `<option value="${p}" ${String(sk.triggerPhase||'any')===p?'selected':''}>${p === 'any' ? 'Any Phase' : 'Phase ' + p}</option>`).join('');
     const windRow   = sk.id === 'chaos_wind' ? `<select id="wbs-wind-${sk.id}" style="font-size:10px"><option value="slow" ${sk.windSpeed==='slow'?'selected':''}>Slow</option><option value="medium" ${(sk.windSpeed||'medium')==='medium'?'selected':''}>Medium</option><option value="fast" ${sk.windSpeed==='fast'?'selected':''}>Fast</option></select>` : '';
-    return `<div style="display:grid;grid-template-columns:auto 1fr auto auto auto ${sk.id==='chaos_wind'?'auto':'0px'};gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+    return `<div class="wbs-skill-row" style="display:grid;grid-template-columns:32px minmax(0,1fr) 58px 62px 85px ${sk.id==='chaos_wind'?'80px ':''}64px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)">
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="wbs-en-${sk.id}" ${sk.enabled?'checked':''} style="width:15px;height:15px"><span style="font-size:16px">${sk.emoji}</span></label>
       <div><div style="font-size:12px;font-weight:700;color:var(--on-surface)">${_esc(sk.name)}</div><div style="font-size:10px;color:var(--text-muted)">${_esc(sk.desc)}</div></div>
       <div><div style="font-size:9px;color:var(--text-muted);margin-bottom:2px">Duration(s)</div><input type="number" id="wbs-dur-${sk.id}" value="${sk.durationSec||4}" min="0" max="60" style="width:52px;font-size:12px;text-align:center"></div>

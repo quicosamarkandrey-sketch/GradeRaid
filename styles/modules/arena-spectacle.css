@@ -1,0 +1,113 @@
+/* The boss arena has its own jewel-toned palette, independent of the page theme. */
+.raid-battle:not(.raid-loot-active){background:#101e36;color:#edf5ff}
+.raid-battle:not(.raid-loot-active) .rfx-ready{--rfx-phase:#7ed6ee;--rfx-danger:#ff453e;--rfx-gold:#f1cc81;--raid-stage-height:155px}
+.raid-battle:not(.raid-loot-active) #camp-bg{background:radial-gradient(ellipse at 50% 28%,#315a83aa,transparent 56%),radial-gradient(ellipse at 90% 60%,#46286866,transparent 60%),#10233c!important}
+.raid-battle:not(.raid-loot-active) .camp-hud{border-color:#6289af55}
+.raid-battle:not(.raid-loot-active) .camp-title-hud{font-size:17px;color:#f5eddb;letter-spacing:.015em}
+.raid-battle:not(.raid-loot-active) .camp-stage-label{color:#8bc6e3;letter-spacing:.17em}
+.raid-battle:not(.raid-loot-active) #camp-enemy-name{color:#bbdff5;font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.raid-battle:not(.raid-loot-active) .camp-enemy-hp-wrap{height:11px;border:1px solid #7ec8e24d;background:#0d1b31;box-shadow:0 4px 18px #030b1b44}
+.raid-battle:not(.raid-loot-active) #camp-enemy-hp{background:linear-gradient(90deg,#3d93d2,#80e0dc)!important}
+.raid-battle:not(.raid-loot-active) #rfx-state{padding-top:10px;min-height:33px}
+.raid-battle:not(.raid-loot-active) #rfx-phase{font-size:10px;color:#91c9ec}.raid-battle:not(.raid-loot-active) #rfx-phase strong{color:#98e3f1}
+.raid-battle:not(.raid-loot-active) #camp-enemy-sprite{height:var(--raid-stage-height)}
+.raid-battle:not(.raid-loot-active) #camp-enemy-title{font-size:9px;letter-spacing:.22em;color:#e4c88f;margin:9px 0 18px}
+.raid-battle:not(.raid-loot-active) .camp-question-box{background:linear-gradient(145deg,#223d5bef,#172c47f5);border:1px solid #79a6d16b;border-radius:15px;box-shadow:0 18px 50px #060d2644,inset 0 1px #c9e5ff12;padding:24px;max-width:none;width:100%}
+.raid-battle:not(.raid-loot-active) #camp-q-text{color:#f1f6ff;font-size:20px;line-height:1.5;margin-bottom:20px}
+.raid-battle:not(.raid-loot-active) .camp-opt{min-height:64px;padding:16px;color:#eaf5ff!important;background:linear-gradient(140deg,#2b4b6c,#203b58);border:1px solid #749ec477;border-radius:9px;font-size:14px;box-shadow:inset 0 1px #c0e1ff12}
+.raid-battle:not(.raid-loot-active) .camp-opt:hover{border-color:#a7d6ee;background:#355d7f}
+.raid-battle:not(.raid-loot-active) .camp-opt-letter{background:#17304b;border-color:#75a6cc;color:#a7e7ff}
+.raid-battle:not(.raid-loot-active) .camp-opt.correct{background:linear-gradient(120deg,#175e4d,#214c48);border-color:#77e3aa;color:#ddfff0!important}
+.raid-battle:not(.raid-loot-active) .camp-opt.wrong{background:linear-gradient(120deg,#702f43,#4c2c46);border-color:#ff8e92;color:#ffe7eb!important}
+.raid-battle:not(.raid-loot-active) .wbm-minion-alert{background:linear-gradient(145deg,#243352,#172e45);border-color:#9382b66b;box-shadow:0 10px 30px #080c283b}
+.raid-battle:not(.raid-loot-active) .wbm-minion-alert-header{background:linear-gradient(120deg,#694c7422,#3a577633)}
+.raid-battle:not(.raid-loot-active) .wbm-minion-name{color:#e5c89b}
+.raid-battle:not(.raid-loot-active) .wbm-opt{background:#28465e;border-color:#6f9ab8;color:#e8f4ff!important}
+.raid-battle:not(.raid-loot-active) .wbm-opt:hover{background:#365e79;border-color:#b4d5eb}
+.raid-battle:not(.raid-loot-active) #wbr-live-feed,.raid-battle:not(.raid-loot-active) .wbr-meta-pill{background:#172f49;border-color:#5e89ab66;color:#bddef6}
+.rfx-arena-floor{position:absolute;left:50%;bottom:-5px;translate:-50% 0;width:min(680px,100%);height:150px;pointer-events:none;color:#81c5e2;opacity:.6}
+.rfx-arena-floor svg{width:100%;height:100%;stroke:currentColor;stroke-width:1}
+.rfx-arena-floor i{position:absolute;inset:25% 10%;border-radius:50%;background:radial-gradient(ellipse,#4ea8d329,transparent 66%);filter:blur(7px)}
+.raid-battle:not(.raid-loot-active) .rfx-cast{top:calc(100% + var(--raid-stage-height) - 64px)!important;width:min(500px,96%);padding:10px 15px;background:#152940eb;border-color:color-mix(in srgb,var(--rfx-tone) 75%,#254c6d);box-shadow:0 10px 32px #040a214d}
+.raid-battle:not(.raid-loot-active) #rfx-announcer{top:calc(100% + 8px);background:#19283fea;width:min(500px,96%);padding:10px 14px}
+.raid-battle:not(.raid-loot-active) .rfx-cast strong{font-size:14px}.raid-battle:not(.raid-loot-active) #rfx-challenge-hint{background:#1e2948;border-color:#ba99f5;color:#e4d9ff;font-size:11px}
+@media(min-width:901px){
+ .raid-battle:not(.raid-loot-active) #camp-scene{max-width:1880px;grid-template-columns:minmax(200px,260px) minmax(0,1fr) minmax(200px,260px);gap:0 26px;padding:28px 36px 50px;--raid-stage-height:clamp(310px,36vh,410px)}
+ .raid-battle:not(.raid-loot-active) #camp-encounter{padding-top:18px}
+ .raid-battle:not(.raid-loot-active) #camp-enemy-sprite .bve-boss-wrap{width:clamp(350px,30vw,520px);height:var(--raid-stage-height)}
+ .raid-battle:not(.raid-loot-active) #camp-enemy-sprite .bve-boss-art{width:100%;height:100%;max-width:520px!important;max-height:410px!important;object-fit:contain}
+ .raid-battle:not(.raid-loot-active) .wbm-minion-sprite{font-size:42px}
+ .raid-battle:not(.raid-loot-active) .wbm-q-text{font-size:14px;line-height:1.5}
+ .raid-battle:not(.raid-loot-active) .rfx-arena-floor{height:170px;bottom:-12px}
+ .raid-battle:not(.raid-loot-active) .rfx-rage-aura i{width:290px;height:290px;margin:-145px}.raid-battle:not(.raid-loot-active) .rfx-rage-aura b{width:250px;height:250px;margin:-125px}
+}
+@media(min-width:601px) and (max-width:900px){.raid-battle:not(.raid-loot-active) #camp-scene{--raid-stage-height:230px}.raid-battle:not(.raid-loot-active) #camp-enemy-sprite .bve-boss-wrap{width:300px;height:230px}.raid-battle:not(.raid-loot-active) #camp-enemy-sprite .bve-boss-art{max-width:300px!important;max-height:230px!important}}
+@media(max-width:600px){.raid-battle:not(.raid-loot-active) .camp-title-hud{font-size:12px}.raid-battle:not(.raid-loot-active) #camp-enemy-name{font-size:9px}.raid-battle:not(.raid-loot-active) #camp-enemy-sprite .bve-boss-wrap{width:205px;height:155px}.raid-battle:not(.raid-loot-active) #camp-enemy-sprite .bve-boss-art{max-width:205px!important;max-height:155px!important}.raid-battle:not(.raid-loot-active) .camp-question-box{padding:18px 16px}.raid-battle:not(.raid-loot-active) #camp-q-text{font-size:16px}.raid-battle:not(.raid-loot-active) .camp-opt{min-height:56px;padding:12px;font-size:12px}.raid-battle:not(.raid-loot-active) .rfx-arena-floor{height:100px;bottom:-4px}.raid-battle:not(.raid-loot-active) .rfx-cast{padding:8px 10px;top:calc(100% + 105px)!important}.raid-battle:not(.raid-loot-active) .rfx-cast strong{font-size:11px}.raid-battle:not(.raid-loot-active) #rfx-announcer{padding:8px 10px}.raid-battle:not(.raid-loot-active) #rfx-challenge-hint{font-size:9px}}
+/* Crimson is reserved for the boss's escalation, with warm highlights and dark red depth. */
+.raid-battle:not(.raid-loot-active) .rfx-raging{--rfx-phase:#ff5148;--rfx-danger:#ff3d3d}
+.raid-battle:not(.raid-loot-active) .rfx-raging #camp-bg{background:radial-gradient(ellipse at 50% 28%,#b11c2c88,transparent 60%),radial-gradient(ellipse at 90% 75%,#56233866,transparent 68%),#341424!important}
+.raid-battle:not(.raid-loot-active) .rfx-raging #camp-enemy-hp{background:linear-gradient(90deg,#be1934,#ff5948,#ffb278)!important}
+.raid-battle:not(.raid-loot-active) .rfx-raging .camp-question-box{background:linear-gradient(135deg,#482139eb,#242744f5);border-color:#f16c685c;box-shadow:0 15px 55px #5b102c44,inset 0 1px #ffb9a512}
+.raid-battle:not(.raid-loot-active) .rfx-raging #rfx-phase strong,.raid-battle:not(.raid-loot-active) #rfx-rage{color:#ff9d8b}
+.raid-battle:not(.raid-loot-active) .rfx-raging #wb-boss-sprite-art{filter:drop-shadow(0 0 22px #ff243c88) drop-shadow(0 8px 28px #8f0b2577) saturate(1.45)!important}
+.raid-battle:not(.raid-loot-active) .rfx-raging .rfx-arena-floor{color:#ff6755;opacity:.85}
+.raid-battle:not(.raid-loot-active) .rfx-raging .rfx-rage-aura{color:#ff403b;filter:drop-shadow(0 0 20px #ff303b66)}
+.raid-battle:not(.raid-loot-active) .rfx-raging .rfx-rage-aura i{border-color:#ff5548;box-shadow:0 0 35px #ff283c44,inset 0 0 35px #ff283c22;animation-duration:3s}
+.raid-battle:not(.raid-loot-active) .rfx-raging .rfx-rage-aura b{border-color:#ffc395;animation-duration:5.2s}
+.raid-battle:not(.raid-loot-active) .rfx-raging .rfx-rage-aura em{background:#ff7950;box-shadow:0 0 6px #ff392e;animation-duration:1.7s}
+.raid-battle:not(.raid-loot-active) .rfx-raging #rfx-screen:before{background:radial-gradient(ellipse at center,transparent 40%,#ca173843 78%,#c51e3880);box-shadow:inset 0 0 80px #f02b3b33}
+.raid-battle:not(.raid-loot-active) .rfx-surge-rage{--rfx-force:#ff5749}
+.raid-battle:not(.raid-loot-active) .rfx-minion-enraged{background:linear-gradient(135deg,#59243c,#293047);border-color:#fb615c!important;box-shadow:0 0 25px #d5293d2e,inset 0 1px #ffb89c44!important}
+.raid-battle:not(.raid-loot-active) .rfx-minion-enraged .wbm-minion-sprite{filter:drop-shadow(0 0 12px #f94b43a0)}
+.raid-battle:not(.raid-loot-active) .rfx-minion-enraged .wbm-minion-sprite:after{border-color:#ff7d62;box-shadow:0 0 15px #ed39284d}
+.raid-battle:not(.raid-loot-active) .rfx-minion-rage{color:#ffceac;background:#6b2535;border-color:#ff775a99}
+/* Temporary target challenges: motion stays active under the pointer. */
+.raid-battle:not(.raid-loot-active) .rfx-challenge-chaos_wind .rfx-choice{animation:rfx-gale-choice var(--rfx-choice-cycle,1.25s) calc(var(--rfx-slot)*-.28s) ease-in-out infinite}
+.raid-battle:not(.raid-loot-active) .rfx-challenge-earthquake .rfx-choice{animation:rfx-seismic-choice .55s calc(var(--rfx-slot)*-.13s) ease-in-out infinite}
+.raid-battle:not(.raid-loot-active) .rfx-challenge-berserk_roar .rfx-choice{animation:rfx-roar-choice .85s calc(var(--rfx-slot)*-.19s) ease-in-out infinite}
+.raid-battle:not(.raid-loot-active) .rfx-challenge-gravity_well .rfx-choice{animation:rfx-gravity-choice 2.2s calc(var(--rfx-slot)*-.45s) ease-in-out infinite;border-color:#b393fa}
+.raid-battle:not(.raid-loot-active) .rfx-challenge-phantom_orbit .rfx-choice{animation:rfx-orbit-choice 2.1s calc(var(--rfx-slot)*-.5s) linear infinite;border-color:#8faaff}
+@keyframes rfx-gale-choice{0%,100%{transform:translate(calc(var(--rfx-dir)*-22px),8px) rotate(calc(var(--rfx-dir)*-2deg)) scale(.88)}35%{transform:translate(calc(var(--rfx-dir)*20px),-10px) rotate(calc(var(--rfx-dir)*2deg)) scale(.94)}70%{transform:translate(calc(var(--rfx-dir)*-9px),12px) rotate(calc(var(--rfx-dir)*-1deg)) scale(.86)}}
+@keyframes rfx-seismic-choice{0%,100%{transform:translate(0) scale(.96)}25%{transform:translate(calc(var(--rfx-dir)*11px),-7px) rotate(calc(var(--rfx-dir)*2deg)) scale(.92)}60%{transform:translate(calc(var(--rfx-dir)*-9px),7px) rotate(calc(var(--rfx-dir)*-2deg)) scale(.96)}}
+@keyframes rfx-roar-choice{0%,100%{transform:translate(0) scale(.96);filter:none}30%{transform:translate(calc(var(--rfx-dir)*8px),-5px) scale(.88);filter:blur(1px)}65%{transform:translate(calc(var(--rfx-dir)*-6px),4px) scale(.94);filter:none}}
+@keyframes rfx-gravity-choice{0%,100%{transform:translate(calc(var(--rfx-dir)*16px),-7px) scale(.98)}50%{transform:translate(calc(var(--rfx-dir)*-25px),15px) scale(.78)}}
+@keyframes rfx-orbit-choice{0%,100%{transform:translate(-20px,0) scale(.87)}25%{transform:translate(0,-17px) rotate(2deg) scale(.95)}50%{transform:translate(20px,0) scale(.87)}75%{transform:translate(0,17px) rotate(-2deg) scale(.95)}}
+/* Lightning Storm: branching bolts and a charged sky. */
+.rfx-lightning svg path{fill:none;stroke:#a9e8ff;stroke-width:2.5;filter:drop-shadow(0 0 8px #4cb8ff);stroke-dasharray:600;animation:rfx-fork 1.5s calc(var(--i)*-.45s) ease-out infinite}
+.rfx-storm-sky{background:radial-gradient(ellipse at 50% 12%,#61b8fa20,transparent 65%)}
+.rfx-storm-sky i,.rfx-storm-sky b{position:absolute;top:0;left:0;right:0;height:20%;background:linear-gradient(#12254dbb,transparent);border-top:2px solid #8cceff66;animation:rfx-cloud 4s ease-in-out infinite alternate}
+.rfx-storm-sky b{top:auto;bottom:0;rotate:180deg;opacity:.4}
+@keyframes rfx-fork{0%,15%{stroke-dashoffset:600;opacity:0}32%{stroke-dashoffset:0;opacity:.9}48%,100%{stroke-dashoffset:-600;opacity:0}}
+@keyframes rfx-cloud{from{translate:-5% 0;scale:1.1}to{translate:5% 0;scale:1.2}}
+/* Glacial Prison: physical spires surround the boss, then shatter on reveal. */
+.rfx-ice-prison i{position:absolute;bottom:8%;left:var(--x);width:48px;height:150px;clip-path:polygon(45% 0,90% 28%,100% 82%,60% 100%,10% 83%,0 25%);background:linear-gradient(115deg,#ddffffcc,#71cfe6b3 35%,#315d9f99 62%,#a2f2ffcc);border-left:2px solid #d4fffc;transform-origin:bottom;animation:rfx-ice-rise .9s calc(var(--i)*70ms) cubic-bezier(.2,.8,.3,1) both}
+.rfx-ice-prison i:nth-child(2n){height:115px;rotate:12deg}.rfx-ice-prison i:nth-child(3n){rotate:-14deg}
+.rfx-frost-field{box-shadow:inset 0 0 90px #67d5ef3d;border:2px solid #a7fcff55;background:radial-gradient(ellipse at center,transparent 45%,#8ee9f222)}
+.rfx-ice-shatter i{position:absolute;left:var(--x);top:var(--y);width:10px;height:20px;clip-path:polygon(50% 0,100% 30%,70% 100%,0 60%);background:#b2f9ff;rotate:var(--angle);animation:rfx-ice-shard .6s ease-out both}
+@keyframes rfx-ice-rise{from{transform:translateY(40px) scaleY(.05);opacity:0}to{transform:translateY(0) scaleY(1);opacity:.8}}
+@keyframes rfx-ice-shard{from{opacity:.9;transform:translateY(0)}to{opacity:0;transform:translateY(-75px) rotate(90deg) scale(.2)}}
+/* Void Lance: a focused source with crimson/violet rays. */
+.rfx-void-rays{overflow:hidden;border-radius:50%}
+.rfx-void-rays i{position:absolute;top:50%;left:50%;width:70%;height:5px;background:linear-gradient(90deg,#fff0f8,#f167ac,#922de4,transparent);box-shadow:0 0 20px #e92d6b80;transform-origin:left;rotate:-38deg;animation:rfx-void-beam 2s ease-in-out infinite}
+.rfx-void-rays i:nth-child(2){rotate:40deg;animation-delay:.5s}.rfx-void-rays i:nth-child(3){rotate:170deg;animation-delay:1s}
+.rfx-void-rays b{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px;background:radial-gradient(circle,#fff2e7,#ef6393 20%,transparent 70%);animation:rfx-void-core 2s ease-in-out infinite}
+.rfx-void-field i{position:absolute;top:30%;left:50%;width:100%;height:1px;background:linear-gradient(90deg,#ef83ad80,transparent);transform-origin:left;rotate:35deg;animation:rfx-void-beam 2.3s ease-in-out infinite}.rfx-void-field i:nth-child(2){rotate:150deg;animation-delay:.7s}.rfx-void-field i:nth-child(3){rotate:275deg;animation-delay:1.4s}
+@keyframes rfx-void-beam{0%,100%{opacity:.15;scale:.2 1}45%{opacity:.85;scale:1 1}}
+@keyframes rfx-void-core{0%,100%{opacity:.5;scale:.7}50%{opacity:1;scale:1.3}}
+/* Gravity and orbit pressure are visual fields; only their original buttons move. */
+.rfx-singularity i,.rfx-singularity b,.rfx-singularity em{position:absolute;left:50%;top:52%;width:180px;height:180px;margin:-90px;border:2px solid #bc91ff;border-radius:50%;box-shadow:0 0 40px #8540c53b,inset 0 0 30px #8e51bd33;animation:rfx-gravity-ring 2s ease-in-out infinite}
+.rfx-singularity b{border-style:dashed;animation-delay:-.7s}.rfx-singularity em{animation-delay:-1.4s}
+.rfx-gravity-field{background:radial-gradient(ellipse at 50% 30%,transparent 15%,#5d288522 65%,transparent 95%)}
+.rfx-phantom-orbit>i{position:absolute;inset:15% 35%;opacity:.35;animation:rfx-phantom-circle 4s linear infinite;transform-origin:50% 70%}.rfx-phantom-orbit>i:nth-child(2){animation-delay:-1.33s}.rfx-phantom-orbit>i:nth-child(3){animation-delay:-2.66s}.rfx-phantom-orbit img{width:100%;height:100%;object-fit:contain;filter:saturate(.5) hue-rotate(25deg)}
+.rfx-phantom-field{background:conic-gradient(from 45deg at 50% 30%,transparent,#737de31c,transparent 30%,#b388e31c,transparent 60%);opacity:.7}
+@keyframes rfx-gravity-ring{0%{scale:1.5;opacity:0;rotate:0deg}25%{opacity:.7}100%{scale:.1;opacity:0;rotate:120deg}}
+@keyframes rfx-phantom-circle{0%{transform:translate(-90px,-20px) scale(.85);opacity:.2}25%{transform:translate(0,-55px) scale(.7);opacity:.12}50%{transform:translate(90px,-20px) scale(.85);opacity:.3}75%{transform:translate(0,20px) scale(1);opacity:.4}100%{transform:translate(-90px,-20px) scale(.85);opacity:.2}}
+.raid-battle #camp-options.rfx-challenge-lightning_storm .rfx-obscured:after{background:linear-gradient(130deg,#23435d,#1e3149);border:1px solid #85c8f4;box-shadow:inset 0 0 24px #6bbdf02a;color:#c9edff}
+.raid-battle #camp-options.rfx-challenge-glacial_prison .rfx-obscured:after{background:linear-gradient(140deg,#b4edf666,#305f7b 30%,#a8eff455 31%,#234360 65%,#86dce766);border:1px solid #a5f2ed;color:#e1ffff}
+.raid-battle #camp-options.rfx-challenge-void_lance .rfx-obscured:after{background:radial-gradient(ellipse,#612e61,#252039);border:1px solid #cf8cdb;color:#f4dcfa}
+@media(max-width:600px){.rfx-ice-prison i{width:29px;height:95px}.rfx-ice-prison i:nth-child(2n){height:75px}.rfx-singularity i,.rfx-singularity b,.rfx-singularity em{width:120px;height:120px;margin:-60px}.rfx-phantom-orbit>i{inset:8% 28%}.rfx-phantom-orbit img{max-height:140px}}
+@media(prefers-reduced-motion:reduce){.raid-battle .rfx-ready *,.raid-battle .rfx-ready *:before,.raid-battle .rfx-ready *:after{animation:none!important;transition:none!important}.raid-battle .rfx-ready .rfx-choice{transform:none!important;filter:none!important}.rfx-ice-shatter{display:none}.rfx-lightning svg path{opacity:.35;stroke-dasharray:none}.rfx-void-rays i,.rfx-void-field i{opacity:.25}.rfx-ice-prison i{opacity:.4}}
+
+.raid-battle:not(.raid-loot-active) .wbm-opt.correct{background:#175744;border-color:#80e0ae;color:#e3fff1!important}.raid-battle:not(.raid-loot-active) .wbm-opt.wrong{background:#663043;border-color:#f49498;color:#ffe6ed!important}
+
+@media(max-width:600px){#modal-content .wbs-skill-row{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}#modal-content .wbs-skill-row>label{grid-column:1}#modal-content .wbs-skill-row>div:nth-child(2){grid-column:2/-1}#modal-content .wbs-skill-row select,#modal-content .wbs-skill-row input[type=number]{width:100%!important;max-width:100%;min-height:44px}#modal-content .wbs-skill-row>button{min-height:44px}}
