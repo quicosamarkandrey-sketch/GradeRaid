@@ -114,3 +114,14 @@ Apply [supabase/phase78_world_boss_floor_treasure.sql](supabase/phase78_world_bo
 The new floor requires the updated API; older installed battle functions show a teacher-update message instead of accepting ambiguous individual-piece claims. Hosted SQL has not been applied from this workspace.
 
 Validation: `npm run test:boss-loot` uses two student browsers against the actual local PostgreSQL RPC, with a 25-piece pile, a same-piece race while another copy remains, separate one-by-one pickups, disappearance on both clients, fixed remaining positions, failed/retried receipts, inventory, 320/390/1440 hit targets, clock differences, resume, expiry and reduced motion. Database tests cover both key types, receipt backfill, replay/mismatched-piece rejection and repeatable migration. Unit and build checks remain part of the regression pass.
+
+
+## Visible treasure ejection and pickup direction
+
+Active fighters now receive a complete local rupture sequence when entering loot, even when a defeat snapshot arrives late. The old sequence subtracted server elapsed time and launched a whole pile within 280ms; that could skip the visible origin. The shared disabled-button theme also forced `transform:none!important`, keeping loot at its landing spots. Projectile art now animates in its own visual span while the real button stays disabled and stationary until landing. Server release, expiry, per-piece identity and inventory confirmation remain authoritative.
+
+The boss compresses, lights along body cracks, ruptures with a ground shockwave and ejects individual treasures in a seeded order. Each piece is visible inside the boss before taking a tumbling arc and landing with compression, bounce and dust. Typical piles emit across several seconds, allowing earlier pieces to be picked up while later ones are still coming out. Large piles use a bounded emission span. Explicit resume and reduced motion show settled treasure immediately. Status updates preserve the art nodes and do not restart flight/trail effects.
+
+The battlefield has no loot-race bar, visible countdown or remaining-time readout. Confirmed personal pickups add a brief spark ring, flying fragments and item-name flourish before disappearing; other students' claimed pieces simply vanish. Victory remains hidden until looting finishes. Closing mid-intro cancels pending ejections and effects. This presentation update requires no SQL beyond the previously documented phase78 individual-piece API.
+
+`npm run test:boss-loot` now also checks progressive emission, the rendered treasure's position inside the boss during its first visible frames under the actual disabled-button theme, stable art nodes during clock updates, late-snapshot intros, mid-intro exit cleanup, no timer DOM, resume and reduced motion.

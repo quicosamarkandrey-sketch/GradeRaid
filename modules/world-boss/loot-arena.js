@@ -48,11 +48,37 @@
    legacy.sort((a,b)=>(a.claimedAt||0)-(b.claimedAt||0)||String(a.id).localeCompare(String(b.id)));for(const receipt of legacy){let slot=0;while(slots.has(slot))slot++;slots.set(slot,receipt);}used.set(reward.id,slots);
   }return used;
  }
+ function pickupBurst(c,node,receipt){
+  if(motion.matches)return;const pop=document.createElement('div');pop.className='rla-pickup-pop';pop.setAttribute('aria-hidden','true');
+  pop.style.left=node.style.left;pop.style.top=(parseFloat(node.style.top)+node.offsetHeight/2)+'px';pop.style.setProperty('--drop-accent',node.style.getPropertyValue('--drop-accent'));
+  pop.innerHTML='<i></i>'+Array.from({length:8},(_,i)=>`<b style="--angle:${i*45}deg"></b>`).join('')+`<strong>${esc(receipt.itemName)}</strong>`;c.field.appendChild(pop);
+  const effects=c.field.querySelectorAll('.rla-pickup-pop');if(effects.length>8)effects[0].remove();schedule(c,()=>pop.remove(),900);
+ }
+ function endEmission(c){
+  for(const timer of c.emissionTimers){clearTimeout(timer);c.timers.delete(timer);}c.emissionTimers=[];c.emitting=false;c.root.classList.remove('rla-emitting');
+  for(const node of c.drops.values()){node._landed=true;node.classList.remove('rla-awaiting');node.classList.add('rla-landed');}
+ }
+ function directEmission(c){
+  const nodes=[...c.drops.values()],rand=random(c.run+':emission');for(let i=nodes.length-1;i>0;i--){const j=Math.floor(rand()*(i+1));[nodes[i],nodes[j]]=[nodes[j],nodes[i]];}
+  if(!c.cinematic){nodes.forEach(n=>{n._landed=true;n.classList.add('rla-landed');});return;}
+  c.root.classList.add('rla-cinematic','rla-emitting');c.emitting=true;
+  // A local presentation clock prevents network/poll latency from skipping the rupture.
+  // The server release/expiry clocks remain authoritative for every pickup.
+  const span=Math.max(1,nodes.length-1),gap=Math.min(180,Math.max(100,2800/span),8000/span);
+  nodes.forEach((node,i)=>{
+   const delay=550+i*gap;node._landed=false;node.dataset.emissionOrder=i;node.classList.add('rla-awaiting');node.style.setProperty('--drop-delay',delay+'ms');
+   c.emissionTimers.push(schedule(c,()=>{
+    if(!node.isConnected||c.taken.has(node.dataset.tokenKey))return;node.classList.remove('rla-awaiting');node.dataset.emitted='true';
+    const pulse=document.createElement('i');pulse.className='rla-ejection';pulse.setAttribute('aria-hidden','true');pulse.style.color=node.style.getPropertyValue('--drop-accent');c.field.appendChild(pulse);schedule(c,()=>pulse.remove(),320);
+   },delay));
+   c.emissionTimers.push(schedule(c,()=>{node._landed=true;node.classList.add('rla-landed');if(i===nodes.length-1){c.emitting=false;c.root.classList.remove('rla-emitting');if(boss()?.status==='loot'&&Date.now()>=opensAt(boss())&&wbcMyRecord(c.index)?.totalDamage>0&&boss()._raidLootVersion===2)message('Pick up each treasure. Your confirmed pieces are saved.');}update();},delay+1000));
+  });
+ }
  function collect(c,node,receipt){
   if(c.taken.has(node.dataset.tokenKey))return;c.taken.add(node.dataset.tokenKey);node.disabled=true;
   if(c.initial||motion.matches){node.remove();return;}
   // Confirmation precedes removal. Other clients remove this exact same piece.
-  node.classList.add(receipt.studentId===c.owner?'is-collected':'is-claimed-away');schedule(c,()=>node.remove(),receipt.studentId===c.owner?520:300);
+  if(receipt.studentId===c.owner)pickupBurst(c,node,receipt);node.classList.add(receipt.studentId===c.owner?'is-collected':'is-claimed-away');schedule(c,()=>node.remove(),receipt.studentId===c.owner?520:300);
   if(node===document.activeElement){const next=[...c.drops.values()].find(n=>n!==node&&n.isConnected&&!n.disabled);(next||c.root.querySelector('.rla-exit')).focus({preventScroll:true});}
  }
  function message(text){const el=session?.root.querySelector('#raid-loot-notice');if(el)el.textContent=text;}
@@ -61,28 +87,29 @@
   if(session&&same(session)&&session.index===index){update();return true;}
   if(WBR.bossIdx!=null&&WBR.bossIdx!==index)return false;
   stop();mountOverlay(index,b);wbrStop(true);WBR.phase='loot';WBR.bossIdx=index;
-  const overlay=document.getElementById('campaign-overlay'),scene=document.getElementById('camp-scene');overlay.classList.add('raid-loot-active');overlay.setAttribute('aria-label','Victory and shared loot race');overlay.scrollTop=0;scene.onclick=null;
+  const overlay=document.getElementById('campaign-overlay'),scene=document.getElementById('camp-scene');overlay.classList.add('raid-loot-active');overlay.setAttribute('aria-label','Boss treasure battlefield');overlay.scrollTop=0;scene.onclick=null;
   const root=document.createElement('section');root.id='raid-loot-arena';root.className=motion.matches?'is-reduced':'';
-  const elapsed=Math.max(0,Date.now()+(b._raidClockOffset||0)-startTime(b));root.style.setProperty('--victory-delay',Math.max(-1900,450-elapsed)+'ms');root.style.setProperty('--collapse-delay',Math.max(-1600,-elapsed)+'ms');
+  const cinematic=!resume&&!motion.matches&&b.status==='loot'&&(b.lootRewards||[]).some(r=>r.quantity>0);
+  if(!cinematic)root.classList.add('is-resumed');
   const art=typeof bveRenderBossArt==='function'?bveRenderBossArt(b,{id:'raid-loot-boss-art',stateClass:'state-defeated'}):esc(b.image||b.name);
-  root.innerHTML=`<header class="rla-header"><div><span>WORLD BOSS · SHARED LOOT</span><strong>${esc(b.name)}</strong></div><button type="button" class="rla-exit">Leave arena</button></header><div class="rla-victory"><span>RAID COMPLETE</span><h1>${esc(b.victoryTitle||'VICTORY')}</h1><p>${esc(b.victoryMessage||'The guardian has fallen. Treasure spills across the battlefield. Pick it up before your classmates do.')}</p></div><div class="rla-race-bar"><div><span id="raid-loot-state">Boss defeated</span><strong id="raid-loot-countdown"></strong></div><p>Pick up each treasure · first confirmed claim wins</p></div><div class="rla-field" aria-label="Scattered boss loot"><div class="rla-detonation" aria-hidden="true"><i></i><b></b><em></em></div><div class="rla-shockwave" aria-hidden="true"></div><div class="rla-boss">${art}<div class="rla-boss-seal" aria-hidden="true"></div></div><div class="rla-fragments" aria-hidden="true">${Array.from({length:motion.matches?0:28},(_,i)=>`<i style="--i:${i};--angle:${i*137.5}deg;--reach:${110+(i%7)*25}px"></i>`).join('')}</div></div><footer class="rla-footer"><p id="raid-loot-notice" role="status" aria-live="polite"></p><div id="raid-loot-secured"></div><div id="raid-loot-latest"></div><button type="button" class="rla-results">View raid results</button><p class="rla-inventory-note">Confirmed drops are saved in My Inventory.</p></footer>`;
+  root.innerHTML=`<header class="rla-header"><div><span>WORLD BOSS · TREASURE</span><strong>${esc(b.name)}</strong></div><button type="button" class="rla-exit">Leave arena</button></header><div class="rla-victory"><span>RAID COMPLETE</span><h1>${esc(b.victoryTitle||'VICTORY')}</h1><p>${esc(b.victoryMessage||'The boss has fallen. Your claimed treasure is yours to keep.')}</p></div><div class="rla-field" aria-label="Scattered boss loot"><div class="rla-detonation" aria-hidden="true"><i></i><b></b><em></em></div><div class="rla-shockwave" aria-hidden="true"></div><div class="rla-boss">${art}<svg class="rla-body-rift" viewBox="0 0 180 160" aria-hidden="true"><path d="m90 25-9 30 14 13-16 20 12 20-10 27m1-80-26-4-14-15m51 31 26-11 18 5m-57 27-26 9-17-7m54 17 26 1 16 17"/></svg><div class="rla-boss-seal" aria-hidden="true"></div></div><div class="rla-fragments" aria-hidden="true">${Array.from({length:motion.matches?0:28},(_,i)=>`<i style="--i:${i};--angle:${i*137.5}deg;--reach:${110+(i%7)*25}px"></i>`).join('')}</div></div><footer class="rla-footer"><p id="raid-loot-notice" role="status" aria-live="polite"></p><div id="raid-loot-secured"></div><div id="raid-loot-latest"></div><button type="button" class="rla-results">View raid results</button><p class="rla-inventory-note">Confirmed drops are saved in My Inventory.</p></footer>`;
   scene.appendChild(root);
-  const c={index,owner:currentUser.id,bossId:b._id,run:b.raidRunId||'legacy',root,field:root.querySelector('.rla-field'),drops:new Map(),busy:new Set(),timers:new Set(),taken:new Set(),initial:true,ready:false};session=c;
+  const c={index,owner:currentUser.id,bossId:b._id,run:b.raidRunId||'legacy',root,field:root.querySelector('.rla-field'),drops:new Map(),busy:new Set(),timers:new Set(),taken:new Set(),initial:true,ready:false,cinematic,emitting:false,emissionTimers:[]};session=c;
   root.querySelector('.rla-exit').onclick=()=>wbrCloseBattle();root.querySelector('.rla-results').onclick=()=>RaidExperience.openSummary(index);
   c.keys=event=>{if(event.key==='Escape'&&!event.defaultPrevented&&!document.querySelector('#modal-overlay[style*="flex"]')){event.preventDefault();wbrCloseBattle();}};document.addEventListener('keydown',c.keys);
-  let i=0;for(const reward of b.lootRewards||[])for(let slot=0;slot<Math.max(0,Math.floor(Number(reward.quantity)||0));slot++){
+  for(const reward of b.lootRewards||[])for(let slot=0;slot<Math.max(0,Math.floor(Number(reward.quantity)||0));slot++){
    const node=document.createElement('button'),key=JSON.stringify([reward.id,slot]);node.type='button';node.className='rla-drop';node.dataset.rewardId=reward.id;node.dataset.dropIndex=slot;node.dataset.tokenKey=key;
-   node.style.setProperty('--drop-delay',motion.matches?'0ms':Math.max(-2100,700+Math.min(i*19,280)-elapsed)+'ms');
+   node.dataset.rarity=reward.rarity||'Common';node.style.setProperty('--drop-delay','0ms');
    const tones={Common:'#c5d5df',Rare:'#8ecbef',Epic:'#c7a4ef',Legendary:'#ead18b'};node.style.setProperty('--drop-accent',tones[reward.rarity]||tones.Common);
-   node.onclick=()=>claim(c,reward.id,slot,node);c.drops.set(key,node);c.field.appendChild(node);i++;
+   node.onclick=()=>claim(c,reward.id,slot,node);c.drops.set(key,node);c.field.appendChild(node);
   }
   if(!c.drops.size)c.field.insertAdjacentHTML('beforeend','<p class="rla-empty">Your class conquered the boss. No extra loot was configured.</p>');
-  c.resize=new ResizeObserver(()=>scatter(c));c.resize.observe(c.field);scatter(c);update();c.clock=setInterval(update,200);
-  if(resume||elapsed>4000)root.classList.add('is-resumed');root.querySelector('.rla-exit').focus({preventScroll:true});return true;
+  c.resize=new ResizeObserver(()=>scatter(c));c.resize.observe(c.field);scatter(c);directEmission(c);update();c.clock=setInterval(update,200);
+  if(cinematic)message('Treasure is breaking free from the boss.');root.querySelector('.rla-exit').focus({preventScroll:true});return true;
  }
  async function claim(c,id,slot,node){
   const key=node.dataset.tokenKey;
-  if(!same(c)||c.busy.has(key)||c.taken.has(key)||Date.now()<opensAt(boss())||boss().status!=='loot'||!remaining(boss())||boss()._raidLootVersion!==2)return;
+  if(!node._landed||!same(c)||c.busy.has(key)||c.taken.has(key)||Date.now()<opensAt(boss())||boss().status!=='loot'||!remaining(boss())||boss()._raidLootVersion!==2)return;
   c.busy.add(key);update();const result=await wblrClaimReward(c.index,id,null,slot);c.busy.delete(key);if(!same(c))return;
   update();if(result?.ok)message(result.itemName+' picked up. Saved to My Inventory.');
   else{message(result?.reason||'Pickup not confirmed. Try again.');RaidService.action(c.index,'snapshot').then(()=>{if(same(c))update();});}
@@ -91,19 +118,18 @@
   const c=session;if(!c)return;if(!same(c)||!RaidService.visible(boss())){wbrCloseBattle();return;}
   const b=boss(),left=remaining(b),wait=Math.max(0,Math.ceil((opensAt(b)-Date.now())/1000)),live=b.status==='loot'&&left>0,ready=live&&!wait,rec=wbcMyRecord(c.index),eligible=!!rec&&rec.totalDamage>0;
   c.root.dataset.stage=!live?'closed':ready?'race':'burst';
-  c.root.querySelector('#raid-loot-state').textContent=!live?'Loot race finished':wait?'Loot scattering · get ready':'LOOT RACE LIVE';
-  c.root.querySelector('#raid-loot-countdown').textContent=!live?'':wait?'Opens in '+wait:Math.floor(left/60)+':'+String(left%60).padStart(2,'0')+' remaining';
   if(ready&&!c.ready){c.ready=true;message(b._raidLootVersion!==2?'Treasure pickup needs a teacher update before the race can begin.':eligible?'Treasure is on the floor. Pick up each piece.':'Victory! Only raiders who dealt damage can pick up treasure.');}
-  if(!live&&!c.finished){c.finished=true;message('The loot race has ended. Your confirmed drops are saved below.');}
+  if(!live&&!c.finished){c.finished=true;endEmission(c);c.root.classList.add('is-settled');message('Your confirmed treasure is saved below.');}
   const slots=claimedSlots(b);
   for(const node of c.drops.values()){
    const id=node.dataset.rewardId,slot=Number(node.dataset.dropIndex),reward=(b.lootRewards||[]).find(r=>String(r.id)===id);if(!reward)continue;
    const receipt=slots.get(reward.id)?.get(slot);if(receipt){collect(c,node,receipt);continue;}if(!node.isConnected)continue;
    const mine=wblrClaimedByStudent(b,reward.id,c.owner),busy=c.busy.has(node.dataset.tokenKey),limit=reward.claimLimit||1;
-   node.disabled=!ready||!eligible||mine>=limit||busy||b._raidLootVersion!==2;node.setAttribute('aria-busy',String(busy));
-   const state=busy?'Picking up…':mine>=limit?'Personal limit reached':!live?'Race finished':wait?'Get ready':!eligible?'Contribution required':'Pick up';
-   const markup=`<span class="rla-drop-dust" aria-hidden="true"></span><span class="rla-drop-icon">${glyph(reward.rarity)}</span><strong>${esc(reward.itemName)}</strong><span class="rla-drop-hint">${esc(state)}</span>`;
+   node.disabled=!node._landed||!ready||!eligible||mine>=limit||busy||b._raidLootVersion!==2;node.setAttribute('aria-busy',String(busy));
+   const state=busy?'Picking up…':mine>=limit?'Personal limit reached':!live?'Looting finished':!node._landed?'Landing…':wait?'Get ready':!eligible?'Contribution required':'Pick up';
+   const markup=`<span class="rla-drop-visual" aria-hidden="true"><span class="rla-drop-dust"></span><span class="rla-drop-icon">${glyph(reward.rarity)}</span></span><strong>${esc(reward.itemName)}</strong><span class="rla-drop-hint"></span>`;
    if(node._lootMarkup!==markup){node.innerHTML=markup;node._lootMarkup=markup;}
+   const hint=node.querySelector('.rla-drop-hint');if(hint.textContent!==state)hint.textContent=state;
    node.setAttribute('aria-label',`${reward.itemName}, ${reward.rarity||'Common'}. ${state}`);node.title=reward.itemName+' · '+(reward.rarity||'Common');
   }
   c.initial=false;
