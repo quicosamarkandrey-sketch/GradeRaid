@@ -547,7 +547,8 @@ begin
 
   update public.boss_events
      set current_hp = greatest(0, current_hp - p_damage),
-         status     = case when current_hp - p_damage <= 0 then 'defeated' else status end
+         -- start_loot_rush owns the loot status and its timestamps.
+         status     = status
    where id = p_boss_id and class_id = p_class_id
   returning current_hp into v_new_hp;
 

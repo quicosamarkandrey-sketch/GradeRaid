@@ -54,7 +54,7 @@ begin
    if jsonb_array_length(coalesce(b.boss_questions,'[]'))=0 then raise exception 'Add battle questions before launching';end if;
    if exists(select 1 from jsonb_array_elements(b.boss_questions) as candidate(value) where nullif(btrim(candidate.value->>'q'),'') is null or case when jsonb_typeof(candidate.value->'opts')='array' and (candidate.value->>'answer')~'^[0-9]+$' then jsonb_array_length(candidate.value->'opts')<2 or (candidate.value->>'answer')::integer>=jsonb_array_length(candidate.value->'opts') else true end) then raise exception 'Review every battle question and its correct answer before launching';end if;
    if b.end_date is not null and b.end_date<(now() at time zone 'Asia/Manila')::date then raise exception 'Update the event end date before launching';end if;
-   update boss_events set status='ended',ended_at=now() where class_id=b.class_id and id<>b.id and status in ('active','loot','defeated');
+   update boss_events set status='ended',ended_at=now() where class_id=b.class_id and id<>b.id and status::text in ('active','loot','defeated');
    update boss_events set status='active',current_hp=max_hp,raid_signals='[]',raid_run_id=gen_random_uuid(),defeated_at=null,ended_at=null,loot_started_at=null,loot_finalized_at=null where id=b.id;
    delete from boss_participants where boss_id=b.id;
    delete from loot_claims where boss_id=b.id;

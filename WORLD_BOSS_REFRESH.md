@@ -69,3 +69,12 @@ Phase changes have concise announcements and persistent phase indicators. Rage u
 Effects are bounded, ignore pointer input, clean up when leaving the battle and honor reduced-motion preferences with static cues. The new assets are local CSS/SVG with no additional image service or SQL migration.
 
 - `npm run test:boss-effects` — all six telegraphed skills, stable controls/answer identities, phase/rage/minion states, spawn acceleration, confirmed-hit presentation, 320/390/1440 layouts, reduced motion, exit cleanup and unchanged reward/progress state, using intercepted services.
+
+
+## Repair for `boss_status: "defeated"`
+
+If an installed database reports `invalid input value for enum boss_status: "defeated"`, run [supabase/phase76_world_boss_status_enum_fix.sql](supabase/phase76_world_boss_status_enum_fix.sql) in Supabase SQL Editor after phase75. GitHub deployment alone does not update the installed SQL functions. The repeatable repair preserves function grants, event data, authorization and reward rules; it changes only the incompatible status expressions.
+
+The launch path now compares legacy status names as text, avoiding an enum coercion of `defeated`. Legacy `apply_boss_damage` leaves status unchanged while returning zero HP/defeat; `start_loot_rush` retains responsibility for setting loot status and all loot timestamps. The current `world_boss_action` answer path continues to move directly into loot and award victory rewards atomically. No new enum value is needed. The historical migration files are corrected for fresh installs too.
+
+`npm run test:boss-db` now uses `boss_status` as an enum excluding `defeated`, reproduces both installed-function failures, applies the repair twice, and verifies legacy final hits plus the complete current launch/answer/reward/claim lifecycle. These checks use local PostgreSQL/PGlite, not the hosted database.
