@@ -78,3 +78,12 @@ If an installed database reports `invalid input value for enum boss_status: "def
 The launch path now compares legacy status names as text, avoiding an enum coercion of `defeated`. Legacy `apply_boss_damage` leaves status unchanged while returning zero HP/defeat; `start_loot_rush` retains responsibility for setting loot status and all loot timestamps. The current `world_boss_action` answer path continues to move directly into loot and award victory rewards atomically. No new enum value is needed. The historical migration files are corrected for fresh installs too.
 
 `npm run test:boss-db` now uses `boss_status` as an enum excluding `defeated`, reproduces both installed-function failures, applies the repair twice, and verifies legacy final hits plus the complete current launch/answer/reward/claim lifecycle. These checks use local PostgreSQL/PGlite, not the hosted database.
+
+
+## Phase75 compatibility with existing text boss IDs
+
+The current phase75 script detects `boss_events.id` and creates the answer-receipt and victory-reward foreign keys with that same type. The RPC parameter also uses the native column type, supporting UUID installations and existing text IDs such as `boss_legacy_science_01`. Existing IDs, participants, loot claims, receipts, reward ledgers and balances are preserved. An obsolete alternate-signature overload of this RPC is removed transactionally to avoid ambiguous PostgREST calls; authenticated-only execution grants are applied to the native signature, and the API schema cache is notified.
+
+For `boss_id uuid` versus `boss_events.id text` errors, run the **updated complete phase75 script** in Supabase SQL Editor, then the **updated phase76** repair. There is no need to convert or recreate the boss tables. Phase75 already includes the launch status-enum correction; phase76 also repairs the older damage function. A failed phase75 transaction has not installed the battle API successfully. Refresh the app after both scripts succeed.
+
+`npm run test:boss-db` runs the full lifecycle against both UUID and text primary keys, including non-UUID text IDs, repeat installation with paid rewards/history, real foreign-key validation/cascade, obsolete-overload removal, API grants and the enum repair. Tests remain local; hosted SQL must be applied separately.

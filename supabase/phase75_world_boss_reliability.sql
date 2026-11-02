@@ -14,21 +14,30 @@ alter table public.boss_participants add column if not exists boss_intro_seen bo
 alter table public.boss_participants add column if not exists last_answer_at timestamptz;
 alter table public.boss_participants add column if not exists revive_at timestamptz;
 alter table public.boss_participants add column if not exists ko_time timestamptz;
-create table if not exists public.boss_answer_receipts(
- boss_id uuid not null references public.boss_events(id) on delete cascade,run_id uuid not null,
- student_id text not null,question_idx integer not null,response jsonb not null,
- primary key(boss_id,run_id,student_id,question_idx)
-);
-create table if not exists public.boss_victory_rewards(
- boss_id uuid not null references public.boss_events(id) on delete cascade,run_id uuid not null,
- student_id text not null,xp integer not null,coins integer not null,created_at timestamptz not null default now(),
- primary key(boss_id,run_id,student_id)
-);
+-- Existing installations use either text or UUID boss IDs. Copy the actual
+-- parent key type; never convert existing IDs or their dependent records.
+do $boss_keys$
+declare boss_key_type text;
+begin
+ select format_type(atttypid,atttypmod) into boss_key_type
+ from pg_attribute where attrelid='public.boss_events'::regclass
+ and attname='id' and not attisdropped;
+ if boss_key_type is null then raise exception 'boss_events.id is required';end if;
+ execute format('create table if not exists public.boss_answer_receipts(
+   boss_id %s not null references public.boss_events(id) on delete cascade,
+   run_id uuid not null,student_id text not null,question_idx integer not null,response jsonb not null,
+   primary key(boss_id,run_id,student_id,question_idx))',boss_key_type);
+ execute format('create table if not exists public.boss_victory_rewards(
+   boss_id %s not null references public.boss_events(id) on delete cascade,
+   run_id uuid not null,student_id text not null,xp integer not null,coins integer not null,
+   created_at timestamptz not null default now(),primary key(boss_id,run_id,student_id))',boss_key_type);
+end;
+$boss_keys$;
 alter table public.boss_answer_receipts enable row level security;
 alter table public.boss_victory_rewards enable row level security;
 revoke all on public.boss_answer_receipts,public.boss_victory_rewards from anon,authenticated;
 
-create or replace function public.world_boss_action(p_boss_id uuid,p_action text,p_payload jsonb default '{}')
+create or replace function public.world_boss_action(p_boss_id public.boss_events.id%TYPE,p_action text,p_payload jsonb default '{}')
 returns jsonb language plpgsql security definer set search_path=public as $$
 declare
  b public.boss_events;viewer public.profiles;rec public.boss_participants;winner record;
@@ -174,6 +183,23 @@ begin
  'inventory',coalesce((select jsonb_agg(to_jsonb(i)) from inventory i where i.student_id=sid),'[]'),
  'reward',(select to_jsonb(r) from boss_victory_rewards r where r.boss_id=b.id and r.run_id=b.raid_run_id and r.student_id=sid));
 end; $$;
-revoke all on function public.world_boss_action(uuid,text,jsonb) from public,anon;
-grant execute on function public.world_boss_action(uuid,text,jsonb) to authenticated;
+-- Resolve the native signature for grants and remove only an obsolete overload
+-- of this RPC, so PostgREST cannot see two functions with identical JSON args.
+do $boss_rpc$
+declare boss_key_type text;target regprocedure;obsolete regprocedure;
+begin
+ select format_type(atttypid,null) into boss_key_type from pg_attribute
+ where attrelid='public.boss_events'::regclass and attname='id' and not attisdropped;
+ target := to_regprocedure(format('public.world_boss_action(%s,text,jsonb)',boss_key_type));
+ for obsolete in select p.oid::regprocedure from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+ where n.nspname='public' and p.proname='world_boss_action'
+ and p.pronargs=3 and p.proargtypes[1]='text'::regtype and p.proargtypes[2]='jsonb'::regtype
+ and p.oid<>target::oid loop
+   execute format('drop function %s',obsolete);
+ end loop;
+ execute format('revoke all on function %s from public,anon',target);
+ execute format('grant execute on function %s to authenticated',target);
+end;
+$boss_rpc$;
+notify pgrst, 'reload schema';
 commit;
