@@ -111,3 +111,20 @@
 .raid-battle:not(.raid-loot-active) .wbm-opt.correct{background:#175744;border-color:#80e0ae;color:#e3fff1!important}.raid-battle:not(.raid-loot-active) .wbm-opt.wrong{background:#663043;border-color:#f49498;color:#ffe6ed!important}
 
 @media(max-width:600px){#modal-content .wbs-skill-row{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}#modal-content .wbs-skill-row>label{grid-column:1}#modal-content .wbs-skill-row>div:nth-child(2){grid-column:2/-1}#modal-content .wbs-skill-row select,#modal-content .wbs-skill-row input[type=number]{width:100%!important;max-width:100%;min-height:44px}#modal-content .wbs-skill-row>button{min-height:44px}}
+
+/* Original answer buttons leave the question panel for movement skills. */
+#rfx-answer-flight{position:fixed;inset:0;z-index:20;pointer-events:none;overflow:visible}
+.raid-battle #rfx-answer-flight .rfx-choice{position:absolute;left:0;top:0;width:var(--rfx-flight-width,240px);height:auto;min-height:64px;max-height:150px;margin:0;padding:13px 15px;overflow:auto;pointer-events:auto;animation:none!important;transform-origin:center;box-shadow:0 10px 30px #050c2a80,inset 0 1px #d2e9ff29;border-width:2px;background:linear-gradient(145deg,#315e83f5,#243b62f5);font-size:14px;line-height:1.4;text-align:left;will-change:transform}
+.raid-battle #rfx-answer-flight.rfx-flight-gravity_well .rfx-choice{border-color:#bd96ff;background:linear-gradient(135deg,#583f7df5,#28385df5)}
+.raid-battle #rfx-answer-flight.rfx-flight-phantom_orbit .rfx-choice{border-color:#92b2ff;background:linear-gradient(135deg,#354b88f5,#34375df5)}
+.raid-battle #rfx-answer-flight.rfx-flight-earthquake .rfx-choice{border-color:#dcc391}
+.raid-battle #rfx-answer-flight.rfx-flight-berserk_roar .rfx-choice{border-color:#f49091}
+.rfx-flight-placeholder{grid-column:1/-1;display:grid;place-items:center;min-height:90px;padding:16px;color:#a9c8e4;font:500 12px/1.6 var(--fb);text-align:center;border:1px dashed #8cb5db50;border-radius:9px;background:#172d482e}
+.raid-battle #rfx-answer-flight .rfx-choice.rfx-obscured{color:transparent!important;text-shadow:none!important}
+.raid-battle #rfx-answer-flight .rfx-choice.rfx-obscured>*{opacity:0!important}
+.raid-battle #rfx-answer-flight .rfx-choice.rfx-obscured:after{content:attr(data-rfx-cover);position:absolute;inset:0;display:grid;place-items:center;padding:8px;pointer-events:none;background:linear-gradient(135deg,#4b3448,#25344d);color:#f6dbe7;font:650 11px/1.5 var(--fb);border-radius:inherit}
+.raid-battle #rfx-answer-flight.rfx-flight-earthquake .rfx-obscured:after{background:linear-gradient(145deg,#584b3d 0 25%,#2b2928 26% 53%,#60513c 54% 57%,#25282f 58%);color:#f0dfc0}
+@media(max-width:600px){.raid-battle #rfx-answer-flight .rfx-choice{font-size:11px;min-height:60px;padding:10px 11px}.rfx-flight-placeholder{font-size:10px}}
+
+/* Only the question and skill cue remain in the panel while choices are airborne. */
+.raid-battle #camp-options:has(.rfx-flight-placeholder){display:none}

@@ -49,9 +49,54 @@
  const choiceClasses=['rfx-choice','rfx-obscured','rfx-aimed','rfx-meteor-mark','rfx-mirror-turn'];
  const movingSkills=new Set(['chaos_wind','earthquake','berserk_roar','gravity_well','phantom_orbit']);
  const challenges={gravity_well:{hint:'Gravity Well · catch a choice as it is pulled into the vortex.'},phantom_orbit:{hint:'Phantom Orbit · track the moving answer, not its original position.'},lightning_storm:{hint:'Lightning Storm · ground a charged choice before answering.',cover:'Charged · tap to ground'},glacial_prison:{hint:'Glacial Prison · tap a frozen choice to shatter its ice.',cover:'Frozen · tap to shatter'},void_lance:{hint:'Void Lance · dispel the seal, then answer.',cover:'Sealed · tap to dispel'},earthquake:{hint:'Earthquake · shifting ground buries choices. Tap to uncover.',cover:'Buried · tap to uncover'},chaos_wind:{hint:'Chaos Wind · catch the answer while the choices are being swept away.'},darkness:{hint:'Eclipse · tap a shadowed choice to reveal it, then answer.',cover:'Shadowed · tap to reveal'},mirror_trick:{hint:'Mirror Trick · choices switch places. Track the answer text.'},berserk_roar:{hint:'Berserk Roar · tap a disrupted choice to regain focus.',cover:'Disrupted · tap to focus'},meteor_shower:{hint:'Meteor Shower · marked choices will shatter. Tap to reform.',cover:'Shattered · tap to reform'}};
+ function challengeAlive(c){return c.list.isConnected&&c.nodes.every(n=>n.isConnected&&(c.flight||c.list).contains(n))&&(!c.origins||c.origins.every(o=>o.marker.isConnected));}
+ function landChoices(c){
+  if(!c.flight)return;
+  const focus=document.activeElement;c.flyAnimations.forEach(a=>a.cancel());cancelAnimationFrame(c.flightFrame);
+  window.removeEventListener('resize',c.flightResize);document.getElementById('campaign-overlay')?.removeEventListener('scroll',c.flightResize);
+  for(const origin of c.origins){if(origin.marker.isConnected)origin.marker.replaceWith(origin.node);else origin.node.remove();}
+  c.flight.remove();c.flightPlaceholder.remove();c.list.style.minHeight=c.originalMinHeight;
+  c.nodes.forEach(n=>n.style.removeProperty('--rfx-flight-width'));if(c.nodes.includes(focus)&&focus.isConnected)focus.focus({preventScroll:true});
+ }
+ function releaseChoices(c,spec){
+  if(media.matches||!movingSkills.has(c.kind))return;
+  const overlay=document.getElementById('campaign-overlay'),focus=document.activeElement,starts=c.nodes.map(n=>n.getBoundingClientRect());
+  c.originalMinHeight=c.list.style.minHeight;c.list.style.minHeight=Math.max(80,c.list.getBoundingClientRect().height)+'px';
+  c.origins=c.nodes.map(node=>{const marker=document.createComment('raid choice '+node.id);node.before(marker);return {node,marker};});
+  c.flight=document.createElement('div');c.flight.id='rfx-answer-flight';c.flight.className='rfx-flight-'+c.kind;c.flight.setAttribute('role','group');c.flight.setAttribute('aria-label','Moving answer choices');
+  c.flightPlaceholder=document.createElement('div');c.flightPlaceholder.className='rfx-flight-placeholder';c.flightPlaceholder.setAttribute('aria-hidden','true');c.flightPlaceholder.textContent='The choices have been scattered across the battlefield.';c.list.appendChild(c.flightPlaceholder);
+  overlay.appendChild(c.flight);c.nodes.forEach(n=>c.flight.appendChild(n));c.flyAnimations=[];
+  const layout=initial=>{
+   if(context?.challenge!==c||!challengeAlive(c))return;
+   const current=initial?starts:c.nodes.map(n=>n.getBoundingClientRect());c.flyAnimations.forEach(a=>a.cancel());c.flyAnimations=[];
+   const vw=innerWidth,vh=innerHeight,bw=vw<600?Math.min(168,Math.max(118,(vw-36)/2)):Math.min(270,Math.max(180,vw*.18));
+   const hud=document.querySelector('.raid-battle .camp-hud')?.getBoundingClientRect(),question=document.querySelector('.raid-battle .camp-question-box')?.getBoundingClientRect();
+   c.nodes.forEach((node,i)=>{
+    node.style.setProperty('--rfx-flight-width',bw+'px');const bh=node.offsetHeight,minX=12,maxX=Math.max(minX,vw-bw-12),minY=Math.max(16,Math.min(vh-100,(hud?.bottom||70)+12));
+    const questionTop=question&&question.top>minY+bh+30?question.top-14:vh-12,maxY=Math.max(minY,Math.min(vh-bh-12,questionTop-bh));
+    const midX=(minX+maxX)/2,midY=(minY+maxY)/2,rx=(maxX-minX)/2,ry=(maxY-minY)/2,phase=i/c.nodes.length*Math.PI*2;
+    const points=Array.from({length:9},(_,j)=>{
+     const angle=phase+j/8*Math.PI*2;
+     let x=midX+rx*Math.cos(angle),y=midY+ry*Math.sin(angle),scale=.94;
+     if(c.kind==='chaos_wind'){x=minX+(maxX-minX)*(.5+.5*Math.sin(angle));y=minY+(maxY-minY)*(.5+.5*Math.cos(angle*2+i));scale=.9;}
+     if(c.kind==='gravity_well'){const pull=j%2?.18:.95;x=midX+rx*Math.cos(angle)*pull;y=midY+ry*Math.sin(angle)*pull;scale=j%2?.82:.98;}
+     if(c.kind==='earthquake'){x=minX+(maxX-minX)*(.5+.5*Math.sin(angle*3+i));y=minY+(maxY-minY)*(.5+.5*Math.cos(angle*2));}
+     if(c.kind==='berserk_roar'){const force=j%2?.95:.35;x=midX+rx*Math.cos(angle)*force;y=midY+ry*Math.sin(angle)*force;}
+     return {transform:`translate(${Math.max(minX,Math.min(maxX,x))}px,${Math.max(minY,Math.min(maxY,y))}px) scale(${scale}) rotate(${Math.sin(angle)*2}deg)`,offset:j/8};
+    });
+    points[8]={...points[0],offset:1};const entry=initial?280:150;
+    c.flyAnimations.push(node.animate([{transform:`translate(${current[i].x}px,${current[i].y}px)`},{transform:points[0].transform}],{duration:entry,easing:'cubic-bezier(.2,.7,.3,1)',fill:'forwards'}));
+    const duration=c.kind==='chaos_wind'?({slow:4200,medium:3000,fast:2100}[spec.windSpeed]||3000):c.kind==='gravity_well'?2900:c.kind==='earthquake'?2500:3200;
+    c.flyAnimations.push(node.animate(points,{duration,delay:entry,iterations:Infinity,easing:c.kind==='earthquake'?'steps(2,end)':'linear'}));
+   });
+  };
+  c.flightResize=()=>{cancelAnimationFrame(c.flightFrame);c.flightFrame=requestAnimationFrame(()=>layout(false));};
+  window.addEventListener('resize',c.flightResize);overlay.addEventListener('scroll',c.flightResize,{passive:true});layout(true);
+  if(c.nodes.includes(focus))focus.focus({preventScroll:true});
+ }
  function clearChallenge(){
   if(!context?.challenge)return;const c=context.challenge;context.challenge=null;
-  for(const timer of c.timers)clear(context,timer);
+  for(const timer of c.timers)clear(context,timer);landChoices(c);
   c.nodes.forEach(node=>{node.classList.remove(...choiceClasses);node.removeAttribute('data-rfx-cover');node.style.removeProperty('--rfx-slot');node.style.removeProperty('--rfx-dir');});
   c.list.classList.remove('rfx-challenge-'+c.kind);c.list.style.removeProperty('--rfx-choice-cycle');c.hint.remove();
  }
@@ -70,7 +115,7 @@
   const hint=document.createElement('div');hint.id='rfx-challenge-hint';hint.setAttribute('role','status');hint.textContent=challenges[kind].hint;list.before(hint);
   const c={kind,list,nodes,hint,timers:[],aimUntil:0,revealed:new WeakMap()};s.ctx.challenge=c;list.classList.add('rfx-challenge-'+kind);list.style.setProperty('--rfx-choice-cycle',({slow:1.8,medium:1.25,fast:.9}[spec.windSpeed]||1.25)+'s');
   nodes.forEach((node,i)=>{node.classList.add('rfx-choice');node.style.setProperty('--rfx-slot',i);node.style.setProperty('--rfx-dir',i%2?1:-1);node.dataset.rfxCover=challenges[kind].cover||'';});
-  const schedule=(fn,ms)=>c.timers.push(later(s.ctx,()=>{if(context?.challenge!==c)return;if(WBR.answerPending||!nodes.every(n=>n.isConnected&&list.contains(n))){clearChallenge();return;}fn();},ms));
+  const schedule=(fn,ms)=>c.timers.push(later(s.ctx,()=>{if(context?.challenge!==c)return;if(WBR.answerPending||!challengeAlive(c)){clearChallenge();return;}fn();},ms));
   function obscure(count){
    nodes.forEach(n=>n.classList.remove('rfx-obscured','rfx-meteor-mark'));
    const candidates=nodes.filter(n=>Date.now()-(c.revealed.get(n)||0)>1500&&n!==document.activeElement).sort(()=>Math.random()-.5);
@@ -87,17 +132,18 @@
    const count=kind==='darkness'?nodes.length-1:['lightning_storm','void_lance'].includes(kind)?1:Math.max(1,Math.floor(nodes.length/2));obscure(count);
    for(let t=1900;t<duration-500;t+=1900)schedule(()=>obscure(count),t);
   }
+  releaseChoices(c,spec);
   schedule(clearChallenge,duration);
  }
  // The first click on a concealed choice only reveals it; it never submits a blind answer.
  document.addEventListener('click',event=>{
-  const c=context?.challenge,node=event.target.closest?.('#camp-options button.rfx-choice');if(!c||!node||!c.nodes.includes(node))return;
+  const c=context?.challenge,node=event.target.closest?.('.raid-battle button.rfx-choice');if(!c||!node||!c.nodes.includes(node))return;
   if(node.classList.contains('rfx-obscured')){event.preventDefault();event.stopImmediatePropagation();node.classList.remove('rfx-obscured','rfx-meteor-mark');if(c.kind==='glacial_prison'&&!media.matches){const r=node.getBoundingClientRect();effect('ice-shatter',Array.from({length:7},(_,i)=>`<i style="--x:${r.x+r.width/2}px;--y:${r.y+r.height/2}px;--angle:${i*51}deg"></i>`).join(''),650,'screen');}c.revealed.set(node,Date.now());c.aimUntil=Date.now()+800;c.hint.textContent='Choice revealed · tap again to answer.';node.focus({preventScroll:true});return;}
   clearChallenge();
  },true);
- document.addEventListener('pointerover',event=>{const c=context?.challenge,node=event.target.closest?.('#camp-options button.rfx-choice');if(c&&node&&c.nodes.includes(node)&&!movingSkills.has(c.kind))node.classList.add('rfx-aimed');},true);
- document.addEventListener('pointerout',event=>{const node=event.target.closest?.('#camp-options button.rfx-choice');if(node&&!node.contains(event.relatedTarget))node.classList.remove('rfx-aimed');},true);
- document.addEventListener('pointerdown',event=>{const c=context?.challenge,node=event.target.closest?.('#camp-options button.rfx-choice');if(c&&node&&c.nodes.includes(node)){c.pressed=true;c.aimUntil=Date.now()+800;if(!movingSkills.has(c.kind))node.classList.add('rfx-aimed');}},true);
+ document.addEventListener('pointerover',event=>{const c=context?.challenge,node=event.target.closest?.('.raid-battle button.rfx-choice');if(c&&node&&c.nodes.includes(node)&&!movingSkills.has(c.kind))node.classList.add('rfx-aimed');},true);
+ document.addEventListener('pointerout',event=>{const node=event.target.closest?.('.raid-battle button.rfx-choice');if(node&&!node.contains(event.relatedTarget))node.classList.remove('rfx-aimed');},true);
+ document.addEventListener('pointerdown',event=>{const c=context?.challenge,node=event.target.closest?.('.raid-battle button.rfx-choice');if(c&&node&&c.nodes.includes(node)){c.pressed=true;c.aimUntil=Date.now()+800;if(!movingSkills.has(c.kind))node.classList.add('rfx-aimed');}},true);
  document.addEventListener('pointerup',()=>{if(context?.challenge){context.challenge.pressed=false;context.challenge.aimUntil=Date.now()+800;}},true);
  document.addEventListener('pointercancel',()=>{if(context?.challenge)context.challenge.pressed=false;},true);
  // Foreground weather crosses the reading plane without intercepting clicks.
@@ -182,7 +228,7 @@
  }
  function minionHit(id,correct){const s=scope();if(!s)return;const node=document.getElementById('wbm-minion-alert-'+id);if(!node)return;node.classList.remove('rfx-arrive-left','rfx-arrive-right');node.classList.add(correct?'rfx-minion-defeat':'rfx-minion-resist');if(!correct)later(s.ctx,()=>node.classList.remove('rfx-minion-resist'),600);}
  function hit(damage,critical=false){const s=scope();if(!s)return;const el=effect('hit'+(critical?' is-critical':''),`${svg('hit','rfx-hit-sigil')}<span class="rfx-hit-value">−${Math.max(0,Number(damage)||0).toLocaleString()}<small>${critical?'Critical strike':'Confirmed hit'}</small></span>`,1100);if(el)el.setAttribute('aria-hidden','true');s.stage.classList.add('rfx-impact');later(s.ctx,()=>s.stage.classList.remove('rfx-impact'),420);}
- function sync(index){const s=scope();if(!s||s.ctx.index!==index)return;if(s.ctx.challenge&&(WBR.answerPending||!s.ctx.challenge.nodes.every(n=>n.isConnected)))clearChallenge();
+ function sync(index){const s=scope();if(!s||s.ctx.index!==index)return;if(s.ctx.challenge&&(WBR.answerPending||!challengeAlive(s.ctx.challenge)))clearChallenge();
   const p=wbpGetCurrentPhase(s.boss),number=Number(p.phase||1);s.scene.dataset.rfxPhase=String(number);
   document.getElementById('rfx-phase').innerHTML=`${svg('phase')}<strong>Phase ${number}</strong><span>${esc(p.label||p.name||'Battle')}</span>`;
   if(s.ctx.phase!==null&&s.ctx.phase!==number)phase(index,number);else s.ctx.phase=number;
