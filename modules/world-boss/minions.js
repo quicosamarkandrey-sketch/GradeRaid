@@ -281,6 +281,7 @@ window.wbmAnswerMinion = function (bossIdx, minionId, chosenOpt) {
   if (!q) return;
 
   const isCorrect = chosenOpt === q.answer;
+  window.RaidFX?.minionHit(minionId,isCorrect);
 
   document.querySelectorAll('#wbm-opts-'+CSS.escape(minionId)+' .wbm-opt').forEach(el=>{el.classList.add('disabled');el.disabled=true;el.onclick=null;});
   const choices=document.getElementById('wbm-opts-'+minionId);
@@ -509,6 +510,7 @@ function _wbmRefreshBattleArea(bossIdx) {
     }
     const anyMinion = wbmGetCurrentMinion(bossIdx);
     if (anyMinion) wbmStartMinionCountdown(bossIdx);
+    window.RaidFX?.minions();
     return;
   }
 

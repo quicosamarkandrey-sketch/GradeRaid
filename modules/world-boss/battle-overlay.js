@@ -83,7 +83,7 @@
       if (!boss || boss.status !== 'active') return;
       var s = wbmSettings(boss);
       if (!s.enabled) return;
-      var delay = wbeRandomDelay(s);
+      var delay = wbeRandomDelay(s,bossIdx);
       WBM.spawnInterval = setTimeout(function () {
         var liveBoss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
         if (!liveBoss || liveBoss.status !== 'active') return;
@@ -109,11 +109,13 @@ var WBE = { activeBossIdx: null };
 
 // ── Random delay helper ───────────────────────────────────────────────────────
 
-function wbeRandomDelay(settings) {
+function wbeRandomDelay(settings,bossIdx) {
   var base = Math.max(10, parseInt(settings.spawnIntervalSec) || 35) * 1000;
   var min  = Math.max(4500, base * 0.45);
   var max  = Math.max(min + 1000, base * 1.35);
-  return Math.round(min + Math.random() * (max - min));
+  const boss=Number.isInteger(bossIdx)?AppStore.getBossEvent(bossIdx):null;
+  const mult=boss&&typeof wbrageIsActive==='function'&&wbrageIsActive(boss)?Math.max(1,Math.min(10,Number(wbrageSettings(boss).spawnMultiplier)||1)):1;
+  return Math.max(1500,Math.round((min+Math.random()*(max-min))/mult));
 }
 
 // ── Spark field particle background ──────────────────────────────────────────

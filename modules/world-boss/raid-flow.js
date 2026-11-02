@@ -49,6 +49,7 @@ function wbrBossStage(boss) {
 // ── Stop all WBR timers ───────────────────────────────────────────────────────
 
 function wbrStop() {
+  window.RaidFX?.stop();
   clearInterval(WBR.typingTimer);
   clearInterval(WBR.refreshTimer);
   WBR.typingTimer  = null;
@@ -112,6 +113,7 @@ function wbrUpdateHUD() {
   if (enemyBar)   enemyBar.style.display = 'block';
   if (enemyName)  enemyName.textContent  = boss.name + ' · ' + s;
   if (enemyHp)    enemyHp.style.width    = pct + '%';
+  window.RaidFX?.sync(WBR.bossIdx);
 }
 
 // ── Typewriter ────────────────────────────────────────────────────────────────
@@ -261,6 +263,7 @@ function wbrRenderSideOverlays() {
 
   var anyMinion = wbmGetCurrentMinion(WBR.bossIdx);
   if (anyMinion) wbmStartMinionCountdown(WBR.bossIdx);
+  window.RaidFX?.minions();
 }
 
 // ── Encounter screen ──────────────────────────────────────────────────────────
@@ -289,7 +292,7 @@ function wbrShowEncounter() {
     if (enemy.sprite && enemy.sprite.indexOf('<') !== -1) { spriteEl.innerHTML = enemy.sprite; }
     else { spriteEl.textContent = enemy.sprite || '💀'; }
   }
-  if(typeof BVS!=='undefined'){BVS.init('wb-boss-sprite-art');if(wbrPct(boss)<=30)BVS.enterRage();}
+  if(typeof BVS!=='undefined'){BVS.init('wb-boss-sprite-art');if(typeof wbrageIsActive==='function'&&wbrageIsActive(boss))BVS.enterRage();}
   if(typeof BHS!=='undefined')BHS.reset();
   document.getElementById('camp-enemy-title').textContent = enemy.title;
 
@@ -307,6 +310,9 @@ function wbrShowEncounter() {
   }
   wbrRenderSideOverlays();
   if(typeof wbsStartSkillLoop==='function')wbsStartSkillLoop(WBR.bossIdx);
+  if(typeof wbpCheckPhaseChange==='function')wbpCheckPhaseChange(WBR.bossIdx);
+  if(typeof wbrageCheckAndActivate==='function')wbrageCheckAndActivate(WBR.bossIdx);
+  window.RaidFX?.sync(WBR.bossIdx);
 }
 
 // ── Answer handler ────────────────────────────────────────────────────────────
@@ -348,8 +354,8 @@ async function wbrAnswer(bossIdx, qIdx, choice) {
     document.getElementById('wbr-opt-'+choice)?.classList.add(correct?'correct':'wrong');
     document.getElementById('wbr-opt-'+q.answer)?.classList.add('correct');
     feedback.textContent=correct?(result.isCrit?'Critical hit · ':'Correct · ')+result.damage.toLocaleString()+' damage':'Not quite. The highlighted option is correct.';
-    if(correct){if(typeof BVS!=='undefined')BVS.request('hit',400);wbrRecordFeed(bossIdx,{type:outcome==='defeated'?'kill':'hit',studentId,name:currentUser.name,init:currentUser.init,color:currentUser.color,damage:result.damage,crit:result.isCrit});
-      document.getElementById('camp-enemy-sprite')?.classList.add('raid-hit');setTimeout(()=>document.getElementById('camp-enemy-sprite')?.classList.remove('raid-hit'),400);}
+    if(correct){if(window.RaidFX)RaidFX.hit(result.damage,result.isCrit);else if(typeof BVS!=='undefined')BVS.request('hit',400);wbrRecordFeed(bossIdx,{type:outcome==='defeated'?'kill':'hit',studentId,name:currentUser.name,init:currentUser.init,color:currentUser.color,damage:result.damage,crit:result.isCrit});
+      if(!window.RaidFX){document.getElementById('camp-enemy-sprite')?.classList.add('raid-hit');setTimeout(()=>document.getElementById('camp-enemy-sprite')?.classList.remove('raid-hit'),400);}}
     const wait=Math.max(1100,Number(cooldown)*1000);WBR.nextAnswerAt=Date.now()+wait;
     if(cooldown>1&&outcome!=='defeated')feedback.textContent+=' Next question in '+cooldown+' seconds.';
     WBR.answerTimer=setTimeout(()=>{

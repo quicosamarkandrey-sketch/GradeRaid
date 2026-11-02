@@ -17,11 +17,11 @@ window.WBS = {
 // ── Skill defaults ────────────────────────────────────────────────────────────
 
 window.WBS_SKILL_DEFAULTS = {
-  earthquake:   { id:'earthquake',   name:'Earthquake',    emoji:'🌋', desc:'Screen shakes violently.',                  enabled:true, durationSec:4, cooldownSec:45, triggerPhase:'any' },
-  chaos_wind:   { id:'chaos_wind',   name:'Chaos Wind',    emoji:'🌪️', desc:'Answer choices drift horizontally.',        enabled:true, durationSec:8, cooldownSec:50, triggerPhase:'any', windSpeed:'medium' },
+  earthquake:   { id:'earthquake',   name:'Earthquake',    emoji:'🌋', desc:'Fractures and a heavy boss stomp ripple through the arena.',                  enabled:true, durationSec:4, cooldownSec:45, triggerPhase:'any' },
+  chaos_wind:   { id:'chaos_wind',   name:'Chaos Wind',    emoji:'🌪️', desc:'Wind currents coil around the boss; answer buttons stay steady.',        enabled:true, durationSec:8, cooldownSec:50, triggerPhase:'any', windSpeed:'medium' },
   darkness:     { id:'darkness',     name:'Darkness',      emoji:'🌑', desc:'Background dims. Question area stays lit.', enabled:true, durationSec:7, cooldownSec:40, triggerPhase:'any' },
   mirror_trick: { id:'mirror_trick', name:'Mirror Trick',  emoji:'🪞', desc:'Answer choices are randomly reordered.',    enabled:true, durationSec:0, cooldownSec:60, triggerPhase:'any' },
-  berserk_roar: { id:'berserk_roar', name:'Berserk Roar',  emoji:'😤', desc:'Answer buttons vibrate briefly.',           enabled:true, durationSec:3, cooldownSec:35, triggerPhase:'any' },
+  berserk_roar: { id:'berserk_roar', name:'Berserk Roar',  emoji:'😤', desc:'A shockwave expands from the boss; answer buttons stay steady.',           enabled:true, durationSec:3, cooldownSec:35, triggerPhase:'any' },
   meteor_shower:{ id:'meteor_shower',name:'Meteor Shower', emoji:'☄️', desc:'Cosmetic meteor animation.',                enabled:true, durationSec:6, cooldownSec:55, triggerPhase:'any' },
 };
 
@@ -147,6 +147,7 @@ window.wbsFireSkill = function (bossIdx, skillId) {
   const skills = wbsGetSkills(boss);
   const skill  = skills[skillId]; if (!skill || !skill.enabled) return;
   wbsStartCooldown(bossIdx, skillId, skill.cooldownSec || 40);
+  if(window.RaidFX?.cast(bossIdx,skillId,skill))return;
   switch (skillId) {
     case 'earthquake':    wbsEffect_earthquake(skill);    break;
     case 'chaos_wind':    wbsEffect_chaos_wind(skill);    break;
@@ -184,9 +185,11 @@ window.wbsStartSkillLoop = function (bossIdx) {
     if (skill) wbsFireSkill(bossIdx, skill.id);
     const minSec = Math.max(5,  parseInt(boss.skillIntervalMin) || 15);
     const maxSec = Math.max(minSec + 5, parseInt(boss.skillIntervalMax) || 35);
-    WBS.loopTimer = setTimeout(_tick, (minSec + Math.random() * (maxSec - minSec)) * 1000);
+    const mult=typeof wbrageIsActive==='function'&&wbrageIsActive(boss)?Math.max(1,Math.min(10,Number(wbrageSettings(boss).skillMultiplier)||1)):1;
+    WBS.loopTimer = setTimeout(_tick,Math.max(1800,(minSec+Math.random()*(maxSec-minSec))/mult*1000));
   }
-  WBS.loopTimer = setTimeout(_tick, (8 + Math.random() * 10) * 1000);
+  const firstBoss=AppStore.getBossEvent(bossIdx),enraged=typeof wbrageIsActive==='function'&&wbrageIsActive(firstBoss),mult=enraged?Math.max(1,Math.min(10,Number(wbrageSettings(firstBoss).skillMultiplier)||1)):1;
+  WBS.loopTimer = setTimeout(_tick,Math.max(1800,(8+Math.random()*10)/mult*1000));
 };
 
 window.wbsStopSkillLoop = function () {

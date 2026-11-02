@@ -136,7 +136,7 @@ function _wbrageAccelerateSpawns(bossIdx) {
   WBRAGE._rageSpawnBossIdx  = bossIdx;
   if (typeof wbmStopSpawnLoop === 'function') {
     wbmStopSpawnLoop();
-    setTimeout(() => { if (typeof wbmStartSpawnLoop === 'function') wbmStartSpawnLoop(bossIdx); }, 100);
+    setTimeout(()=>{if(typeof wbmStartSpawnLoop==='function'&&typeof WBR!=='undefined'&&WBR.bossIdx===bossIdx&&document.querySelector('.raid-battle.open'))wbmStartSpawnLoop(bossIdx);},100);
   }
 }
 
@@ -154,13 +154,16 @@ function _wbrageCleanupVisuals() {
 
 window.wbrageCheckAndActivate = function (bossIdx) {
   const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
+  if(window.RaidFX&&(typeof WBR==='undefined'||WBR.bossIdx!==bossIdx||!document.querySelector('.raid-battle.open')))return;
   const isActive = wbrageIsActive(boss);
   if (!isActive) {
+    window.RaidFX?.rage(bossIdx,wbrageSettings(boss));
     if (WBRAGE.activated[bossIdx]) { delete WBRAGE.activated[bossIdx]; _wbrageCleanupVisuals(); }
     return;
   }
   if (WBRAGE.activated[bossIdx]) {
     const cfg = wbrageSettings(boss);
+    if(window.RaidFX?.rage(bossIdx,cfg)){if(WBRAGE._rageSpawnBossIdx!==bossIdx)_wbrageAccelerateSpawns(bossIdx);return;}
     if (cfg.showAura  && !document.getElementById('wbrage-aura'))  _wbrageShowAura();
     if (cfg.showToast && !document.getElementById('wbrage-toast')) _wbrageShowPersistentToast(boss.name);
     const hpFill = document.getElementById('wb-hp-fill') || document.getElementById('camp-enemy-hp');
@@ -169,6 +172,11 @@ window.wbrageCheckAndActivate = function (bossIdx) {
   }
   WBRAGE.activated[bossIdx] = true;
   const cfg = wbrageSettings(boss);
+  if(window.RaidFX?.rage(bossIdx,cfg,true)){
+    _wbrageStopSkillLoop();
+    if(WBS.loopTimer){clearTimeout(WBS.loopTimer);WBS.loopTimer=null;}
+    wbsStartSkillLoop(bossIdx);_wbrageAccelerateSpawns(bossIdx);return;
+  }
   _wbrageScreenFlash();
   if (cfg.showAura)   _wbrageShowAura();
   if (cfg.showBanner) _wbrageShowBanner(bossIdx);

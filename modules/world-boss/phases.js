@@ -101,6 +101,8 @@ window.wbpTriggerPhaseAnnouncement = function (bossIdx, phaseNum) {
   const phase  = phases.find(p => p.phase === phaseNum) || phases[phaseNum - 1];
   if (!phase) return;
 
+  if(window.RaidFX){RaidFX.phase(bossIdx,phaseNum);return;}
+
   // 1. Brief screen flash
   _wbpScreenFlash(phase.color);
 

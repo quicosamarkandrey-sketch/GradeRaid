@@ -58,3 +58,14 @@ Before phase75 is applied, presentation/form fixes and the existing event/attack
 Joining, resuming and answering now negotiate the installed battle API with a read-only snapshot if cached event metadata lacks phase75's version/run fields. A successful snapshot selects `world_boss_action` for both correct and wrong answers. Network/authorization errors never select a local-answer fallback; the legacy path is considered only when the new function is actually missing. Snapshot application also restores protocol fields directly from the response, so an older cached mapper cannot keep an upgraded event in legacy mode. Legacy errors retain the actual database message instead of all appearing as a reconnect warning. This compatibility fix needs no additional SQL migration.
 
 The two minion docks flank the central boss encounter on desktop and occupy opposing columns on phones/tablets. Both-side spawning fills only an empty flank; it does not duplicate the survivor when replacing a defeated minion. Random spawning favors the empty flank for the second minion. Contrast is maintained in the dark arena under either page theme.
+
+
+## Battle motion and rage presentation
+
+The arena now uses a scoped presentation layer for all six boss skills. A brief preparing cue precedes ground fractures, wind ribbons, an eclipse, prismatic mirror echoes, roar shockwaves or a meteor barrage. The question stays readable and answer controls remain steady; Mirror Trick still shuffles the original answer buttons once without changing their identities or handlers. Confirmed attacks produce boss recoil, damage numbers and a delayed health-bar echo.
+
+Phase changes have concise announcements and persistent phase indicators. Rage uses the configured HP threshold, an orbiting aura, an Enraged indicator and matching minion rims/badges. Minions enter from their own flank once per spawn and react to correct or incorrect answers. Rage uses one skill clock with the configured frequency multiplier; the configured spawn multiplier now also adjusts the minion spawn delay. No damage, reward or answer-confirmation rules change.
+
+Effects are bounded, ignore pointer input, clean up when leaving the battle and honor reduced-motion preferences with static cues. The new assets are local CSS/SVG with no additional image service or SQL migration.
+
+- `npm run test:boss-effects` — all six telegraphed skills, stable controls/answer identities, phase/rage/minion states, spawn acceleration, confirmed-hit presentation, 320/390/1440 layouts, reduced motion, exit cleanup and unchanged reward/progress state, using intercepted services.

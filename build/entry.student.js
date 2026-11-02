@@ -106,4 +106,5 @@ import '../modules/admin/dsm-manager.js';
 import './inline/inline2.js';
 import '../modules/perceived-speed.js';
 
+import '../modules/world-boss/battle-effects.js';
 import '../modules/world-boss/raid-experience.js';

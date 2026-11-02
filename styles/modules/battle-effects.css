@@ -1,0 +1,126 @@
+/* Arena effects remain behind the reading plane. Motion uses transform/opacity. */
+.raid-battle .rfx-ready{--rfx-phase:#a8c6d5;--rfx-danger:#dca3a0;--rfx-gold:#dfc89f}
+.raid-battle [data-rfx-phase="2"]{--rfx-phase:#d5bd93}
+.raid-battle [data-rfx-phase="3"]{--rfx-phase:#d6a2a1}
+.raid-battle #camp-enemy-bar{isolation:isolate;z-index:6}
+.raid-battle .camp-enemy-hp-wrap{position:relative;isolation:isolate;background:#263440}
+.raid-battle #camp-enemy-hp{position:relative;z-index:2;background:var(--rfx-phase,#a8c6d5);transition:width .35s ease,background 1.2s ease;box-shadow:none!important}
+.rfx-health-echo{position:absolute;inset:0 auto 0 0;height:100%;background:#ebdbb0;opacity:.6;transition:width 1s ease .15s;z-index:1}
+#rfx-state{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:30px;padding-top:9px;position:relative;z-index:4}
+#rfx-phase,#rfx-rage{display:flex;align-items:center;gap:6px;font:450 9px/1.5 var(--fb);color:#a5bac8}
+#rfx-state svg{width:13px;height:13px;flex-shrink:0;stroke:currentColor}
+#rfx-phase strong{color:var(--rfx-phase,#c5dce5);font-weight:650}
+#rfx-phase span{font-size:8px;letter-spacing:.08em}
+#rfx-rage{color:#e5b7b1;justify-content:flex-end}
+#rfx-rage span{font-size:8px;color:#c0a7a9}
+#rfx-rage[hidden]{display:none}
+.raid-battle #camp-enemy-sprite{position:relative;isolation:isolate;overflow:visible}
+#rfx-stage{position:absolute;inset:0;pointer-events:none;z-index:3;color:var(--rfx-phase);overflow:visible}
+#rfx-arena{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:1;border-radius:inherit}
+.rfx-effect{position:absolute;inset:0;pointer-events:none;overflow:visible}
+.rfx-effect>svg{position:absolute;width:100%;height:100%;overflow:visible}
+.raid-battle #camp-encounter,.raid-battle .camp-question-box,.raid-battle #wbr-minion-dock,.raid-battle #wbr-minion-dock-right{isolation:isolate}
+.raid-battle .camp-question-box{position:relative;z-index:5;box-shadow:0 12px 30px #0002}
+/* The warning strip occupies the sprite plane, never the answer hit targets. */
+#rfx-announcer,.rfx-cast{position:absolute;left:50%;top:calc(100% + 8px);transform:translateX(-50%);width:min(440px,100%);z-index:15;display:flex;align-items:center;gap:11px;border:1px solid #6b7782;border-radius:9px;background:#14212df2;color:#e3edf2;padding:12px 16px;box-shadow:0 12px 24px #0004;pointer-events:none;font-family:var(--fb)}
+#rfx-announcer{display:none;border-color:color-mix(in srgb,var(--rfx-tone,#b6ceda) 60%,#334551)}
+#rfx-announcer.is-visible{display:flex;animation:rfx-notice .4s ease-out both}
+#rfx-announcer>svg,.rfx-cast>svg{width:26px;height:26px;flex-shrink:0;color:var(--rfx-tone,#c5dce5)}
+#rfx-announcer strong,.rfx-cast strong{display:block;font-size:12px;line-height:1.5;font-weight:650;color:#edf4f6;letter-spacing:0}
+#rfx-announcer span,.rfx-cast small{display:block;font-size:10px;line-height:1.6;color:#b8cbd6;font-weight:400;overflow-wrap:anywhere}
+#rfx-announcer span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rfx-cast{border-color:color-mix(in srgb,var(--rfx-tone) 55%,#334551);padding-bottom:15px;overflow:hidden}
+.rfx-cast .rfx-cast-state{display:block;color:var(--rfx-tone);font:550 8px/1.4 var(--fb);letter-spacing:.12em;text-transform:uppercase;margin-bottom:2px}
+.rfx-cast-charge{position:absolute;bottom:0;left:0;height:2px;width:100%;background:var(--rfx-tone);transform-origin:left;animation:rfx-charge var(--rfx-cast-time,650ms) linear both}
+.rfx-cast.is-cast .rfx-cast-charge{opacity:.4;animation:none}
+.raid-battle #camp-enemy-bar:has(#rfx-announcer.is-visible) .rfx-cast{visibility:hidden}
+/* Idle and hit states have weight without a vibrating whole screen. */
+.raid-battle .rfx-ready .bve-boss-art.state-idle:not([class*="bs-anim"]){animation:rfx-breathe 5s ease-in-out infinite;transform-origin:50% 85%}
+.raid-battle .rfx-ready .bve-boss-art.state-rage:not([class*="bs-anim"]){animation:rfx-enraged-breathe 3.2s ease-in-out infinite;filter:drop-shadow(0 0 12px #bd716940)}
+.raid-battle .rfx-ready .bve-boss-art.state-cast:not([class*="bs-anim"]){animation:rfx-cast-body 1s ease-out both}
+.raid-battle .rfx-ready .bve-boss-art.state-hit:not([class*="bs-anim"]){animation:rfx-recoil .4s ease-out both}
+.raid-battle #camp-enemy-sprite.rfx-impact .bve-boss-wrap{animation:rfx-recoil .4s ease-out}
+.raid-battle #camp-enemy-sprite.rfx-stomp .bve-boss-wrap{animation:rfx-stomp .6s ease-out}
+.raid-battle #camp-enemy-sprite.rfx-roar-source .bve-boss-wrap{animation:rfx-roar-body .65s ease-out}
+.rfx-hit-sigil{width:60px!important;height:60px!important;left:calc(50% - 30px);top:36%;color:#def0f4;opacity:0;animation:rfx-hit-sigil .45s ease-out}
+.rfx-hit-value{position:absolute;left:50%;top:20%;font:650 clamp(24px,3vw,36px)/1.1 var(--fh);color:#eef7fa;letter-spacing:-.03em;white-space:nowrap;text-shadow:0 2px 10px #07121e;animation:rfx-hit-value 1.1s ease-out both;transform:translateX(-50%)}
+.rfx-hit-value small{display:block;font:550 8px/1.8 var(--fb);text-transform:uppercase;letter-spacing:.14em;color:#bfd4df;text-align:center;margin-top:4px}
+.rfx-hit.is-critical .rfx-hit-value{color:#f7e4b7;font-size:clamp(28px,3.6vw,42px)}
+.rfx-hit.is-critical .rfx-hit-sigil{color:#eed09c;stroke-width:1.1}
+.rfx-fracture{inset:30% -10% -12%;color:#d7ba8d;opacity:.8;animation:rfx-ground-arrive .65s ease-out both}
+.rfx-fracture svg path{stroke:currentColor;stroke-width:1;fill:none;stroke-dasharray:500;stroke-dashoffset:500;animation:rfx-crack-draw .7s ease-out forwards}
+.rfx-fracture svg .rfx-fracture-core{stroke-width:3;opacity:.2}
+.rfx-wind{inset:-8% -15%;color:#afdae4}
+.rfx-wind path{stroke:currentColor;stroke-width:1.3;fill:none;stroke-linecap:round;stroke-dasharray:140 600;opacity:.65;animation:rfx-wind 2.5s calc(var(--i)*-.6s) ease-in-out infinite}
+.rfx-eclipse{background:radial-gradient(ellipse at 50% 28%,transparent 15%,#080d16b3 80%);animation:rfx-veil 1s ease-out both}
+.rfx-eclipse>i,.rfx-eclipse>b{position:absolute;inset:0;border:1px solid #9680b525;border-radius:40%;transform:scale(1.5);animation:rfx-eclipse-orbit 14s linear infinite}
+.rfx-eclipse>b{animation-direction:reverse;border-radius:48%;opacity:.5}
+.rfx-umbra i{position:absolute;left:50%;top:50%;width:160px;height:160px;margin:-80px;border-radius:50%;border:1px solid #d7c8f0;box-shadow:0 0 30px #8e74b52e;opacity:.5;animation:rfx-umbra 5s ease-in-out infinite}
+.rfx-umbra b{position:absolute;inset:8% 25%;background:radial-gradient(ellipse,transparent 48%,#0a0f1db3 90%);border-radius:50%}
+.rfx-mirror i{position:absolute;top:10%;width:150px;height:80%;opacity:.2;transform-origin:center;overflow:hidden;clip-path:polygon(50% 0,100% 45%,85% 100%,15% 100%,0 45%);border:1px solid #b6dbe5;background:linear-gradient(125deg,#89b8ca20,transparent 40%,#e5f7ff1a)}
+.rfx-mirror i img{width:100%;height:100%;object-fit:contain;filter:saturate(.4)}
+.rfx-mirror i span{font-size:80px;display:block;text-align:center}
+.rfx-mirror-left{right:55%;animation:rfx-mirror-left 1.6s ease-out both}
+.rfx-mirror-right{left:55%;animation:rfx-mirror-right 1.6s ease-out both}
+.rfx-mirror>b{position:absolute;left:50%;top:50%;width:140px;height:140px;margin:-70px;border:1px solid #b6dbe5;transform:rotate(45deg);opacity:.3;animation:rfx-prism 2.4s ease-in-out infinite}
+.rfx-roar>i,.rfx-phase-wave>i{position:absolute;left:50%;top:50%;height:150px;width:150px;margin:-75px;border:2px solid #deb2a6;border-radius:50%;animation:rfx-wave 1.8s ease-out infinite}
+.rfx-roar>i:nth-child(2),.rfx-phase-wave>i:nth-child(2){animation-delay:.6s;opacity:.6}
+.rfx-roar>i:nth-child(3){animation-delay:1.2s;opacity:.3}
+.rfx-phase-wave>i{border-color:var(--rfx-phase);animation-iteration-count:1;animation-duration:1.5s}
+.rfx-meteors>i{position:absolute;left:var(--x);top:-15%;width:2px;height:100px;background:linear-gradient(0deg,#fbefcb,transparent);border-radius:2px;opacity:0;transform:rotate(28deg);animation:rfx-meteor 2.8s calc(var(--i)*-.37s) linear infinite}
+.rfx-meteors>i:nth-child(2n){height:65px;opacity:.4;animation-duration:3.6s}
+.rfx-meteor-impacts>i{position:absolute;left:22%;top:90%;width:50px;height:12px;border:1px solid #e2c494;border-radius:50%;animation:rfx-ground-impact 2.6s ease-out infinite}
+.rfx-meteor-impacts>i:nth-child(2){left:55%;animation-delay:.9s}.rfx-meteor-impacts>i:nth-child(3){left:75%;animation-delay:1.8s}
+/* Rage changes the silhouette, perimeter and minions without tinting the text. */
+.raid-battle .rfx-raging #camp-enemy-hp{background:#ce928b}
+.raid-battle .rfx-raging .camp-question-box{border-color:#806264}
+.raid-battle .rfx-raging #camp-bg{background:radial-gradient(ellipse at 50% 22%,#452c35aa,transparent 65%),#0d141c!important}
+.rfx-rage-aura{position:absolute;inset:-12% 15%;pointer-events:none;opacity:.8;color:#dba59b}
+.rfx-rage-aura i,.rfx-rage-aura b{position:absolute;left:50%;top:50%;width:190px;height:190px;margin:-95px;border:1px solid #d09c8e;border-radius:50%;transform:rotateX(30deg);animation:rfx-rage-orbit 10s linear infinite;opacity:.45}
+.rfx-rage-aura b{width:165px;height:165px;margin:-82px;border-style:dashed;border-color:#e7c79a66;animation-direction:reverse;animation-duration:17s}
+.rfx-rage-aura em{position:absolute;left:calc(10% + var(--i)*11%);bottom:2%;height:2px;width:2px;border-radius:50%;background:#e8c5a6;animation:rfx-ash 4s calc(var(--i)*-.43s) ease-out infinite;opacity:0}
+.raid-battle .rfx-minion-enraged{border-color:#a37e76!important;box-shadow:inset 0 1px 0 #ddaf9d2e,0 6px 22px #49252d30!important}
+.raid-battle .rfx-minion-enraged .wbm-minion-sprite{position:relative;filter:drop-shadow(0 2px 8px #dda39550)}
+.raid-battle .rfx-minion-enraged .wbm-minion-sprite:after{content:'';position:absolute;inset:-5px;border:1px solid #d7a39c88;border-radius:45% 45% 25% 25%;transform:rotate(8deg);animation:rfx-minion-ward 3.8s ease-in-out infinite}
+.rfx-minion-rage{display:inline-block;margin-top:6px;font:650 8px/1.5 var(--fb);letter-spacing:.09em;text-transform:uppercase;border:1px solid #b4867b80;border-radius:3px;padding:1px 5px;color:#f0c9bc;background:#3b282c}
+.raid-battle .rfx-arrive-left{animation:rfx-minion-left .55s cubic-bezier(.2,.7,.3,1) both}
+.raid-battle .rfx-arrive-right{animation:rfx-minion-right .55s cubic-bezier(.2,.7,.3,1) both}
+.raid-battle .rfx-minion-defeat{animation:rfx-minion-defeat .65s ease-in both!important;pointer-events:none}
+.raid-battle .rfx-minion-resist{animation:rfx-minion-resist .5s ease-out both}
+.raid-battle .rfx-player-ko .camp-question-box{border-color:#907077;background:#211f2c}
+.raid-battle .rfx-player-ko #camp-enemy-sprite .bve-boss-art{filter:saturate(.45)}
+@keyframes rfx-breathe{0%,100%{transform:translateY(1px) scale(1)}50%{transform:translateY(-5px) scale(1.018)}}
+@keyframes rfx-enraged-breathe{0%,100%{transform:translateY(0) scale(1.025)}50%{transform:translateY(-5px) scale(1.055)}}
+@keyframes rfx-cast-body{0%,100%{transform:translateY(0)}40%{transform:translateY(-6px) scale(1.03)}}
+@keyframes rfx-recoil{0%,100%{transform:translate(0)}25%{transform:translate(4px,2px) rotate(.5deg)}65%{transform:translate(-1px,0)}}
+@keyframes rfx-stomp{0%,100%{transform:translateY(0)}35%{transform:translateY(-10px)}60%{transform:translateY(4px)}}
+@keyframes rfx-roar-body{0%,100%{transform:scale(1)}40%{transform:scale(1.055) translateY(-4px)}}
+@keyframes rfx-hit-value{0%{opacity:0;transform:translate(-50%,12px) scale(.85)}18%{opacity:1;transform:translate(-50%,-2px) scale(1.04)}65%{opacity:1}100%{opacity:0;transform:translate(-50%,-42px)}}
+@keyframes rfx-hit-sigil{0%{opacity:0;transform:scale(.5) rotate(-15deg)}25%{opacity:.8}100%{opacity:0;transform:scale(1.8) rotate(12deg)}}
+@keyframes rfx-crack-draw{to{stroke-dashoffset:0}}
+@keyframes rfx-ground-arrive{from{opacity:0;transform:scaleX(.8)}to{opacity:.8;transform:scaleX(1)}}
+@keyframes rfx-wind{0%{stroke-dashoffset:700;opacity:0}30%,70%{opacity:.6}100%{stroke-dashoffset:-100;opacity:0}}
+@keyframes rfx-veil{from{opacity:0}to{opacity:1}}
+@keyframes rfx-eclipse-orbit{to{transform:scale(1.5) rotate(360deg)}}
+@keyframes rfx-umbra{0%,100%{opacity:.3;transform:scale(.94)}50%{opacity:.65;transform:scale(1.06)}}
+@keyframes rfx-mirror-left{from{opacity:0;transform:translateX(30px) skewY(-5deg)}to{opacity:.25;transform:translateX(-14px) skewY(-5deg)}}
+@keyframes rfx-mirror-right{from{opacity:0;transform:translateX(-30px) skewY(5deg)}to{opacity:.25;transform:translateX(14px) skewY(5deg)}}
+@keyframes rfx-prism{0%,100%{transform:rotate(45deg) scale(.95);opacity:.15}50%{transform:rotate(45deg) scale(1.1);opacity:.4}}
+@keyframes rfx-wave{0%{transform:scale(.45);opacity:.6}100%{transform:scale(2.4);opacity:0}}
+@keyframes rfx-meteor{0%{opacity:0;transform:translate(-60px,-50px) rotate(28deg)}15%{opacity:.75}75%{opacity:.65}100%{opacity:0;transform:translate(200px,850px) rotate(28deg)}}
+@keyframes rfx-ground-impact{0%,35%{opacity:0;transform:scale(.5)}40%{opacity:.7}80%,100%{opacity:0;transform:scale(1.8)}}
+@keyframes rfx-rage-orbit{from{transform:rotateX(30deg) rotate(0)}to{transform:rotateX(30deg) rotate(360deg)}}
+@keyframes rfx-ash{0%{transform:translateY(0);opacity:0}20%{opacity:.75}100%{transform:translate(12px,-100px);opacity:0}}
+@keyframes rfx-minion-ward{0%,100%{opacity:.4;transform:rotate(8deg) scale(1)}50%{opacity:.8;transform:rotate(-4deg) scale(1.04)}}
+@keyframes rfx-minion-left{from{opacity:0;transform:translate(-22px,8px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes rfx-minion-right{from{opacity:0;transform:translate(22px,8px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes rfx-minion-defeat{0%{opacity:1;transform:scale(1)}30%{opacity:.8;transform:scale(.98)}100%{opacity:0;transform:translateY(12px) scale(.94)}}
+@keyframes rfx-minion-resist{0%,100%{border-color:#a37e76}40%{border-color:#e4bdb2}}
+@keyframes rfx-charge{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes rfx-notice{from{opacity:0;translate:0 -7px}to{opacity:1;translate:0 0}}
+@media(max-width:600px){#rfx-state{flex-wrap:wrap;gap:4px}#rfx-phase,#rfx-rage{font-size:8px}#rfx-rage span{display:none}#rfx-announcer,.rfx-cast{padding:9px 12px;width:min(330px,100%);gap:9px;top:calc(100% + 5px)}#rfx-announcer strong,.rfx-cast strong{font-size:11px}#rfx-announcer span,.rfx-cast small{font-size:9px}#rfx-announcer>svg,.rfx-cast>svg{width:22px;height:22px}.rfx-cast small{display:none}.rfx-fracture{inset:25% -2% -8%}.rfx-mirror i{width:90px}.rfx-rage-aura i{width:145px;height:145px;margin:-72px}.rfx-rage-aura b{width:125px;height:125px;margin:-62px}.rfx-wind{inset:0 -2%}.rfx-roar>i,.rfx-phase-wave>i{width:110px;height:110px;margin:-55px}}
+@media(prefers-reduced-motion:reduce){.raid-battle .rfx-ready *,.raid-battle .rfx-ready *:after,.raid-battle .rfx-ready *:before{animation:none!important;transition:none!important;scroll-behavior:auto!important}.rfx-hit-value{opacity:1;transform:translateX(-50%)}.rfx-hit-sigil{opacity:.35}.rfx-wind path{stroke-dasharray:none;opacity:.25}.rfx-fracture path{stroke-dashoffset:0}.rfx-roar>i,.rfx-phase-wave>i{opacity:.15}.rfx-meteors{display:none}.rfx-rage-aura em{display:none}.rfx-mirror i{opacity:.15}.rfx-cast-charge{transform:scaleX(1)}}
+#rfx-announcer strong,.rfx-cast strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#rfx-announcer>div,.rfx-cast>div{min-width:0;flex:1}
+.raid-battle #camp-enemy-bar:has(#rfx-announcer.is-visible) .rfx-cast{visibility:visible;top:calc(100% + 88px)}
+@media(max-width:600px){#rfx-announcer span{-webkit-line-clamp:1}.raid-battle #camp-enemy-bar:has(#rfx-announcer.is-visible) .rfx-cast{top:calc(100% + 63px)}}
