@@ -98,6 +98,7 @@ window.wbcCalcDamage = function (boss) {
  * its own guess by the time the next bulk push fires.
  */
 window.wbcApplyDamage = async function (bossIdx, damage, studentId, isCrit) {
+  WBC.lastAttackError='';
   const bossBefore = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!bossBefore || bossBefore.status !== 'active' || (bossBefore.currentHp??bossBefore.maxHp)<=0 || !Number.isFinite(damage) || damage <= 0 || window.RaidService?.managed(bossBefore)) return 'rejected';
 
@@ -111,17 +112,17 @@ window.wbcApplyDamage = async function (bossIdx, damage, studentId, isCrit) {
         p_student_id: studentId, p_damage: damage, p_is_crit: !!isCrit,
       });
       if (error) {
-        toast('Your attack was not confirmed. Please reconnect and retry.'); return 'rejected';
+        WBC.lastAttackError=['PGRST202','42883'].includes(error.code)?'The battle API is missing in this Supabase project. Apply phase75_world_boss_reliability.sql, then reopen the raid.':error.message||'Could not confirm the attack. Refresh the raid and retry.';return 'rejected';
       } else {
         const row = Array.isArray(data) ? data[0] : data;
-        if (!row || typeof row.new_hp !== 'number') {toast('Your attack was not confirmed. Please retry.');return 'rejected';}
+        if (!row || typeof row.new_hp !== 'number') {WBC.lastAttackError='The battle server returned no health confirmation. Refresh the raid before retrying.';return 'rejected';}
         if (row && typeof row.new_hp === 'number') {
           newHp    = row.new_hp;
           defeated = !!row.defeated;
         }
       }
     } catch (e) {
-      toast('Your attack was not confirmed. Please reconnect and retry.'); return 'rejected';
+      WBC.lastAttackError=e.message||'The attack could not reach the server. Reconnect and retry.';return 'rejected';
     }
   }
   if (defeated) newHp = 0;

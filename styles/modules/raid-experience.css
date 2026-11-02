@@ -181,3 +181,47 @@
 .raid-summary .wbl-tab{min-height:44px}
 @media(max-width:600px){#modal-content:has([onclick*="wbsSaveSkillConfig"]) [style*="grid-template-columns"],#modal-content:has([onclick*="wbmAdminReviveStudent"]) [style*="grid-template-columns"]{display:flex!important;flex-wrap:wrap;gap:10px!important;padding:12px 0}#modal-content:has([onclick*="wbsSaveSkillConfig"]) input,#modal-content:has([onclick*="wbsSaveSkillConfig"]) select{min-height:44px;max-width:100%;font-size:16px!important}#modal-content:has([onclick*="wbmAdminReviveStudent"]) .btn{min-height:44px}}
 .raid-battle #raid-intro-continue{display:block;min-height:44px;margin-top:24px;padding:10px 20px;background:#c4dce5;border:1px solid #c4dce5;color:#172633;border-radius:7px;font-size:12px;font-weight:600}
+/* Minions occupy opposing flanks rather than sharing the right-hand column. */
+@media(min-width:901px){
+ .raid-battle #camp-scene{max-width:1480px;grid-template-columns:minmax(200px,250px) minmax(0,1fr) minmax(200px,250px);gap:0 22px}
+ .raid-battle .camp-hud{grid-column:1/-1;grid-row:1}
+ .raid-battle #camp-enemy-bar{grid-column:2;grid-row:2}
+ .raid-battle #camp-encounter{grid-column:2;grid-row:3/6}
+ .raid-battle #camp-story-panel{grid-column:1/-1;grid-row:3}
+ .raid-battle #wbr-minion-dock{grid-column:1;grid-row:3;margin:24px 0 16px}
+ .raid-battle #wbr-minion-dock-right{grid-column:3;grid-row:3;margin:24px 0 16px}
+ .raid-battle #wbr-live-feed{grid-column:1;grid-row:4}
+ .raid-battle #wbr-raid-meta{grid-column:3;grid-row:4;padding-top:0}
+}
+@media(max-width:900px){
+ .raid-battle #camp-scene{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:auto;align-content:start;gap:0 12px}
+ .raid-battle .camp-hud{grid-column:1/-1;grid-row:1}
+ .raid-battle #camp-enemy-bar{grid-column:1/-1;grid-row:2}
+ .raid-battle #camp-encounter{grid-column:1/-1;grid-row:3}
+ .raid-battle #camp-story-panel{grid-column:1/-1;grid-row:3}
+ .raid-battle #wbr-minion-dock{grid-column:1;grid-row:4;margin:18px 0 0}
+ .raid-battle #wbr-minion-dock-right{grid-column:2;grid-row:4;margin:18px 0 0}
+ .raid-battle #wbr-raid-meta{grid-column:1/-1;grid-row:5}
+ .raid-battle #wbr-live-feed{grid-column:1/-1;grid-row:6}
+ .raid-battle .wbm-minion-alert{width:100%;margin:0}
+ .raid-battle .wbm-minion-alert-header{display:grid;grid-template-columns:28px minmax(0,1fr);gap:7px;padding:12px 10px}
+ .raid-battle .wbm-minion-sprite{font-size:25px;width:28px}
+ .raid-battle .wbm-minion-info{min-width:0}
+ .raid-battle .wbm-minion-name{font-size:9px;line-height:1.6;overflow-wrap:anywhere}
+ .raid-battle .wbm-minion-threat{font-size:9px;line-height:1.5}
+ .raid-battle .wbm-minion-timer-badge{grid-column:1/-1;justify-self:stretch;text-align:center;padding:4px;font-size:11px}
+ .raid-battle .wbm-question-wrap{padding:12px 10px}
+ .raid-battle .wbm-q-text{font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+ .raid-battle .wbm-opt{display:flex;align-items:flex-start;gap:6px;width:100%;padding:10px 7px;min-height:44px;text-align:left;line-height:1.5}
+ .raid-battle .wbm-opt-letter{flex-shrink:0;font-size:9px;width:18px;height:18px}
+ .raid-battle #wbr-minion-dock:has(.wbm-ko-banner){grid-column:1/-1}
+}
+.raid-battle .wbm-opt{color:#e0e9ee!important;background:#1c2b38;border-color:#485d6b;font-family:var(--fb)}
+.raid-battle .wbm-opt-letter{color:#c9e0ec!important;background:#2b414f;border-color:#657e8e}
+.raid-battle .wbm-opt.correct{background:#203d31;border-color:#79bc97;color:#d4f5df!important}
+.raid-battle .wbm-opt.wrong{background:#402b32;border-color:#bf7b7e;color:#f2d0d2!important}
+.raid-battle .wbm-minion-threat,.raid-battle .wbm-ko-sub{color:#bac8d2!important}
+.raid-battle .wbm-minion-timer-badge{color:#eed4a3!important;background:#342d22;border-color:#7a684a}
+body:has(.raid-battle.open) #wbm-spawn-toast{max-width:calc(100% - 32px);background:#25231e;border-color:#7a684a;box-shadow:0 8px 24px #0004;pointer-events:none}
+body:has(.raid-battle.open) .wbm-spawn-toast-title{color:#eed4a3!important}
+body:has(.raid-battle.open) .wbm-spawn-toast-sub{color:#dce5eb!important}

@@ -51,3 +51,10 @@ Before phase75 is applied, presentation/form fixes and the existing event/attack
 - `npm run test:boss-browser` — real application with intercepted external services; Studio create/save/clear, keyboard profile selection, event creation/edit, question imports, launch, join/intro/battle, failed and repeated attacks, victory, failed/retried loot claims, results and finalization. Includes 320/390/1440 layouts and both themes, plus phone battle/editor checks. No hosted backend writes occur.
 - `node tests/browser/application-theme.cjs` — shared page/theme regression.
 - Full, student and admin esbuild entry compilation; classic and source mirror syntax checks.
+
+
+## Cached client compatibility and minion flanks
+
+Joining, resuming and answering now negotiate the installed battle API with a read-only snapshot if cached event metadata lacks phase75's version/run fields. A successful snapshot selects `world_boss_action` for both correct and wrong answers. Network/authorization errors never select a local-answer fallback; the legacy path is considered only when the new function is actually missing. Snapshot application also restores protocol fields directly from the response, so an older cached mapper cannot keep an upgraded event in legacy mode. Legacy errors retain the actual database message instead of all appearing as a reconnect warning. This compatibility fix needs no additional SQL migration.
+
+The two minion docks flank the central boss encounter on desktop and occupy opposing columns on phones/tablets. Both-side spawning fills only an empty flank; it does not duplicate the survivor when replacing a defeated minion. Random spawning favors the empty flank for the second minion. Contrast is maintained in the dark arena under either page theme.

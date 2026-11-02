@@ -111,10 +111,12 @@ window.wbmSpawnMinion = function (bossIdx) {
     if (!b) return;
     if (!b.activeMinions) b.activeMinions = [];
     if (resolvedSide === 'both') {
-      if (b.activeMinions.length < maxActive) { m1 = _buildMinion('left');  b.activeMinions.push(m1); }
-      if (b.activeMinions.length < maxActive) { m2 = _buildMinion('right'); b.activeMinions.push(m2); }
+      if (b.activeMinions.length < maxActive&&!b.activeMinions.some(m=>m.side==='left')) {m1=_buildMinion('left');b.activeMinions.push(m1);}
+      if (b.activeMinions.length < maxActive&&!b.activeMinions.some(m=>m.side==='right')) {m2=_buildMinion('right');b.activeMinions.push(m2);}
     } else {
-      if (b.activeMinions.length < maxActive) { m1 = _buildMinion(resolvedSide); b.activeMinions.push(m1); }
+      let side=resolvedSide;
+      if((s.spawnSide||'random')==='random'&&b.activeMinions.some(m=>m.side===side)&&!b.activeMinions.some(m=>m.side===(side==='left'?'right':'left')))side=side==='left'?'right':'left';
+      if (b.activeMinions.length < maxActive) {m1=_buildMinion(side);b.activeMinions.push(m1);}
     }
   }, { type: 'world-boss:minion-spawned', payload: { bossIdx } });
 
@@ -349,7 +351,7 @@ window.wbmRenderMinionSection = function (bossIdx, sideOverride) {
     <div class="wbm-minion-alert-header">
       <div class="wbm-minion-sprite">${minion.sprite}</div>
       <div class="wbm-minion-info">
-        <div class="wbm-minion-name">⚠️ MINION SPAWNED — ${_esc(minion.name.toUpperCase())}</div>
+        <div class="wbm-minion-name">${minion.side==='right'?'RIGHT':'LEFT'} FLANK · ${_esc(minion.name)}</div>
         <div class="wbm-minion-threat">Defeat it before time runs out or lose 1 HP!</div>
       </div>
       <div class="wbm-minion-timer-badge" id="wbm-minion-timer-${minion.id}">${Math.ceil(remaining)}s</div>

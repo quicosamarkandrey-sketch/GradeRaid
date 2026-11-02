@@ -5,3 +5,14 @@ test('raid requests coalesce duplicate actions and apply only the confirmed serv
 test('late responses from a signed-out identity cannot alter the next account',async()=>{let finish;const {c,state}=setup(()=>new Promise(r=>finish=r));const before=JSON.stringify(state),request=c.RaidService.action(0,'snapshot');await new Promise(r=>setTimeout(r,0));c.currentUser={id:'other',classId:'a'};finish(receipt());assert.equal((await request).ok,false);assert.equal(JSON.stringify(state),before);});
 test('rejected server requests create no local damage, money, inventory or unlock writes',async()=>{const {c,state}=setup(async()=>({error:{message:'Connection lost'}})),before=JSON.stringify(state);assert.equal((await c.RaidService.action(0,'claim',{rewardId:'a',claimId:'same-retry-id'})).ok,false);assert.equal(JSON.stringify(state),before);});
 test('student raid discovery stays in its own section and rejects foreign actions before contacting the server',async()=>{let calls=0;const {c,state}=setup(async()=>{calls++;return receipt();});state.bossEvents[0].classId='b';assert.equal(c.RaidService.visible(state.bossEvents[0]),false);assert.equal((await c.RaidService.action(0,'join')).ok,false);assert.equal(calls,0);});
+
+test('an event cached before phase75 discovers the installed answer API before submitting attacks',async()=>{
+ const calls=[],{c,state}=setup(async(name,args)=>{calls.push(args.p_action);return receipt();});state.bossEvents[0].raidVersion=0;delete state.bossEvents[0].raidRunId;
+ const ready=await c.RaidService.prepare(0);assert.equal(ready.mode,'managed');assert.equal(c.RaidService.managed(state.bossEvents[0]),true);assert.equal(state.bossEvents[0].raidRunId,'run');assert.deepEqual(calls,['snapshot']);
+});
+test('protocol discovery never downgrades to local answers on authorization or connection errors',async()=>{
+ for(const error of [{code:'42501',message:'Not authorized'},{message:'Failed to fetch'}]){const {c,state}=setup(async()=>({error}));state.bossEvents[0].raidVersion=0;const before=JSON.stringify(state),ready=await c.RaidService.prepare(0);assert.equal(ready.ok,false);assert.equal(JSON.stringify(state),before);}
+});
+test('legacy compatibility is used only when the new RPC actually does not exist',async()=>{
+ const {c,state}=setup(async()=>({error:{code:'PGRST202',message:'Function missing'}}));state.bossEvents[0].raidVersion=0;const ready=await c.RaidService.prepare(0);assert.equal(ready.ok,true);assert.equal(ready.mode,'legacy');assert.equal(state.bossEvents[0].currentHp,300);
+});

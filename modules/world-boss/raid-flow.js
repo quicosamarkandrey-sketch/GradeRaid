@@ -235,7 +235,7 @@ function wbrRenderSideOverlays() {
 
   // Left minion dock
   var dock = document.createElement('div');
-  dock.id = 'wbr-minion-dock'; dock.className = 'wbr-minion-dock';
+  dock.id = 'wbr-minion-dock'; dock.className = 'wbr-minion-dock';dock.setAttribute('role','region');dock.setAttribute('aria-label','Left minion flank');
   if (rec && rec.isKO) {
     dock.innerHTML = wbmRenderKOSection(WBR.bossIdx);
   } else if (s.enabled) {
@@ -252,7 +252,7 @@ function wbrRenderSideOverlays() {
 
   // Right minion dock
   var dockRight = document.createElement('div');
-  dockRight.id = 'wbr-minion-dock-right'; dockRight.className = 'wbr-minion-dock-right';
+  dockRight.id = 'wbr-minion-dock-right'; dockRight.className = 'wbr-minion-dock-right';dockRight.setAttribute('role','region');dockRight.setAttribute('aria-label','Right minion flank');
   if (rec && !rec.isKO && s.enabled) {
     var minionRight = wbmGetCurrentMinionBySide(WBR.bossIdx, 'right');
     if (minionRight) dockRight.innerHTML = wbmRenderMinionSection(WBR.bossIdx, 'right');
@@ -312,7 +312,7 @@ function wbrShowEncounter() {
 // ── Answer handler ────────────────────────────────────────────────────────────
 
 async function wbrAnswer(bossIdx, qIdx, choice) {
-  const boss=AppStore.getBossEvent(bossIdx),studentId=currentUser?.id,rec=studentId&&wbcMyRecord(bossIdx);
+  let boss=AppStore.getBossEvent(bossIdx);const studentId=currentUser?.id,rec=studentId&&wbcMyRecord(bossIdx);
   if(!boss||boss.status!=='active'||!rec||rec.isKO||WBR.answerPending||qIdx!==(rec.lastQIdx||0))return;
   const q=wbcGetBossQuestions(boss)[qIdx];if(!q||!Number.isInteger(choice)||choice<0||choice>=(q.opts||[]).length)return;
   if(Date.now()<(WBR.nextAnswerAt||0))return;
@@ -323,13 +323,20 @@ async function wbrAnswer(bossIdx, qIdx, choice) {
   feedback.textContent='Confirming your answer…';
   let correct=choice===q.answer,result={damage:0,isCrit:false},outcome='hit',cooldown=boss.combatSettings?.questionCooldown??0;
   try{
-    if(window.RaidService?.managed(boss)){
+    const ready=await RaidService.prepare(bossIdx);if(!ready.ok)throw new Error(ready.reason);
+    if(currentUser?.id!==studentId||WBR.bossIdx!==bossIdx)return;
+    boss=AppStore.getBossEvent(bossIdx);
+    if(ready.mode==='managed'||RaidService.managed(boss)){
+      if(!WBR.bossRunId)WBR.bossRunId=boss.raidRunId;
+      if(!wbcMyRecord(bossIdx)){const joined=await RaidService.action(bossIdx,'join');if(!joined.ok)throw new Error(joined.reason);}
+      if((wbcMyRecord(bossIdx)?.lastQIdx||0)!==qIdx){wbrShowEncounter();throw new Error('Your saved progress has been refreshed. Answer the question now shown.');}
+
       const response=await RaidService.action(bossIdx,'answer',{questionIdx:qIdx,choice});
       if(!response.ok)throw new Error(response.reason);
       choice=response.outcome.choice??choice;correct=response.outcome.correct;result={damage:response.outcome.damage||0,isCrit:!!response.outcome.isCrit};
       outcome=response.boss.current_hp<=0?'defeated':'hit';cooldown=response.outcome.cooldown||0;
     }else{
-      if(correct){result=wbcCalcDamage(boss);outcome=await wbcApplyDamage(bossIdx,result.damage,studentId,result.isCrit);if(outcome==='rejected')throw new Error('Attack not confirmed. Reconnect and try again.');}
+      if(correct){result=wbcCalcDamage(boss);outcome=await wbcApplyDamage(bossIdx,result.damage,studentId,result.isCrit);if(outcome==='rejected')throw new Error(WBC.lastAttackError||'Attack not confirmed. Refresh the raid and try again.');}
       if(currentUser?.id!==studentId)return;
       AppStore.updateState(d=>{const p=d.bossParticipants?.[bossIdx]?.[studentId];if(!p)return;
         if(correct&&result.isCrit)p.critHits=(p.critHits||0)+1;
@@ -360,10 +367,14 @@ async function wbrAnswer(bossIdx, qIdx, choice) {
 // ── Open battle (with BVE art preload) ───────────────────────────────────────
 
 async function wbrOpenBattle(bossIdx) {
-  const boss=AppStore.getBossEvent(bossIdx),identity=currentUser?.id;
+  let boss=AppStore.getBossEvent(bossIdx);const identity=currentUser?.id;
   if(!boss||boss.status!=='active'||!wbcMyRecord(bossIdx)||WBR.opening||WBR.bossIdx!=null)return;
   WBR.opening=true;
   try{
+    const ready=await RaidService.prepare(bossIdx);if(!ready.ok){toast(ready.reason);return;}
+    if(currentUser?.id!==identity)return;
+    boss=AppStore.getBossEvent(bossIdx);
+    if((ready.mode==='managed'||RaidService.managed(boss))&&!wbcMyRecord(bossIdx)){const joined=await RaidService.action(bossIdx,'join');if(!joined.ok){toast(joined.reason);return;}}
     if(typeof bvePreloadBossArt==='function')await bvePreloadBossArt(boss).catch(()=>{});
     if(currentUser?.id===identity&&AppStore.getBossEvent(bossIdx)?._id===boss._id)_wbrOpenBattleRender(bossIdx);
   }finally{WBR.opening=false;}
@@ -529,7 +540,8 @@ window.wbcJoinBoss = async function (bossIdx) {
   if (!boss || boss.status !== 'active') return;
   if(window.WBSN){WBSN.dismissedBosses[bossIdx]=true;if(typeof wbsnRemove==='function')wbsnRemove();}
   if(!RaidService.visible(boss)||RaidService.expired(boss)||!wbcGetBossQuestions(boss).length)return;
-  if(RaidService.managed(boss)){const response=await RaidService.action(bossIdx,'join');if(!response.ok){toast(response.reason);return;}}
+  const identity=currentUser.id,ready=await RaidService.prepare(bossIdx);if(!ready.ok){toast(ready.reason);return;}if(currentUser?.id!==identity)return;boss=AppStore.getBossEvent(bossIdx);
+  if(ready.mode==='managed'||RaidService.managed(boss)){const response=await RaidService.action(bossIdx,'join');if(!response.ok){toast(response.reason);return;}}
   var existing = wbcGetParticipants(bossIdx)[currentUser.id];
   if (!existing) {
     AppStore.updateState(function (draft) {

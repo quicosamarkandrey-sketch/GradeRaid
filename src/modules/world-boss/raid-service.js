@@ -2,7 +2,7 @@
    inventory, damage or claim writes. Older events keep their existing RPC path. */
 ;(function(){
  'use strict';
- const queues=new Map(),pending=new Map(),signals=new Set();
+ const queues=new Map(),pending=new Map(),signals=new Set(),legacyUntil=new Map();
  const userId=()=>typeof currentUser==='undefined'?null:currentUser?.id;
  const managed=b=>!!(b?._id&&b.raidVersion>=1);
  function visible(b){
@@ -21,8 +21,8 @@
   AppStore.updateState(d=>{
    if(data.deleted){d.bossEvents[index]={...d.bossEvents[index],status:'deleted'};delete d.bossParticipants?.[index];return;}
    const mapped=_deriveBossEvents([data.boss],data.claims||[]).bossEventsArr[0];
-   d.bossEvents[index]={...d.bossEvents[index],...mapped,_raidReward:data.reward||null};
-   if(previous.raidRunId!==mapped.raidRunId){d.bossEvents[index].activeMinions=[];d.bossEvents[index].raidFeed=[];delete d.bossEvents[index]._victoryRewardedAt;}
+   d.bossEvents[index]={...d.bossEvents[index],...mapped,raidVersion:data.boss.raid_version||mapped.raidVersion||0,raidRunId:data.boss.raid_run_id||mapped.raidRunId,_raidReward:data.reward||null};
+   if(previous.raidRunId!==d.bossEvents[index].raidRunId){d.bossEvents[index].activeMinions=[];d.bossEvents[index].raidFeed=[];delete d.bossEvents[index]._victoryRewardedAt;}
    if(!d.bossParticipants)d.bossParticipants={};
    const roster=_deriveBossParticipants(data.participants||[],{[uuid]:index})[index]||{};
    // Keep device-only narration state; authoritative scores and question index win.
@@ -45,7 +45,7 @@
   return true;
  }
  function action(index,kind,payload={}){
-  const boss=AppStore.getBossEvent(index),identity=userId();if(!managed(boss)||!visible(boss))return Promise.resolve({ok:false,reason:'This raid is unavailable.'});
+  const boss=AppStore.getBossEvent(index),identity=userId();if(!boss?._id||(!managed(boss)&&kind!=='snapshot')||!visible(boss))return Promise.resolve({ok:false,reason:'This raid is unavailable.'});
   const key=[identity,boss._id,kind,payload.questionIdx??'',payload.rewardId??'',payload.studentId??payload.skillId??payload.kind??''].join(':');
   if(pending.has(key))return pending.get(key);
   const uuid=boss._id,body={runId:boss.raidRunId,...payload};
@@ -53,7 +53,7 @@
    if(userId()!==identity)return {ok:false,reason:'Account changed.'};
    let timeout;try{
     const result=await Promise.race([DBService.rpc('world_boss_action',{p_boss_id:uuid,p_action:kind,p_payload:body}),new Promise(resolve=>{timeout=setTimeout(()=>resolve({error:{message:'Connection interrupted. Retry to confirm the result.'}}),12000);})]);
-    if(result.error)return {ok:false,reason:result.error.message||'Could not connect. Please retry.'};
+    if(result.error)return {ok:false,code:result.error.code,reason:result.error.message||'Could not connect. Please retry.'};
     if(!apply(result.data,identity))return {ok:false,reason:'The raid changed. Reopen it to continue.'};
     return result.data;
    }catch(error){return {ok:false,reason:error.message||'Could not connect. Please retry.'};}finally{clearTimeout(timeout);}
@@ -62,5 +62,17 @@
   request.finally(()=>{if(queues.get(uuid)===request)queues.delete(uuid);if(pending.get(key)===request)pending.delete(key);});
   return request;
  }
- window.RaidService=Object.freeze({managed,visible,expired,action});
+ async function prepare(index){
+  const boss=AppStore.getBossEvent(index);if(!boss?._id||!visible(boss))return {ok:false,reason:'This raid is unavailable.'};
+  if(managed(boss)&&boss.raidRunId)return {ok:true,mode:'managed'};
+  const key=[userId(),boss._id].join(':');
+  if((legacyUntil.get(key)||0)>Date.now())return {ok:true,mode:'legacy'};
+  // Read-only negotiation: old cache data must not choose a legacy damage RPC
+  // after the database has been upgraded. Never fall back on network/auth errors.
+  const result=await action(index,'snapshot');
+  if(result.ok)return {ok:true,mode:'managed'};
+  if(['PGRST202','42883'].includes(result.code)){legacyUntil.set(key,Date.now()+15000);return {ok:true,mode:'legacy'};}
+  return result;
+ }
+ window.RaidService=Object.freeze({managed,visible,expired,action,prepare});
 })();
