@@ -48,7 +48,8 @@ function wbrBossStage(boss) {
 
 // ── Stop all WBR timers ───────────────────────────────────────────────────────
 
-function wbrStop() {
+function wbrStop(keepArena=false) {
+  if(!keepArena)window.RaidLootArena?.stop();
   window.RaidFX?.stop();
   clearInterval(WBR.typingTimer);
   clearInterval(WBR.refreshTimer);
@@ -62,7 +63,7 @@ function wbrStop() {
   if(WBR.answerTimer)clearTimeout(WBR.answerTimer);
   WBR.answerPending=false;document.getElementById('raid-answer-feedback')?.remove();document.getElementById('raid-intro-continue')?.remove();
   const overlay=document.getElementById('campaign-overlay');
-  if(overlay?.classList.contains('raid-battle')){
+  if(!keepArena&&overlay?.classList.contains('raid-battle')){
     overlay.classList.remove('raid-battle');overlay.removeAttribute('role');overlay.removeAttribute('aria-modal');overlay.removeAttribute('aria-label');
     document.body.style.overflow=WBR.previousOverflow||'';
     const exit=overlay.querySelector('.camp-hud-left>button');if(exit){exit.setAttribute('onclick','confirmExitCampaign()');if(WBR.previousExitMarkup)exit.innerHTML=WBR.previousExitMarkup;}
@@ -361,7 +362,7 @@ async function wbrAnswer(bossIdx, qIdx, choice) {
     WBR.answerTimer=setTimeout(()=>{
       WBR.answerPending=false;if(currentUser?.id!==studentId||WBR.bossIdx!==bossIdx)return;
       feedback.remove();
-      if(outcome==='defeated'){wbrCloseBattle();if(window.RaidExperience)RaidExperience.showVictory(bossIdx);}
+      if(outcome==='defeated'){if(!window.RaidLootArena?.open(bossIdx)){wbrCloseBattle();if(window.RaidExperience)RaidExperience.showVictory(bossIdx);}}
       else wbrShowEncounter();
     },outcome==='defeated'?1100:wait);
   }catch(error){
@@ -405,7 +406,7 @@ function _wbrOpenBattleRender(bossIdx) {
     if (WBR.bossIdx == null) return;
     var b = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[WBR.bossIdx];
     if(WBR.answerPending)return;
-    if (!b || b.status !== 'active' || b._id!==WBR.bossUuid||b.raidRunId!==WBR.bossRunId) { const won=b?.currentHp===0&&!!b.defeatedAt;wbrCloseBattle();if(won&&window.RaidExperience)RaidExperience.showVictory(bossIdx);return; }
+    if (!b || b.status !== 'active' || b._id!==WBR.bossUuid||b.raidRunId!==WBR.bossRunId) { const won=b?.currentHp===0&&!!b.defeatedAt&&b._id===WBR.bossUuid&&b.raidRunId===WBR.bossRunId;if(won&&window.RaidLootArena?.open(bossIdx))return;wbrCloseBattle();return; }
     wbrUpdateHUD();
     if (WBR.phase === 'battle') {
       wbrRenderSideOverlays();

@@ -149,6 +149,7 @@ begin
      outcome=jsonb_build_object('claimId',claim_key,'replayed',true);
    else
      if b.status<>'loot' or b.loot_finalized_at is not null or now()>=b.loot_started_at+make_interval(secs=>coalesce(b.loot_duration_sec,120)) then raise exception 'The loot window has closed';end if;
+     if now()<b.loot_started_at+make_interval(secs=>least(4.0,greatest(0.0,coalesce(b.loot_duration_sec,120)/4.0))::double precision) then raise exception 'Loot is scattering. Wait for the shared countdown.';end if;
      if not exists(select 1 from boss_participants where boss_id=b.id and student_id=sid and total_damage>0) then raise exception 'Contribute damage in this raid to claim loot';end if;
      select r into reward from jsonb_array_elements(coalesce(b.loot_rewards,'[]')) r where r->>'id'=p_payload->>'rewardId';
      if reward is null then raise exception 'Reward not found';end if;
@@ -176,7 +177,7 @@ begin
  if b.status='loot' and b.loot_started_at is not null and (now()>=b.loot_started_at+make_interval(secs=>coalesce(b.loot_duration_sec,120)) or not exists(select 1 from jsonb_array_elements(coalesce(b.loot_rewards,'[]')) r where (r->>'quantity')::integer>(select count(*) from loot_claims where boss_id=b.id and reward_id=r->>'id'))) then
    update boss_events set status='ended',ended_at=now(),loot_finalized_at=now() where id=b.id returning * into b;
  end if;
- return jsonb_build_object('ok',true,'viewerId',sid,'boss',to_jsonb(b),'outcome',outcome,
+ return jsonb_build_object('ok',true,'serverNow',extract(epoch from clock_timestamp())*1000,'viewerId',sid,'boss',to_jsonb(b),'outcome',outcome,
  'participants',coalesce((select jsonb_agg(to_jsonb(p)||jsonb_build_object('student_name',pr.display_name,'student_init',left(pr.display_name,2))) from boss_participants p join profiles pr on pr.id=p.student_id where p.boss_id=b.id),'[]'),
  'claims',coalesce((select jsonb_agg(to_jsonb(c)) from loot_claims c where c.boss_id=b.id),'[]'),
  'wallet',(select jsonb_build_object('id',id,'xp',xp,'coins',coins,'level',level,'tier',tier) from profiles where id=sid),

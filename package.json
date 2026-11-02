@@ -15,7 +15,8 @@
     "test:titles-db": "node tests/database/title-collections.cjs",
     "test:boss-db": "node tests/database/world-boss.cjs",
     "test:boss-browser": "node tests/browser/world-boss.cjs",
-    "test:boss-effects": "node tests/browser/world-boss-effects.cjs"
+    "test:boss-effects": "node tests/browser/world-boss-effects.cjs",
+    "test:boss-loot": "node tests/browser/world-boss-loot-race.cjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.13",

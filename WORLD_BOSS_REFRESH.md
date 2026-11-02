@@ -16,7 +16,7 @@ The participation field is an **XP bonus on victory**; the victory field is a **
 
 The lobby shows shared HP, class participation, question count, potential victory rewards and your saved question progress. Join/resume opens the battle. Intro controls work by click or keyboard; 1–4 select answer buttons, and Escape/Exit battle returns to the lobby. Answers remain disabled while confirming or cooling down. Minion challenges, knockouts, revive controls, phases and skills remain available in the arena. Decorative motion honors reduced-motion preferences.
 
-Victory leads to stationary reward cards, avoiding moving targets on phones. Stock, claim limits, remaining time and confirmation/error messages stay visible. Confirmed loot appears in **My Inventory**. Finished events remain under **Past raids**.
+Victory stays in the battle overlay: combat controls clear, the boss collapses, and rarity-marked loot bursts outward into settled, clickable drops beneath the victory banner. Every student still fighting transitions into the same loot race. A shared release countdown precedes claiming; confirmed stock, per-raider limits and remaining time stay visible. Confirmed loot appears in **My Inventory**. Finished events remain under **Past raids**.
 
 ## Required backend activation
 
@@ -87,3 +87,17 @@ The current phase75 script detects `boss_events.id` and creates the answer-recei
 For `boss_id uuid` versus `boss_events.id text` errors, run the **updated complete phase75 script** in Supabase SQL Editor, then the **updated phase76** repair. There is no need to convert or recreate the boss tables. Phase75 already includes the launch status-enum correction; phase76 also repairs the older damage function. A failed phase75 transaction has not installed the battle API successfully. Refresh the app after both scripts succeed.
 
 `npm run test:boss-db` runs the full lifecycle against both UUID and text primary keys, including non-UUID text IDs, repeat installation with paid rewards/history, real foreign-key validation/cascade, obsolete-overload removal, API grants and the enum repair. Tests remain local; hosted SQL must be applied separately.
+
+
+## In-battle victory and shared loot race
+
+The battlefield remains open after a final hit or a classmate's confirmed defeat update. Combat loops/effects stop, and questions, minions, HP and feed panels are hidden without destroying the shared campaign DOM. The boss collapses into a remnant, a victory banner appears, and vector relics burst from the boss into deterministic scattered positions. Higher rarities occupy the first rows. Settled drops have generous, non-overlapping touch targets on phones; reduced motion skips travel and collapse animation. Empty loot pools still show victory.
+
+Loot becomes claimable at a common time derived from `loot_started_at`: four seconds after defeat, capped at one quarter of unusually short loot windows. Snapshots include a server clock used to correct device clock differences. Active battle/loot sessions poll snapshots every second while visible; students already fighting enter automatically. A returning contributor can use **Enter loot battlefield** to resume the same stock/window. Closing or restarting a raid does not trigger a false victory. Expiry, sold-out stock and finalization close controls in place, with confirmed loot and results still available.
+
+Claims reuse the existing authenticated, row-locked RPC, per-student limits and idempotent receipt IDs. A failed request never grants a visual success or local inventory. A lost stock race refreshes the drop's state. Only the server-confirmed winner secures limited stock. Rendering preserves drop nodes during clock updates and pending requests; exit removes observers, timers and listeners and restores scrolling.
+
+Apply [supabase/phase77_world_boss_loot_race.sql](supabase/phase77_world_boss_loot_race.sql) **after phase75** to enforce the shared release on the server. The latest full phase75 also includes this guard. Phase77 is repeatable, supports native text/UUID boss IDs, and preserves grants, events, reward history and balances. This workspace has tested it locally, not applied it to hosted Supabase.
+
+- `npm run test:boss-loot` — two separate student browsers using the actual local PostgreSQL/PGlite RPC: final attack, passive classmate transition, server-clock release with a 30-second device clock difference, racing for one Legendary item, failed/retried claims, inventory, 320/390/1440 non-overlapping targets, resume, reduced motion, expiry, results and cleanup.
+- `npm run test:boss-db` — includes installing phase77 over a pre-countdown function, repeat application and rejecting pre-release claims without inventory writes, for text and UUID boss IDs.

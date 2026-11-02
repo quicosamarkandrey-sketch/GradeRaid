@@ -30,7 +30,7 @@ const ROOT = path.join(__dirname, '..');
 
 function main() {
   const split = JSON.parse(fs.readFileSync(path.join(ROOT, 'dist', 'role-split.json'), 'utf8'));
-  const safeDefaultShared = new Set([...split.neitherRole, 'modules/shared/presentation.js', 'modules/rewards/learning-rewards.js', 'modules/quests/study-studio.js', 'modules/quests/study-sync.js', 'modules/titles/titles-collection.js', 'modules/titles/title-materials.js', 'modules/titles/title-records.js', 'modules/world-boss/raid-service.js', 'modules/world-boss/raid-experience.js', 'modules/world-boss/battle-effects.js']);
+  const safeDefaultShared = new Set([...split.neitherRole, 'modules/shared/presentation.js', 'modules/rewards/learning-rewards.js', 'modules/quests/study-studio.js', 'modules/quests/study-sync.js', 'modules/titles/titles-collection.js', 'modules/titles/title-materials.js', 'modules/titles/title-records.js', 'modules/world-boss/raid-service.js', 'modules/world-boss/raid-experience.js', 'modules/world-boss/battle-effects.js', 'modules/world-boss/loot-arena.js']);
 
   const studentSet = new Set([...split.shared, ...split.studentOnly, ...safeDefaultShared]);
   const adminSet = new Set([...split.shared, ...split.adminOnly, ...safeDefaultShared, 'modules/seat-arrangement/classroom-editor.js']);

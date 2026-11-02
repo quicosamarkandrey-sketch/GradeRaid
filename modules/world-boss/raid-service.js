@@ -22,6 +22,7 @@
    if(data.deleted){d.bossEvents[index]={...d.bossEvents[index],status:'deleted'};delete d.bossParticipants?.[index];return;}
    const mapped=_deriveBossEvents([data.boss],data.claims||[]).bossEventsArr[0];
    d.bossEvents[index]={...d.bossEvents[index],...mapped,raidVersion:data.boss.raid_version||mapped.raidVersion||0,raidRunId:data.boss.raid_run_id||mapped.raidRunId,_raidReward:data.reward||null};
+   if(data.serverNow!=null&&Number.isFinite(Number(data.serverNow)))d.bossEvents[index]._raidClockOffset=Number(data.serverNow)-Date.now();
    if(previous.raidRunId!==d.bossEvents[index].raidRunId){d.bossEvents[index].activeMinions=[];d.bossEvents[index].raidFeed=[];delete d.bossEvents[index]._victoryRewardedAt;}
    if(!d.bossParticipants)d.bossParticipants={};
    const roster=_deriveBossParticipants(data.participants||[],{[uuid]:index})[index]||{};
@@ -33,7 +34,7 @@
   },{type:data.boss?.current_hp===0&&previous.currentHp>0?'world-boss:defeated':'world-boss:server-synced',payload:{bossIdx:index,studentId:identity,damage:data.outcome?.damage||0}});
   if(data.outcome?.damage&&data.boss?.current_hp>0)AppStore.emit({type:'world-boss:damage-applied',payload:{bossIdx:index,studentId:identity,damage:data.outcome.damage}});
   if(currentUser?.id===identity){const student=AppStore.getStudent(identity);if(student)Object.assign(currentUser,student);}
-  if(currentRole==='student'&&window.WBR?.bossIdx===index){
+  if(currentRole==='student'&&window.WBR?.bossIdx===index&&data.boss?.status==='active'&&WBR.phase==='battle'){
    for(const signal of (data.boss?.raid_signals||[]).slice().reverse()){
     const key=[identity,data.boss.raid_run_id,signal.id].join(':');
     if(signals.has(key)||Date.now()-Number(signal.at)>15000)continue;
