@@ -37,7 +37,7 @@ window.wbcDefaultSettings = function () {
 
 window.wbcGetActiveBoss = function () {
   const bosses = AppStore.getSlice(s => s.bossEvents) || [];
-  const idx    = bosses.findIndex(b => b.status === 'active');
+  const idx    = bosses.findIndex(b => b.status === 'active' && (!window.RaidService || (RaidService.visible(b) && !RaidService.expired(b))));
   return idx >= 0 ? { boss: bosses[idx], idx } : null;
 };
 
@@ -99,9 +99,9 @@ window.wbcCalcDamage = function (boss) {
  */
 window.wbcApplyDamage = async function (bossIdx, damage, studentId, isCrit) {
   const bossBefore = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
-  if (!bossBefore) return;
+  if (!bossBefore || bossBefore.status !== 'active' || (bossBefore.currentHp??bossBefore.maxHp)<=0 || !Number.isFinite(damage) || damage <= 0 || window.RaidService?.managed(bossBefore)) return 'rejected';
 
-  let newHp    = Math.max(0, (bossBefore.currentHp || bossBefore.maxHp) - damage);
+  let newHp    = Math.max(0, (bossBefore.currentHp ?? bossBefore.maxHp) - damage);
   let defeated = newHp <= 0;
 
   if (typeof DBService !== 'undefined' && typeof DBService.rpc === 'function' && bossBefore._id) {
@@ -111,16 +111,17 @@ window.wbcApplyDamage = async function (bossIdx, damage, studentId, isCrit) {
         p_student_id: studentId, p_damage: damage, p_is_crit: !!isCrit,
       });
       if (error) {
-        console.warn('[EduQuest] apply_boss_damage RPC failed, keeping local optimistic HP:', error);
+        toast('Your attack was not confirmed. Please reconnect and retry.'); return 'rejected';
       } else {
         const row = Array.isArray(data) ? data[0] : data;
+        if (!row || typeof row.new_hp !== 'number') {toast('Your attack was not confirmed. Please retry.');return 'rejected';}
         if (row && typeof row.new_hp === 'number') {
           newHp    = row.new_hp;
           defeated = !!row.defeated;
         }
       }
     } catch (e) {
-      console.warn('[EduQuest] apply_boss_damage RPC threw, keeping local optimistic HP:', e);
+      toast('Your attack was not confirmed. Please reconnect and retry.'); return 'rejected';
     }
   }
   if (defeated) newHp = 0;
@@ -140,12 +141,13 @@ window.wbcApplyDamage = async function (bossIdx, damage, studentId, isCrit) {
       parts[studentId].correctAnswers = (parts[studentId].correctAnswers || 0) + 1;
     }
 
-    if (defeated) {
+    if (defeated && !boss._victoryRewardedAt) {
+      boss._victoryRewardedAt=Date.now();
       Object.values(parts).forEach(p => {
         const s = (draft.students || []).find(x => x.id === p.studentId);
         if (!s || p.totalDamage <= 0) return;
-        const xpReward   = (boss.xpReward   || 500) + (boss.participationReward || 100);
-        const coinReward = (boss.coinReward || 250) + (boss.victoryReward       || 300);
+        const xpReward   = (boss.xpReward   ?? 500) + (boss.participationReward ?? 100);
+        const coinReward = (boss.coinReward ?? 250) + (boss.victoryReward       ?? 300);
         s.xp    = (s.xp || 0)    + xpReward;
         s.coins = (s.coins || 0) + coinReward;
         if (!Array.isArray(draft.pointLog)) draft.pointLog = [];
@@ -167,13 +169,11 @@ window.wbcApplyDamage = async function (bossIdx, damage, studentId, isCrit) {
 
 // ── Question access ───────────────────────────────────────────────────────────
 
-window.wbcGetBossQuestions = function (boss) {
-  if (boss.bossQuestions && boss.bossQuestions.length) return boss.bossQuestions;
-  if (boss.linkedQuizId) {
-    const q = (AppStore.getSlice(s => s.quizzes) || []).find(q => q.id === boss.linkedQuizId);
-    if (q) return q.questions;
-  }
-  return boss._generatedQuestions || [];
+window.wbcGetBossQuestions = function(boss){
+ const valid=questions=>(Array.isArray(questions)?questions:[]).filter(q=>q&&typeof q.q==='string'&&q.q.trim()&&Array.isArray(q.opts)&&q.opts.length>=2&&q.opts.every(o=>typeof o==='string'&&o.trim())&&Number.isInteger(q.answer)&&q.answer>=0&&q.answer<q.opts.length);
+ if(boss.bossQuestions?.length){const ready=valid(boss.bossQuestions);return boss.raidVersion>=1&&ready.length!==boss.bossQuestions.length?[]:ready;}
+ if(boss.linkedQuizId){const quiz=(AppStore.getSlice(s=>s.quizzes)||[]).find(q=>q.id===boss.linkedQuizId);if(quiz)return valid(quiz.questions);}
+ return valid(boss._generatedQuestions);
 };
 
 // ── Battle statistics ─────────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ window.wbcUpdateTopbarWidget = function () {
   const found = wbcGetActiveBoss();
   if (!found || currentRole !== 'student') { w.style.display = 'none'; return; }
   const { boss } = found;
-  const pct      = Math.max(0, Math.min(100, Math.round((boss.currentHp || boss.maxHp) / boss.maxHp * 100)));
+  const pct      = Math.max(0, Math.min(100, Math.round((boss.currentHp ?? boss.maxHp) / boss.maxHp * 100)));
   document.getElementById('wb-widget-name').textContent        = boss.name.toUpperCase().substring(0, 18);
   const widgetTrack = document.getElementById('wb-widget-hp-track');
   if (widgetTrack && typeof renderStatBar === 'function') {
@@ -224,7 +224,7 @@ window.wbcUpdateTopbarWidget = function () {
   }
   window._wbcLastWidgetHpPct = pct;
   document.getElementById('wb-widget-pct').textContent         = pct + '%';
-  document.getElementById('wb-widget-hp-txt').textContent      = (boss.currentHp || boss.maxHp).toLocaleString() + ' HP';
+  document.getElementById('wb-widget-hp-txt').textContent      = (boss.currentHp ?? boss.maxHp).toLocaleString() + ' HP';
   w.style.display = 'flex';
 };
 

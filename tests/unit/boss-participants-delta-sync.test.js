@@ -118,3 +118,10 @@ test('no-clobber: two students concurrently fighting the same boss — one dirty
   assert.equal(bpCall.rows[0].total_damage, 25);
   assert.deepEqual(dj(sessionA.AppStore.getDirtyIds('boss_participants')), [], "s1's dirty id cleared after the confirmed push");
 });
+
+test('managed boss participant sync cannot overwrite RPC-owned damage, answers or another student',async()=>{
+ const loaded=loadDbServiceWindow({currentUser:{id:'s1',role:'student'},currentRole:'student',dirtyIds:{boss_participants:['0:s1','0:s2']}}),calls=[];
+ const client=makeFakeSupabaseClient((table,rows)=>calls.push({table,rows}));
+ const cache={_bossIdById:{boss:0},bossEvents:[{_id:'boss',raidVersion:1,classId:'classA'}],bossParticipants:{0:{s1:participant({hp:0,isKO:true,totalDamage:999,lastQIdx:100}),s2:participant({hp:1,totalDamage:999})}}};
+ await loaded.DBService._test.pushCacheToSupabase(client,cache);const rows=calls.find(c=>c.table==='boss_participants').rows;assert.equal(rows.length,1);assert.equal(rows[0].student_id,'s1');assert.equal(rows[0].hp,0);for(const key of ['total_damage','correct_answers','wrong_answers','crit_hits','last_question_idx'])assert.equal(Object.hasOwn(rows[0],key),false,key+' is RPC owned');
+});

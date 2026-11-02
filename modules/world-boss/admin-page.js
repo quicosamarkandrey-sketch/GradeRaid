@@ -258,7 +258,7 @@ window.wbcOpenCombatSettings = function (bossIdx) {
     <div><div class="modal-h2" style="margin-bottom:2px">Combat Settings — ${_esc(boss.name)}</div><div style="font-size:12px;color:var(--text-muted)">Configure damage, crit chance, and question flow</div></div>
   </div>
   <div class="boss-form-section">
-    <div class="boss-form-section-title">💥 Damage Settings</div>
+    <div class="boss-form-section-title">Damage settings</div>
     <div style="margin-bottom:12px"><label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="cs-use-random" ${s.useRandomDamage ? 'checked' : ''} style="width:auto;accent-color:#EC4899"> Use random damage range instead of fixed value</label></div>
     <div class="combat-settings-grid">
       <div class="form-group" style="margin:0"><label class="form-label">Fixed Damage per Correct Answer</label><input type="number" id="cs-dmg-fixed" value="${s.damagePerAnswer || 150}" min="1" style="width:100%" placeholder="150"><div style="font-size:10px;color:var(--text-muted);margin-top:4px">Used when random damage is OFF</div></div>
@@ -266,14 +266,14 @@ window.wbcOpenCombatSettings = function (bossIdx) {
     </div>
   </div>
   <div class="boss-form-section">
-    <div class="boss-form-section-title">⚡ Critical Hit</div>
+    <div class="boss-form-section-title">Critical hits</div>
     <div class="combat-settings-grid">
-      <div class="form-group" style="margin:0"><label class="form-label">Crit Chance (%)</label><input type="number" id="cs-crit-chance" value="${s.critChance || 20}" min="0" max="100" style="width:100%"><div style="font-size:10px;color:var(--text-muted);margin-top:4px">0 = no crits, 100 = always crit</div></div>
+      <div class="form-group" style="margin:0"><label class="form-label">Crit Chance (%)</label><input type="number" id="cs-crit-chance" value="${s.critChance ?? 20}" min="0" max="100" style="width:100%"><div style="font-size:10px;color:var(--text-muted);margin-top:4px">0 = no crits, 100 = always crit</div></div>
       <div class="form-group" style="margin:0"><label class="form-label">Crit Multiplier</label><input type="number" id="cs-crit-mult" value="${s.critMultiplier || 2.5}" min="1" step="0.1" style="width:100%"><div style="font-size:10px;color:var(--text-muted);margin-top:4px">e.g. 2.5 = 2.5× damage on crit</div></div>
     </div>
   </div>
   <div class="boss-form-section">
-    <div class="boss-form-section-title">⏱️ Question Flow</div>
+    <div class="boss-form-section-title">Question flow</div>
     <div class="form-group" style="margin:0"><label class="form-label">Cooldown between questions (seconds)</label><input type="number" id="cs-cooldown" value="${s.questionCooldown || 0}" min="0" max="300" style="width:100%"><div style="font-size:10px;color:var(--text-muted);margin-top:4px">0 = instant. Applied after each answer.</div></div>
   </div>
   <div style="display:flex;gap:10px;padding-top:4px">
@@ -290,10 +290,11 @@ window.wbcSaveCombatSettings = function (bossIdx) {
     damageMinRandom: parseInt(document.getElementById('cs-dmg-min')?.value)   || 80,
     damageMaxRandom: parseInt(document.getElementById('cs-dmg-max')?.value)   || 200,
     useRandomDamage: document.getElementById('cs-use-random')?.checked        || false,
-    critChance:      parseFloat(document.getElementById('cs-crit-chance')?.value) || 20,
+    critChance:      Number(document.getElementById('cs-crit-chance')?.value ?? 20),
     critMultiplier:  parseFloat(document.getElementById('cs-crit-mult')?.value)   || 2.5,
     questionCooldown: parseInt(document.getElementById('cs-cooldown')?.value) || 0,
   };
+  if(combatSettings.damageMinRandom>combatSettings.damageMaxRandom||combatSettings.critChance<0||combatSettings.critChance>100||combatSettings.damagePerAnswer<1||combatSettings.questionCooldown<0||combatSettings.questionCooldown>300){toast('Check the damage range, critical chance and cooldown.');return;}
   AppStore.updateState(draft => {
     const boss = (draft.bossEvents || [])[bossIdx];
     if (boss) boss.combatSettings = combatSettings;
@@ -318,9 +319,9 @@ window.wbcOpenQuestionEditor = function (bossIdx) {
   </div>
   ${allQuizzes.length > 0 ? `
   <div class="boss-form-section" style="margin-bottom:16px">
-    <div class="boss-form-section-title">📋 Import from Quest</div>
+    <div class="boss-form-section-title">Import from a quest</div>
     <div style="display:flex;gap:8px;align-items:flex-end">
-      <div class="form-group" style="flex:1;margin:0"><label class="form-label">Select Quest</label><select id="wbq-import-quiz" style="width:100%"><option value="">— Choose —</option>${allQuizzes.map(q => `<option value="${q.id}">${q.title} (${q.questions.length} Qs)</option>`).join('')}</select></div>
+      <div class="form-group" style="flex:1;margin:0"><label class="form-label">Select Quest</label><select id="wbq-import-quiz" style="width:100%"><option value="">— Choose —</option>${allQuizzes.map(q => `<option value="${q.id}">${_esc(q.title)} (${(q.questions||[]).length} Qs)</option>`).join('')}</select></div>
       <button class="btn btn-ghost btn-sm" onclick="wbcImportFromQuiz(${bossIdx})">Import</button>
     </div>
   </div>` : ''}
@@ -340,13 +341,13 @@ function _wbcRenderQuestionList(qs) {
       <div style="font-size:12px;font-weight:700;color:#EC4899">Question ${qi + 1}</div>
       <button class="btn btn-danger btn-xs" onclick="wbcRemoveQuestion(${qi})">✕ Remove</button>
     </div>
-    <input type="text" value="${q.q || ''}" placeholder="Type your question..." style="width:100%;margin-bottom:10px" oninput="window._wbcDraftQuestions[${qi}].q=this.value">
+    <input type="text" value="${_esc(q.q || '')}" placeholder="Type your question..." style="width:100%;margin-bottom:10px" oninput="window._wbcDraftQuestions[${qi}].q=this.value">
     <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px">Click ● to mark correct</div>
     ${(q.opts || ['', '', '', '']).map((opt, oi) => `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <div onclick="window._wbcDraftQuestions[${qi}].answer=${oi};document.getElementById('wbq-list').innerHTML=_wbcRenderQuestionList(window._wbcDraftQuestions)"
         style="width:22px;height:22px;border-radius:50%;border:2px solid ${q.answer === oi ? '#4edea3' : 'rgba(255,255,255,.15)'};background:${q.answer === oi ? 'rgba(78,222,163,.2)' : ''};cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px">${q.answer === oi ? '✓' : ''}</div>
-      <input type="text" value="${opt || ''}" placeholder="Option ${String.fromCharCode(65 + oi)}" style="flex:1" oninput="window._wbcDraftQuestions[${qi}].opts[${oi}]=this.value">
+      <input type="text" value="${_esc(opt || '')}" placeholder="Option ${String.fromCharCode(65 + oi)}" style="flex:1" oninput="window._wbcDraftQuestions[${qi}].opts[${oi}]=this.value">
     </div>`).join('')}
   </div>`).join('');
 }
@@ -376,10 +377,10 @@ window.wbcImportFromQuiz = function (bossIdx) {
   // unguarded `q.opts.map(...)`. mc and tf both still carry an `opts`
   // array, so they import fine; the other three are skipped here until
   // boss combat gets dedicated support for each format.
-  const allQs = JSON.parse(JSON.stringify(quiz.questions));
+  const allQs = JSON.parse(JSON.stringify(quiz.questions||[]));
   const importable = allQs.filter(q => {
     const t = (typeof eqQType === 'function' ? eqQType(q) : (q.type || 'mc'));
-    return t !== 'id' && t !== 'enum' && t !== 'match';
+    return t !== 'id' && t !== 'enum' && t !== 'match' && Array.isArray(q.opts)&&q.opts.length>=2&&Number.isInteger(q.answer)&&q.answer>=0&&q.answer<q.opts.length;
   });
   const skipped = allQs.length - importable.length;
   window._wbcDraftQuestions = importable;
@@ -393,6 +394,7 @@ window.wbcSaveQuestions = function (bossIdx) {
   const existing = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
   if (!existing) return;
   const qs = window._wbcDraftQuestions || [];
+  if(qs.some(q=>!Array.isArray(q.opts)||q.opts.length<2||!Number.isInteger(q.answer)||q.answer<0||q.answer>=q.opts.length)){toast('Every question needs at least two options and a valid correct answer.');return;}
   const emptyQIdx = qs.findIndex(q => !q.q.trim());
   if (emptyQIdx !== -1) { toast(`❌ Question ${emptyQIdx + 1} has no text`, '#ffb4ab'); const el = document.getElementById('wbqb-' + emptyQIdx); if (el) { el.style.border = '1.5px solid #ef4444'; el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
   for (let qi = 0; qi < qs.length; qi++) {
@@ -446,14 +448,14 @@ window.showFieldErr = function (fieldId, errId) {
 function _wbSpawnableSections() {
   const state = (typeof AppStore !== 'undefined') ? AppStore.getState() : {};
   const uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : null;
-  const isAdmin = (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin');
-  const sections = (state.classSections || []).filter(s => !s.archived);
+  const isAdmin = (typeof currentRole !== 'undefined' && currentRole === 'admin');
+  const sections = (state.classSections || []).filter(s => !s.archived&&!s.isArchived);
 
   if (!sections.length) {
     // Section Maker hasn't been used yet — same derive-from-students
     // fallback every other class dropdown in the app uses.
     const ids = window.getActiveClassIds ? window.getActiveClassIds(state) : ['default-class'];
-    return ids.map(id => ({ id, label: id }));
+    return isAdmin ? ids.map(id => ({ id, label: id })) : [];
   }
 
   const mine = isAdmin ? sections : sections.filter(s => s.adviserId === uid);
@@ -485,6 +487,7 @@ window.saveBossForm = function () {
   if (libId) {
     const linked = typeof bsGet === 'function' ? bsGet(libId) : null;
     if (linked) {
+      d._visualProfile=JSON.parse(JSON.stringify(linked));
       const artSrc = bveGetArtSrc(linked);
       // Pending Fixes Report §2b: prefer the Storage-backed public URL over
       // an embedded base64 blob. `linked.artwork` is the RAW (unresolved)
@@ -506,6 +509,7 @@ window.saveBossForm = function () {
       d._cardAccent = vis.cardAccent || '#d0bcff';
     }
   } else {
+    d._visualProfile=null;
     d.image = (document.getElementById('bf-img')?.value || '').trim();
   }
   d.maxHp               = parseInt(document.getElementById('bf-maxhp')?.value) || 0;
@@ -521,13 +525,14 @@ window.saveBossForm = function () {
   d.victoryMessage      = (document.getElementById('bf-vic-msg')?.value    || '').trim();
 
   let valid = true;
+  if (!_wbSpawnableSections().some(section=>section.id===d.classId)) { toast('Select a section you manage.');valid=false; }
   if (!d.classId)                              { toast('⚠️ You need an active section to spawn a boss into — create one in Section Maker first.', '#ffb4ab'); valid = false; }
   if (!d.name)                                 { showFieldErr('bf-name',  'bf-name-err');  valid = false; }
   if (!d.image && !d._bossLibraryId)           { toast('⚠️ Please link a Boss Studio profile or add an emoji/image', '#ffb4ab'); valid = false; }
   if (!d.maxHp || d.maxHp < 1)                { showFieldErr('bf-maxhp', 'bf-hp-err');   valid = false; }
   if (!d.startDate)                            { showFieldErr('bf-start', 'bf-start-err'); valid = false; }
   if (!d.endDate)                              { showFieldErr('bf-end',   'bf-end-err');   valid = false; }
-  if (d.startDate && d.endDate && d.endDate <= d.startDate) { showFieldErr('bf-end', 'bf-end-err'); valid = false; }
+  if (d.startDate && d.endDate && d.endDate < d.startDate) { showFieldErr('bf-end', 'bf-end-err'); valid = false; }
   if (d.xpReward < 0)                         { showFieldErr('bf-xp',    'bf-xp-err');    valid = false; }
   if (d.coinReward < 0)                        { showFieldErr('bf-coins', 'bf-coins-err'); valid = false; }
   if (d.participationReward < 0)               { showFieldErr('bf-part',  'bf-part-err');  valid = false; }
@@ -537,7 +542,8 @@ window.saveBossForm = function () {
   // BUGFIX: was `d.currentHp === undefined` only — didn't cover null/0/NaN,
   // any of which would still reach the upsert as an invalid current_hp.
   // maxHp is guaranteed >= 1 here (validated above), so this is always safe.
-  if (d._index === null || !d.currentHp || d.currentHp < 1) d.currentHp = d.maxHp;
+  if (d._index === null) d.currentHp=d.maxHp;
+  else {const saved=AppStore.getBossEvent(d._index);d.currentHp=Math.min(saved.currentHp??saved.maxHp,d.maxHp);if(['active','loot'].includes(saved.status)){d.maxHp=saved.maxHp;d.currentHp=saved.currentHp;d.classId=saved.classId;}}
 
   const isEdit  = d._index !== null;
   const saveObj = { ...d };
@@ -547,6 +553,7 @@ window.saveBossForm = function () {
     // _wbSpawnableSections() / the #bf-section field above) — falls back to
     // ActiveSection only in the unlikely case the field wasn't rendered.
     saveObj.classId   = d.classId || (window.ActiveSection ? window.ActiveSection.get() : ((AppStore.getSlice(s => s.admin) || {}).classId || 'default-class'));
+    saveObj._id=crypto.randomUUID();saveObj._pendingInsert=true;
     saveObj.status    = 'draft';
     saveObj.createdAt = Date.now();
   }
@@ -568,7 +575,7 @@ window.openBossForm = function (bossIndex) {
   const isEdit     = bossIndex !== null && bossIndex !== undefined;
   const boss       = isEdit ? { ...(AppStore.getSlice(s => s.bossEvents) || [])[bossIndex] } : {
     name: '', description: '', image: '💀', maxHp: 10000, currentHp: 10000,
-    startDate: '', endDate: '', difficulty: 'Normal',
+    startDate: new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()), endDate: new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()+7*86400000)), difficulty: 'Normal',
     xpReward: 500, coinReward: 250, participationReward: 100, victoryReward: 300,
     lootRewards: wblrDefaultRewards(), status: 'draft', createdAt: Date.now(),
   };
@@ -628,7 +635,7 @@ window.openBossForm = function (bossIndex) {
     <div><div class="modal-h2" style="margin-bottom:2px">${isEdit ? 'Edit Boss' : 'Create Boss'}</div><div style="font-size:12px;color:var(--text-muted)">Configure the World Boss raid event settings</div></div>
   </div>
   <div class="boss-form-section">
-    <div class="boss-form-section-title">💀 Basic Info</div>
+    <div class="boss-form-section-title">Event details</div>
     <div class="form-group" style="margin-bottom:12px"><label class="form-label">Boss Name <span style="color:#EC4899">*</span></label><input type="text" id="bf-name" value="${_esc(boss.name || '')}" placeholder="e.g. The Void Tyrant" style="width:100%" oninput="window._bossDraft.name=this.value;clearFieldErr(this,'bf-name-err')"><div class="field-err" id="bf-name-err">Boss name is required</div></div>
     <div class="form-group" style="margin-bottom:12px"><label class="form-label">Boss Description</label><textarea id="bf-desc" rows="3" placeholder="Describe the boss lore and threat…" style="width:100%;resize:vertical" oninput="window._bossDraft.description=this.value">${_esc(boss.description || '')}</textarea></div>
     <div class="form-group" style="margin-bottom:0">
@@ -640,34 +647,34 @@ window.openBossForm = function (bossIndex) {
       ${lockSection ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">🔒 Section is locked once a boss has left Draft — this boss shouldn't jump sections mid-event.</div>` : `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">This boss will only be visible to students in the section you pick — no cross-section spawns.</div>`}
     </div>
   </div>
-  <div class="boss-form-section" id="bf-visual-section"><div class="boss-form-section-title">🎨 Boss Visual Identity</div>${visualSection}</div>
+  <div class="boss-form-section" id="bf-visual-section"><div class="boss-form-section-title">Boss identity</div>${visualSection}</div>
   <div class="boss-form-section">
-    <div class="boss-form-section-title">⚔️ Combat Stats</div>
+    <div class="boss-form-section-title">Battle settings</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group" style="margin:0"><label class="form-label">Max HP <span style="color:#EC4899">*</span></label><input type="number" id="bf-maxhp" value="${boss.maxHp || 10000}" min="1" max="9999999" style="width:100%" oninput="window._bossDraft.maxHp=parseInt(this.value)||1;window._bossDraft.currentHp=window._bossDraft.maxHp;clearFieldErr(this,'bf-hp-err')"><div class="field-err" id="bf-hp-err">Max HP must be at least 1</div></div>
+      <div class="form-group" style="margin:0"><label class="form-label">Max HP <span style="color:#EC4899">*</span></label><input type="number" id="bf-maxhp" value="${boss.maxHp || 10000}" min="1" max="9999999" style="width:100%" oninput="window._bossDraft.maxHp=parseInt(this.value)||1;clearFieldErr(this,'bf-hp-err')"><div class="field-err" id="bf-hp-err">Max HP must be at least 1</div></div>
       <div class="form-group" style="margin:0"><label class="form-label">Difficulty <span style="color:#EC4899">*</span></label><div class="diff-selector" id="bf-diff-wrap">${diffOptions.map(d => `<div class="diff-btn${(boss.difficulty || 'Normal') === d ? ' ' + diffClass(d) : ''}" onclick="bossFormSetDiff('${d}')">${d}</div>`).join('')}</div></div>
     </div>
   </div>
   <div class="boss-form-section">
-    <div class="boss-form-section-title">📅 Event Schedule</div>
+    <div class="boss-form-section-title">Event dates</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="form-group" style="margin:0"><label class="form-label">Start Date <span style="color:#EC4899">*</span></label><input type="date" id="bf-start" value="${boss.startDate || ''}" style="width:100%" onchange="window._bossDraft.startDate=this.value;clearFieldErr(this,'bf-start-err')"><div class="field-err" id="bf-start-err">Start date is required</div></div>
-      <div class="form-group" style="margin:0"><label class="form-label">End Date <span style="color:#EC4899">*</span></label><input type="date" id="bf-end" value="${boss.endDate || ''}" style="width:100%" onchange="window._bossDraft.endDate=this.value;clearFieldErr(this,'bf-end-err')"><div class="field-err" id="bf-end-err">End date is required (and must be after start)</div></div>
+      <div class="form-group" style="margin:0"><label class="form-label">End Date <span style="color:#EC4899">*</span></label><input type="date" id="bf-end" value="${boss.endDate || ''}" style="width:100%" onchange="window._bossDraft.endDate=this.value;clearFieldErr(this,'bf-end-err')"><div class="field-err" id="bf-end-err">End date is required (on or after the start date)</div></div>
     </div>
   </div>
   <div class="boss-form-section">
-    <div class="boss-form-section-title">🏆 Rewards</div>
+    <div class="boss-form-section-title">Victory rewards</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-      <div class="form-group" style="margin:0"><label class="form-label">⚡ XP Reward *</label><input type="number" id="bf-xp" value="${boss.xpReward || 500}" min="0" style="width:100%" oninput="window._bossDraft.xpReward=parseInt(this.value)||0;clearFieldErr(this,'bf-xp-err')"><div class="field-err" id="bf-xp-err">XP reward must be 0 or more</div></div>
-      <div class="form-group" style="margin:0"><label class="form-label">🪙 Coin Reward *</label><input type="number" id="bf-coins" value="${boss.coinReward || 250}" min="0" style="width:100%" oninput="window._bossDraft.coinReward=parseInt(this.value)||0;clearFieldErr(this,'bf-coins-err')"><div class="field-err" id="bf-coins-err">Coin reward must be 0 or more</div></div>
+      <div class="form-group" style="margin:0"><label class="form-label">Base XP reward</label><input type="number" id="bf-xp" value="${boss.xpReward ?? 500}" min="0" style="width:100%" oninput="window._bossDraft.xpReward=parseInt(this.value)||0;clearFieldErr(this,'bf-xp-err')"><div class="field-err" id="bf-xp-err">XP reward must be 0 or more</div></div>
+      <div class="form-group" style="margin:0"><label class="form-label">Base coin reward</label><input type="number" id="bf-coins" value="${boss.coinReward ?? 250}" min="0" style="width:100%" oninput="window._bossDraft.coinReward=parseInt(this.value)||0;clearFieldErr(this,'bf-coins-err')"><div class="field-err" id="bf-coins-err">Coin reward must be 0 or more</div></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group" style="margin:0"><label class="form-label">🎖️ Participation *</label><input type="number" id="bf-part" value="${boss.participationReward || 100}" min="0" style="width:100%" oninput="window._bossDraft.participationReward=parseInt(this.value)||0;clearFieldErr(this,'bf-part-err')"><div class="field-err" id="bf-part-err">Must be 0 or more</div><div style="font-size:10px;color:var(--text-muted);margin-top:5px">Given to all who dealt damage</div></div>
-      <div class="form-group" style="margin:0"><label class="form-label">🏆 Victory Reward *</label><input type="number" id="bf-victory" value="${boss.victoryReward || 300}" min="0" style="width:100%" oninput="window._bossDraft.victoryReward=parseInt(this.value)||0;clearFieldErr(this,'bf-victory-err')"><div class="field-err" id="bf-victory-err">Must be 0 or more</div><div style="font-size:10px;color:var(--text-muted);margin-top:5px">Given when boss is defeated</div></div>
+      <div class="form-group" style="margin:0"><label class="form-label">Participation XP bonus</label><input type="number" id="bf-part" value="${boss.participationReward ?? 100}" min="0" style="width:100%" oninput="window._bossDraft.participationReward=parseInt(this.value)||0;clearFieldErr(this,'bf-part-err')"><div class="field-err" id="bf-part-err">Must be 0 or more</div><div style="font-size:10px;color:var(--text-muted);margin-top:5px">Added on victory for raiders who dealt damage</div></div>
+      <div class="form-group" style="margin:0"><label class="form-label">Victory coin bonus</label><input type="number" id="bf-victory" value="${boss.victoryReward ?? 300}" min="0" style="width:100%" oninput="window._bossDraft.victoryReward=parseInt(this.value)||0;clearFieldErr(this,'bf-victory-err')"><div class="field-err" id="bf-victory-err">Must be 0 or more</div><div style="font-size:10px;color:var(--text-muted);margin-top:5px">Added to the base coins when the boss is defeated</div></div>
     </div>
   </div>
   <div class="boss-form-section">
-    <div class="boss-form-section-title">🏆 Victory Screen Content</div>
+    <div class="boss-form-section-title">Victory screen</div>
     <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;line-height:1.6;background:rgba(255,185,95,0.05);border:1px solid rgba(255,185,95,0.15);border-radius:8px;padding:10px 12px"><span style="color:#ffb95f;font-weight:700">Optional.</span> Customize what appears in the overlay when the boss is defeated.</div>
     <div style="background:rgba(236,72,153,0.05);border:1px solid rgba(236,72,153,0.18);border-radius:12px;padding:14px 16px;margin-bottom:14px">
       <div style="font-family:var(--fm);font-size:9px;color:#EC4899;letter-spacing:.14em;margin-bottom:12px">DEFEAT NARRATION</div>
@@ -716,7 +723,7 @@ function _bflpRenderModal() {
   if (existing) existing.remove();
   const overlay  = document.createElement('div');
   overlay.id     = 'bflp-overlay';
-  overlay.className = 'bflp-overlay';
+  overlay.className = 'bflp-overlay';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','Choose boss profile');
   overlay.innerHTML = `
   <div class="bflp-panel" onclick="event.stopPropagation()">
     <div class="bflp-header">
@@ -733,7 +740,7 @@ function _bflpRenderModal() {
     </div>
   </div>`;
   overlay.addEventListener('click', () => overlay.remove());
-  document.body.appendChild(overlay);
+  document.body.appendChild(overlay);document.getElementById('bflp-search-inp')?.focus();
 }
 
 function _bflpBuildCards(library, selectedId, query) {
@@ -756,7 +763,7 @@ function _bflpBuildCards(library, selectedId, query) {
     else if (artSrc.type === 'img') artHTML = `<div class="bflp-card-art-img-wrap"><img class="bflp-card-art-img" src="${_esc(artSrc.value)}" alt="${_esc(boss.name)}" onerror="this.style.display='none'"></div>`;
     else artHTML = `<div class="bflp-card-art-placeholder"><span class="material-symbols-outlined">image_not_supported</span></div>`;
     return `
-    <div class="bflp-card ${sel ? 'selected' : ''}" onclick="_bflpSelectCard('${_esc(boss.id)}',this)" style="--bve-theme:${theme};--bve-aura:${aura};--bve-accent:${accent}">
+    <div role="button" tabindex="0" aria-pressed="${!!sel}" aria-label="Select ${_esc(boss.name||'boss profile')}" class="bflp-card ${sel ? 'selected' : ''}" onclick="_bflpSelectCard('${_esc(boss.id)}',this)" style="--bve-theme:${theme};--bve-aura:${aura};--bve-accent:${accent}">
       <div class="bflp-card-check"><span class="material-symbols-outlined">check</span></div>
       <div class="bflp-card-art" style="background:radial-gradient(circle at 50% 60%,${aura}22,transparent 72%),#08071a"><div class="bflp-card-art-aura" style="background:radial-gradient(ellipse at center,${aura}44 0%,${theme}18 60%,transparent 100%)"></div>${artHTML}</div>
       <div class="bflp-card-body">
@@ -776,8 +783,8 @@ window._bflpRefreshGrid = function (query) {
 
 window._bflpSelectCard = function (id, el) {
   _bflpSelected = id;
-  document.querySelectorAll('.bflp-card').forEach(c => c.classList.remove('selected'));
-  if (el) el.classList.add('selected');
+  document.querySelectorAll('.bflp-card').forEach(c=>{c.classList.remove('selected');c.setAttribute('aria-pressed','false');});
+  if(el){el.classList.add('selected');el.setAttribute('aria-pressed','true');}
   const lbl  = document.getElementById('bflp-sel-label');
   const btn  = document.getElementById('bflp-confirm-btn');
   const boss = (AppStore.getSlice(s => s.bossLibrary) || []).find(b => b.id === id);

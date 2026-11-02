@@ -317,8 +317,9 @@ const TableSyncRepository = (function () {
       hasRows: (src) => Array.isArray(src),
       async upsertRows(client, source) {
         for (const b of source) {
+          if(b.status==='deleted')continue;
           try {
-            const isNewRow = !b._id;
+            const isNewRow = !b._id || !!b._pendingInsert;
             const row = {
               id: b._id, class_id: b.classId || 'default-class', // Phase 14
               name: b.name, description: b.description, image: b.image,
@@ -340,6 +341,7 @@ const TableSyncRepository = (function () {
               rage_settings: b.rageSettings || {},
               phases: b.phases || [],
             };
+            if (b.raidVersion >= 1) {row.visual_profile = b._visualProfile || null;row.difficulty=b.difficulty||'Normal';}
             // max_hp/current_hp are NOT NULL with no server-side default.
             // New row: fall back to a hard default (10000, matching
             // openBossForm()'s own default). Existing row: omit max_hp
@@ -384,6 +386,7 @@ const TableSyncRepository = (function () {
               ({ error } = await client.from('boss_events').upsert(row, { onConflict: 'id' }));
             }
             if (error) throw error;
+            if(b._pendingInsert&&typeof AppStore!=='undefined')AppStore.updateState(d=>{const saved=(d.bossEvents||[]).find(x=>x._id===b._id);if(saved)delete saved._pendingInsert;},{type:'world-boss:insert-confirmed'});
             // NOTE: lootClaims are NOT pushed from here — written via
             // claim_loot_reward() RPC at claim time only.
           } catch (e) {
@@ -428,6 +431,13 @@ const TableSyncRepository = (function () {
           const roster = source[idx];
           Object.keys(roster).forEach(studentId => {
             const r = roster[studentId];
+            if ((cache.bossEvents || [])[idx]?.raidVersion >= 1) {
+              if(typeof currentRole!=='undefined'&&currentRole==='student'&&typeof currentUser!=='undefined'&&studentId!==currentUser?.id)return;
+              rows.push({boss_id:bossUuid,student_id:studentId,class_id:(cache.bossEvents||[])[idx].classId,
+                revive_at:r.reviveAt?new Date(r.reviveAt).toISOString():null,ko_time:r.koTime?new Date(r.koTime).toISOString():null,
+                minions_defeated:r.minionsDefeated||0,hp:r.hp??3,max_hp:r.maxHp??3,is_ko:!!r.isKO,boss_intro_seen:!!r.bossIntroSeen});
+              return;
+            }
             rows.push({
               boss_id: bossUuid, student_id: studentId,
               class_id: r.classId || 'default-class', // Phase 14

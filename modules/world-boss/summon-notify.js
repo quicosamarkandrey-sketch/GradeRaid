@@ -346,6 +346,8 @@ window.WBSN = {
 // ── Show overlay ──────────────────────────────────────────────────────────────
 
 window.wbsnShow = function (bossIdx) {
+  const candidate=AppStore.getBossEvent(bossIdx);
+  if(!candidate||!window.RaidService?.visible(candidate)||document.getElementById('s-world-boss')?.classList.contains('active')||WBR?.bossIdx!=null)return;
   if (WBSN.dismissedBosses[bossIdx]) return;
   if (document.getElementById('wbsn-overlay')) return;
   const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
@@ -377,7 +379,7 @@ function _wbsnShowRender(bossIdx) {
   if (WBSN.dismissedBosses[bossIdx]) return;
   if (document.getElementById('wbsn-overlay')) return;
   const boss = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx];
-  if (!boss || boss.status !== 'active') return;
+  if (!boss || boss.status !== 'active' || !window.RaidService?.visible(boss) || currentRole!=='student' || document.getElementById('s-world-boss')?.classList.contains('active')) return;
 
   const artHTML = typeof bveRenderBossArt === 'function'
     ? bveRenderBossArt(boss, { sizePx: 110 })

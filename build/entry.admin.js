@@ -113,6 +113,7 @@ import '../modules/world-boss/student-page.js';
 import '../modules/world-boss/battle-overlay.js';
 import '../modules/world-boss/raid-flow.js';
 import '../modules/world-boss/bve-patches.js';
+import '../modules/world-boss/raid-service.js';
 import '../modules/world-boss/index.js';
 import '../modules/admin/student-manager.js';
 import '../modules/admin/command-center.js';
@@ -140,3 +141,5 @@ import '../modules/admin/dsm-manager.js';
 import '../modules/admin/index.js';
 import './inline/inline2.js';
 import '../modules/perceived-speed.js';
+
+import '../modules/world-boss/raid-experience.js';

@@ -276,34 +276,38 @@ function _bsSnapshotProfileForRemote(profile) {
 // same trailing-edge debounce shape as DBService's own _queueUpload().
 const _bsLibraryDirty = new Map();
 let _bsLibraryPushTimer = null;
+let _bsLibraryPushInFlight=null;
+const _bsLibraryOwners=new Map();
 
 function _bsQueueLibraryPush(id, profileOrNull) {
   if (!id) return;
   const snapshot = profileOrNull === null ? null : _bsSnapshotProfileForRemote(profileOrNull);
   _bsLibraryDirty.set(id, snapshot);
+  _bsLibraryOwners.set(id,typeof currentUser==='undefined'?null:currentUser?.id);
   if (_bsLibraryPushTimer) clearTimeout(_bsLibraryPushTimer);
   _bsLibraryPushTimer = setTimeout(_bsFlushLibraryPush, 400);
 }
 
-async function _bsFlushLibraryPush() {
-  _bsLibraryPushTimer = null;
-  if (!_bsCanUseRemoteLibrary()) return;
-  const entries = Array.from(_bsLibraryDirty.entries());
-  _bsLibraryDirty.clear();
-  for (const [id, profile] of entries) {
-    try {
-      if (profile === null) {
-        const { error } = await DBService.rpc('delete_boss_library_entry', { p_id: id });
-        if (error) console.warn('[BossStudio] remote library delete failed for', id, error);
-      } else {
-        const { error } = await DBService.rpc('save_boss_library_entry', { p_id: id, p_data: profile });
-        if (error) console.warn('[BossStudio] remote library sync failed for', id, error);
-      }
-    } catch (e) {
-      console.warn('[BossStudio] remote library sync threw for', id, e);
-    }
+async function _bsFlushLibraryPush(){
+ if(_bsLibraryPushTimer)clearTimeout(_bsLibraryPushTimer);_bsLibraryPushTimer=null;
+ if(_bsLibraryPushInFlight){await _bsLibraryPushInFlight;if(!_bsLibraryDirty.size)return {ok:true};}
+ if(!_bsCanUseRemoteLibrary())return {ok:false,localOnly:true};
+ const identity=typeof currentUser==='undefined'?null:currentUser?.id;
+ _bsLibraryPushInFlight=(async()=>{
+  let failed=false;
+  for(const [id,profile] of Array.from(_bsLibraryDirty.entries())){
+   if(currentUser?.id!==identity||_bsLibraryOwners.get(id)!==identity)continue;
+   try{
+    let timer;let result;try{result=await Promise.race([DBService.rpc(profile===null?'delete_boss_library_entry':'save_boss_library_entry',profile===null?{p_id:id}:{p_id:id,p_data:profile}),new Promise(resolve=>{timer=setTimeout(()=>resolve({error:{message:'Connection interrupted'}}),12000);})]);}finally{clearTimeout(timer);}const {error}=result;
+    if(error){failed=true;continue;}
+    if(currentUser?.id===identity&&_bsLibraryDirty.get(id)===profile){_bsLibraryDirty.delete(id);_bsLibraryOwners.delete(id);}
+   }catch{failed=true;}
   }
+  return {ok:!failed};
+ })();
+ try{return await _bsLibraryPushInFlight;}finally{_bsLibraryPushInFlight=null;}
 }
+window.addEventListener('online',()=>{_bsFlushLibraryPush();});
 
 /**
  * _bsInitRemoteLibrary() → Promise<void>
@@ -324,14 +328,16 @@ async function _bsFlushLibraryPush() {
  */
 async function _bsInitRemoteLibrary() {
   if (!_bsCanUseRemoteLibrary()) return;
+  const identity=typeof currentUser==='undefined'?null:currentUser?.id;
   try {
     const { data, error } = await DBService.rpc('get_boss_library', {});
     if (error) throw error;
+    if(typeof currentUser==='undefined'||currentUser?.id!==identity)return;
     if (Array.isArray(data) && data.length) {
       const existing = AppStore.getSlice(s => s.bossLibrary) || [];
       const byId = {};
       existing.forEach(function (b) { byId[b.id] = b; });
-      data.forEach(function (row) { byId[row.id] = row.data; });
+      data.forEach(function (row) { if(!_bsLibraryDirty.has(row.id))byId[row.id] = row.data; });
       const merged = Object.values(byId);
       AppStore.updateState(draft => {
         draft.bossLibrary = merged;
@@ -434,6 +440,7 @@ async function bsUpsertAsync(profile) {
   }
   if (prevArtRef  && prevArtRef  !== toSave.artwork?.value)     _bsImgDelete(prevArtRef);
   if (prevRageRef && prevRageRef !== toSave.rageArtwork?.value) _bsImgDelete(prevRageRef);
+  return _bsFlushLibraryPush();
 }
 
 // ── Legacy inline-image migration (one-shot, async) ───────────────────────────

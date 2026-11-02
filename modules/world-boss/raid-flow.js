@@ -55,6 +55,18 @@ function wbrStop() {
   WBR.refreshTimer = null;
   if (WBR.keyHandler) { document.removeEventListener('keydown', WBR.keyHandler); WBR.keyHandler = null; }
   wbmStopSpawnLoop();
+  if(typeof wbsStopSkillLoop==='function')wbsStopSkillLoop();
+  if(typeof wbmStopKoTimer==='function')wbmStopKoTimer();
+  clearInterval(WBM.countdownTimer);WBM.countdownTimer=null;
+  if(WBR.answerTimer)clearTimeout(WBR.answerTimer);
+  WBR.answerPending=false;document.getElementById('raid-answer-feedback')?.remove();document.getElementById('raid-intro-continue')?.remove();
+  const overlay=document.getElementById('campaign-overlay');
+  if(overlay?.classList.contains('raid-battle')){
+    overlay.classList.remove('raid-battle');overlay.removeAttribute('role');overlay.removeAttribute('aria-modal');overlay.removeAttribute('aria-label');
+    document.body.style.overflow=WBR.previousOverflow||'';
+    const exit=overlay.querySelector('.camp-hud-left>button');if(exit){exit.setAttribute('onclick','confirmExitCampaign()');if(WBR.previousExitMarkup)exit.innerHTML=WBR.previousExitMarkup;}
+    const scene=document.getElementById('camp-scene');if(scene)scene.onclick=WBR.previousSceneClick||null;
+  }
 }
 
 // ── Close overlay ─────────────────────────────────────────────────────────────
@@ -160,6 +172,7 @@ function wbrShowIntro() {
   wbrUpdateHUD();
   document.getElementById('camp-speaker').textContent = stage.scenes[0].speaker;
   wbrType(stage.scenes[0].text);
+  if(!document.getElementById('raid-intro-continue')){const button=document.createElement('button');button.id='raid-intro-continue';button.className='btn btn-primary';button.textContent='Continue';button.onclick=event=>{event.stopPropagation();wbrSceneClick();};document.getElementById('camp-story-panel').appendChild(button);}
 }
 
 // ── Damage feed ───────────────────────────────────────────────────────────────
@@ -262,7 +275,7 @@ function wbrShowEncounter() {
   var enemy  = stage.enemies[0];
   var rec    = wbcMyRecord(WBR.bossIdx);
   var qIdx   = rec ? (rec.lastQIdx || 0) : 0;
-  var q      = enemy.questions[qIdx];
+  var q      = rec?.isKO ? null : enemy.questions[qIdx];
 
   document.getElementById('camp-story-panel').style.display = 'none';
   document.getElementById('camp-encounter').style.display   = 'flex';
@@ -276,10 +289,12 @@ function wbrShowEncounter() {
     if (enemy.sprite && enemy.sprite.indexOf('<') !== -1) { spriteEl.innerHTML = enemy.sprite; }
     else { spriteEl.textContent = enemy.sprite || '💀'; }
   }
+  if(typeof BVS!=='undefined'){BVS.init('wb-boss-sprite-art');if(wbrPct(boss)<=30)BVS.enterRage();}
+  if(typeof BHS!=='undefined')BHS.reset();
   document.getElementById('camp-enemy-title').textContent = enemy.title;
 
   if (!q) {
-    document.getElementById('camp-q-text').innerHTML = '<div class="wbr-empty-question">No more boss questions available. Stay in the raid and watch the live feed.</div>';
+    document.getElementById('camp-q-text').innerHTML = '<div class="wbr-empty-question">'+(rec?.isKO?'You are knocked out. Use the revive panel to return to the battle.':'You have completed the question set. Your damage is saved. Watch your class finish the raid.')+'</div>';
     document.getElementById('camp-options').innerHTML = '';
     document.getElementById('camp-q-progress').textContent = (rec ? (rec.totalDamage || 0).toLocaleString() : '0') + ' DMG · waiting with the raid';
   } else {
@@ -287,105 +302,93 @@ function wbrShowEncounter() {
     document.getElementById('camp-q-progress').textContent = 'QUESTION ' + (qIdx + 1) + ' OF ' + enemy.questions.length + ' · ' + Math.max(0, boss.currentHp || 0).toLocaleString() + ' HP LEFT';
     document.getElementById('camp-options').innerHTML = (q.opts || []).map(function (opt, i) {
       return '<button class="camp-opt" id="wbr-opt-' + i + '" onclick="wbrAnswer(' + WBR.bossIdx + ',' + qIdx + ',' + i + ')">' +
-        '<span class="camp-opt-letter">' + String.fromCharCode(65 + i) + '</span>' + opt + '</button>';
+        '<span class="camp-opt-letter">' + String.fromCharCode(65 + i) + '</span>' + _esc(opt) + '</button>';
     }).join('');
   }
   wbrRenderSideOverlays();
+  if(typeof wbsStartSkillLoop==='function')wbsStartSkillLoop(WBR.bossIdx);
 }
 
 // ── Answer handler ────────────────────────────────────────────────────────────
 
 async function wbrAnswer(bossIdx, qIdx, choice) {
-  var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
-  if (!boss || boss.status !== 'active') return;
-  var rec = wbcMyRecord(bossIdx);
-  if (!rec || rec.isKO) return;
-  var questions = wbcGetBossQuestions(boss);
-  var q = questions[qIdx];
-  if (!q) return;
-
-  document.querySelectorAll('.camp-opt').forEach(function (el) { el.disabled = true; el.onclick = null; });
-  var isCorrect = choice === q.answer;
-  var chosen    = document.getElementById('wbr-opt-' + choice);
-  var correct   = document.getElementById('wbr-opt-' + q.answer);
-
-  if (isCorrect) {
-    chosen?.classList.add('correct');
-    var result  = wbcCalcDamage(boss);
-    var outcome = await wbcApplyDamage(bossIdx, result.damage, currentUser.id, result.isCrit);
-    AppStore.updateState(function (draft) {
-      var p = ((draft.bossParticipants || {})[bossIdx] || {})[currentUser.id];
-      if (!p) return;
-      if (result.isCrit) p.critHits = (p.critHits || 0) + 1;
-      if (!p.answerHistory) p.answerHistory = [];
-      p.answerHistory[qIdx] = { correct: true, damage: result.damage };
-      p.lastQIdx = qIdx + 1;
-    }, { type: 'world-boss:answer-recorded', payload: { bossIdx: bossIdx, studentId: currentUser.id } });
-    wbrRecordFeed(bossIdx, {
-      type:      outcome === 'defeated' ? 'kill' : 'hit',
-      studentId: currentUser.id, name: currentUser.name,
-      init:      currentUser.init, color: currentUser.color,
-      damage:    result.damage, crit: result.isCrit,
-    });
-    toast(_esc(currentUser.name) + ' dealt ' + result.damage.toLocaleString() + ' damage!', result.isCrit ? '#ffb95f' : '#EC4899');
-    document.getElementById('camp-scene')?.classList.add('shake');
-    setTimeout(function () { document.getElementById('camp-scene')?.classList.remove('shake'); }, 350);
-
-    if (outcome === 'defeated') {
-      toast(_esc(currentUser.name) + ' defeated ' + _esc(boss.name) + '! Loot Rush is open.', '#ffb95f');
-      setTimeout(function () {
-        wbrStop();
-        document.getElementById('campaign-overlay')?.classList.remove('open');
-        WBR.bossIdx = null;
-        wblShowVictoryScreen(bossIdx, function () { renderStudentWorldBoss(); });
-      }, 900);
-      return;
+  const boss=AppStore.getBossEvent(bossIdx),studentId=currentUser?.id,rec=studentId&&wbcMyRecord(bossIdx);
+  if(!boss||boss.status!=='active'||!rec||rec.isKO||WBR.answerPending||qIdx!==(rec.lastQIdx||0))return;
+  const q=wbcGetBossQuestions(boss)[qIdx];if(!q||!Number.isInteger(choice)||choice<0||choice>=(q.opts||[]).length)return;
+  if(Date.now()<(WBR.nextAnswerAt||0))return;
+  WBR.answerPending=true;
+  document.querySelectorAll('.camp-opt').forEach(el=>el.disabled=true);
+  let feedback=document.getElementById('raid-answer-feedback');
+  if(!feedback){feedback=document.createElement('div');feedback.id='raid-answer-feedback';feedback.setAttribute('role','status');document.getElementById('camp-options')?.after(feedback);}
+  feedback.textContent='Confirming your answer…';
+  let correct=choice===q.answer,result={damage:0,isCrit:false},outcome='hit',cooldown=boss.combatSettings?.questionCooldown??0;
+  try{
+    if(window.RaidService?.managed(boss)){
+      const response=await RaidService.action(bossIdx,'answer',{questionIdx:qIdx,choice});
+      if(!response.ok)throw new Error(response.reason);
+      choice=response.outcome.choice??choice;correct=response.outcome.correct;result={damage:response.outcome.damage||0,isCrit:!!response.outcome.isCrit};
+      outcome=response.boss.current_hp<=0?'defeated':'hit';cooldown=response.outcome.cooldown||0;
+    }else{
+      if(correct){result=wbcCalcDamage(boss);outcome=await wbcApplyDamage(bossIdx,result.damage,studentId,result.isCrit);if(outcome==='rejected')throw new Error('Attack not confirmed. Reconnect and try again.');}
+      if(currentUser?.id!==studentId)return;
+      AppStore.updateState(d=>{const p=d.bossParticipants?.[bossIdx]?.[studentId];if(!p)return;
+        if(correct&&result.isCrit)p.critHits=(p.critHits||0)+1;
+        if(!correct)p.wrongAnswers=(p.wrongAnswers||0)+1;
+        if(!p.answerHistory)p.answerHistory=[];p.answerHistory[qIdx]={correct,damage:result.damage};p.lastQIdx=qIdx+1;
+      },{type:'world-boss:answer-recorded',payload:{bossIdx,studentId}});
     }
-    setTimeout(function () { wbrShowEncounter(); }, 900);
-  } else {
-    chosen?.classList.add('wrong');
-    correct?.classList.add('correct');
-    AppStore.updateState(function (draft) {
-      var p = ((draft.bossParticipants || {})[bossIdx] || {})[currentUser.id];
-      if (!p) return;
-      p.wrongAnswers = (p.wrongAnswers || 0) + 1;
-      if (!p.answerHistory) p.answerHistory = [];
-      p.answerHistory[qIdx] = { correct: false, damage: 0 };
-      p.lastQIdx = qIdx + 1;
-    }, { type: 'world-boss:answer-recorded', payload: { bossIdx: bossIdx, studentId: currentUser.id } });
-    toast('Wrong answer. The boss resists.', '#ffb4ab');
-    setTimeout(function () { wbrShowEncounter(); }, 1100);
+    if(currentUser?.id!==studentId||WBR.bossIdx!==bossIdx)return;
+    document.getElementById('wbr-opt-'+choice)?.classList.add(correct?'correct':'wrong');
+    document.getElementById('wbr-opt-'+q.answer)?.classList.add('correct');
+    feedback.textContent=correct?(result.isCrit?'Critical hit · ':'Correct · ')+result.damage.toLocaleString()+' damage':'Not quite. The highlighted option is correct.';
+    if(correct){if(typeof BVS!=='undefined')BVS.request('hit',400);wbrRecordFeed(bossIdx,{type:outcome==='defeated'?'kill':'hit',studentId,name:currentUser.name,init:currentUser.init,color:currentUser.color,damage:result.damage,crit:result.isCrit});
+      document.getElementById('camp-enemy-sprite')?.classList.add('raid-hit');setTimeout(()=>document.getElementById('camp-enemy-sprite')?.classList.remove('raid-hit'),400);}
+    const wait=Math.max(1100,Number(cooldown)*1000);WBR.nextAnswerAt=Date.now()+wait;
+    if(cooldown>1&&outcome!=='defeated')feedback.textContent+=' Next question in '+cooldown+' seconds.';
+    WBR.answerTimer=setTimeout(()=>{
+      WBR.answerPending=false;if(currentUser?.id!==studentId||WBR.bossIdx!==bossIdx)return;
+      feedback.remove();
+      if(outcome==='defeated'){wbrCloseBattle();if(window.RaidExperience)RaidExperience.showVictory(bossIdx);}
+      else wbrShowEncounter();
+    },outcome==='defeated'?1100:wait);
+  }catch(error){
+    if(currentUser?.id===studentId&&WBR.bossIdx===bossIdx){feedback.textContent=error.message||'Connection interrupted. Try again.';document.querySelectorAll('.camp-opt').forEach(el=>el.disabled=false);}
+    WBR.answerPending=false;
   }
 }
 
 // ── Open battle (with BVE art preload) ───────────────────────────────────────
 
-function wbrOpenBattle(bossIdx) {
-  var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
-  if (!boss || boss.status !== 'active') return;
-  if (typeof bvePreloadBossArt === 'function') {
-    bvePreloadBossArt(boss)
-      .then(function () { _wbrOpenBattleRender(bossIdx); })
-      .catch(function () { _wbrOpenBattleRender(bossIdx); });
-    return;
-  }
-  _wbrOpenBattleRender(bossIdx);
+async function wbrOpenBattle(bossIdx) {
+  const boss=AppStore.getBossEvent(bossIdx),identity=currentUser?.id;
+  if(!boss||boss.status!=='active'||!wbcMyRecord(bossIdx)||WBR.opening||WBR.bossIdx!=null)return;
+  WBR.opening=true;
+  try{
+    if(typeof bvePreloadBossArt==='function')await bvePreloadBossArt(boss).catch(()=>{});
+    if(currentUser?.id===identity&&AppStore.getBossEvent(bossIdx)?._id===boss._id)_wbrOpenBattleRender(bossIdx);
+  }finally{WBR.opening=false;}
 }
 
 function _wbrOpenBattleRender(bossIdx) {
   var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
-  WBR.bossIdx = bossIdx;
-  document.getElementById('campaign-overlay').classList.add('open');
-  document.getElementById('camp-scene').onclick = wbrSceneClick;
+  if(!wbcMyRecord(bossIdx)||currentRole!=='student'||!RaidService.visible(boss))return;
+  WBR.bossIdx = bossIdx;WBR.bossUuid=boss._id;WBR.bossRunId=boss.raidRunId;WBR.nextAnswerAt=0;WBR.answerPending=false;
+  WBR.previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';
+  const overlay=document.getElementById('campaign-overlay');overlay.classList.add('open','raid-battle');
+  overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','World Boss battle');
+  const exit=overlay.querySelector('.camp-hud-left>button');if(exit){WBR.previousExitMarkup=exit.innerHTML;exit.setAttribute('onclick','wbrCloseBattle()');exit.textContent='Exit battle';exit.focus();}
+
+  WBR.previousSceneClick=document.getElementById('camp-scene').onclick;document.getElementById('camp-scene').onclick = wbrSceneClick;
   if (WBR.keyHandler) document.removeEventListener('keydown', WBR.keyHandler);
-  WBR.keyHandler = function (e) { if (e.key === ' ' || e.key === 'Enter') wbrSceneClick(); };
+  WBR.keyHandler = function(e){if(e.key==='Escape'){wbrCloseBattle();return;}if((e.key===' '||e.key==='Enter')&&!e.target.closest('button,input,select,textarea')){e.preventDefault();wbrSceneClick();}};
   document.addEventListener('keydown', WBR.keyHandler);
   clearInterval(WBR.refreshTimer);
   WBR.refreshTimer = setInterval(function () {
     if (WBR.bossIdx == null) return;
     var b = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[WBR.bossIdx];
-    if (!b || b.status !== 'active') { wbrCloseBattle(); return; }
+    if(WBR.answerPending)return;
+    if (!b || b.status !== 'active' || b._id!==WBR.bossUuid||b.raidRunId!==WBR.bossRunId) { const won=b?.currentHp===0&&!!b.defeatedAt;wbrCloseBattle();if(won&&window.RaidExperience)RaidExperience.showVictory(bossIdx);return; }
     wbrUpdateHUD();
     if (WBR.phase === 'battle') {
       wbrRenderSideOverlays();
@@ -521,9 +524,12 @@ window.renderStudentWorldBoss = wbrRenderLobby;
 // bossIntroSeen inline at creation, which is what made the battle-overlay.js
 // patch redundant even before it was unreachable. See the refactor log's
 // Tier-1 debt-review entry.
-window.wbcJoinBoss = function (bossIdx) {
+window.wbcJoinBoss = async function (bossIdx) {
   var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
+  if(window.WBSN){WBSN.dismissedBosses[bossIdx]=true;if(typeof wbsnRemove==='function')wbsnRemove();}
+  if(!RaidService.visible(boss)||RaidService.expired(boss)||!wbcGetBossQuestions(boss).length)return;
+  if(RaidService.managed(boss)){const response=await RaidService.action(bossIdx,'join');if(!response.ok){toast(response.reason);return;}}
   var existing = wbcGetParticipants(bossIdx)[currentUser.id];
   if (!existing) {
     AppStore.updateState(function (draft) {
@@ -536,7 +542,7 @@ window.wbcJoinBoss = function (bossIdx) {
           totalDamage: 0, correctAnswers: 0, wrongAnswers: 0,
           critHits: 0, minionsDefeated: 0,
           joinTime: Date.now(), lastQIdx: 0,
-          hp: 3, maxHp: 3, isKO: false, bossIntroSeen: false,
+          hp: 3, maxHp: 3, isKO: false, bossIntroSeen: false, classId:boss.classId||'default-class',
         };
       }
     }, { type: 'world-boss:joined', payload: { bossIdx: bossIdx, studentId: currentUser.id } });
@@ -547,7 +553,7 @@ window.wbcJoinBoss = function (bossIdx) {
   WBC.battleStartTime = myRec.joinTime;
   renderStudentWorldBoss();
   toast('You joined the raid. Opening battle...', '#EC4899');
-  setTimeout(function () { wbrOpenBattle(bossIdx); }, 150);
+  const joinedStudent=currentUser.id;setTimeout(function(){if(currentRole==='student'&&currentUser?.id===joinedStudent)wbrOpenBattle(bossIdx);},150);
 };
 
 console.log('[EduQuest] world-boss/raid-flow.js loaded — WBR, wbrRenderLobby, wbrOpenBattle, wbrAnswer, wbrFeedHTML, side overlays, wbcJoinBoss replacement registered.');
@@ -571,3 +577,16 @@ window.wbrSetBg = wbrSetBg;
 window.WBR = WBR;
 window.wbrStop = wbrStop;
 window.wbrType = wbrType;
+
+// Public handlers are also needed when classic files are bundled into modules.
+window.wbrOpenBattle=wbrOpenBattle;
+window.wbrShowEncounter=wbrShowEncounter;
+window.wbrShowIntro=wbrShowIntro;
+window.wbrSceneClick=wbrSceneClick;
+window.wbrUpdateHUD=wbrUpdateHUD;
+window.wbrRenderSideOverlays=wbrRenderSideOverlays;
+window.wbrBossStage=wbrBossStage;
+window.wbrPct=wbrPct;
+window.wbrRenderLobby=wbrRenderLobby;
+window.wbrFeedHTML=wbrFeedHTML;
+window.wbrRecordFeed=wbrRecordFeed;

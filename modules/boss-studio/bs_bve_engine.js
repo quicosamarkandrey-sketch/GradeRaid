@@ -33,7 +33,7 @@ function bveRenderBossArt(bossEvent, opts){
   if(artSrc.type === 'none' && bossEvent.image){
     const img = bossEvent.image;
     // Is it a URL?
-    if(img.startsWith('http') || img.startsWith('data:')){
+    if(/^(https?:|data:image\/|\.?\.?\/)/i.test(img)){
       return `<div class="bve-boss-wrap">
         <div class="bve-boss-ring"></div><div class="bve-boss-ring2"></div>
         <div class="bve-hit-flash" id="${elemId}-flash"></div>
@@ -46,7 +46,7 @@ function bveRenderBossArt(bossEvent, opts){
     return `<div class="bve-boss-wrap">
       <div class="bve-boss-ring"></div><div class="bve-boss-ring2"></div>
       <div class="bve-hit-flash" id="${elemId}-flash"></div>
-      <div class="bve-boss-art is-emoji ${stateClass}" ${elemId?`id="${elemId}"`:''}>${img}</div>
+      <div class="bve-boss-art is-emoji ${stateClass}" ${elemId?`id="${elemId}"`:''}>${_esc(img)}</div>
     </div>`;
   }
 
@@ -54,7 +54,7 @@ function bveRenderBossArt(bossEvent, opts){
     return `<div class="bve-boss-wrap">
       <div class="bve-boss-ring"></div><div class="bve-boss-ring2"></div>
       <div class="bve-hit-flash" id="${elemId}-flash"></div>
-      <div class="bve-boss-art is-emoji ${stateClass}" ${elemId?`id="${elemId}"`:''}>${artSrc.value}</div>
+      <div class="bve-boss-art is-emoji ${stateClass}" ${elemId?`id="${elemId}"`:''}>${_esc(artSrc.value)}</div>
     </div>`;
   }
   if(artSrc.type === 'img'){
@@ -70,7 +70,7 @@ function bveRenderBossArt(bossEvent, opts){
   return `<div class="bve-boss-wrap">
     <div class="bve-boss-ring"></div><div class="bve-boss-ring2"></div>
     <div class="bve-hit-flash" id="${elemId}-flash"></div>
-    <div class="bve-boss-art is-emoji ${stateClass}" ${elemId?`id="${elemId}"`:''}>${bossEvent.image||'💀'}</div>
+    <div class="bve-boss-art is-emoji ${stateClass}" ${elemId?`id="${elemId}"`:''}>${_esc(bossEvent.image||'💀')}</div>
   </div>`;
 }
 
@@ -85,15 +85,16 @@ function bveRenderCompactArt(bossEvent, sizePx){
   const artSrc = profile ? bveGetArtSrc(profile) : {type:'none', value:''};
   const img = bossEvent.image || '💀';
 
-  if(artSrc.type === 'emoji' || (artSrc.type === 'none' && !img.startsWith('http'))){
+  if(artSrc.type === 'none' && /^(https?:|data:image\/|\.?\.?\/)/i.test(img))return `<img src="${_esc(img)}" alt="" style="width:${sizePx}px;height:${sizePx}px;object-fit:contain;border-radius:4px">`;
+  if(artSrc.type === 'emoji' || artSrc.type === 'none'){
     const emo = artSrc.type === 'emoji' ? artSrc.value : img;
-    return `<span style="font-size:${Math.round(sizePx*0.6)}px;line-height:1">${emo}</span>`;
+    return `<span style="font-size:${Math.round(sizePx*0.6)}px;line-height:1">${_esc(emo)}</span>`;
   }
   if(artSrc.type === 'img'){
     return `<img src="${_esc(artSrc.value)}" style="width:${sizePx}px;height:${sizePx}px;object-fit:contain;border-radius:4px"
       onerror="this.style.display='none'" alt="">`;
   }
-  return `<span style="font-size:${Math.round(sizePx*0.6)}px;line-height:1">${img}</span>`;
+  return `<span style="font-size:${Math.round(sizePx*0.6)}px;line-height:1">${_esc(img)}</span>`;
 }
 
 /**
@@ -613,6 +614,7 @@ function bveGetArtSrc(profile, slot){
  * Get the Boss Studio profile linked to a World Boss Event (if any).
  */
 function bveGetLinkedProfile(bossEvent){
+  if(bossEvent?._visualProfile)return bossEvent._visualProfile;
   if(!bossEvent || !bossEvent._bossLibraryId) return null;
   const _bsGetFn = (typeof bsGet === 'function') ? bsGet
                  : (typeof window.bsGet === 'function') ? window.bsGet

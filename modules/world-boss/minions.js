@@ -280,9 +280,10 @@ window.wbmAnswerMinion = function (bossIdx, minionId, chosenOpt) {
 
   const isCorrect = chosenOpt === q.answer;
 
-  document.querySelectorAll('.wbm-opt').forEach(el => { el.classList.add('disabled'); el.onclick = null; });
-  const chosenEl  = document.getElementById('wbm-opt-' + chosenOpt);
-  const correctEl = document.getElementById('wbm-opt-' + q.answer);
+  document.querySelectorAll('#wbm-opts-'+CSS.escape(minionId)+' .wbm-opt').forEach(el=>{el.classList.add('disabled');el.disabled=true;el.onclick=null;});
+  const choices=document.getElementById('wbm-opts-'+minionId);
+  const chosenEl=choices?.querySelector('[data-minion-choice="'+chosenOpt+'"]');
+  const correctEl=choices?.querySelector('[data-minion-choice="'+q.answer+'"]');
 
   if (isCorrect) {
     chosenEl?.classList.add('correct');
@@ -355,13 +356,13 @@ window.wbmRenderMinionSection = function (bossIdx, sideOverride) {
     </div>
     <div class="wbm-question-wrap">
       <div class="wbm-q-label">MINION CHALLENGE</div>
-      <div class="wbm-q-text">${q.q}</div>
+      <div class="wbm-q-text">${_esc(q.q)}</div>
       <div class="wbm-opts" id="wbm-opts-${minion.id}">
         ${q.opts.map((opt, oi) => `
-        <div class="wbm-opt" id="wbm-opt-${oi}" onclick="wbmAnswerMinion(${bossIdx},'${minion.id}',${oi})">
+        <button type="button" class="wbm-opt" data-minion-choice="${oi}" onclick="wbmAnswerMinion(${bossIdx},'${minion.id}',${oi})">
           <div class="wbm-opt-letter">${String.fromCharCode(65 + oi)}</div>
-          ${opt}
-        </div>`).join('')}
+          ${_esc(opt)}
+        </button>`).join('')}
       </div>
       <div class="wbm-timer-bar-track">
         <div class="wbm-timer-bar-fill" id="wbm-timer-bar-${minion.id}" style="width:${pct}%"></div>
@@ -496,6 +497,7 @@ function _wbmRefreshBattleArea(bossIdx) {
   const dockLeft  = document.getElementById('wbr-minion-dock');
   const dockRight = document.getElementById('wbr-minion-dock-right');
   if (dockLeft || dockRight) {
+    document.querySelectorAll('#camp-options .camp-opt').forEach(button=>button.disabled=rec.isKO||!!WBR.answerPending);
     if (rec.isKO) {
       if (dockLeft)  dockLeft.innerHTML  = wbmRenderKOSection(bossIdx);
       if (dockRight) dockRight.innerHTML = '';

@@ -1,0 +1,53 @@
+# World Boss flow and presentation
+
+The event manager, student raid lobby, battle stage, victory dialog, loot pool and results now share a quieter application design, clear controls and responsive layouts. Boss artwork carries the character of the experience. Dark/light page themes remain supported; the battle arena uses a dedicated dark surface for contrast.
+
+## Teacher workflow
+
+1. Open **Boss Studio**. Create a profile or start from **Obsidian Wyrm**, **Clockwork Sentinel** or **Veil Phantom**. The three original SVG illustrations ship with the app and need no external image service. Edit identity, artwork, animations and theme; save the profile.
+2. Open **World Boss events → Create event**. Choose an authorized section, link the profile, enter HP and event dates, and set the victory rewards. Studio selection preserves the event form. Profile cards work with Enter/Space and Escape closes the picker.
+3. Save the event, then use **Questions, loot & battle tools** to add questions, configure limited rewards, damage/critical chance, minions, skills, phases and rage. Import supports multiple-choice and true/false questions; unsupported quest formats are skipped with an explanation.
+4. Check readiness and launch manually. Launch is confirmed by the server before showing success. Re-running creates a new run, resets participants/claims, and preserves previously earned inventory. Ending a raid without defeating the boss does not award victory rewards.
+5. During battle, teachers can send minion/skill commands and revive participants. Finish the loot window or let its timer/stock run out. Results include standings and the student's confirmed rewards/loot.
+
+The participation field is an **XP bonus on victory**; the victory field is a **coin bonus on victory**. Total victory XP = base XP + participation XP. Total victory coins = base coins + victory bonus. Only contributors with positive damage qualify. Extra loot is separate and limited by stock and the per-raider claim limit.
+
+## Student workflow
+
+The lobby shows shared HP, class participation, question count, potential victory rewards and your saved question progress. Join/resume opens the battle. Intro controls work by click or keyboard; 1–4 select answer buttons, and Escape/Exit battle returns to the lobby. Answers remain disabled while confirming or cooling down. Minion challenges, knockouts, revive controls, phases and skills remain available in the arena. Decorative motion honors reduced-motion preferences.
+
+Victory leads to stationary reward cards, avoiding moving targets on phones. Stock, claim limits, remaining time and confirmation/error messages stay visible. Confirmed loot appears in **My Inventory**. Finished events remain under **Past raids**.
+
+## Required backend activation
+
+Apply [supabase/phase75_world_boss_reliability.sql](supabase/phase75_world_boss_reliability.sql) in the project's Supabase SQL editor **after the existing boss, quiz, profile and inventory migrations (including phases 24, 25, 44, 46–48)**. Re-running phase75 is supported. It has been tested against a local PostgreSQL/PGlite fixture; **it has not been applied to the production database** because this workspace has no production database access.
+
+The migration adds a version/run ID to events, private answer receipts and a private victory reward ledger, durable question/life state, embedded visual profiles, and the authenticated `world_boss_action` RPC. The RPC:
+
+- Resolves the caller from Supabase Auth and checks their role and section against the actual boss.
+- Serializes section launches and locks each boss for mutations.
+- Records a question once per student and run, validates order/choice/cooldown, and calculates damage/criticals on the server. Retries return the original receipt.
+- Updates shared HP and moves a defeated boss into loot. Victory XP/coins are paid once per contributing student and run in the same transaction. Explicit zero rewards and zero critical chance remain zero.
+- Checks participation, stock, limits, expiry and claim ownership. Claim insertion and inventory increment happen in the same transaction; retries with the same claim ID cannot add another item.
+- Handles event start/end/delete/finalization, timed expiration without fake victory, and shared teacher skill/minion signals. Signals are bounded and consumed once by an open student battle. Revives check the stored timer or staff authority.
+
+Once events have `raid_version=1`, the client uses this RPC. Generic participant sync excludes RPC-owned damage, answer totals, criticals and question progress; its remaining minion/life/narration updates are restricted to the student's own row. Existing legacy minion life mechanics retain their authorized participant sync path; this change is not a redesign of all database policies or an anti-cheat system.
+
+Before phase75 is applied, presentation/form fixes and the existing event/attack/claim RPCs still work. Requests must confirm before the UI commits damage/claims or says a lifecycle action succeeded. The old per-device victory payout path is retained for legacy events; the **cross-device, exactly-once payout and atomic claim-to-inventory guarantees require phase75**. Do not treat local fixture results as confirmation that production SQL has been deployed.
+
+## Additional fixes
+
+- Editing HP no longer heals a live or defeated boss; an active event keeps its section and current HP.
+- New draft events receive a stable UUID so repeated syncs cannot create duplicate server rows. An insert is seeded once and deleted events are excluded from uploads.
+- Zero HP stays zero in the topbar. Legacy relative/data/image URLs render as images rather than giant text; title/question/option content is escaped.
+- Studio fields can be cleared, concurrent saves are guarded, failed library pushes remain pending for retry, unsynced drafts survive library refresh, and account changes reject late library/raid responses. A local-only save is labeled honestly.
+- Battle opening is guarded, stale runs close, and exit stops skill, minion and answer timers and restores scrolling. Raid notifications do not interrupt an already-open raid page or battle.
+- Skills target the current arena; mirror skills shuffle the actual answer list. Answering a minion in one dock does not disable the other dock's controls.
+
+## Verification
+
+- `npm run test:unit` — includes request deduplication, stale account responses, failed-request immutability, section scope and exclusion of server-owned participant fields.
+- `npm run test:boss-db` — repeatable migration, role/section checks, join, correct/wrong/replayed answers, shared HP, cooldown, zero critical chance/rewards, per-run payouts, claim retries/stock/inventory, expiry, restart/stale run, teacher signals/revives and private receipt tables.
+- `npm run test:boss-browser` — real application with intercepted external services; Studio create/save/clear, keyboard profile selection, event creation/edit, question imports, launch, join/intro/battle, failed and repeated attacks, victory, failed/retried loot claims, results and finalization. Includes 320/390/1440 layouts and both themes, plus phone battle/editor checks. No hosted backend writes occur.
+- `node tests/browser/application-theme.cjs` — shared page/theme regression.
+- Full, student and admin esbuild entry compilation; classic and source mirror syntax checks.

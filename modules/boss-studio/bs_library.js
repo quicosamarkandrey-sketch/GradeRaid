@@ -47,6 +47,7 @@ let _bsTab     = 'bosses'; // 'bosses' | 'animations'
 // per page load — renderBossStudio() re-runs on every tab switch
 // (_bsSetTab), and re-fetching on each of those would be wasteful.
 let _bsLibraryRemoteFetchStarted = false;
+let _bsLibraryRemoteOwner=null;
 
 Object.defineProperty(window, '_bsDraft', {
   get () { return window.__bsDraftValue; },
@@ -228,6 +229,7 @@ function _bsRenderBossTab() {
 // ── Main render ────────────────────────────────────────────────────────────────
 
 window.renderBossStudio = function () {
+  if(_bsLibraryRemoteOwner!==currentUser?.id){_bsLibraryRemoteOwner=currentUser?.id;_bsLibraryRemoteFetchStarted=false;}
   bsLoad();
   const page = document.getElementById('a-boss-studio');
   if (!page) return;

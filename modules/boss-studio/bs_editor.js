@@ -530,13 +530,14 @@ function _bsUpdateReadiness(){
 // ── Save form ─────────────────────────────────────────────────────────────────
 
 window.bsSaveForm = async function () {
-  const d = window._bsDraft; if (!d) return;
+  const d = window._bsDraft; if (!d || window._bsSaving) return;
+  const identity=currentUser?.id;
   // Read all form fields into draft
   const getName    = id => (document.getElementById(id)?.value || '').trim();
-  d.name           = getName('bsf-name')  || d.name;
-  d.description    = getName('bsf-desc')  || d.description || '';
-  d.lore           = getName('bsf-lore')  || d.lore        || '';
-  d.tags           = (getName('bsf-tags') || (d.tags || []).join(', ')).split(',').map(t => t.trim()).filter(Boolean);
+  d.name           = document.getElementById('bsf-name') ? getName('bsf-name') : d.name;
+  d.description    = document.getElementById('bsf-desc') ? getName('bsf-desc') : (d.description||'');
+  d.lore           = document.getElementById('bsf-lore') ? getName('bsf-lore') : (d.lore||'');
+  d.tags           = (document.getElementById('bsf-tags') ? getName('bsf-tags') : (d.tags||[]).join(', ')).split(',').map(t => t.trim()).filter(Boolean);
   if (!d.name) {
     toast('❌ Boss name is required', '#ffb4ab');
     const errEl = document.getElementById('bsf-name-err'); if (errEl) errEl.style.display = '';
@@ -548,19 +549,21 @@ window.bsSaveForm = async function () {
   const ac = document.getElementById('bsf-color-aura');   if (ac) d.visual.auraColor  = ac.value;
   const cc = document.getElementById('bsf-color-accent'); if (cc) d.visual.cardAccent = cc.value;
 
-  const savingToast = toast('💾 Saving...', '#d0bcff', 30000);
+  window._bsSaving=true;
+  const savingToast = toast('Saving boss profile…', '#d0bcff', 30000);
   try {
-    await bsUpsertAsync(d);
+    const saved=await bsUpsertAsync(d);
     if (savingToast && typeof savingToast.dismiss === 'function') savingToast.dismiss();
-    toast(`✅ "${_esc(d.name)}" saved!`, '#4edea3');
+    toast(saved?.ok?`"${d.name}" saved to your library.`:`"${d.name}" saved on this device. Reconnect to sync the library.`, saved?.ok?'#4edea3':'#d0bcff');
+    if(currentUser?.id!==identity||window._bsDraft!==d)return;
     _bsDirtyFlag = false;
     window._bsForceCloseEditor();
     bsLoad();
     window._bsRefreshLibrary();
   } catch (err) {
     console.error('[BossStudio] Save failed:', err);
-    toast('❌ Save failed — check console', '#ffb4ab');
-  }
+    toast('Could not save this profile. Reconnect and try again.', '#ffb4ab');
+  }finally{window._bsSaving=false;if(savingToast&&typeof savingToast.dismiss==='function')savingToast.dismiss();}
 };
 
 // ── Form modal builder ─────────────────────────────────────────────────────────
@@ -574,7 +577,7 @@ window.bsSaveForm = async function () {
 
 function _bsRenderFormModal(isEdit){
   const d = window._bsDraft; if(!d) return;
-  const formCol = document.getElementById('bs-eo-form-col'); if(!formCol) return;
+  const formCol = document.getElementById('bs-editor-form-body') || document.getElementById('bs-eo-form-col'); if(!formCol) return;
 
   const artVal   = d.artwork&&d.artwork.value  ? d.artwork.value   : '💀';
   const artType  = d.artwork&&d.artwork.type   ? d.artwork.type    : 'emoji';

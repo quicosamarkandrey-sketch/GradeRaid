@@ -73,6 +73,7 @@ window.LootService = (function () {
     if (boss.lootFinalizedAt) {
       return { ok: false, reason: 'Loot Rush has been finalized.' };
     }
+    if(boss.lootStartedAt&&Date.now()>=boss.lootStartedAt+(boss.lootDuration??120)*1000)return {ok:false,reason:'The loot window has closed.'};
     var rewards = boss.lootRewards || [];
     var reward  = rewards.find(function (r) { return r.id === rewardId; });
     if (!reward) {
@@ -98,7 +99,7 @@ window.LootService = (function () {
    * @param {object} student  — { id, name, init, color }
    * @returns {{ ok, reason?, reward?, alreadyGone? }}
    */
-  function claimReward(bossIdx, rewardId, student) {
+  function claimReward(bossIdx, rewardId, student, confirmation) {
     // Read current state for validation (targeted slice)
     var boss = AppStore.getBossEvent(bossIdx);
     if (!boss) return { ok: false, reason: 'Boss event not found.' };
@@ -108,7 +109,7 @@ window.LootService = (function () {
 
     var reward = validation.reward;
     var claim  = {
-      id:           uid(),
+      id:           confirmation?.id || uid(),
       rewardId:     reward.id,
       itemName:     reward.itemName,
       rarity:       reward.rarity,
@@ -327,7 +328,7 @@ window.LootService = (function () {
   function getCurrentLootBoss() {
     var events = AppStore.getSlice(function (s) { return s.bossEvents; }) || [];
     var idx    = events.findIndex(function (b) {
-      return b.status === 'loot' && !b.lootFinalizedAt;
+      return b.status === 'loot' && !b.lootFinalizedAt && (!window.RaidService||RaidService.visible(b));
     });
     return idx >= 0 ? { boss: events[idx], idx: idx } : null;
   }
@@ -347,7 +348,7 @@ window.LootService = (function () {
       // it's only ever set by a completed loot rush, on any boss whose
       // status has since moved on to 'ended' (or been reset by a fresh
       // Activate, which already clears lootFinalizedAt).
-      .filter(function (x) { return !!x.b.lootFinalizedAt; });
+      .filter(function (x) { return !!x.b.lootFinalizedAt && (!window.RaidService||RaidService.visible(x.b)); });
     if (!finalized.length) return null;
     finalized.sort(function (a, b) {
       return (b.b.lootFinalizedAt || 0) - (a.b.lootFinalizedAt || 0);

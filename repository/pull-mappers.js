@@ -130,10 +130,12 @@
       .map((b, idx) => {
         bossIdById[b.id] = idx;
         return {
+          raidVersion: b.raid_version || 0, raidRunId: b.raid_run_id, _raidSignals: b.raid_signals || [],
+          _visualProfile: b.visual_profile || null,
           _id: b.id, // kept so writes can map back; never read by legacy code
           classId: b.class_id || 'default-class', // Phase 14: section ownership
           name: b.name, description: b.description, image: b.image,
-          maxHp: b.max_hp, currentHp: b.current_hp, status: b.status,
+          maxHp: b.max_hp, currentHp: b.current_hp, status: b.status, difficulty: b.difficulty || 'Normal',
           startDate: b.start_date, endDate: b.end_date,
           defeatedAt: b.defeated_at ? Date.parse(b.defeated_at) : null, // Phase 26: was raw string, unlike its sibling timestamps
           endedAt: b.ended_at ? Date.parse(b.ended_at) : null, // Phase 24: was local-only before
@@ -181,7 +183,10 @@
       if (idx === undefined) return;
       if (!bossParticipantsObj[idx]) bossParticipantsObj[idx] = {};
       bossParticipantsObj[idx][row.student_id] = {
-        studentId: row.student_id,
+        studentId: row.student_id, studentName: row.student_name, studentInit: row.student_init,
+        answerHistory: row.answer_history || [], hp: row.hp ?? 3, maxHp: row.max_hp ?? 3, isKO: !!row.is_ko,
+        koTime: row.ko_time ? Date.parse(row.ko_time) : 0, reviveAt: row.revive_at ? Date.parse(row.revive_at) : 0,
+        bossIntroSeen: !!row.boss_intro_seen, lastAnswerAt: row.last_answer_at ? Date.parse(row.last_answer_at) : null,
         classId: row.class_id || 'default-class', // Phase 14: section ownership
         totalDamage: row.total_damage, correctAnswers: row.correct_answers,
         wrongAnswers: row.wrong_answers, critHits: row.crit_hits,

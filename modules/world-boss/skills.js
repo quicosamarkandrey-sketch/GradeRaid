@@ -71,7 +71,7 @@ function _wbsSkillToast(emoji, label, color, dur) {
 
 function wbsEffect_earthquake(skill) {
   const dur   = (skill.durationSec || 4) * 1000;
-  const shell = document.querySelector('.wbe-shell, #s-world-boss, body');
+  const shell = document.querySelector('.raid-battle #camp-scene') || document.querySelector('.wbe-shell, #s-world-boss');
   if (shell) { shell.style.animation = `wbs-shake ${Math.min(dur, 600)}ms ease infinite`; }
   _wbsSkillToast('🌋', 'Earthquake!', '#f97316', dur);
   setTimeout(() => { if (shell) shell.style.animation = ''; }, dur);
@@ -92,9 +92,10 @@ function wbsEffect_darkness(skill) {
   overlay.id    = 'wbs-darkness-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;z-index:9980;pointer-events:none;background:rgba(0,0,0,.75);animation:wbs-fade-in .6s ease forwards';
   document.body.appendChild(overlay);
-  const qCard = document.querySelector('.wbc-panel.wbe-question,#wbc-combat-area,.camp-encounter-inner');
+  const qCard = document.querySelector('.raid-battle #camp-encounter') || document.querySelector('.wbc-panel.wbe-question,#wbc-combat-area,.camp-encounter-inner');
+  const arena=document.querySelector('.raid-battle #camp-scene');if(arena){arena.appendChild(overlay);overlay.style.position='absolute';overlay.style.zIndex='20';}
   const prevZ = qCard ? qCard.style.zIndex : '';
-  if (qCard) { qCard.style.zIndex = '9985'; qCard.style.position = 'relative'; }
+  if (qCard) { qCard.style.zIndex = arena?'30':'9985'; qCard.style.position = 'relative'; }
   _wbsSkillToast('🌑', 'Darkness Falls!', '#6366f1', dur);
   setTimeout(() => {
     overlay.style.animation = 'wbs-fade-out .6s ease forwards';
@@ -104,7 +105,7 @@ function wbsEffect_darkness(skill) {
 }
 
 function wbsEffect_mirror_trick(skill) {
-  const list = document.getElementById('wbc-opts-list'); if (!list) return;
+  const list = document.getElementById('camp-options') || document.getElementById('wbc-opts-list'); if (!list) return;
   const opts = Array.from(list.children); if (opts.length < 2) return;
   for (let i = opts.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -141,7 +142,7 @@ function wbsEffect_meteor_shower(skill) {
 // ── Fire / loop / stop ────────────────────────────────────────────────────────
 
 window.wbsFireSkill = function (bossIdx, skillId) {
-  if (currentRole !== 'student') return;
+  if (currentRole !== 'student'||typeof WBR==='undefined'||WBR.bossIdx!==bossIdx) return;
   const boss   = (AppStore.getSlice(s => s.bossEvents) || [])[bossIdx]; if (!boss) return;
   const skills = wbsGetSkills(boss);
   const skill  = skills[skillId]; if (!skill || !skill.enabled) return;
@@ -171,6 +172,7 @@ window.wbsAdminFireSkill = function (bossIdx, skillId) {
 };
 
 window.wbsStartSkillLoop = function (bossIdx) {
+  if(WBS.currentBossIdx===bossIdx&&WBS.loopTimer)return;
   wbsStopSkillLoop();
   WBS.currentBossIdx = bossIdx;
   function _tick() {
@@ -191,7 +193,9 @@ window.wbsStopSkillLoop = function () {
   if (WBS.loopTimer) { clearTimeout(WBS.loopTimer); WBS.loopTimer = null; }
   ['wbs-darkness-overlay', 'wbs-meteor-container', 'wbs-skill-toast'].forEach(id => { const el = document.getElementById(id); if (el) el.remove(); });
   document.querySelectorAll('.wbc-opt,.wbr-opt,.camp-opt').forEach(el => { el.style.animation = ''; });
-  const shell = document.querySelector('.wbe-shell,#s-world-boss');
+  document.querySelectorAll('#wbs-darkness-overlay,#wbs-meteor-container,#wbs-skill-toast').forEach(el=>el.remove());
+  const encounter=document.querySelector('.raid-battle #camp-encounter');if(encounter)encounter.style.zIndex='';
+  const shell = document.querySelector('.raid-battle #camp-scene') || document.querySelector('.wbe-shell,#s-world-boss');
   if (shell) shell.style.animation = '';
 };
 
@@ -286,7 +290,7 @@ window.wblTrackCrit = function (bossIdx, studentId) {
 AppStore.subscribe('wbs-skill-loop-view-sync', function (state, event) {
   if (event.type !== 'world-boss:student-view-rendered') return;
   const found = (typeof wbcGetActiveBoss === 'function') ? wbcGetActiveBoss() : null;
-  if (found && found.boss && found.boss.status === 'active') {
+  if (found && found.boss && found.boss.status === 'active' && typeof WBR!=='undefined' && WBR.bossIdx===found.idx) {
     wbsStartSkillLoop(found.idx);
   } else {
     wbsStopSkillLoop();
