@@ -62,13 +62,13 @@ The two minion docks flank the central boss encounter on desktop and occupy oppo
 
 ## Battle motion and rage presentation
 
-The arena now uses a scoped presentation layer for all six boss skills. A brief preparing cue precedes ground fractures, wind ribbons, an eclipse, prismatic mirror echoes, roar shockwaves or a meteor barrage. The question stays readable and answer controls remain steady; Mirror Trick still shuffles the original answer buttons once without changing their identities or handlers. Confirmed attacks produce boss recoil, damage numbers and a delayed health-bar echo.
+The arena now uses a scoped presentation layer for all six boss skills. A brief preparing cue precedes ground fractures, wind ribbons, an eclipse, prismatic mirror echoes, roar shockwaves or a meteor barrage. The question remains visible while each skill challenges the answer controls: Earthquake shifts and buries choices, Wind drifts them, Eclipse conceals them, Mirror repeatedly reshuffles them, Roar shakes and obscures them, and Meteor Shower marks then shatters individual choices. Original button identities, text, handlers and correct-answer indices are preserved. Confirmed attacks produce boss recoil, damage numbers and a delayed health-bar echo.
 
 Phase changes have concise announcements and persistent phase indicators. Rage uses the configured HP threshold, an orbiting aura, an Enraged indicator and matching minion rims/badges. Minions enter from their own flank once per spawn and react to correct or incorrect answers. Rage uses one skill clock with the configured frequency multiplier; the configured spawn multiplier now also adjusts the minion spawn delay. No damage, reward or answer-confirmation rules change.
 
-Effects are bounded, ignore pointer input, clean up when leaving the battle and honor reduced-motion preferences with static cues. The new assets are local CSS/SVG with no additional image service or SQL migration.
+Foreground weather, shockwaves, background camera impacts and cinematic phase/rage titles intensify the arena. Rage adds a breathing crimson perimeter, stronger boss aura and animated minion wards. Decorative effects ignore pointer input. Concealed choices take one click/tap to reveal and another to answer; aiming steadies a moving choice. Only one answer disruption runs at a time, all choices recover automatically, and exit or answer confirmation clears disruptions. Reduced motion disables movement while retaining timed concealment and reveal controls. The new assets are local CSS/SVG with no additional image service or SQL migration.
 
-- `npm run test:boss-effects` — all six telegraphed skills, stable controls/answer identities, phase/rage/minion states, spawn acceleration, confirmed-hit presentation, 320/390/1440 layouts, reduced motion, exit cleanup and unchanged reward/progress state, using intercepted services.
+- `npm run test:boss-effects` — all six telegraphed skills, moving/concealed/shuffled choices with preserved identities, reveal-before-submit, real phone taps, automatic recovery and overlap cleanup, phase/rage/minion states, spawn acceleration, confirmed-hit presentation, 320/390/1440 layouts, reduced motion, exit cleanup and unchanged reward/progress state, using intercepted services.
 
 
 ## Repair for `boss_status: "defeated"`

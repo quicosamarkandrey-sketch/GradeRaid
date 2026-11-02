@@ -17,12 +17,12 @@ window.WBS = {
 // ── Skill defaults ────────────────────────────────────────────────────────────
 
 window.WBS_SKILL_DEFAULTS = {
-  earthquake:   { id:'earthquake',   name:'Earthquake',    emoji:'🌋', desc:'Fractures and a heavy boss stomp ripple through the arena.',                  enabled:true, durationSec:4, cooldownSec:45, triggerPhase:'any' },
-  chaos_wind:   { id:'chaos_wind',   name:'Chaos Wind',    emoji:'🌪️', desc:'Wind currents coil around the boss; answer buttons stay steady.',        enabled:true, durationSec:8, cooldownSec:50, triggerPhase:'any', windSpeed:'medium' },
-  darkness:     { id:'darkness',     name:'Darkness',      emoji:'🌑', desc:'Background dims. Question area stays lit.', enabled:true, durationSec:7, cooldownSec:40, triggerPhase:'any' },
-  mirror_trick: { id:'mirror_trick', name:'Mirror Trick',  emoji:'🪞', desc:'Answer choices are randomly reordered.',    enabled:true, durationSec:0, cooldownSec:60, triggerPhase:'any' },
-  berserk_roar: { id:'berserk_roar', name:'Berserk Roar',  emoji:'😤', desc:'A shockwave expands from the boss; answer buttons stay steady.',           enabled:true, durationSec:3, cooldownSec:35, triggerPhase:'any' },
-  meteor_shower:{ id:'meteor_shower',name:'Meteor Shower', emoji:'☄️', desc:'Cosmetic meteor animation.',                enabled:true, durationSec:6, cooldownSec:55, triggerPhase:'any' },
+  earthquake:   { id:'earthquake',   name:'Earthquake',    emoji:'🌋', desc:'Choices shake and fracture; tap buried choices to uncover them.',                  enabled:true, durationSec:4, cooldownSec:45, triggerPhase:'any' },
+  chaos_wind:   { id:'chaos_wind',   name:'Chaos Wind',    emoji:'🌪️', desc:'Answer choices drift in gale currents; aim to steady a choice.',        enabled:true, durationSec:8, cooldownSec:50, triggerPhase:'any', windSpeed:'medium' },
+  darkness:     { id:'darkness',     name:'Darkness',      emoji:'🌑', desc:'Shadows conceal choices; tap once to reveal before answering.', enabled:true, durationSec:7, cooldownSec:40, triggerPhase:'any' },
+  mirror_trick: { id:'mirror_trick', name:'Mirror Trick',  emoji:'🪞', desc:'Mirror echoes repeatedly shuffle the original answer choices.',    enabled:true, durationSec:0, cooldownSec:60, triggerPhase:'any' },
+  berserk_roar: { id:'berserk_roar', name:'Berserk Roar',  emoji:'😤', desc:'A shockwave disrupts choices; tap to recover obscured text.',           enabled:true, durationSec:3, cooldownSec:35, triggerPhase:'any' },
+  meteor_shower:{ id:'meteor_shower',name:'Meteor Shower', emoji:'☄️', desc:'A barrage marks and shatters choices; tap to reform them.',                enabled:true, durationSec:6, cooldownSec:55, triggerPhase:'any' },
 };
 
 // ── Core helpers ──────────────────────────────────────────────────────────────
