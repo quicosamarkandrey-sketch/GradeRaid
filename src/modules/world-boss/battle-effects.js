@@ -96,8 +96,8 @@
  }
  function clearChallenge(){
   if(!context?.challenge)return;const c=context.challenge;context.challenge=null;
-  for(const timer of c.timers)clear(context,timer);landChoices(c);c.solarLayer?.remove();if(c.solarTrack){removeEventListener('resize',c.solarTrack);document.getElementById('campaign-overlay')?.removeEventListener('scroll',c.solarTrack);cancelAnimationFrame(c.solarFrame);}
-  c.nodes.forEach(node=>{node.classList.remove(...choiceClasses);node.removeAttribute('data-rfx-cover');node.style.removeProperty('--rfx-slot');node.style.removeProperty('--rfx-dir');});
+  for(const timer of c.timers)clear(context,timer);landChoices(c);
+  c.nodes.forEach(node=>{node.classList.remove(...choiceClasses);node.removeAttribute('data-rfx-cover');node.removeAttribute('data-rfx-solar-hit');node.removeAttribute('data-rfx-solar-at');node.style.removeProperty('--rfx-slot');node.style.removeProperty('--rfx-dir');});
   c.list.classList.remove('rfx-challenge-'+c.kind);c.list.style.removeProperty('--rfx-choice-cycle');c.hint.remove();
  }
  function shuffleChoices(c){
@@ -108,50 +108,56 @@
   nodes.forEach(node=>c.list.appendChild(node));
   if(focus?.isConnected&&c.list.contains(focus))focus.focus({preventScroll:true});
  }
- // Solar lances use live card rectangles. No copied answer markup and no
- // health changes: the existing server-confirmed ultimate owns class damage.
- function solarBarrage(s,c,duration,spec,schedule){
-  const cycle=4200,warning=1000,recovery=3300;
-  const elapsed=Math.max(0,Date.now()+(s.boss._raidClockOffset||0)-(spec.resolvedAt||Date.now()));
-  const seed=String(spec.id||'sun').split('').reduce((n,ch)=>n+ch.charCodeAt(0),0);
-  function draw(){
-   const layer=c.solarLayer;if(!layer?.isConnected)return;
-   const w=innerWidth,h=innerHeight,hud=document.querySelector('.raid-battle .camp-hud')?.getBoundingClientRect(),sky=Math.max(28,Math.min(140,(hud?.bottom||70)+12));
-   layer.innerHTML=`<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="solar-ray-${c.solarId}" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff6d7"/><stop offset=".55" stop-color="#ffdaaa"/><stop offset="1" stop-color="#fa6d89"/></linearGradient></defs>`+c.solarTargets.map((node,i)=>{
-    const r=node.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2,sx=Math.max(30,Math.min(w-30,w*(i+1)/(c.solarTargets.length+1)+Math.sin(Number(layer.dataset.wave)+i)*w*.1)),sy=sky;
-    return `<g class="rfx-solar-ray" data-solar-target="${node.id}"><path class="rfx-solar-guide" d="M${sx} ${sy}L${x} ${y}"/><path class="rfx-solar-halo" d="M${sx} ${sy}L${x} ${y}" pathLength="1"/><path class="rfx-solar-beam" d="M${sx} ${sy}L${x} ${y}" pathLength="1" style="stroke:url(#solar-ray-${c.solarId})"/><path class="rfx-solar-white" d="M${sx} ${sy}L${x} ${y}" pathLength="1"/><g class="rfx-solar-gate" transform="translate(${sx} ${sy})"><circle r="21"/><path d="M-32 0H32M0-32V32M-23-23 23 23M-23 23 23-23"/><circle r="8"/></g><g class="rfx-solar-impact" transform="translate(${x} ${y})"><ellipse rx="${Math.min(100,r.width*.46)}" ry="20"/><path d="M-65 0H65M0-42V42M-45-28 45 28M-45 28 45-28"/></g>`+Array.from({length:media.matches?0:6},(_,j)=>{const a=j/6*Math.PI*2,dx=Math.cos(a)*90,dy=Math.sin(a)*65;return `<path class="rfx-solar-chip" d="m${x} ${y} 12-7 8 10-13 8Z" style="--chip-x:${dx}px;--chip-y:${dy}px;--chip-turn:${j*65}deg"/>`;}).join('')+'</g>';
-   }).join('')+'</svg>';
-  }
-  c.solarTrack=()=>{cancelAnimationFrame(c.solarFrame);c.solarFrame=requestAnimationFrame(draw);};
-  addEventListener('resize',c.solarTrack);document.getElementById('campaign-overlay')?.addEventListener('scroll',c.solarTrack,{passive:true});
-  function volley(wave,age=0){
-   c.solarLayer?.remove();c.nodes.forEach(n=>n.classList.remove('rfx-solar-mark','rfx-solar-broken','rfx-obscured'));
-   if(age>=recovery)return;
-   const ordered=c.nodes.map((_,i)=>c.nodes[(i+seed+wave)%c.nodes.length]);
-   const candidates=ordered.filter(n=>Date.now()-(c.revealed.get(n)||0)>1500&&n!==document.activeElement);
-   c.solarTargets=candidates.slice(0,Math.min(c.nodes.length-1,Math.max(1,Math.ceil(c.nodes.length*(wave%3===2?.75:.5)))));
-   if(!c.solarTargets.length)return;
-   c.solarId=++serial;c.solarLayer=document.createElement('div');c.solarLayer.className='rfx-solar-volley is-warning';c.solarLayer.dataset.wave=wave;s.ctx.screen.appendChild(c.solarLayer);draw();
-   c.hint.textContent='Solar barrage · '+c.solarTargets.length+' choices targeted. Rebuild shattered choices before answering.';
-   c.solarTargets.forEach(n=>n.classList.add('rfx-solar-mark'));
-   const strike=()=>{
-    c.solarTargets=c.solarTargets.filter(n=>Date.now()-(c.revealed.get(n)||0)>1500);
-    c.solarLayer.classList.replace('is-warning','is-firing');
-    c.solarTargets.forEach(n=>{n.classList.remove('rfx-solar-mark');n.classList.add('rfx-solar-broken','rfx-obscured');});draw();
-    if(!media.matches)impact('earthquake');
-   };
-   if(age>=warning)strike();else schedule(strike,warning-age);
-   schedule(()=>{c.nodes.forEach(n=>n.classList.remove('rfx-solar-mark','rfx-solar-broken','rfx-obscured'));c.solarLayer?.remove();c.hint.textContent='Choices rebuilt · another solar wave is approaching.';},recovery-age);
-  }
-  const firstWave=Math.floor(elapsed/cycle),age=elapsed%cycle;volley(firstWave,age);
-  for(let t=cycle-age;t<duration-400;t+=cycle){const wave=firstWave+1+Math.round((t-(cycle-age))/cycle);schedule(()=>volley(wave),t);}
+ // Sweeps collide with the actual controls. Fragments are inert text panels;
+ // original question/answer nodes, IDs and handlers are never replaced.
+ function lineHits(r,a,b,pad=12){
+  let low=0,high=1;for(const [start,delta,min,max] of [[a.x,b.x-a.x,r.left-pad,r.right+pad],[a.y,b.y-a.y,r.top-pad,r.bottom+pad]]){
+   if(Math.abs(delta)<.001){if(start<min||start>max)return false;continue;}
+   let first=(min-start)/delta,last=(max-start)/delta;if(first>last)[first,last]=[last,first];low=Math.max(low,first);high=Math.min(high,last);if(low>high)return false;
+  }return true;
+ }
+ function finishQuestionBreak(ctx){
+  const q=ctx?.questionBreak;if(!q)return;q.node.classList.remove('rfx-question-missing');q.layer.remove();ctx.questionBreak=null;
+ }
+ function textFragments(s,rect,text,font,kind='question'){
+  if(media.matches)return null;
+  const layer=document.createElement('div');layer.className='rfx-text-fragments rfx-'+kind+'-fragments';layer.setAttribute('aria-hidden','true');
+  const polygons=['0 0,50% 0,46% 25%,0 35%','50% 0,100% 0,100% 35%,46% 25%','0 35%,46% 25%,53% 52%,0 60%','46% 25%,100% 35%,100% 60%,53% 52%','0 60%,53% 52%,47% 78%,0 82%','53% 52%,100% 60%,100% 82%,47% 78%','0 82%,47% 78%,50% 100%,0 100%','47% 78%,100% 82%,100% 100%,50% 100%'];
+  polygons.forEach((polygon,i)=>{
+   const piece=document.createElement('div');piece.className='rfx-text-shard';piece.textContent=text;
+   Object.assign(piece.style,{left:rect.x+'px',top:rect.y+'px',width:rect.width+'px',height:rect.height+'px',font:font.font,color:font.color,textAlign:font.textAlign,lineHeight:font.lineHeight,clipPath:'polygon('+polygon+')'});
+   const direction=i%2?1:-1;piece.style.setProperty('--piece-x',direction*(100+i*18)+'px');piece.style.setProperty('--piece-y',(-75+Math.floor(i/2)*60)+'px');piece.style.setProperty('--piece-turn',direction*(12+i*4)+'deg');layer.appendChild(piece);
+  });s.ctx.screen.appendChild(layer);later(s.ctx,()=>layer.remove(),1500);return layer;
+ }
+ function shatterQuestion(s){
+  const node=document.getElementById('camp-q-text');if(media.matches||!node||s.ctx.questionBreak||node.querySelector('.wbr-empty-question'))return;
+  const rect=node.getBoundingClientRect();if(rect.bottom<0||rect.top>innerHeight)return;
+  const css=getComputedStyle(node),text=node.textContent,layer=textFragments(s,rect,text,{font:css.font,color:css.color,textAlign:css.textAlign,lineHeight:css.lineHeight});if(!layer)return;
+  node.classList.add('rfx-question-missing');s.ctx.questionBreak={node,text,layer};
+  later(s.ctx,()=>{if(s.ctx.questionBreak?.layer===layer)finishQuestionBreak(s.ctx);},1450);
+ }
+ function solarBarrage(s,c){
+  c.lastBurn=new WeakMap();c.brokenUntil=new WeakMap();
+  c.hint.textContent='Continuous solar sweep · rays shatter choices. Tap shattered choices to rebuild them.';
+ }
+ function captureAnswer(node){
+  if(!context||!window.RaidUltimate?.isBusy(WBR.bossIdx)||node.disabled||node.classList.contains('rfx-obscured')||context.challenge?.repairPress.has(node)||Date.now()<(context.challenge?.repairOnlyUntil.get(node)||0))return;
+  const r=node.getBoundingClientRect(),css=getComputedStyle(node);
+  context.lastAnswer={at:Date.now(),rect:{x:r.x,y:r.y,width:r.width,height:r.height},text:node.textContent,font:{font:css.font,color:css.color,textAlign:css.textAlign,lineHeight:css.lineHeight}};
+ }
+ document.addEventListener('click',e=>{const node=e.target.closest?.('.raid-battle button.camp-opt[id^="wbr-opt-"]');if(node)captureAnswer(node);},true);
+ function crownShatter(){
+  const s=scope(),crown=document.querySelector('.rux-solar-crown');if(!s||!crown||media.matches)return;
+  const r=crown.getBoundingClientRect(),layer=document.createElement('div');layer.className='rfx-crown-hit';layer.setAttribute('aria-hidden','true');
+  layer.style.setProperty('--burst-x',(r.x+r.width/2)+'px');layer.style.setProperty('--burst-y',(r.y+r.height/2)+'px');
+  layer.innerHTML=Array.from({length:14},(_,i)=>`<i style="--angle:${i*360/14}deg;--travel:${45+i%4*18}px"></i>`).join('');s.ctx.screen.appendChild(layer);later(s.ctx,()=>layer.remove(),950);
  }
  function challenge(kind,duration,spec={}){
   const s=scope();if(!s)return;clearChallenge();
   const list=document.getElementById('camp-options'),nodes=[...list?.querySelectorAll('button.camp-opt:not(:disabled)')||[]];
   if(WBR.answerPending||nodes.length<2)return;
   const hint=document.createElement('div');hint.id='rfx-challenge-hint';hint.setAttribute('role','status');hint.textContent=challenges[kind].hint;list.before(hint);
-  const c={kind,list,nodes,hint,timers:[],aimUntil:0,revealed:new WeakMap()};s.ctx.challenge=c;list.classList.add('rfx-challenge-'+kind);list.style.setProperty('--rfx-choice-cycle',({slow:1.8,medium:1.25,fast:.9}[spec.windSpeed]||1.25)+'s');
+  const c={kind,list,nodes,hint,timers:[],aimUntil:0,revealed:new WeakMap(),repairPress:new WeakSet(),repairOnlyUntil:new WeakMap()};s.ctx.challenge=c;list.classList.add('rfx-challenge-'+kind);list.style.setProperty('--rfx-choice-cycle',({slow:1.8,medium:1.25,fast:.9}[spec.windSpeed]||1.25)+'s');
   nodes.forEach((node,i)=>{node.classList.add('rfx-choice');node.style.setProperty('--rfx-slot',i);node.style.setProperty('--rfx-dir',i%2?1:-1);node.dataset.rfxCover=challenges[kind].cover||'';});
   const schedule=(fn,ms)=>c.timers.push(later(s.ctx,()=>{if(context?.challenge!==c)return;if(WBR.answerPending||!challengeAlive(c)){clearChallenge();return;}fn();},ms));
   function obscure(count){
@@ -160,7 +166,7 @@
    // Always leave at least one visible choice. Focused/recently revealed choices stay readable.
    candidates.slice(0,Math.min(count,nodes.length-1)).forEach(n=>n.classList.add('rfx-obscured'));
   }
-  if(kind==='cataclysm'){solarBarrage(s,c,duration,spec,schedule);
+  if(kind==='cataclysm'){solarBarrage(s,c);
   }else if(kind==='mirror_trick'){
    shuffleChoices(c);nodes.forEach(n=>n.classList.add('rfx-mirror-turn'));
    if(!media.matches)for(let t=1400;t<duration-400;t+=1400)schedule(()=>shuffleChoices(c),t);
@@ -177,14 +183,14 @@
  // The first click on a concealed choice only reveals it; it never submits a blind answer.
  document.addEventListener('click',event=>{
   const c=context?.challenge,node=event.target.closest?.('.raid-battle button.rfx-choice');if(!c||!node||!c.nodes.includes(node))return;
-  if(node.classList.contains('rfx-obscured')){event.preventDefault();event.stopImmediatePropagation();node.classList.remove('rfx-obscured','rfx-meteor-mark','rfx-solar-broken','rfx-solar-mark');if(c.kind==='glacial_prison'&&!media.matches){const r=node.getBoundingClientRect();effect('ice-shatter',Array.from({length:7},(_,i)=>`<i style="--x:${r.x+r.width/2}px;--y:${r.y+r.height/2}px;--angle:${i*51}deg"></i>`).join(''),650,'screen');}c.revealed.set(node,Date.now());c.aimUntil=Date.now()+800;c.hint.textContent=c.kind==='cataclysm'?'Choice rebuilt · tap again to answer.':'Choice revealed · tap again to answer.';node.focus({preventScroll:true});return;}
+  if(node.classList.contains('rfx-obscured')||c.repairPress.has(node)||Date.now()<(c.repairOnlyUntil.get(node)||0)){event.preventDefault();event.stopImmediatePropagation();c.repairPress.delete(node);c.repairOnlyUntil.delete(node);c.brokenUntil?.delete(node);node.classList.remove('rfx-obscured','rfx-meteor-mark','rfx-solar-broken','rfx-solar-mark');if(c.kind==='glacial_prison'&&!media.matches){const r=node.getBoundingClientRect();effect('ice-shatter',Array.from({length:7},(_,i)=>`<i style="--x:${r.x+r.width/2}px;--y:${r.y+r.height/2}px;--angle:${i*51}deg"></i>`).join(''),650,'screen');}c.revealed.set(node,Date.now());c.aimUntil=Date.now()+800;c.hint.textContent=c.kind==='cataclysm'?'Choice rebuilt · tap again to answer.':'Choice revealed · tap again to answer.';node.focus({preventScroll:true});return;}
   clearChallenge();
  },true);
  document.addEventListener('pointerover',event=>{const c=context?.challenge,node=event.target.closest?.('.raid-battle button.rfx-choice');if(c&&node&&c.nodes.includes(node)&&!movingSkills.has(c.kind))node.classList.add('rfx-aimed');},true);
  document.addEventListener('pointerout',event=>{const node=event.target.closest?.('.raid-battle button.rfx-choice');if(node&&!node.contains(event.relatedTarget))node.classList.remove('rfx-aimed');},true);
- document.addEventListener('pointerdown',event=>{const c=context?.challenge,node=event.target.closest?.('.raid-battle button.rfx-choice');if(c&&node&&c.nodes.includes(node)){c.pressed=true;c.aimUntil=Date.now()+800;if(!movingSkills.has(c.kind))node.classList.add('rfx-aimed');}},true);
- document.addEventListener('pointerup',()=>{if(context?.challenge){context.challenge.pressed=false;context.challenge.aimUntil=Date.now()+800;}},true);
- document.addEventListener('pointercancel',()=>{if(context?.challenge)context.challenge.pressed=false;},true);
+ document.addEventListener('pointerdown',event=>{const c=context?.challenge,node=event.target.closest?.('.raid-battle button.rfx-choice');if(c&&node&&c.nodes.includes(node)){c.pressed=true;c.pressedNode=node;if(node.classList.contains('rfx-obscured'))c.repairPress.add(node);c.aimUntil=Date.now()+800;if(!movingSkills.has(c.kind))node.classList.add('rfx-aimed');}},true);
+ document.addEventListener('pointerup',()=>{if(context?.challenge){context.challenge.pressed=false;context.challenge.pressedNode=null;context.challenge.aimUntil=Date.now()+800;}},true);
+ document.addEventListener('pointercancel',event=>{const c=context?.challenge;if(c){c.pressed=false;c.pressedNode=null;const n=event.target.closest?.('.rfx-choice');if(n)c.repairPress.delete(n);}},true);
  // Foreground weather crosses the reading plane without intercepting clicks.
  // One bounded pressure state per skill; timers are cancelled on raid exit.
  function pressure(kind,duration){
@@ -277,30 +283,74 @@
   const players=new Map();
   for(const h of hits){const p=players.get(h.studentId)||{...h,damage:0};p.damage+=h.damage;p.crit=p.crit||h.crit;players.set(h.studentId,p);}
   const rows=[...players.values()],mine=rows.find(r=>r.studentId===currentUser.id),others=rows.filter(r=>r!==mine);
+  if(mine&&s.ctx.lastAnswer&&Date.now()-s.ctx.lastAnswer.at<12000){const a=s.ctx.lastAnswer;s.ctx.lastAnswer=null;textFragments(s,a.rect,a.text,a.font,'answer');}
   const shown=[...(mine?[mine]:[]),...others.slice(0,mine?2:3)];
   shown.forEach((r,i)=>later(s.ctx,()=>hit(r.damage,r.crit,(r.studentId===currentUser.id?'You':r.name)+(r.crit?' · Critical':'')),i*210));
   if(others.length>(mine?2:3)){
    const rest=others.slice(mine?2:3);later(s.ctx,()=>hit(rest.reduce((n,r)=>n+r.damage,0),false,rest.length+' more raiders'),shown.length*210);
   }
  }
- function endCataclysm(){if(!context)return;if(context.challenge?.kind==='cataclysm')clearChallenge();context.screen?.querySelectorAll('.rfx-cataclysm-storm,.rfx-solar-volley').forEach(n=>n.remove());context.ultimateId=null;}
- function solarSky(s,u){
-  const elapsed=Math.max(0,(Date.now()+(s.boss._raidClockOffset||0)-u.resolvedAt)/1000),count=innerWidth<600?4:6;
-  return '<div class="rfx-solar-canopy"></div><div class="rfx-solar-horizon"></div><svg class="rfx-solar-wild-field" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true">'+Array.from({length:count},(_,i)=>{
-   const x=55+i*890/(count-1),endX=Math.max(25,Math.min(975,x+(i%2?180:-145))),endY=310+(i*113)%350,path=`M${x} -30L${endX} ${endY}`,delay=-((elapsed+i*.83)%5.2);
-   return `<g class="rfx-solar-wild" style="--wild-delay:${delay}s"><path class="rfx-wild-guide" d="${path}"/><path class="rfx-wild-halo" d="${path}" pathLength="1"/><path class="rfx-wild-beam" d="${path}" pathLength="1"/><path class="rfx-wild-core" d="${path}" pathLength="1"/><ellipse class="rfx-wild-scar" cx="${endX}" cy="${endY}" rx="60" ry="14"/></g>`;
-  }).join('')+'</svg>';
+ function endCataclysm(){
+  if(!context)return;if(context.challenge?.kind==='cataclysm')clearChallenge();finishQuestionBreak(context);
+  if(context.solar){cancelAnimationFrame(context.solar.frame);context.solar.layer.remove();context.solar=null;}
+  context.screen?.querySelectorAll('.rfx-cataclysm-storm,.rfx-solar-volley,.rfx-text-fragments,.rfx-crown-hit').forEach(n=>n.remove());
+  document.querySelectorAll('.raid-battle .rfx-solar-scorched').forEach(n=>n.classList.remove('rfx-solar-scorched'));context.ultimateId=null;context.lastAnswer=null;
+ }
+ function startSolarSweep(s,u){
+  const layer=document.createElement('div');layer.className='rfx-effect rfx-cataclysm-storm';layer.innerHTML='<div class="rfx-solar-canopy"></div><div class="rfx-solar-horizon"></div><svg class="rfx-solar-wild-field" aria-hidden="true"><g class="rfx-solar-trails"></g><g class="rfx-solar-live"></g></svg>';s.ctx.screen.appendChild(layer);
+  const count=innerWidth<600?3:4,svgEl=layer.querySelector('svg'),live=layer.querySelector('.rfx-solar-live'),trails=layer.querySelector('.rfx-solar-trails'),ns='http://www.w3.org/2000/svg';
+  const sweep={id:u.id,layer,endsAt:u.endsAt,resolvedAt:u.resolvedAt,lastDraw:0,lastSample:0,lastCollision:0,lastQuestion:-Infinity,scorched:new WeakMap(),burns:[]};s.ctx.solar=sweep;
+  const beams=Array.from({length:count},(_,i)=>{
+   const group=document.createElementNS(ns,'g');group.setAttribute('class','rfx-solar-wild rfx-solar-sweep');group.innerHTML='<path class="rfx-wild-halo"/><path class="rfx-wild-beam"/><path class="rfx-wild-core"/><ellipse class="rfx-wild-scar" rx="55" ry="12"/>';live.appendChild(group);return {group,paths:[...group.querySelectorAll('path')],scar:group.querySelector('ellipse')};
+  });
+  function frame(stamp){
+   if(context!==s.ctx||s.ctx.solar!==sweep||!open()||!layer.isConnected)return;
+   const clock=Date.now()+(s.boss._raidClockOffset||0);if(clock>=sweep.endsAt){endCataclysm();return;}
+   sweep.frame=requestAnimationFrame(frame);if(stamp-sweep.lastDraw<33)return;sweep.lastDraw=stamp;
+   const w=innerWidth,h=innerHeight,t=Math.max(0,(clock-sweep.resolvedAt)/1000),hud=document.querySelector('.raid-battle .camp-hud')?.getBoundingClientRect(),sky=Math.max(25,Math.min(140,(hud?.bottom||70)+10));
+   svgEl.setAttribute('viewBox',`0 0 ${w} ${h}`);
+   const rays=beams.map((beam,i)=>{
+    const a={x:w*(i+.5)/count+Math.sin(t*.29+i)*w*.12,y:sky},b={x:w*(.5+.78*Math.sin(t*.57+i*Math.PI*2/count)),y:h+80},d=`M${a.x} ${a.y}L${b.x} ${b.y}`;
+    beam.paths.forEach(path=>path.setAttribute('d',d));beam.scar.setAttribute('cx',a.x+(b.x-a.x)*(h-20-a.y)/(b.y-a.y));beam.scar.setAttribute('cy',h-20);return {a,b,d};
+   });
+   if(stamp-sweep.lastSample>=130){
+    sweep.lastSample=stamp;rays.forEach(ray=>sweep.burns.push({d:ray.d,at:clock}));sweep.burns=sweep.burns.filter(b=>clock-b.at<1900).slice(-(count*12));
+    trails.innerHTML=sweep.burns.map(b=>`<path class="rfx-solar-burn-trail" d="${b.d}" style="opacity:${Math.max(0,1-(clock-b.at)/1900)*.25}"/>`).join('');
+   }
+   if(stamp-sweep.lastCollision<100)return;sweep.lastCollision=stamp;
+   const currentStatus=AppStore.getSlice(state=>state.bossEvents?.[s.ctx.index]?.status);if(currentStatus!=='active'){endCataclysm();return;}
+   const c=s.ctx.challenge;
+   if(c?.kind==='cataclysm'&&challengeAlive(c)&&!WBR.answerPending){
+    c.nodes.forEach(node=>{if(node!==c.pressedNode&&clock>=(c.brokenUntil.get(node)||Infinity)){node.classList.remove('rfx-obscured','rfx-solar-broken');c.brokenUntil.delete(node);c.repairOnlyUntil.set(node,Date.now()+700);}});
+    for(const node of c.nodes){
+     if(node.disabled||node.classList.contains('rfx-obscured')||Date.now()-(c.revealed.get(node)||0)<1500||clock-(c.lastBurn.get(node)||0)<2300)continue;
+     if(c.nodes.filter(n=>!n.classList.contains('rfx-obscured')).length<=1)break;
+     const r=node.getBoundingClientRect(),ray=rays.find(ray=>lineHits(r,ray.a,ray.b,w<600?12:20));if(!ray)continue;
+     node.classList.add('rfx-solar-broken','rfx-obscured');node.dataset.rfxSolarHit=[ray.a.x,ray.a.y,ray.b.x,ray.b.y].join(',');node.dataset.rfxSolarAt=clock;c.lastBurn.set(node,clock);c.brokenUntil.set(node,clock+1450);
+    }
+   }
+   const q=document.getElementById('camp-q-text');
+   if(s.ctx.questionBreak&&s.ctx.questionBreak.text!==s.ctx.questionBreak.node.textContent)finishQuestionBreak(s.ctx);
+   if(q&&clock-sweep.lastQuestion>4300&&rays.some(ray=>lineHits(q.getBoundingClientRect(),ray.a,ray.b,10))){sweep.lastQuestion=clock;shatterQuestion(s);}
+   for(const panel of document.querySelectorAll('#raid-ultimate,#wbr-live-feed,#wbr-raid-meta')){
+    if(clock-(sweep.scorched.get(panel)||0)<3400||!rays.some(ray=>lineHits(panel.getBoundingClientRect(),ray.a,ray.b,10)))continue;
+    sweep.scorched.set(panel,clock);panel.classList.remove('rfx-solar-scorched');void panel.offsetWidth;panel.classList.add('rfx-solar-scorched');
+   }
+  }
+  sweep.frame=requestAnimationFrame(frame);
  }
  function cataclysm(index,u){
   const s=scope();if(!s||s.ctx.index!==index)return;
   const remaining=Math.max(0,u.endsAt-Date.now()-(s.boss._raidClockOffset||0));if(!remaining)return;
-  if(s.ctx.ultimateId!==u.id||!s.ctx.screen.querySelector('.rfx-cataclysm-storm')){
-   s.ctx.ultimateId=u.id;
-   effect('cataclysm-storm',solarSky(s,u),remaining,'screen');
-  }
+  if(s.ctx.solar?.id!==u.id&&!media.matches){if(s.ctx.solar)cancelAnimationFrame(s.ctx.solar.frame);s.ctx.solar?.layer.remove();startSolarSweep(s,u);}
   if(!s.ctx.challenge||s.ctx.challenge.kind!=='cataclysm')challenge('cataclysm',remaining,{id:u.id,resolvedAt:u.resolvedAt});
+  if(media.matches&&s.ctx.challenge?.kind==='cataclysm'){
+   const c=s.ctx.challenge,elapsed=Date.now()+(s.boss._raidClockOffset||0)-u.resolvedAt,wave=Math.floor(elapsed/4300),phase=elapsed%4300;
+   if(phase>=1450)c.nodes.forEach(n=>n.classList.remove('rfx-obscured','rfx-solar-broken'));
+   else if(c.staticSolarWave!==wave){c.staticSolarWave=wave;c.nodes.filter(n=>Date.now()-(c.revealed.get(n)||0)>1500).slice(0,Math.max(1,c.nodes.length-1)).forEach(n=>n.classList.add('rfx-obscured','rfx-solar-broken'));}
+  }
  }
- function sync(index){const s=scope();if(!s||s.ctx.index!==index)return;if(s.ctx.challenge&&(WBR.answerPending||!challengeAlive(s.ctx.challenge)))clearChallenge();
+ function sync(index){const s=scope();if(!s||s.ctx.index!==index)return;if(s.ctx.questionBreak&&s.ctx.questionBreak.text!==s.ctx.questionBreak.node.textContent)finishQuestionBreak(s.ctx);if(s.ctx.challenge&&(WBR.answerPending||!challengeAlive(s.ctx.challenge)))clearChallenge();
   const p=wbpGetCurrentPhase(s.boss),number=Number(p.phase||1);s.scene.dataset.rfxPhase=String(number);
   document.getElementById('rfx-phase').innerHTML=`${svg('phase')}<strong>Phase ${number}</strong><span>${esc(p.label||p.name||'Battle')}</span>`;
   if(s.ctx.phase!==null&&s.ctx.phase!==number)phase(index,number);else s.ctx.phase=number;
@@ -312,7 +362,7 @@
   const echo=track?.querySelector('.rfx-health-echo');if(echo){if(s.ctx.hp===null||hp>=s.ctx.hp)echo.style.width=hp+'%';else{echo.style.width=s.ctx.hp+'%';later(s.ctx,()=>{if(echo.isConnected)echo.style.width=hp+'%';},180);}s.ctx.hp=hp;}
   minions();
  }
- function stop(){if(!context)return;clearChallenge();document.querySelectorAll('.raid-battle .wbm-minion-alert').forEach(node=>node.classList.remove('rfx-minion-enraged','rfx-arrive-left','rfx-arrive-right','rfx-minion-defeat','rfx-minion-resist'));document.querySelectorAll('.rfx-minion-rage').forEach(node=>node.remove());for(const t of context.timers)clearTimeout(t);context.field?.remove();context.stage?.remove();context.screen?.remove();document.querySelectorAll('#rfx-state,#rfx-announcer,.rfx-cast,.rfx-health-echo').forEach(n=>n.remove());const scene=document.getElementById('camp-scene');scene?.classList.remove('rfx-ready','rfx-raging','rfx-reduced','rfx-player-ko');if(scene){delete scene.dataset.rfxPhase;scene.classList.remove('rfx-camera-impact');for(const kind of context.pressures)scene.classList.remove('rfx-under-'+kind);}document.getElementById('camp-enemy-sprite')?.classList.remove('rfx-impact','rfx-stomp','rfx-roar-source');context=null;}
+ function stop(){if(!context)return;endCataclysm();clearChallenge();document.querySelectorAll('.raid-battle .wbm-minion-alert').forEach(node=>node.classList.remove('rfx-minion-enraged','rfx-arrive-left','rfx-arrive-right','rfx-minion-defeat','rfx-minion-resist'));document.querySelectorAll('.rfx-minion-rage').forEach(node=>node.remove());for(const t of context.timers)clearTimeout(t);context.field?.remove();context.stage?.remove();context.screen?.remove();document.querySelectorAll('#rfx-state,#rfx-announcer,.rfx-cast,.rfx-health-echo').forEach(n=>n.remove());const scene=document.getElementById('camp-scene');scene?.classList.remove('rfx-ready','rfx-raging','rfx-reduced','rfx-player-ko');if(scene){delete scene.dataset.rfxPhase;scene.classList.remove('rfx-camera-impact');for(const kind of context.pressures)scene.classList.remove('rfx-under-'+kind);}document.getElementById('camp-enemy-sprite')?.classList.remove('rfx-impact','rfx-stomp','rfx-roar-source');context=null;}
  media.addEventListener('change',()=>{const index=context?.index;stop();if(index!=null&&open())sync(index);});
- window.RaidFX=Object.freeze({cast,phase,rage,sync,minions,minionHit,hit,raidHits,cataclysm,endCataclysm,stop});
+ window.RaidFX=Object.freeze({cast,phase,rage,sync,minions,minionHit,hit,raidHits,cataclysm,endCataclysm,crownShatter,stop});
 })();

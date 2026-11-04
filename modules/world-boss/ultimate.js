@@ -28,11 +28,11 @@
   }
   const left=Math.max(0,Math.ceil(((u.phase==='casting'?u.deadline:u.endsAt)-time)/1000)),progress=Math.min(u.target,u.progress||0),ratio=progress/Math.max(1,u.target);
   panel.querySelector('.rux-clock').textContent=u.phase==='casting'?(left?left+'s':'Confirming…'):u.phase==='eruption'?left+'s':'';
-  panel.querySelector('.rux-instruction').textContent=u.phase==='casting'?'Break the solar crown with correct answers before the barrage begins.':u.phase==='interrupted'?'Your class shattered the solar crown. The barrage was stopped.':'Sun rays shatter marked choices. Tap to rebuild them, or wait for them to recover.';
+  panel.querySelector('.rux-instruction').textContent=u.phase==='casting'?'Break the solar crown with correct answers before the barrage begins.':u.phase==='interrupted'?'Your class shattered the solar crown. The barrage was stopped.':'Continuous rays tear through the battlefield. Rebuild shattered choices as the question reforms.';
   panel.querySelector('.rux-track i').style.width=(u.phase==='casting'?ratio*100:u.phase==='interrupted'?100:Math.max(0,(u.endsAt-time)/Math.max(1,u.endsAt-u.resolvedAt)*100))+'%';
-  panel.querySelector('.rux-foot strong').textContent=u.phase==='casting'?progress+' / '+u.target+' answers':u.phase==='interrupted'?'Class interrupt successful':'−'+(u.damage||1)+' heart · server confirmed';
+  panel.querySelector('.rux-foot strong').textContent=u.phase==='casting'?progress+' / '+u.target+' answers':u.phase==='interrupted'?'Class interrupt successful':'Class impact · '+(u.damage||1)+' heart'+((u.damage||1)===1?'':'s');
   const mine=Number(u.contributors?.[currentUser?.id]||0);panel.querySelector('.rux-foot span').textContent=u.phase==='casting'?(mine?'You contributed '+mine:'Every correct answer counts'):' ';core.style.setProperty('--rux-fracture',ratio);
-  if(session.progress!==progress){session.progress=progress;core.classList.remove('rux-struck');void core.offsetWidth;core.classList.add('rux-struck');}
+  if(session.progress!==progress){if(session.progress>=0&&progress>session.progress&&u.phase==='casting')window.RaidFX?.crownShatter();session.progress=progress;core.classList.remove('rux-struck');void core.offsetWidth;core.classList.add('rux-struck');}
   // Hold the boss's configured casting stance throughout the complete wind-up.
   if(u.phase==='casting'&&typeof BVS!=='undefined'&&BVS._current!=='cast')BVS.request('cast',Math.min(10000,Math.max(120,u.deadline-time)));
   if(u.phase==='eruption'&&time<u.endsAt)window.RaidFX?.cataclysm(index,u);
@@ -41,15 +41,18 @@
   if(hit.studentId!==currentUser?.id||WBR.bossIdx!==hit.bossIdx||WBR.phase!=='battle'||!(hit.damage>0))return;
   const boss=AppStore.getBossEvent(hit.bossIdx),key=[currentUser.id,boss?._id,boss?.raidRunId,hit.castId].join(':');if(key===lastDamageKey)return;lastDamageKey=key;
   clearTimeout(damageTimer);document.getElementById('rux-player-damage')?.remove();
-  const heart='<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28 4 16C-4 5 10-2 16 8 22-2 36 5 28 16Z"/><path class="rux-heart-crack" d="m18 6-5 9 7 1-6 12"/></svg>';
-  const layer=document.createElement('div');layer.id='rux-player-damage';layer.setAttribute('role','alert');layer.innerHTML='<div class="rux-damage-cut"></div><div class="rux-damage-card"><span>CATACLYSM HIT YOU</span><div>'+heart+'<strong>−'+Math.min(99,Number(hit.damage))+'<small> HEART'+(hit.damage===1?'':'S')+'</small></strong></div><p>'+(hit.after===0?'Knocked out · recover to return':hit.after+' / '+hit.maxHp+' hearts remaining')+'</p></div>';
-  const hud=document.getElementById('camp-lives');hud?.classList.remove('rux-health-hit');if(hud){void hud.offsetWidth;hud.classList.add('rux-health-hit');}
+  const heart='<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28 4 16C-4 5 10-2 16 8 22-2 36 5 28 16Z"/></svg>';
+  const hud=document.getElementById('camp-lives'),anchor=hud?.getBoundingClientRect();
+  const layer=document.createElement('div');layer.id='rux-player-damage';layer.setAttribute('role','alert');
+  layer.innerHTML='<svg class="rux-player-fracture" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true"><path d="M1000 0 715 190 740 240 555 330 580 365 340 520 365 550 130 700M740 240 815 320 900 340m-345-10-45-70-100-20M0 0l220 155-20 40 120 100-15 35 180 150-20 50 170 170M320 295l-120 40-50 90"/></svg><div class="rux-damage-number"><strong>−'+Math.min(99,Number(hit.damage))+'</strong><small>HEART'+(hit.damage===1?'':'S')+' LOST</small><span>'+(hit.after===0?'KNOCKED OUT':hit.after+' / '+hit.maxHp+' REMAINING')+'</span></div>';
+  const label=layer.querySelector('.rux-damage-number');label.style.right=Math.max(16,innerWidth-(anchor?.right||innerWidth-16))+'px';label.style.top=Math.max(65,(anchor?.bottom||55)+10)+'px';
+  hud?.classList.remove('rux-health-hit');if(hud){void hud.offsetWidth;hud.classList.add('rux-health-hit');}
   for(let i=hit.after;i<Math.min(hit.before,hit.after+3);i++){
    const rect=hud?.querySelectorAll('.wbm-heart')[i]?.getBoundingClientRect();if(!rect)continue;
-   const ghost=document.createElement('div');ghost.className='rux-heart-echo';ghost.setAttribute('aria-hidden','true');ghost.innerHTML=heart;ghost.style.left=rect.x+'px';ghost.style.top=rect.y+'px';ghost.style.animationDelay=((i-hit.after)*100)+'ms';layer.appendChild(ghost);
+   for(const side of ['left','right']){const shard=document.createElement('div');shard.className='rux-heart-splinter is-'+side;shard.setAttribute('aria-hidden','true');shard.innerHTML=heart;shard.style.left=rect.x+'px';shard.style.top=rect.y+'px';layer.appendChild(shard);}
   }
   document.getElementById('campaign-overlay').appendChild(layer);
-  damageTimer=setTimeout(()=>{layer.remove();hud?.classList.remove('rux-health-hit');},2800);
+  damageTimer=setTimeout(()=>{layer.remove();hud?.classList.remove('rux-health-hit');},2100);
  }
  async function fire(index){const response=await RaidService.action(index,'ultimate');if(!response.ok)toast(response.reason);else toast('Cataclysm is charging. The class must break its cast.');}
  window.RaidUltimate=Object.freeze({sync,stop,isBusy:busy,fire,playerHit});
