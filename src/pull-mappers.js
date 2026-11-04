@@ -142,7 +142,7 @@
         bossIdById[b.id] = idx;
         return {
           raidVersion: b.raid_version || 0, raidRunId: b.raid_run_id, _raidSignals: b.raid_signals || [],
-          _visualProfile: b.visual_profile || null,
+          _visualProfile: b.visual_profile || null, raidUltimate: b.raid_ultimate ?? null,
           _id: b.id, // kept so writes can map back; never read by legacy code
           classId: b.class_id || 'default-class', // Phase 14: section ownership
           name: b.name, description: b.description, image: b.image,

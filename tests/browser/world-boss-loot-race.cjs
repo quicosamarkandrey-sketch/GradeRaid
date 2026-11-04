@@ -31,17 +31,18 @@ const root=path.resolve(__dirname,'../..');
  await bea.evaluate(()=>RaidExperience.refresh());assert.equal(await bea.locator('#raid-sync-state').textContent(),'Raid synced');
  // Two browsers attack through the actual SQL API; the other browser sees
  // attributed damage and every contribution without resubmitting the attack.
- await alex.locator('#wbr-opt-0').click();await alex.waitForFunction(()=>!WBR.answerPending&&wbcMyRecord(0).lastQIdx===1);
+ await alex.locator('#wbr-opt-0').click();await alex.waitForFunction(()=>wbcMyRecord(0).lastQIdx===1);
  await bea.evaluate(()=>RaidExperience.refresh());
  await bea.waitForFunction(()=>[...document.querySelectorAll('.rfx-hit-value small')].some(n=>n.textContent.includes('Alex Rivera')));
  assert.match(await bea.locator('#wbr-live-feed .wbr-feed-list').textContent(),/Alex Rivera.*150/);
  assert.equal(await bea.locator('.raid-contributor').count(),2);
  const recorded=await bea.evaluate(()=>AppStore.getBossEvent(0).damageFeed.length);
  await bea.evaluate(()=>RaidExperience.refresh());assert.equal(await bea.evaluate(()=>AppStore.getBossEvent(0).damageFeed.length),recorded,'Identical snapshots never replay hits');
- await bea.locator('#wbr-opt-0').click();await bea.waitForFunction(()=>!WBR.answerPending&&wbcMyRecord(0).lastQIdx===1);
+ await bea.locator('#wbr-opt-0').click();await bea.waitForFunction(()=>wbcMyRecord(0).lastQIdx===1);
  await alex.evaluate(()=>RaidExperience.refresh());
  await alex.waitForFunction(()=>[...document.querySelectorAll('.rfx-hit-value small')].some(n=>n.textContent.includes('Bea Santos')));
  assert.match(await alex.locator('#wbr-live-feed .wbr-feed-list').textContent(),/Bea Santos.*150/);
+ await Promise.all(pages.map(p=>p.waitForFunction(()=>!WBR.answerPending)));
  await alex.locator('.raid-contributors summary').click();await alex.locator('.raid-contributors summary').focus();
  await alex.evaluate(()=>wbrRenderSideOverlays());assert.equal(await alex.locator('.raid-contributors').evaluate(n=>n.open),true,'Live updates preserve expanded contributions');
  assert.equal(await alex.evaluate(()=>document.activeElement.matches('.raid-contributors summary')),true,'Live updates preserve keyboard focus');

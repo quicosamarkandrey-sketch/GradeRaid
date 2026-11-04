@@ -240,6 +240,11 @@ window.wbsOpenSkillConfig = function (bossIdx) {
       <div><label class="form-label">Max interval (s)</label><input type="number" id="wbs-imax" value="${boss.skillIntervalMax||35}" min="10" style="width:100%"></div>
     </div>
     <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">Skills</div>
+    <fieldset class="rux-config" style="border:1px solid var(--border);border-radius:12px;padding:14px;margin:14px 0"><legend>Cataclysm · shared ultimate</legend><p style="font-size:12px;line-height:1.6">The class must interrupt the cast with correct answers. Failure damages connected raiders and unleashes a sustained storm.</p>
+    <label><input type="checkbox" id="wbu-enabled" ${boss.skills?.cataclysm?.enabled!==false?'checked':''}> Enable ultimate</label>
+    <label style="margin-left:12px"><input type="checkbox" id="wbu-auto" ${boss.skills?.cataclysm?.automatic!==false?'checked':''}> Cast automatically</label>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0">${[['castSec','Cast window (seconds)',18,10,40],['durationSec','Storm duration (seconds)',22,10,35],['damage','Damage (hearts)',1,1,2],['cooldownSec','Recovery before next cast (seconds)',120,60,300]].map(([key,label,value,min,max])=>`<label style="font-size:11px">${label}<input type="number" id="wbu-${key}" value="${Number(boss.skills?.cataclysm?.[key])||value}" min="${min}" max="${max}" style="width:100%;margin-top:5px"></label>`).join('')}</div>
+    ${boss.status==='active'?`<button type="button" class="btn btn-danger" onclick="RaidUltimate.fire(${bossIdx})" ${boss.raidUltimate==null?'disabled title="Shared ultimate is not available for this event yet"':''}>Cast Cataclysm now</button>`:''}</fieldset>
     <div>${rows}</div>
     <div style="display:flex;gap:10px;margin-top:14px">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button>
@@ -253,7 +258,8 @@ window.wbsSaveSkillConfig = function (bossIdx) {
   const skillFireMode    = document.querySelector('input[name="wbs-mode"]:checked')?.value || 'auto';
   const skillIntervalMin = parseInt(document.getElementById('wbs-imin')?.value) || 15;
   const skillIntervalMax = parseInt(document.getElementById('wbs-imax')?.value) || 35;
-  const skillPatch = {};
+  const skillPatch = {cataclysm:{enabled:!!document.getElementById('wbu-enabled')?.checked,automatic:!!document.getElementById('wbu-auto')?.checked}};
+  for(const [key,min,max,fallback] of [['castSec',10,40,18],['durationSec',10,35,22],['damage',1,2,1],['cooldownSec',60,300,120]])skillPatch.cataclysm[key]=Math.max(min,Math.min(max,parseInt(document.getElementById('wbu-'+key)?.value)||fallback));
   Object.keys(WBS_SKILL_DEFAULTS).forEach(id => {
     skillPatch[id] = {
       enabled:      document.getElementById(`wbs-en-${id}`)?.checked  ?? true,

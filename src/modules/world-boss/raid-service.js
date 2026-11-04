@@ -79,9 +79,9 @@
  }
  function action(index,kind,payload={}){
   const boss=AppStore.getBossEvent(index),identity=userId();if(!boss?._id||(!managed(boss)&&kind!=='snapshot')||!visible(boss))return Promise.resolve({ok:false,reason:'This raid is unavailable.'});
-  const key=[identity,boss._id,kind,payload.questionIdx??'',payload.rewardId??'',payload.dropIndex??'',payload.studentId??payload.skillId??payload.kind??''].join(':');
+  const key=[identity,boss._id,kind,payload.questionIdx??'',payload.rewardId??'',payload.dropIndex??'',payload.studentId??payload.skillId??payload.kind??'',payload.inBattle??(window.WBR?.bossIdx===index&&WBR.phase==='battle')].join(':');
   if(pending.has(key))return pending.get(key);
-  const uuid=boss._id,body={runId:boss.raidRunId,...payload};
+  const uuid=boss._id,body={runId:boss.raidRunId,inBattle:window.WBR?.bossIdx===index&&WBR.phase==='battle',...payload};
   const request=(queues.get(uuid)||Promise.resolve()).catch(()=>{}).then(async()=>{
    if(userId()!==identity)return {ok:false,reason:'Account changed.'};
    let timeout;try{

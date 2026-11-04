@@ -40,3 +40,9 @@ test('old clients without per-answer receipts label confirmed total changes as a
  const {c,state}=setup(async()=>result);c.RaidService.watch(0);await c.RaidService.action(0,'snapshot');
  assert.equal(state.bossEvents[0].damageFeed[0].damage,80);assert.equal(state.bossEvents[0].damageFeed[0].aggregate,true);
 });
+
+test('explicit battlefield departure is not coalesced into an in-flight presence snapshot',async()=>{
+ const payloads=[],{c}=setup(async(name,args)=>{payloads.push(args.p_payload.inBattle);return receipt();});c.WBR={bossIdx:0,phase:'battle'};
+ const present=c.RaidService.action(0,'snapshot'),leaving=c.RaidService.action(0,'snapshot',{inBattle:false});
+ assert.notEqual(present,leaving);await Promise.all([present,leaving]);assert.deepEqual(payloads,[true,false]);
+});

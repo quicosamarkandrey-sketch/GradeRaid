@@ -150,7 +150,7 @@
  document.addEventListener('keydown',e=>{if(WBR.bossIdx==null)return;if(e.key==='Tab'){if(document.querySelector('#modal-overlay[style*="flex"]'))return;const nodes=[...document.querySelectorAll('.raid-battle button:not(:disabled),.raid-battle input,.raid-battle select,.raid-battle [tabindex="0"]')].filter(el=>el.getClientRects().length);const first=nodes[0],last=nodes.at(-1);if(nodes.length&&e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(nodes.length&&!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}return;}if(e.target.closest('input,textarea,select,button'))return;if(['1','2','3','4'].includes(e.key)&&WBR.phase==='battle'){const button=document.getElementById('wbr-opt-'+(Number(e.key)-1));if(button&&!button.disabled){e.preventDefault();button.click();}}});
  AppStore.subscribe('raid-experience',(state,event)=>{
   if(event?.type==='session:booted')reset();
-  if(['world-boss:server-synced','world-boss:defeated'].includes(event?.type)&&WBR.bossIdx===event.payload?.bossIdx)connection(true);
+  if(['world-boss:server-synced','world-boss:defeated'].includes(event?.type)&&WBR.bossIdx===event.payload?.bossIdx){connection(true);if(WBR.phase==='battle')wbrUpdateHUD();else window.RaidUltimate?.sync(WBR.bossIdx);}
   if(event?.type==='world-boss:raid-hits'&&WBR.bossIdx===event.payload?.bossIdx&&WBR.phase==='battle'){
    const hits=event.payload.hits;
    window.RaidFX?.raidHits(hits);

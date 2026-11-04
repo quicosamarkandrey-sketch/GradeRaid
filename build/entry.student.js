@@ -107,5 +107,6 @@ import './inline/inline2.js';
 import '../modules/perceived-speed.js';
 
 import '../modules/world-boss/battle-effects.js';
+import '../modules/world-boss/ultimate.js';
 import '../modules/world-boss/loot-arena.js';
 import '../modules/world-boss/raid-experience.js';

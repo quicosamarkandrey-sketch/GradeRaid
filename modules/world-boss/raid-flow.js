@@ -49,7 +49,9 @@ function wbrBossStage(boss) {
 // ── Stop all WBR timers ───────────────────────────────────────────────────────
 
 function wbrStop(keepArena=false) {
+  if(!keepArena&&WBR.bossIdx!=null&&WBR.phase==='battle'&&AppStore.getBossEvent(WBR.bossIdx)?.raidUltimate!=null)RaidService.action(WBR.bossIdx,'snapshot',{inBattle:false});
   if(!keepArena)window.RaidLootArena?.stop();
+  window.RaidUltimate?.stop();
   window.RaidFX?.stop();
   if(typeof BVS!=='undefined')BVS.reset();
   const sprite=document.getElementById('camp-enemy-sprite');if(sprite)delete sprite._raidArtMarkup;
@@ -116,7 +118,9 @@ function wbrUpdateHUD() {
   if (enemyBar)   enemyBar.style.display = 'block';
   if (enemyName)  enemyName.textContent  = boss.name + ' · ' + s;
   if (enemyHp)    enemyHp.style.width    = pct + '%';
+  const progress=document.getElementById('camp-q-progress');if(progress)progress.textContent=progress.textContent.replace(/ · [\d,]+ HP LEFT$/,' · '+Math.max(0,boss.currentHp||0).toLocaleString()+' HP LEFT');
   window.RaidFX?.sync(WBR.bossIdx);
+  window.RaidUltimate?.sync(WBR.bossIdx);
 }
 
 // ── Typewriter ────────────────────────────────────────────────────────────────
@@ -332,6 +336,7 @@ function wbrShowEncounter() {
   if(typeof wbpCheckPhaseChange==='function')wbpCheckPhaseChange(WBR.bossIdx);
   if(typeof wbrageCheckAndActivate==='function')wbrageCheckAndActivate(WBR.bossIdx);
   window.RaidFX?.sync(WBR.bossIdx);
+  window.RaidUltimate?.sync(WBR.bossIdx);
 }
 
 // ── Answer handler ────────────────────────────────────────────────────────────
