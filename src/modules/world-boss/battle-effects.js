@@ -108,18 +108,15 @@
   nodes.forEach(node=>c.list.appendChild(node));
   if(focus?.isConnected&&c.list.contains(focus))focus.focus({preventScroll:true});
  }
- // Sweeps collide with the actual controls. Fragments are inert text panels;
- // original question/answer nodes, IDs and handlers are never replaced.
+ // Sweeps collide with actual answer controls. The academic question stays
+ // intact; confirmed answer fragments are inert, decorative text panels.
  function lineHits(r,a,b,pad=12){
   let low=0,high=1;for(const [start,delta,min,max] of [[a.x,b.x-a.x,r.left-pad,r.right+pad],[a.y,b.y-a.y,r.top-pad,r.bottom+pad]]){
    if(Math.abs(delta)<.001){if(start<min||start>max)return false;continue;}
    let first=(min-start)/delta,last=(max-start)/delta;if(first>last)[first,last]=[last,first];low=Math.max(low,first);high=Math.min(high,last);if(low>high)return false;
   }return true;
  }
- function finishQuestionBreak(ctx){
-  const q=ctx?.questionBreak;if(!q)return;q.node.classList.remove('rfx-question-missing');q.layer.remove();ctx.questionBreak=null;
- }
- function textFragments(s,rect,text,font,kind='question'){
+ function textFragments(s,rect,text,font,kind='answer'){
   if(media.matches)return null;
   const layer=document.createElement('div');layer.className='rfx-text-fragments rfx-'+kind+'-fragments';layer.setAttribute('aria-hidden','true');
   const polygons=['0 0,50% 0,46% 25%,0 35%','50% 0,100% 0,100% 35%,46% 25%','0 35%,46% 25%,53% 52%,0 60%','46% 25%,100% 35%,100% 60%,53% 52%','0 60%,53% 52%,47% 78%,0 82%','53% 52%,100% 60%,100% 82%,47% 78%','0 82%,47% 78%,50% 100%,0 100%','47% 78%,100% 82%,100% 100%,50% 100%'];
@@ -128,13 +125,6 @@
    Object.assign(piece.style,{left:rect.x+'px',top:rect.y+'px',width:rect.width+'px',height:rect.height+'px',font:font.font,color:font.color,textAlign:font.textAlign,lineHeight:font.lineHeight,clipPath:'polygon('+polygon+')'});
    const direction=i%2?1:-1;piece.style.setProperty('--piece-x',direction*(100+i*18)+'px');piece.style.setProperty('--piece-y',(-75+Math.floor(i/2)*60)+'px');piece.style.setProperty('--piece-turn',direction*(12+i*4)+'deg');layer.appendChild(piece);
   });s.ctx.screen.appendChild(layer);later(s.ctx,()=>layer.remove(),1500);return layer;
- }
- function shatterQuestion(s){
-  const node=document.getElementById('camp-q-text');if(media.matches||!node||s.ctx.questionBreak||node.querySelector('.wbr-empty-question'))return;
-  const rect=node.getBoundingClientRect();if(rect.bottom<0||rect.top>innerHeight)return;
-  const css=getComputedStyle(node),text=node.textContent,layer=textFragments(s,rect,text,{font:css.font,color:css.color,textAlign:css.textAlign,lineHeight:css.lineHeight});if(!layer)return;
-  node.classList.add('rfx-question-missing');s.ctx.questionBreak={node,text,layer};
-  later(s.ctx,()=>{if(s.ctx.questionBreak?.layer===layer)finishQuestionBreak(s.ctx);},1450);
  }
  function solarBarrage(s,c){
   c.lastBurn=new WeakMap();c.brokenUntil=new WeakMap();
@@ -291,31 +281,32 @@
   }
  }
  function endCataclysm(){
-  if(!context)return;if(context.challenge?.kind==='cataclysm')clearChallenge();finishQuestionBreak(context);
+  if(!context)return;if(context.challenge?.kind==='cataclysm')clearChallenge();
   if(context.solar){cancelAnimationFrame(context.solar.frame);context.solar.layer.remove();context.solar=null;}
   context.screen?.querySelectorAll('.rfx-cataclysm-storm,.rfx-solar-volley,.rfx-text-fragments,.rfx-crown-hit').forEach(n=>n.remove());
   document.querySelectorAll('.raid-battle .rfx-solar-scorched').forEach(n=>n.classList.remove('rfx-solar-scorched'));context.ultimateId=null;context.lastAnswer=null;
  }
  function startSolarSweep(s,u){
-  const layer=document.createElement('div');layer.className='rfx-effect rfx-cataclysm-storm';layer.innerHTML='<div class="rfx-solar-canopy"></div><div class="rfx-solar-horizon"></div><svg class="rfx-solar-wild-field" aria-hidden="true"><g class="rfx-solar-trails"></g><g class="rfx-solar-live"></g></svg>';s.ctx.screen.appendChild(layer);
+  const spectrum='solar-spectrum-'+(++serial),layer=document.createElement('div');layer.className='rfx-effect rfx-cataclysm-storm';layer.innerHTML='<div class="rfx-solar-canopy"></div><div class="rfx-solar-horizon"></div><svg class="rfx-solar-wild-field" aria-hidden="true"><defs><linearGradient id="'+spectrum+'" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#d6eaff"/><stop offset=".6" stop-color="#fff6df"/><stop offset="1" stop-color="#eeb5c5"/></linearGradient></defs><g class="rfx-solar-trails"></g><g class="rfx-solar-live"></g></svg>';s.ctx.screen.appendChild(layer);
   const count=innerWidth<600?3:4,svgEl=layer.querySelector('svg'),live=layer.querySelector('.rfx-solar-live'),trails=layer.querySelector('.rfx-solar-trails'),ns='http://www.w3.org/2000/svg';
-  const sweep={id:u.id,layer,endsAt:u.endsAt,resolvedAt:u.resolvedAt,lastDraw:0,lastSample:0,lastCollision:0,lastQuestion:-Infinity,scorched:new WeakMap(),burns:[]};s.ctx.solar=sweep;
+  const sweep={id:u.id,layer,endsAt:u.endsAt,resolvedAt:u.resolvedAt,lastDraw:0,lastSample:0,lastCollision:0,scorched:new WeakMap(),burns:[]};s.ctx.solar=sweep;
   const beams=Array.from({length:count},(_,i)=>{
-   const group=document.createElementNS(ns,'g');group.setAttribute('class','rfx-solar-wild rfx-solar-sweep');group.innerHTML='<path class="rfx-wild-halo"/><path class="rfx-wild-beam"/><path class="rfx-wild-core"/><ellipse class="rfx-wild-scar" rx="55" ry="12"/>';live.appendChild(group);return {group,paths:[...group.querySelectorAll('path')],scar:group.querySelector('ellipse')};
+   const group=document.createElementNS(ns,'g');group.setAttribute('class','rfx-solar-wild rfx-solar-sweep');group.innerHTML='<path class="rfx-wild-aura"/><path class="rfx-wild-halo"/><path class="rfx-wild-beam" style="stroke:url(#'+spectrum+')"/><path class="rfx-wild-core"/><path class="rfx-wild-filament"/><ellipse class="rfx-wild-scar" rx="55" ry="12"/>';live.appendChild(group);return {group,paths:[...group.querySelectorAll('path')],scar:group.querySelector('ellipse')};
   });
   function frame(stamp){
    if(context!==s.ctx||s.ctx.solar!==sweep||!open()||!layer.isConnected)return;
    const clock=Date.now()+(s.boss._raidClockOffset||0);if(clock>=sweep.endsAt){endCataclysm();return;}
    sweep.frame=requestAnimationFrame(frame);if(stamp-sweep.lastDraw<33)return;sweep.lastDraw=stamp;
-   const w=innerWidth,h=innerHeight,t=Math.max(0,(clock-sweep.resolvedAt)/1000),hud=document.querySelector('.raid-battle .camp-hud')?.getBoundingClientRect(),sky=Math.max(25,Math.min(140,(hud?.bottom||70)+10));
+   const w=innerWidth,h=innerHeight,t=Math.max(0,(clock-sweep.resolvedAt)/1000),sky=-Math.max(1000,h*1.6);
    svgEl.setAttribute('viewBox',`0 0 ${w} ${h}`);
    const rays=beams.map((beam,i)=>{
-    const a={x:w*(i+.5)/count+Math.sin(t*.29+i)*w*.12,y:sky},b={x:w*(.5+.78*Math.sin(t*.57+i*Math.PI*2/count)),y:h+80},d=`M${a.x} ${a.y}L${b.x} ${b.y}`;
+    const entryX=w*(i+.5)/count+Math.sin(t*.22+i)*w*.05,b={x:w*(.5+.75*Math.sin(t*.45+i*1.15)),y:h+160};
+    const a={x:entryX+(b.x-entryX)*sky/b.y,y:sky},d=`M${a.x} ${a.y}L${b.x} ${b.y}`;
     beam.paths.forEach(path=>path.setAttribute('d',d));beam.scar.setAttribute('cx',a.x+(b.x-a.x)*(h-20-a.y)/(b.y-a.y));beam.scar.setAttribute('cy',h-20);return {a,b,d};
    });
-   if(stamp-sweep.lastSample>=130){
-    sweep.lastSample=stamp;rays.forEach(ray=>sweep.burns.push({d:ray.d,at:clock}));sweep.burns=sweep.burns.filter(b=>clock-b.at<1900).slice(-(count*12));
-    trails.innerHTML=sweep.burns.map(b=>`<path class="rfx-solar-burn-trail" d="${b.d}" style="opacity:${Math.max(0,1-(clock-b.at)/1900)*.25}"/>`).join('');
+   if(stamp-sweep.lastSample>=160){
+    sweep.lastSample=stamp;rays.forEach(ray=>sweep.burns.push({d:ray.d,at:clock}));sweep.burns=sweep.burns.filter(b=>clock-b.at<1100).slice(-(count*7));
+    trails.innerHTML=sweep.burns.map(b=>`<path class="rfx-solar-burn-trail" d="${b.d}" style="opacity:${Math.max(0,1-(clock-b.at)/1100)*.18}"/>`).join('');
    }
    if(stamp-sweep.lastCollision<100)return;sweep.lastCollision=stamp;
    const currentStatus=AppStore.getSlice(state=>state.bossEvents?.[s.ctx.index]?.status);if(currentStatus!=='active'){endCataclysm();return;}
@@ -329,9 +320,6 @@
      node.classList.add('rfx-solar-broken','rfx-obscured');node.dataset.rfxSolarHit=[ray.a.x,ray.a.y,ray.b.x,ray.b.y].join(',');node.dataset.rfxSolarAt=clock;c.lastBurn.set(node,clock);c.brokenUntil.set(node,clock+1450);
     }
    }
-   const q=document.getElementById('camp-q-text');
-   if(s.ctx.questionBreak&&s.ctx.questionBreak.text!==s.ctx.questionBreak.node.textContent)finishQuestionBreak(s.ctx);
-   if(q&&clock-sweep.lastQuestion>4300&&rays.some(ray=>lineHits(q.getBoundingClientRect(),ray.a,ray.b,10))){sweep.lastQuestion=clock;shatterQuestion(s);}
    for(const panel of document.querySelectorAll('#raid-ultimate,#wbr-live-feed,#wbr-raid-meta')){
     if(clock-(sweep.scorched.get(panel)||0)<3400||!rays.some(ray=>lineHits(panel.getBoundingClientRect(),ray.a,ray.b,10)))continue;
     sweep.scorched.set(panel,clock);panel.classList.remove('rfx-solar-scorched');void panel.offsetWidth;panel.classList.add('rfx-solar-scorched');
@@ -350,7 +338,7 @@
    else if(c.staticSolarWave!==wave){c.staticSolarWave=wave;c.nodes.filter(n=>Date.now()-(c.revealed.get(n)||0)>1500).slice(0,Math.max(1,c.nodes.length-1)).forEach(n=>n.classList.add('rfx-obscured','rfx-solar-broken'));}
   }
  }
- function sync(index){const s=scope();if(!s||s.ctx.index!==index)return;if(s.ctx.questionBreak&&s.ctx.questionBreak.text!==s.ctx.questionBreak.node.textContent)finishQuestionBreak(s.ctx);if(s.ctx.challenge&&(WBR.answerPending||!challengeAlive(s.ctx.challenge)))clearChallenge();
+ function sync(index){const s=scope();if(!s||s.ctx.index!==index)return;if(s.ctx.challenge&&(WBR.answerPending||!challengeAlive(s.ctx.challenge)))clearChallenge();
   const p=wbpGetCurrentPhase(s.boss),number=Number(p.phase||1);s.scene.dataset.rfxPhase=String(number);
   document.getElementById('rfx-phase').innerHTML=`${svg('phase')}<strong>Phase ${number}</strong><span>${esc(p.label||p.name||'Battle')}</span>`;
   if(s.ctx.phase!==null&&s.ctx.phase!==number)phase(index,number);else s.ctx.phase=number;

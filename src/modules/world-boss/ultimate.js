@@ -5,6 +5,7 @@
  const reduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
  let session=null,timer=null,damageTimer=null,lastDamageKey=null;
  const now=b=>Date.now()+(b?._raidClockOffset||0);
+ const lossText=(hit,rec)=>'You lost '+hit.damage+' heart'+(hit.damage===1?'':'s')+' · '+(rec?.hp??hit.after)+'/'+(rec?.maxHp??hit.maxHp)+' left';
  function busy(index){const b=AppStore.getBossEvent(index),u=b?.raidUltimate;return !!(u&&['casting','eruption'].includes(u.phase)&&(u.phase==='casting'||now(b)<u.endsAt));}
  function stop(){clearTimeout(damageTimer);document.getElementById('rux-player-damage')?.remove();document.getElementById('camp-lives')?.classList.remove('rux-health-hit');window.RaidFX?.endCataclysm();clearInterval(timer);timer=null;session=null;document.querySelectorAll('#raid-ultimate,#raid-ultimate-core').forEach(n=>n.remove());document.getElementById('camp-scene')?.classList.remove('rux-charging','rux-eruption','rux-broken');}
  function sync(index){
@@ -28,9 +29,9 @@
   }
   const left=Math.max(0,Math.ceil(((u.phase==='casting'?u.deadline:u.endsAt)-time)/1000)),progress=Math.min(u.target,u.progress||0),ratio=progress/Math.max(1,u.target);
   panel.querySelector('.rux-clock').textContent=u.phase==='casting'?(left?left+'s':'Confirming…'):u.phase==='eruption'?left+'s':'';
-  panel.querySelector('.rux-instruction').textContent=u.phase==='casting'?'Break the solar crown with correct answers before the barrage begins.':u.phase==='interrupted'?'Your class shattered the solar crown. The barrage was stopped.':'Continuous rays tear through the battlefield. Rebuild shattered choices as the question reforms.';
+  panel.querySelector('.rux-instruction').textContent=u.phase==='casting'?'Break the solar crown with correct answers before the barrage begins.':u.phase==='interrupted'?'Your class shattered the solar crown. The barrage was stopped.':'Solar beams sweep through the arena. Tap shattered choices to rebuild them.';
   panel.querySelector('.rux-track i').style.width=(u.phase==='casting'?ratio*100:u.phase==='interrupted'?100:Math.max(0,(u.endsAt-time)/Math.max(1,u.endsAt-u.resolvedAt)*100))+'%';
-  panel.querySelector('.rux-foot strong').textContent=u.phase==='casting'?progress+' / '+u.target+' answers':u.phase==='interrupted'?'Class interrupt successful':'Class impact · '+(u.damage||1)+' heart'+((u.damage||1)===1?'':'s');
+  panel.querySelector('.rux-foot strong').textContent=u.phase==='casting'?progress+' / '+u.target+' answers':u.phase==='interrupted'?'Class interrupt successful':session.personalHit?lossText(session.personalHit,wbcMyRecord(index)):'Class impact · '+(u.damage||1)+' heart'+((u.damage||1)===1?'':'s');
   const mine=Number(u.contributors?.[currentUser?.id]||0);panel.querySelector('.rux-foot span').textContent=u.phase==='casting'?(mine?'You contributed '+mine:'Every correct answer counts'):' ';core.style.setProperty('--rux-fracture',ratio);
   if(session.progress!==progress){if(session.progress>=0&&progress>session.progress&&u.phase==='casting')window.RaidFX?.crownShatter();session.progress=progress;core.classList.remove('rux-struck');void core.offsetWidth;core.classList.add('rux-struck');}
   // Hold the boss's configured casting stance throughout the complete wind-up.
@@ -42,17 +43,19 @@
   const boss=AppStore.getBossEvent(hit.bossIdx),key=[currentUser.id,boss?._id,boss?.raidRunId,hit.castId].join(':');if(key===lastDamageKey)return;lastDamageKey=key;
   clearTimeout(damageTimer);document.getElementById('rux-player-damage')?.remove();
   const heart='<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28 4 16C-4 5 10-2 16 8 22-2 36 5 28 16Z"/></svg>';
+  if(session)session.personalHit={damage:hit.damage,after:hit.after,maxHp:hit.maxHp};
+  const status=document.querySelector('#raid-ultimate .rux-foot strong');if(status)status.textContent=lossText(hit);
   const hud=document.getElementById('camp-lives'),anchor=hud?.getBoundingClientRect();
   const layer=document.createElement('div');layer.id='rux-player-damage';layer.setAttribute('role','alert');
-  layer.innerHTML='<svg class="rux-player-fracture" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true"><path d="M1000 0 715 190 740 240 555 330 580 365 340 520 365 550 130 700M740 240 815 320 900 340m-345-10-45-70-100-20M0 0l220 155-20 40 120 100-15 35 180 150-20 50 170 170M320 295l-120 40-50 90"/></svg><div class="rux-damage-number"><strong>−'+Math.min(99,Number(hit.damage))+'</strong><small>HEART'+(hit.damage===1?'':'S')+' LOST</small><span>'+(hit.after===0?'KNOCKED OUT':hit.after+' / '+hit.maxHp+' REMAINING')+'</span></div>';
-  const label=layer.querySelector('.rux-damage-number');label.style.right=Math.max(16,innerWidth-(anchor?.right||innerWidth-16))+'px';label.style.top=Math.max(65,(anchor?.bottom||55)+10)+'px';
+  layer.innerHTML='<div class="rux-impact-wash"></div><div class="rux-impact-ring"></div><div class="rux-damage-number"><span class="rux-damage-source">CATACLYSM DAMAGE</span><div><strong>−'+Math.min(99,Number(hit.damage))+'</strong><small>HEART'+(hit.damage===1?'':'S')+' LOST</small></div><span class="rux-damage-remaining">'+(hit.after===0?'KNOCKED OUT':hit.after+' OF '+hit.maxHp+' HEARTS LEFT')+'</span></div><div class="rux-health-receipt" aria-hidden="true"><span>HEALTH</span><strong>'+hit.before+' → '+hit.after+'</strong></div>';
+  const receipt=layer.querySelector('.rux-health-receipt');receipt.style.right=Math.max(14,innerWidth-(anchor?.right||innerWidth-14))+'px';receipt.style.top=Math.max(65,(anchor?.bottom||55)+8)+'px';
   hud?.classList.remove('rux-health-hit');if(hud){void hud.offsetWidth;hud.classList.add('rux-health-hit');}
   for(let i=hit.after;i<Math.min(hit.before,hit.after+3);i++){
    const rect=hud?.querySelectorAll('.wbm-heart')[i]?.getBoundingClientRect();if(!rect)continue;
    for(const side of ['left','right']){const shard=document.createElement('div');shard.className='rux-heart-splinter is-'+side;shard.setAttribute('aria-hidden','true');shard.innerHTML=heart;shard.style.left=rect.x+'px';shard.style.top=rect.y+'px';layer.appendChild(shard);}
   }
   document.getElementById('campaign-overlay').appendChild(layer);
-  damageTimer=setTimeout(()=>{layer.remove();hud?.classList.remove('rux-health-hit');},2100);
+  damageTimer=setTimeout(()=>{layer.remove();hud?.classList.remove('rux-health-hit');},4800);
  }
  async function fire(index){const response=await RaidService.action(index,'ultimate');if(!response.ok)toast(response.reason);else toast('Cataclysm is charging. The class must break its cast.');}
  window.RaidUltimate=Object.freeze({sync,stop,isBusy:busy,fire,playerHit});
