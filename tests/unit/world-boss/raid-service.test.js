@@ -46,3 +46,17 @@ test('explicit battlefield departure is not coalesced into an in-flight presence
  const present=c.RaidService.action(0,'snapshot'),leaving=c.RaidService.action(0,'snapshot',{inBattle:false});
  assert.notEqual(present,leaving);await Promise.all([present,leaving]);assert.deepEqual(payloads,[true,false]);
 });
+
+test('Cataclysm personal damage uses confirmed HP loss once and survives background roster replacement',async()=>{
+ const result=receipt();result.data.boss.current_hp=100;result.data.boss.status='active';result.data.boss.raid_ultimate={id:'solar-cast',phase:'eruption'};
+ result.data.participants=[{boss_id:'boss',student_id:'s',hp:2,max_hp:3,total_damage:0,last_question_idx:0}];
+ const {c,state,events}=setup(async()=>result);state.bossParticipants[0].s={studentId:'s',hp:3,maxHp:3};state.bossEvents[0].raidUltimate={id:'solar-cast',phase:'casting'};c.RaidService.watch(0);
+ state.bossParticipants[0].s.hp=2; // An earlier realtime pull must not eat the feedback.
+ await c.RaidService.action(0,'snapshot');let hits=events.filter(e=>e.type==='world-boss:player-hit');assert.equal(hits.length,1);assert.equal(hits[0].payload.damage,1);assert.equal(hits[0].payload.after,2);
+ await c.RaidService.action(0,'snapshot');assert.equal(events.filter(e=>e.type==='world-boss:player-hit').length,1);
+ result.data.participants[0].hp=1;await c.RaidService.action(0,'snapshot');assert.equal(events.filter(e=>e.type==='world-boss:player-hit').length,1,'Later unrelated damage is not another Cataclysm hit');
+});
+test('Cataclysm damage feedback never invents a loss for an unharmed or late-arriving raider',async()=>{
+ const result=receipt();result.data.boss.current_hp=100;result.data.boss.status='active';result.data.boss.raid_ultimate={id:'old-solar',phase:'eruption'};result.data.participants=[{boss_id:'boss',student_id:'s',hp:3,max_hp:3}];
+ const {c,state,events}=setup(async()=>result);state.bossParticipants[0].s={hp:3,maxHp:3};c.RaidService.watch(0);await c.RaidService.action(0,'snapshot');assert.equal(events.filter(e=>e.type==='world-boss:player-hit').length,0);
+});

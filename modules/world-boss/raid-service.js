@@ -19,7 +19,7 @@
   const key=[identity,boss._id,boss.raidRunId||'legacy'].join(':');
   if(!watched.has(key)){
    const roster=AppStore.getSlice(s=>s.bossParticipants?.[index]||{});
-   watched.set(key,{roster,feed:(boss.damageFeed||[]).slice(0,40)});
+   watched.set(key,{roster,feed:(boss.damageFeed||[]).slice(0,40),ultimateSeen:boss.raidUltimate?.phase==='eruption'?boss.raidUltimate.id:null});
    if(watched.size>30)watched.delete(watched.keys().next().value);
   }
   return watched.get(key);
@@ -46,6 +46,10 @@
   const previous=AppStore.getBossEvent(index);
   const roster=_deriveBossParticipants(data.participants||[],{[uuid]:index})[index]||{};
   const sameRun=previous.raidRunId===data.boss?.raid_run_id;
+  const t=tracker(index,previous,identity),u=data.boss?.raid_ultimate;
+  const oldHp=t.roster[identity]?.hp,newHp=roster[identity]?.hp;
+  const playerHit=!data.deleted&&sameRun&&u?.phase==='eruption'&&t.ultimateSeen!==u.id&&Number.isFinite(oldHp)&&Number.isFinite(newHp)&&oldHp>newHp?{bossIdx:index,studentId:identity,castId:u.id,damage:oldHp-newHp,before:oldHp,after:newHp,maxHp:roster[identity].maxHp||3}:null;
+  if(u?.phase==='eruption')t.ultimateSeen=u.id;
   const confirmed=!data.deleted&&sameRun?confirmedHits(index,previous,roster,identity):{hits:[],feed:[]};
   AppStore.updateState(d=>{
    if(data.deleted){d.bossEvents[index]={...d.bossEvents[index],status:'deleted'};delete d.bossParticipants?.[index];return;}
@@ -63,6 +67,7 @@
    if(data.wallet){const student=(d.students||[]).find(s=>s.id===identity);if(student)Object.assign(student,data.wallet);}
    if(data.inventory){if(!d.inventory)d.inventory={};d.inventory[identity]=_deriveInventory(data.inventory)[identity]||[];}
   },{type:data.boss?.current_hp===0&&previous.currentHp>0?'world-boss:defeated':'world-boss:server-synced',payload:{bossIdx:index,studentId:identity,damage:data.outcome?.damage||0}});
+  if(playerHit)AppStore.emit({type:'world-boss:player-hit',payload:playerHit});
   if(confirmed.hits.length)AppStore.emit({type:'world-boss:raid-hits',payload:{bossIdx:index,hits:confirmed.hits}});
   if(data.outcome?.damage&&data.boss?.current_hp>0)AppStore.emit({type:'world-boss:damage-applied',payload:{bossIdx:index,studentId:identity,damage:data.outcome.damage}});
   if(currentUser?.id===identity){const student=AppStore.getStudent(identity);if(student)Object.assign(currentUser,student);}

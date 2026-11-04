@@ -5,7 +5,7 @@
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const media=matchMedia('(prefers-reduced-motion: reduce)');
  const paths={earthquake:'M3 18h5l3-12 3 15 3-10 2 7h2',chaos_wind:'M3 7h12q6 0 4-4M3 12h16q5 0 2 4M3 17h8q5 0 3 4',darkness:'M19 15A8 8 0 0 1 9 5a8 8 0 1 0 10 10Z',mirror_trick:'m12 2 8 10-8 10-8-10Zm0 0v20M4 12h16',berserk_roar:'M5 4 2 8v8l3 4m14-16 3 4v8l-3 4M8 8h8v8H8Z',meteor_shower:'m20 3-8 8M15 3 6 12m15-4-8 8M8 12a4 4 0 1 0 4 4Z',gravity_well:'M20 12a8 8 0 1 1-8-8m0 4a4 4 0 1 0 4 4M12 2v5m-3-3 3 3 3-3',phantom_orbit:'M4 12a8 8 0 0 1 14-5m2 5a8 8 0 0 1-14 5M3 4v5h5m13 11v-5h-5',lightning_storm:'m13 2-8 11h6l-1 9 9-13h-6Z',glacial_prison:'m12 2 7 10-7 10-7-10Zm0 0v20M5 12h14',void_lance:'m3 21 8-8m2-2 8-8M8 3l13 13M3 8l13 13',rage:'m13 2-2 7h7L8 22l2-9H4Z',phase:'m3 12 6-8h6l6 8-6 8H9Z',hit:'m12 2 2 7 8 3-8 2-2 8-2-8-8-2 8-3Z'};
- const skills={cataclysm:{name:'Cataclysm',detail:'The ultimate storm scatters and seals choices.',tone:'#ff4567'},gravity_well:{name:'Gravity Well',detail:'A singularity pulls and compresses the moving choices.',tone:'#bd91ff'},phantom_orbit:{name:'Phantom Orbit',detail:'Track choices as they circle in opposing paths.',tone:'#86a7ff'},earthquake:{name:'Earthquake',detail:'Choices fracture and shift. Tap buried choices to uncover them.',tone:'#eac485'},chaos_wind:{name:'Chaos Wind',detail:'Gale currents throw the choices off course. Catch the answer.',tone:'#74ddd1'},darkness:{name:'Eclipse',detail:'Answers fall into shadow. Tap once to reveal, again to answer.',tone:'#b8a0ff'},mirror_trick:{name:'Mirror Trick',detail:'Choices change places. Follow the answer, not its position.',tone:'#8fc8ff'},berserk_roar:{name:'Berserk Roar',detail:'The roar scrambles your focus. Tap obscured choices to recover.',tone:'#ff6b61'},meteor_shower:{name:'Meteor Shower',detail:'Meteors shatter choices. Tap a shattered choice to reform it.',tone:'#f4c979'},lightning_storm:{name:'Lightning Storm',detail:'A choice is charged. Tap to ground the lightning.',tone:'#79cdff'},glacial_prison:{name:'Glacial Prison',detail:'Choices are frozen. Tap to shatter their ice.',tone:'#81efee'},void_lance:{name:'Void Lance',detail:'A choice is sealed. Tap to dispel the rift.',tone:'#ee83ff'}};
+ const skills={cataclysm:{name:'Cataclysm',detail:'Solar lances mark and shatter answer choices in successive waves.',tone:'#ff4567'},gravity_well:{name:'Gravity Well',detail:'A singularity pulls and compresses the moving choices.',tone:'#bd91ff'},phantom_orbit:{name:'Phantom Orbit',detail:'Track choices as they circle in opposing paths.',tone:'#86a7ff'},earthquake:{name:'Earthquake',detail:'Choices fracture and shift. Tap buried choices to uncover them.',tone:'#eac485'},chaos_wind:{name:'Chaos Wind',detail:'Gale currents throw the choices off course. Catch the answer.',tone:'#74ddd1'},darkness:{name:'Eclipse',detail:'Answers fall into shadow. Tap once to reveal, again to answer.',tone:'#b8a0ff'},mirror_trick:{name:'Mirror Trick',detail:'Choices change places. Follow the answer, not its position.',tone:'#8fc8ff'},berserk_roar:{name:'Berserk Roar',detail:'The roar scrambles your focus. Tap obscured choices to recover.',tone:'#ff6b61'},meteor_shower:{name:'Meteor Shower',detail:'Meteors shatter choices. Tap a shattered choice to reform it.',tone:'#f4c979'},lightning_storm:{name:'Lightning Storm',detail:'A choice is charged. Tap to ground the lightning.',tone:'#79cdff'},glacial_prison:{name:'Glacial Prison',detail:'Choices are frozen. Tap to shatter their ice.',tone:'#81efee'},void_lance:{name:'Void Lance',detail:'A choice is sealed. Tap to dispel the rift.',tone:'#ee83ff'}};
  const svg=(key,cls='')=>`<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[key]||paths.phase}"/></svg>`;
  let context=null,serial=0;
  function open(){return typeof WBR!=='undefined'&&WBR.bossIdx!=null&&document.querySelector('.raid-battle.open');}
@@ -46,9 +46,9 @@
   s.ctx.notice=later(s.ctx,()=>{el.classList.remove('is-visible');el.replaceChildren();},duration);
  }
  function artwork(){const art=document.getElementById('wb-boss-sprite-art');if(!art)return '';if(art.tagName==='IMG')return `<img src="${esc(art.currentSrc||art.src)}" alt="">`;return `<span>${esc(art.textContent)}</span>`;}
- const choiceClasses=['rfx-choice','rfx-obscured','rfx-aimed','rfx-meteor-mark','rfx-mirror-turn'];
- const movingSkills=new Set(['chaos_wind','earthquake','berserk_roar','gravity_well','phantom_orbit','cataclysm']);
- const challenges={cataclysm:{hint:'Cataclysm · catch moving choices. Tap sealed choices to reveal them.',cover:'Rift sealed'},gravity_well:{hint:'Gravity Well · catch a choice as it is pulled into the vortex.'},phantom_orbit:{hint:'Phantom Orbit · track the moving answer, not its original position.'},lightning_storm:{hint:'Lightning Storm · ground a charged choice before answering.',cover:'Charged · tap to ground'},glacial_prison:{hint:'Glacial Prison · tap a frozen choice to shatter its ice.',cover:'Frozen · tap to shatter'},void_lance:{hint:'Void Lance · dispel the seal, then answer.',cover:'Sealed · tap to dispel'},earthquake:{hint:'Earthquake · shifting ground buries choices. Tap to uncover.',cover:'Buried · tap to uncover'},chaos_wind:{hint:'Chaos Wind · catch the answer while the choices are being swept away.'},darkness:{hint:'Eclipse · tap a shadowed choice to reveal it, then answer.',cover:'Shadowed · tap to reveal'},mirror_trick:{hint:'Mirror Trick · choices switch places. Track the answer text.'},berserk_roar:{hint:'Berserk Roar · tap a disrupted choice to regain focus.',cover:'Disrupted · tap to focus'},meteor_shower:{hint:'Meteor Shower · marked choices will shatter. Tap to reform.',cover:'Shattered · tap to reform'}};
+ const choiceClasses=['rfx-choice','rfx-obscured','rfx-aimed','rfx-meteor-mark','rfx-mirror-turn','rfx-solar-mark','rfx-solar-broken'];
+ const movingSkills=new Set(['chaos_wind','earthquake','berserk_roar','gravity_well','phantom_orbit']);
+ const challenges={cataclysm:{hint:'Solar barrage · marked choices will shatter. Tap a shattered choice to rebuild it.',cover:'Shattered · tap to rebuild'},gravity_well:{hint:'Gravity Well · catch a choice as it is pulled into the vortex.'},phantom_orbit:{hint:'Phantom Orbit · track the moving answer, not its original position.'},lightning_storm:{hint:'Lightning Storm · ground a charged choice before answering.',cover:'Charged · tap to ground'},glacial_prison:{hint:'Glacial Prison · tap a frozen choice to shatter its ice.',cover:'Frozen · tap to shatter'},void_lance:{hint:'Void Lance · dispel the seal, then answer.',cover:'Sealed · tap to dispel'},earthquake:{hint:'Earthquake · shifting ground buries choices. Tap to uncover.',cover:'Buried · tap to uncover'},chaos_wind:{hint:'Chaos Wind · catch the answer while the choices are being swept away.'},darkness:{hint:'Eclipse · tap a shadowed choice to reveal it, then answer.',cover:'Shadowed · tap to reveal'},mirror_trick:{hint:'Mirror Trick · choices switch places. Track the answer text.'},berserk_roar:{hint:'Berserk Roar · tap a disrupted choice to regain focus.',cover:'Disrupted · tap to focus'},meteor_shower:{hint:'Meteor Shower · marked choices will shatter. Tap to reform.',cover:'Shattered · tap to reform'}};
  function challengeAlive(c){return c.list.isConnected&&c.nodes.every(n=>n.isConnected&&(c.flight||c.list).contains(n))&&(!c.origins||c.origins.every(o=>o.marker.isConnected));}
  function landChoices(c){
   if(!c.flight)return;
@@ -80,7 +80,6 @@
      let x=midX+rx*Math.cos(angle),y=midY+ry*Math.sin(angle),scale=.94;
      if(c.kind==='chaos_wind'){x=minX+(maxX-minX)*(.5+.5*Math.sin(angle));y=minY+(maxY-minY)*(.5+.5*Math.cos(angle*2+i));scale=.9;}
      if(c.kind==='gravity_well'){const pull=j%2?.18:.95;x=midX+rx*Math.cos(angle)*pull;y=midY+ry*Math.sin(angle)*pull;scale=j%2?.82:.98;}
-     if(c.kind==='cataclysm'){x=minX+(maxX-minX)*(.5+.5*Math.sin(angle*2+i));y=minY+(maxY-minY)*(.5+.5*Math.cos(angle*3+i));scale=.88;}
      if(c.kind==='earthquake'){x=minX+(maxX-minX)*(.5+.5*Math.sin(angle*3+i));y=minY+(maxY-minY)*(.5+.5*Math.cos(angle*2));}
      if(c.kind==='berserk_roar'){const force=j%2?.95:.35;x=midX+rx*Math.cos(angle)*force;y=midY+ry*Math.sin(angle)*force;}
      return {transform:`translate(${Math.max(minX,Math.min(maxX,x))}px,${Math.max(minY,Math.min(maxY,y))}px) scale(${scale}) rotate(${Math.sin(angle)*2}deg)`,offset:j/8};
@@ -97,7 +96,7 @@
  }
  function clearChallenge(){
   if(!context?.challenge)return;const c=context.challenge;context.challenge=null;
-  for(const timer of c.timers)clear(context,timer);landChoices(c);
+  for(const timer of c.timers)clear(context,timer);landChoices(c);c.solarLayer?.remove();if(c.solarTrack){removeEventListener('resize',c.solarTrack);document.getElementById('campaign-overlay')?.removeEventListener('scroll',c.solarTrack);cancelAnimationFrame(c.solarFrame);}
   c.nodes.forEach(node=>{node.classList.remove(...choiceClasses);node.removeAttribute('data-rfx-cover');node.style.removeProperty('--rfx-slot');node.style.removeProperty('--rfx-dir');});
   c.list.classList.remove('rfx-challenge-'+c.kind);c.list.style.removeProperty('--rfx-choice-cycle');c.hint.remove();
  }
@@ -108,6 +107,44 @@
   if(nodes.every((node,i)=>node===c.list.children[i]))nodes.push(nodes.shift());
   nodes.forEach(node=>c.list.appendChild(node));
   if(focus?.isConnected&&c.list.contains(focus))focus.focus({preventScroll:true});
+ }
+ // Solar lances use live card rectangles. No copied answer markup and no
+ // health changes: the existing server-confirmed ultimate owns class damage.
+ function solarBarrage(s,c,duration,spec,schedule){
+  const cycle=4200,warning=1000,recovery=3300;
+  const elapsed=Math.max(0,Date.now()+(s.boss._raidClockOffset||0)-(spec.resolvedAt||Date.now()));
+  const seed=String(spec.id||'sun').split('').reduce((n,ch)=>n+ch.charCodeAt(0),0);
+  function draw(){
+   const layer=c.solarLayer;if(!layer?.isConnected)return;
+   const w=innerWidth,h=innerHeight,hud=document.querySelector('.raid-battle .camp-hud')?.getBoundingClientRect(),sky=Math.max(28,Math.min(140,(hud?.bottom||70)+12));
+   layer.innerHTML=`<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="solar-ray-${c.solarId}" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff6d7"/><stop offset=".55" stop-color="#ffdaaa"/><stop offset="1" stop-color="#fa6d89"/></linearGradient></defs>`+c.solarTargets.map((node,i)=>{
+    const r=node.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2,sx=Math.max(30,Math.min(w-30,w*(i+1)/(c.solarTargets.length+1)+Math.sin(Number(layer.dataset.wave)+i)*w*.1)),sy=sky;
+    return `<g class="rfx-solar-ray" data-solar-target="${node.id}"><path class="rfx-solar-guide" d="M${sx} ${sy}L${x} ${y}"/><path class="rfx-solar-halo" d="M${sx} ${sy}L${x} ${y}" pathLength="1"/><path class="rfx-solar-beam" d="M${sx} ${sy}L${x} ${y}" pathLength="1" style="stroke:url(#solar-ray-${c.solarId})"/><path class="rfx-solar-white" d="M${sx} ${sy}L${x} ${y}" pathLength="1"/><g class="rfx-solar-gate" transform="translate(${sx} ${sy})"><circle r="21"/><path d="M-32 0H32M0-32V32M-23-23 23 23M-23 23 23-23"/><circle r="8"/></g><g class="rfx-solar-impact" transform="translate(${x} ${y})"><ellipse rx="${Math.min(100,r.width*.46)}" ry="20"/><path d="M-65 0H65M0-42V42M-45-28 45 28M-45 28 45-28"/></g>`+Array.from({length:media.matches?0:6},(_,j)=>{const a=j/6*Math.PI*2,dx=Math.cos(a)*90,dy=Math.sin(a)*65;return `<path class="rfx-solar-chip" d="m${x} ${y} 12-7 8 10-13 8Z" style="--chip-x:${dx}px;--chip-y:${dy}px;--chip-turn:${j*65}deg"/>`;}).join('')+'</g>';
+   }).join('')+'</svg>';
+  }
+  c.solarTrack=()=>{cancelAnimationFrame(c.solarFrame);c.solarFrame=requestAnimationFrame(draw);};
+  addEventListener('resize',c.solarTrack);document.getElementById('campaign-overlay')?.addEventListener('scroll',c.solarTrack,{passive:true});
+  function volley(wave,age=0){
+   c.solarLayer?.remove();c.nodes.forEach(n=>n.classList.remove('rfx-solar-mark','rfx-solar-broken','rfx-obscured'));
+   if(age>=recovery)return;
+   const ordered=c.nodes.map((_,i)=>c.nodes[(i+seed+wave)%c.nodes.length]);
+   const candidates=ordered.filter(n=>Date.now()-(c.revealed.get(n)||0)>1500&&n!==document.activeElement);
+   c.solarTargets=candidates.slice(0,Math.min(c.nodes.length-1,Math.max(1,Math.ceil(c.nodes.length*(wave%3===2?.75:.5)))));
+   if(!c.solarTargets.length)return;
+   c.solarId=++serial;c.solarLayer=document.createElement('div');c.solarLayer.className='rfx-solar-volley is-warning';c.solarLayer.dataset.wave=wave;s.ctx.screen.appendChild(c.solarLayer);draw();
+   c.hint.textContent='Solar barrage · '+c.solarTargets.length+' choices targeted. Rebuild shattered choices before answering.';
+   c.solarTargets.forEach(n=>n.classList.add('rfx-solar-mark'));
+   const strike=()=>{
+    c.solarTargets=c.solarTargets.filter(n=>Date.now()-(c.revealed.get(n)||0)>1500);
+    c.solarLayer.classList.replace('is-warning','is-firing');
+    c.solarTargets.forEach(n=>{n.classList.remove('rfx-solar-mark');n.classList.add('rfx-solar-broken','rfx-obscured');});draw();
+    if(!media.matches)impact('earthquake');
+   };
+   if(age>=warning)strike();else schedule(strike,warning-age);
+   schedule(()=>{c.nodes.forEach(n=>n.classList.remove('rfx-solar-mark','rfx-solar-broken','rfx-obscured'));c.solarLayer?.remove();c.hint.textContent='Choices rebuilt · another solar wave is approaching.';},recovery-age);
+  }
+  const firstWave=Math.floor(elapsed/cycle),age=elapsed%cycle;volley(firstWave,age);
+  for(let t=cycle-age;t<duration-400;t+=cycle){const wave=firstWave+1+Math.round((t-(cycle-age))/cycle);schedule(()=>volley(wave),t);}
  }
  function challenge(kind,duration,spec={}){
   const s=scope();if(!s)return;clearChallenge();
@@ -123,7 +160,8 @@
    // Always leave at least one visible choice. Focused/recently revealed choices stay readable.
    candidates.slice(0,Math.min(count,nodes.length-1)).forEach(n=>n.classList.add('rfx-obscured'));
   }
-  if(kind==='mirror_trick'){
+  if(kind==='cataclysm'){solarBarrage(s,c,duration,spec,schedule);
+  }else if(kind==='mirror_trick'){
    shuffleChoices(c);nodes.forEach(n=>n.classList.add('rfx-mirror-turn'));
    if(!media.matches)for(let t=1400;t<duration-400;t+=1400)schedule(()=>shuffleChoices(c),t);
   }else if(kind==='meteor_shower'){
@@ -139,7 +177,7 @@
  // The first click on a concealed choice only reveals it; it never submits a blind answer.
  document.addEventListener('click',event=>{
   const c=context?.challenge,node=event.target.closest?.('.raid-battle button.rfx-choice');if(!c||!node||!c.nodes.includes(node))return;
-  if(node.classList.contains('rfx-obscured')){event.preventDefault();event.stopImmediatePropagation();node.classList.remove('rfx-obscured','rfx-meteor-mark');if(c.kind==='glacial_prison'&&!media.matches){const r=node.getBoundingClientRect();effect('ice-shatter',Array.from({length:7},(_,i)=>`<i style="--x:${r.x+r.width/2}px;--y:${r.y+r.height/2}px;--angle:${i*51}deg"></i>`).join(''),650,'screen');}c.revealed.set(node,Date.now());c.aimUntil=Date.now()+800;c.hint.textContent='Choice revealed · tap again to answer.';node.focus({preventScroll:true});return;}
+  if(node.classList.contains('rfx-obscured')){event.preventDefault();event.stopImmediatePropagation();node.classList.remove('rfx-obscured','rfx-meteor-mark','rfx-solar-broken','rfx-solar-mark');if(c.kind==='glacial_prison'&&!media.matches){const r=node.getBoundingClientRect();effect('ice-shatter',Array.from({length:7},(_,i)=>`<i style="--x:${r.x+r.width/2}px;--y:${r.y+r.height/2}px;--angle:${i*51}deg"></i>`).join(''),650,'screen');}c.revealed.set(node,Date.now());c.aimUntil=Date.now()+800;c.hint.textContent=c.kind==='cataclysm'?'Choice rebuilt · tap again to answer.':'Choice revealed · tap again to answer.';node.focus({preventScroll:true});return;}
   clearChallenge();
  },true);
  document.addEventListener('pointerover',event=>{const c=context?.challenge,node=event.target.closest?.('.raid-battle button.rfx-choice');if(c&&node&&c.nodes.includes(node)&&!movingSkills.has(c.kind))node.classList.add('rfx-aimed');},true);
@@ -245,15 +283,22 @@
    const rest=others.slice(mine?2:3);later(s.ctx,()=>hit(rest.reduce((n,r)=>n+r.damage,0),false,rest.length+' more raiders'),shown.length*210);
   }
  }
- function endCataclysm(){if(!context)return;if(context.challenge?.kind==='cataclysm')clearChallenge();context.screen?.querySelectorAll('.rfx-cataclysm-storm').forEach(n=>n.remove());context.ultimateId=null;}
+ function endCataclysm(){if(!context)return;if(context.challenge?.kind==='cataclysm')clearChallenge();context.screen?.querySelectorAll('.rfx-cataclysm-storm,.rfx-solar-volley').forEach(n=>n.remove());context.ultimateId=null;}
+ function solarSky(s,u){
+  const elapsed=Math.max(0,(Date.now()+(s.boss._raidClockOffset||0)-u.resolvedAt)/1000),count=innerWidth<600?4:6;
+  return '<div class="rfx-solar-canopy"></div><div class="rfx-solar-horizon"></div><svg class="rfx-solar-wild-field" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true">'+Array.from({length:count},(_,i)=>{
+   const x=55+i*890/(count-1),endX=Math.max(25,Math.min(975,x+(i%2?180:-145))),endY=310+(i*113)%350,path=`M${x} -30L${endX} ${endY}`,delay=-((elapsed+i*.83)%5.2);
+   return `<g class="rfx-solar-wild" style="--wild-delay:${delay}s"><path class="rfx-wild-guide" d="${path}"/><path class="rfx-wild-halo" d="${path}" pathLength="1"/><path class="rfx-wild-beam" d="${path}" pathLength="1"/><path class="rfx-wild-core" d="${path}" pathLength="1"/><ellipse class="rfx-wild-scar" cx="${endX}" cy="${endY}" rx="60" ry="14"/></g>`;
+  }).join('')+'</svg>';
+ }
  function cataclysm(index,u){
   const s=scope();if(!s||s.ctx.index!==index)return;
   const remaining=Math.max(0,u.endsAt-Date.now()-(s.boss._raidClockOffset||0));if(!remaining)return;
-  if(s.ctx.ultimateId!==u.id){
-   s.ctx.ultimateId=u.id;impact('berserk_roar');surge('rage','CATACLYSM','The core detonates');
-   effect('cataclysm-storm','<div class="rfx-cataclysm-vortex"></div>'+Array.from({length:innerWidth<600?12:24},(_,i)=>`<i style="--i:${i};--x:${(i*37)%100}%;--angle:${i*41}deg"></i>`).join(''),remaining,'screen');
+  if(s.ctx.ultimateId!==u.id||!s.ctx.screen.querySelector('.rfx-cataclysm-storm')){
+   s.ctx.ultimateId=u.id;
+   effect('cataclysm-storm',solarSky(s,u),remaining,'screen');
   }
-  if(!s.ctx.challenge||s.ctx.challenge.kind!=='cataclysm')challenge('cataclysm',remaining,{windSpeed:'fast'});
+  if(!s.ctx.challenge||s.ctx.challenge.kind!=='cataclysm')challenge('cataclysm',remaining,{id:u.id,resolvedAt:u.resolvedAt});
  }
  function sync(index){const s=scope();if(!s||s.ctx.index!==index)return;if(s.ctx.challenge&&(WBR.answerPending||!challengeAlive(s.ctx.challenge)))clearChallenge();
   const p=wbpGetCurrentPhase(s.boss),number=Number(p.phase||1);s.scene.dataset.rfxPhase=String(number);

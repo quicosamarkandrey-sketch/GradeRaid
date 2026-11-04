@@ -151,6 +151,7 @@
  AppStore.subscribe('raid-experience',(state,event)=>{
   if(event?.type==='session:booted')reset();
   if(['world-boss:server-synced','world-boss:defeated'].includes(event?.type)&&WBR.bossIdx===event.payload?.bossIdx){connection(true);if(WBR.phase==='battle')wbrUpdateHUD();else window.RaidUltimate?.sync(WBR.bossIdx);}
+  if(event?.type==='world-boss:player-hit'&&WBR.bossIdx===event.payload?.bossIdx&&WBR.phase==='battle')window.RaidUltimate?.playerHit(event.payload);
   if(event?.type==='world-boss:raid-hits'&&WBR.bossIdx===event.payload?.bossIdx&&WBR.phase==='battle'){
    const hits=event.payload.hits;
    window.RaidFX?.raidHits(hits);
