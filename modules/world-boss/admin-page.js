@@ -488,6 +488,11 @@ window.saveBossForm = function () {
     const linked = typeof bsGet === 'function' ? bsGet(libId) : null;
     if (linked) {
       d._visualProfile=JSON.parse(JSON.stringify(linked));
+      // Slot IDs alone cannot resolve teacher-local custom presets on a student device.
+      d._visualProfile.animationPresets=Object.fromEntries(Object.entries(linked.animations||{}).map(([slot,id])=>{
+        const preset=typeof alGet==='function'?alGet(id):null;
+        return [slot,preset?{id:preset.id,cssClass:preset.cssClass||''}:linked.animationPresets?.[slot]||null];
+      }));
       const artSrc = bveGetArtSrc(linked);
       // Pending Fixes Report §2b: prefer the Storage-backed public URL over
       // an embedded base64 blob. `linked.artwork` is the RAW (unresolved)

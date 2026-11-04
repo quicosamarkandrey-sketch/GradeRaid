@@ -375,7 +375,7 @@
     if (!boss) return;
     const pct = (boss.currentHP != null && boss.maxHP)
       ? boss.currentHP / boss.maxHP : 1;
-    if (pct <= 0.30) {
+    if (typeof wbrageIsActive==='function'?wbrageIsActive(boss):pct<=0.30) {
       BVS.enterRage();
       const hero = document.querySelector('.wb-hero');
       if (hero && !hero.dataset.rageActive) {
@@ -409,7 +409,7 @@
             bveApplyThemeVars(hero, found.boss);
             const pct = (found.boss.currentHP != null && found.boss.maxHP)
               ? found.boss.currentHP / found.boss.maxHP : 1;
-            if (pct <= 0.30) BVS.enterRage();
+            if (typeof wbrageIsActive==='function'?wbrageIsActive(found.boss):pct<=0.30) BVS.enterRage();
           }
         }
       }, 60);
@@ -450,7 +450,7 @@
       try {
         const hp    = bossEvent.currentHP !== undefined ? bossEvent.currentHP : bossEvent.hp;
         const maxHp = bossEvent.maxHP     !== undefined ? bossEvent.maxHP     : bossEvent.hp;
-        if (maxHp > 0 && hp / maxHp <= 0.30) BVS.enterRage();
+        if (typeof wbrageIsActive==='function'?wbrageIsActive(bossEvent):(maxHp>0&&hp/maxHp<=0.30)) BVS.enterRage();
       } catch (e) { /* silent */ }
     } else {
       // Legacy emoji/image mode

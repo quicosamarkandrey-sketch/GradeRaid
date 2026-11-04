@@ -51,6 +51,8 @@ function wbrBossStage(boss) {
 function wbrStop(keepArena=false) {
   if(!keepArena)window.RaidLootArena?.stop();
   window.RaidFX?.stop();
+  if(typeof BVS!=='undefined')BVS.reset();
+  const sprite=document.getElementById('camp-enemy-sprite');if(sprite)delete sprite._raidArtMarkup;
   clearInterval(WBR.typingTimer);
   clearInterval(WBR.refreshTimer);
   WBR.typingTimer  = null;
@@ -198,11 +200,21 @@ function wbrFeedHTML(bossIdx) {
     var color = _cssColor(e.color);
     var label = e.type === 'kill'
       ? '<b>' + wblrEsc(e.name) + '</b> defeated the boss!'
-      : '<b>' + wblrEsc(e.name) + '</b> dealt <b style="color:#EC4899">' + (e.damage || 0).toLocaleString() + '</b> damage' + (e.crit ? ' with a critical hit' : '') + '.';
+      : '<b>' + wblrEsc(e.name) + '</b> dealt <b style="color:#EC4899">' + (e.damage || 0).toLocaleString() + '</b> damage' + (e.crit ? ' with a critical hit' : '') + (e.aggregate ? ' since the last update.' : '.');
     return '<div class="wbr-feed-item ' + (e.type === 'kill' ? 'kill' : '') + '">' +
       '<div class="wbr-feed-avatar" style="border-color:' + color + '66;background:' + color + '22;color:' + color + '">' + wblrEsc(e.init || '?') + '</div>' +
       '<div class="wbr-feed-copy">' + label + '</div></div>';
   }).join('');
+}
+
+// All contributors remain accessible, including classmates outside the top ranks.
+function wbrContributorsHTML(index){
+  const rows=Object.values(wbcGetParticipants(index)).sort((a,b)=>(b.totalDamage||0)-(a.totalDamage||0));
+  const total=rows.reduce((n,r)=>n+(Number(r.totalDamage)||0),0);
+  return '<details class="raid-contributors"><summary>Class contributions · '+rows.length+'</summary><div class="raid-contribution-list">'+rows.map(r=>{
+    const amount=Number(r.totalDamage)||0,share=total?Math.round(amount/total*100):0,mine=r.studentId===currentUser?.id;
+    return '<div class="raid-contributor" data-raider-id="'+wblrEsc(r.studentId)+'"><div><strong>'+wblrEsc(r.studentName||'Raider')+(mine?' <small>You</small>':'')+'</strong><b>'+amount.toLocaleString()+'</b></div><div class="raid-contribution-track"><i style="width:'+share+'%"></i></div><span>'+share+'% of class damage'+(r.isKO?' · Recovering':'')+'</span></div>';
+  }).join('')+'</div></details>';
 }
 
 // ── Side overlays (feed + minion docks) ───────────────────────────────────────
@@ -210,7 +222,7 @@ function wbrFeedHTML(bossIdx) {
 function wbrRenderSideOverlays() {
   var scene = document.getElementById('camp-scene');
   if (!scene) return;
-  scene.querySelectorAll('#wbr-live-feed,#wbr-minion-dock,#wbr-minion-dock-right,#wbr-raid-meta,#wbr-close-btn')
+  scene.querySelectorAll('#wbr-minion-dock,#wbr-minion-dock-right,#wbr-raid-meta,#wbr-close-btn')
        .forEach(function (el) { el.remove(); });
   var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[WBR.bossIdx];
   if (!boss) return;
@@ -227,12 +239,15 @@ function wbrRenderSideOverlays() {
     '<div class="wbr-meta-pill"><div class="v" style="color:#f97316">' + (rec ? rec.minionsDefeated || 0 : 0) + '</div><div class="l">Your Minions</div></div>';
   scene.appendChild(meta);
 
-  // Live feed
-  var feed = document.createElement('div');
-  feed.id = 'wbr-live-feed'; feed.className = 'wbr-live-feed';
-  feed.innerHTML = '<div class="wbr-feed-title"><span>Live Raid Feed</span><span>' + Math.max(0, boss.currentHp || 0).toLocaleString() + ' HP</span></div>' +
-    '<div class="wbr-feed-list">' + wbrFeedHTML(WBR.bossIdx) + '</div>';
-  scene.appendChild(feed);
+  // Preserve the disclosure, keyboard focus and scroll position while syncing.
+  var feed=document.getElementById('wbr-live-feed');
+  if(!feed){feed=document.createElement('div');feed.id='wbr-live-feed';feed.className='wbr-live-feed';feed.innerHTML='<div class="wbr-feed-title"><span>Live Raid Feed</span><span></span></div><div class="raid-sync-status" id="raid-sync-state" role="status">Syncing raid…</div><div class="wbr-feed-list"></div>'+wbrContributorsHTML(WBR.bossIdx);scene.appendChild(feed);}
+  feed.querySelector('.wbr-feed-title>span:last-child').textContent=Math.max(0,boss.currentHp||0).toLocaleString()+' HP';
+  const list=feed.querySelector('.wbr-feed-list'),html=wbrFeedHTML(WBR.bossIdx);if(list.innerHTML!==html)list.innerHTML=html;
+  const incoming=document.createElement('div');incoming.innerHTML=wbrContributorsHTML(WBR.bossIdx);
+  const summary=feed.querySelector('.raid-contributors summary');summary.textContent=incoming.querySelector('summary').textContent;
+  const contributions=feed.querySelector('.raid-contribution-list'),updated=incoming.querySelector('.raid-contribution-list').innerHTML;
+  if(contributions.innerHTML!==updated)contributions.innerHTML=updated;
 
   var s = wbmSettings(boss);
 
@@ -289,11 +304,14 @@ function wbrShowEncounter() {
 
   // Boss sprite (may be HTML art from BVE)
   var spriteEl = document.getElementById('camp-enemy-sprite');
-  if (spriteEl) {
+  const rebuild=!!spriteEl&&(spriteEl._raidArtMarkup!==enemy.sprite||!document.getElementById('wb-boss-sprite-art'));
+  if (rebuild) {
+    spriteEl._raidArtMarkup=enemy.sprite;
     if (enemy.sprite && enemy.sprite.indexOf('<') !== -1) { spriteEl.innerHTML = enemy.sprite; }
     else { spriteEl.textContent = enemy.sprite || '💀'; }
+    if(typeof bveApplyThemeVars==='function')bveApplyThemeVars(spriteEl,boss);
   }
-  if(typeof BVS!=='undefined'){BVS.init('wb-boss-sprite-art');if(typeof wbrageIsActive==='function'&&wbrageIsActive(boss))BVS.enterRage();}
+  if(rebuild&&typeof BVS!=='undefined'){BVS.init('wb-boss-sprite-art');if(typeof wbrageIsActive==='function'&&wbrageIsActive(boss))BVS.enterRage();}
   if(typeof BHS!=='undefined')BHS.reset();
   document.getElementById('camp-enemy-title').textContent = enemy.title;
 
@@ -355,7 +373,7 @@ async function wbrAnswer(bossIdx, qIdx, choice) {
     document.getElementById('wbr-opt-'+choice)?.classList.add(correct?'correct':'wrong');
     document.getElementById('wbr-opt-'+q.answer)?.classList.add('correct');
     feedback.textContent=correct?(result.isCrit?'Critical hit · ':'Correct · ')+result.damage.toLocaleString()+' damage':'Not quite. The highlighted option is correct.';
-    if(correct){if(window.RaidFX)RaidFX.hit(result.damage,result.isCrit);else if(typeof BVS!=='undefined')BVS.request('hit',400);wbrRecordFeed(bossIdx,{type:outcome==='defeated'?'kill':'hit',studentId,name:currentUser.name,init:currentUser.init,color:currentUser.color,damage:result.damage,crit:result.isCrit});
+    if(correct&&!RaidService.managed(boss)){if(window.RaidFX)RaidFX.hit(result.damage,result.isCrit);else if(typeof BVS!=='undefined')BVS.request('hit',400);wbrRecordFeed(bossIdx,{type:outcome==='defeated'?'kill':'hit',studentId,name:currentUser.name,init:currentUser.init,color:currentUser.color,damage:result.damage,crit:result.isCrit});
       if(!window.RaidFX){document.getElementById('camp-enemy-sprite')?.classList.add('raid-hit');setTimeout(()=>document.getElementById('camp-enemy-sprite')?.classList.remove('raid-hit'),400);}}
     const wait=Math.max(1100,Number(cooldown)*1000);WBR.nextAnswerAt=Date.now()+wait;
     if(cooldown>1&&outcome!=='defeated')feedback.textContent+=' Next question in '+cooldown+' seconds.';
@@ -391,6 +409,7 @@ function _wbrOpenBattleRender(bossIdx) {
   var boss = (AppStore.getSlice(function (s) { return s.bossEvents; }) || [])[bossIdx];
   if (!boss || boss.status !== 'active') return;
   if(!wbcMyRecord(bossIdx)||currentRole!=='student'||!RaidService.visible(boss))return;
+  RaidService.watch(bossIdx);
   WBR.bossIdx = bossIdx;WBR.bossUuid=boss._id;WBR.bossRunId=boss.raidRunId;WBR.nextAnswerAt=0;WBR.answerPending=false;
   WBR.previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';
   const overlay=document.getElementById('campaign-overlay');overlay.classList.add('open','raid-battle');

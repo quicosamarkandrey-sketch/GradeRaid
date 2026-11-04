@@ -1855,3 +1855,30 @@
 .bs-anim-play-rage-burst{animation:bsRageBurst .9s ease-out 1}
 .bs-anim-play-rage-pulse{animation:bsRagePulse 1.6s ease-in-out infinite}
 .bs-anim-play-rage-vibrate{animation:bsRageVibrate .25s linear infinite}
+
+/* Boss identity motions: the same presets run in Studio and the arena. */
+@keyframes bsHeavyBreathe{0%,100%{transform:scale(1,1)}50%{transform:translateY(-3px) scale(1.025,1.045)}}
+@keyframes bsPredatorProwl{0%,100%{transform:translateX(-7px) rotate(-2deg)}50%{transform:translateX(7px) rotate(2deg)}}
+@keyframes bsArcaneLevitate{0%,100%{transform:translate(0,0) rotate(-2deg)}25%{transform:translate(5px,-9px)}50%{transform:translate(0,-16px) rotate(2deg)}75%{transform:translate(-5px,-9px)}}
+@keyframes bsRuneRitual{0%{transform:scale(1)}65%{transform:translateY(-14px) scale(1.08);filter:brightness(1.3) drop-shadow(0 0 22px var(--bve-aura,#8bcff2))}85%{transform:translateY(-9px) scale(1.12)}100%{transform:scale(1)}}
+@keyframes bsPredatorLunge{0%,100%{transform:translateY(0) scale(1)}35%{transform:translateY(-10px) scale(.92) rotate(-4deg)}65%{transform:translateY(13px) scale(1.12) rotate(3deg)}}
+@keyframes bsSingularityCharge{0%,100%{transform:scale(1)}65%{transform:scale(.84);filter:brightness(.7) saturate(1.6)}82%{transform:scale(1.12);filter:brightness(1.4)}}
+@keyframes bsHeavyRecoil{0%,100%{transform:translate(0,0)}18%{transform:translate(13px,-6px) rotate(5deg)}48%{transform:translate(-5px,2px) rotate(-2deg)}75%{transform:translate(2px,0)}}
+@keyframes bsArmorImpact{0%,100%{transform:scale(1)}18%{transform:scale(.96,1.03);filter:brightness(1.55)}45%{transform:scale(1.025,.98)}72%{transform:scale(.995,1.01)}}
+@keyframes bsPhaseDistortion{0%,100%{transform:translateX(0) skewX(0);opacity:1}25%{transform:translateX(-7px) skewX(7deg);opacity:.5}55%{transform:translateX(5px) skewX(-4deg);opacity:.8}}
+@keyframes bsInfernoHeartbeat{0%,100%{transform:scale(1.03);filter:drop-shadow(0 0 14px #ef344b88)}18%,45%{transform:scale(1.08);filter:brightness(1.16) drop-shadow(0 0 26px #ef344bcc)}30%,65%{transform:scale(1.04)}}
+@keyframes bsMechanicalOverdrive{0%,100%{transform:translateY(0) scale(1.04)}20%{transform:translateY(-4px) scale(1.06)}40%{transform:translateY(1px) scale(1.04)}65%{transform:translateY(-3px) scale(1.06)}}
+@keyframes bsSpectralAscension{0%,100%{transform:translateY(-7px) rotate(-2deg);opacity:.86}50%{transform:translateY(-19px) rotate(2deg);opacity:1;filter:drop-shadow(0 0 24px var(--bve-aura,#c99aff))}}
+.bs-anim-play-idle-breathe{animation:bsHeavyBreathe 3.4s ease-in-out infinite}
+.bs-anim-play-idle-prowl{animation:bsPredatorProwl 4.8s ease-in-out infinite}
+.bs-anim-play-idle-levitate{animation:bsArcaneLevitate 4s ease-in-out infinite}
+.bs-anim-play-cast-ritual{animation:bsRuneRitual 1.2s ease-in-out both}
+.bs-anim-play-cast-lunge{animation:bsPredatorLunge 1.2s ease-in-out both}
+.bs-anim-play-cast-collapse{animation:bsSingularityCharge 1.2s ease-in-out both}
+.bs-anim-play-hit-recoil{animation:bsHeavyRecoil .5s ease-out both}
+.bs-anim-play-hit-armor{animation:bsArmorImpact .5s ease-out both}
+.bs-anim-play-hit-phase{animation:bsPhaseDistortion .5s ease-out both}
+.bs-anim-play-rage-inferno{animation:bsInfernoHeartbeat 1.8s ease-in-out infinite}
+.bs-anim-play-rage-overdrive{animation:bsMechanicalOverdrive .85s ease-in-out infinite}
+.bs-anim-play-rage-spectral{animation:bsSpectralAscension 2.8s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){[class*="bs-anim-play-"]{animation:none!important}}

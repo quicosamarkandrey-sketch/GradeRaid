@@ -2,7 +2,7 @@
    inventory, damage or claim writes. Older events keep their existing RPC path. */
 ;(function(){
  'use strict';
- const queues=new Map(),pending=new Map(),signals=new Set(),legacyUntil=new Map();
+ const queues=new Map(),pending=new Map(),signals=new Set(),legacyUntil=new Map(),watched=new Map();
  const userId=()=>typeof currentUser==='undefined'?null:currentUser?.id;
  const managed=b=>!!(b?._id&&b.raidVersion>=1);
  function visible(b){
@@ -13,11 +13,40 @@
   return sections.some(s=>s.id===b.classId&&s.adviserId===userId());
  }
  function expired(b){return !!b.endDate&&String(b.endDate).slice(0,10)<new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
+ // Independent cursors survive background table pulls: those may replace the
+ // AppStore roster before this RPC arrives. Only server-confirmed deltas play.
+ function tracker(index,boss,identity){
+  const key=[identity,boss._id,boss.raidRunId||'legacy'].join(':');
+  if(!watched.has(key)){
+   const roster=AppStore.getSlice(s=>s.bossParticipants?.[index]||{});
+   watched.set(key,{roster,feed:(boss.damageFeed||[]).slice(0,40)});
+   if(watched.size>30)watched.delete(watched.keys().next().value);
+  }
+  return watched.get(key);
+ }
+ function watch(index){const b=AppStore.getBossEvent(index);if(b&&userId())tracker(index,b,userId());}
+ function confirmedHits(index,boss,roster,identity){
+  const t=tracker(index,boss,identity),hits=[];
+  for(const [sid,r] of Object.entries(roster)){
+   const before=t.roster[sid],delta=Math.max(0,(Number(r.totalDamage)||0)-(Number(before?.totalDamage)||0));
+   if(!delta)continue;
+   const history=r.answerHistory||[],start=Number(before?.lastQIdx)||0;
+   const recent=history.slice(start).filter(h=>Number(h.damage)>0);
+   const described=recent.reduce((n,h)=>n+Number(h.damage),0);
+   const values=described===delta?recent:[{damage:delta,aggregate:true}];
+   for(const h of values)hits.push({id:[boss.raidRunId,sid,h.questionIdx??r.lastQIdx,r.totalDamage,h.aggregate?'sum':'hit'].join(':'),ts:Date.now(),type:'hit',studentId:sid,name:r.studentName||'Raider',init:r.studentInit||'?',damage:Number(h.damage),crit:!!h.isCrit,aggregate:!!h.aggregate});
+  }
+  t.roster=roster;t.feed=[...hits.slice().reverse(),...t.feed].slice(0,40);
+  return {hits,feed:t.feed};
+ }
  function apply(data,identity){
   if(userId()!==identity||data?.viewerId!==identity||!data.ok)return false;
   const uuid=data.boss?.id||data.bossId;if(!uuid)return false;
   const index=(AppStore.getSlice(s=>s.bossEvents)||[]).findIndex(b=>b._id===uuid);if(index<0)return false;
   const previous=AppStore.getBossEvent(index);
+  const roster=_deriveBossParticipants(data.participants||[],{[uuid]:index})[index]||{};
+  const sameRun=previous.raidRunId===data.boss?.raid_run_id;
+  const confirmed=!data.deleted&&sameRun?confirmedHits(index,previous,roster,identity):{hits:[],feed:[]};
   AppStore.updateState(d=>{
    if(data.deleted){d.bossEvents[index]={...d.bossEvents[index],status:'deleted'};delete d.bossParticipants?.[index];return;}
    const mapped=_deriveBossEvents([data.boss],data.claims||[]).bossEventsArr[0];
@@ -27,13 +56,14 @@
    if(data.serverNow!=null&&Number.isFinite(Number(data.serverNow)))d.bossEvents[index]._raidClockOffset=Number(data.serverNow)-Date.now();
    if(previous.raidRunId!==d.bossEvents[index].raidRunId){d.bossEvents[index].activeMinions=[];d.bossEvents[index].raidFeed=[];delete d.bossEvents[index]._victoryRewardedAt;}
    if(!d.bossParticipants)d.bossParticipants={};
-   const roster=_deriveBossParticipants(data.participants||[],{[uuid]:index})[index]||{};
+   d.bossEvents[index].damageFeed=confirmed.feed;
    // Keep device-only narration state; authoritative scores and question index win.
    for(const [sid,record] of Object.entries(roster))roster[sid]={...d.bossParticipants[index]?.[sid],...record};
    d.bossParticipants[index]=roster;
    if(data.wallet){const student=(d.students||[]).find(s=>s.id===identity);if(student)Object.assign(student,data.wallet);}
    if(data.inventory){if(!d.inventory)d.inventory={};d.inventory[identity]=_deriveInventory(data.inventory)[identity]||[];}
   },{type:data.boss?.current_hp===0&&previous.currentHp>0?'world-boss:defeated':'world-boss:server-synced',payload:{bossIdx:index,studentId:identity,damage:data.outcome?.damage||0}});
+  if(confirmed.hits.length)AppStore.emit({type:'world-boss:raid-hits',payload:{bossIdx:index,hits:confirmed.hits}});
   if(data.outcome?.damage&&data.boss?.current_hp>0)AppStore.emit({type:'world-boss:damage-applied',payload:{bossIdx:index,studentId:identity,damage:data.outcome.damage}});
   if(currentUser?.id===identity){const student=AppStore.getStudent(identity);if(student)Object.assign(currentUser,student);}
   if(currentRole==='student'&&window.WBR?.bossIdx===index&&data.boss?.status==='active'&&WBR.phase==='battle'){
@@ -77,5 +107,5 @@
   if(['PGRST202','42883'].includes(result.code)){legacyUntil.set(key,Date.now()+15000);return {ok:true,mode:'legacy'};}
   return result;
  }
- window.RaidService=Object.freeze({managed,visible,expired,action,prepare});
+ window.RaidService=Object.freeze({managed,visible,expired,action,prepare,watch});
 })();

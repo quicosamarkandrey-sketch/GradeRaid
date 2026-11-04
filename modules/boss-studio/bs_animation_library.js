@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //  EduQuest — modules/boss-studio/animation-library.js
-//  Animation Library: 13 built-in presets + full custom CRUD.
+//  Animation Library: 25 built-in presets + full custom CRUD.
 //  Provides _alGet and _alOptionsForTarget consumed by editor.js slot pickers.
 //  LOAD AFTER: storage.js, library.js
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -21,6 +21,18 @@ const AL_BUILTINS = [
   { id:'al_rage_burst',   name:'Rage Burst',       description:'Explosive entry into rage state.',      cssClass:'bs-anim-play-rage-burst',   targets:['rage'],  tags:['rage','burst','intense'],   builtin:true },
   { id:'al_rage_pulse',   name:'Rage Pulse',       description:'Intense pulsing glow in rage mode.',    cssClass:'bs-anim-play-rage-pulse',   targets:['rage'],  tags:['rage','pulse','glow'],      builtin:true },
   { id:'al_rage_vibrate', name:'Rage Vibrate',     description:'High-frequency vibration during rage.', cssClass:'bs-anim-play-rage-vibrate', targets:['rage'],  tags:['rage','vibrate','intense'], builtin:true },
+  {id:'al_idle_breathe',name:'Heavy Breathing',description:'Weighty breathing for armored and grounded bosses.',cssClass:'bs-anim-play-idle-breathe',targets:['idle'],tags:['idle'],builtin:true},
+  {id:'al_idle_prowl',name:'Predator Prowl',description:'Low hunting stance with slow lateral movement.',cssClass:'bs-anim-play-idle-prowl',targets:['idle'],tags:['idle'],builtin:true},
+  {id:'al_idle_levitate',name:'Arcane Levitation',description:'A graceful figure-eight hover with a soft aura.',cssClass:'bs-anim-play-idle-levitate',targets:['idle'],tags:['idle'],builtin:true},
+  {id:'al_cast_ritual',name:'Rune Ritual',description:'Rise and gather energy before releasing a spell.',cssClass:'bs-anim-play-cast-ritual',targets:['cast'],tags:['cast'],builtin:true},
+  {id:'al_cast_lunge',name:'Predator Lunge',description:'Draw back, then thrust forward into the attack.',cssClass:'bs-anim-play-cast-lunge',targets:['cast'],tags:['cast'],builtin:true},
+  {id:'al_cast_collapse',name:'Singularity Charge',description:'Compress into a dense core before expanding.',cssClass:'bs-anim-play-cast-collapse',targets:['cast'],tags:['cast'],builtin:true},
+  {id:'al_hit_recoil',name:'Heavy Recoil',description:'A readable impact with a weighted recovery.',cssClass:'bs-anim-play-hit-recoil',targets:['hit'],tags:['hit'],builtin:true},
+  {id:'al_hit_armor',name:'Armor Impact',description:'A sharp metallic impact and controlled rebound.',cssClass:'bs-anim-play-hit-armor',targets:['hit'],tags:['hit'],builtin:true},
+  {id:'al_hit_phase',name:'Phase Distortion',description:'Briefly distort and fade when struck.',cssClass:'bs-anim-play-hit-phase',targets:['hit'],tags:['hit'],builtin:true},
+  {id:'al_rage_inferno',name:'Inferno Heartbeat',description:'A sustained crimson heartbeat for enraged bosses.',cssClass:'bs-anim-play-rage-inferno',targets:['rage'],tags:['rage'],builtin:true},
+  {id:'al_rage_overdrive',name:'Mechanical Overdrive',description:'A powered stance with rhythmic piston movement.',cssClass:'bs-anim-play-rage-overdrive',targets:['rage'],tags:['rage'],builtin:true},
+  {id:'al_rage_spectral',name:'Spectral Ascension',description:'An elevated, unstable aura for supernatural bosses.',cssClass:'bs-anim-play-rage-spectral',targets:['rage'],tags:['rage'],builtin:true},
 ];
 
 // ── Module state ──────────────────────────────────────────────────────────────
@@ -335,7 +347,7 @@ Object.defineProperty(window, '_alDraft', {
   configurable: true,
 });
 
-console.log('[EduQuest] boss-studio/animation-library.js loaded — 13 built-in presets, alGet, alOptionsForTarget, full CRUD registered.');
+console.log('[EduQuest] boss-studio/animation-library.js loaded — 25 built-in presets, alGet, alOptionsForTarget, full CRUD registered.');
 
 // ── Phase 7 (2026-08-10, session 7): explicit window exports ──
 // These were previously implicit globals (bare top-level declarations,

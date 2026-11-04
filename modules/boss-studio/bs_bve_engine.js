@@ -162,20 +162,19 @@ function _bveBsGet(id){ return ((window.bsGet || window._bsGet || function(){ re
  * Ported verbatim from the original Boss Studio IIFE.
  *
  * The Visual State Machine (BVS) prevents animation conflicts.
- * States form a priority queue: rage > cast > hit > idle.
- * A higher-priority state cannot be interrupted by a lower one.
+ * Idle/rage are persistent base stances. Casting temporarily takes priority
+ * over hit reactions, then returns to the correct base stance.
  */
 const BVS = {
+  _raging: false,
   _current: 'idle',         // current state key
-  _priority: {idle:0, hit:1, cast:2, rage:3},
   _returnTimer: null,       // timer to return to idle after transient state
-  _hitQueue: [],            // pending hit signals while in a higher-priority state
   _artId: 'wb-boss-sprite', // default element ID to animate
 
   init(artId){
     this._artId = artId || 'wb-boss-sprite';
     this._current = 'idle';
-    this._hitQueue = [];
+    this._raging = false;
     if(this._returnTimer) clearTimeout(this._returnTimer);
     this._returnTimer = null;
     this._applyState('idle');
@@ -183,39 +182,25 @@ const BVS = {
 
   /**
    * Request a state transition.
-   * Lower-priority states will be queued or dropped if a higher state is active.
+   * Casting owns the sprite until its cue completes; hit flashes still display.
    */
   request(state, duration){
-    const pNew = this._priority[state] || 0;
-    const pCur = this._priority[this._current] || 0;
-
-    if(state === 'hit'){
-      // Hits are always queued (BHS handles their display separately)
-      // But we only visually react to the first hit while not in cast/rage
-      if(pCur >= 2) { this._hitQueue.push({duration: duration||380}); return; }
-    }
-
-    if(pNew >= pCur || state === 'idle'){
-      this._transition(state, duration);
-    }
+    if(state==='rage'){this.enterRage();return;}
+    // Rage is a persistent base stance, not a lock that suppresses casting.
+    if(state==='hit'&&this._current==='cast')return;
+    this._transition(state,duration);
   },
 
-  _transition(state, duration){
-    if(this._returnTimer) clearTimeout(this._returnTimer);
-    this._current = state;
-    this._applyState(state);
-
-    if(state !== 'idle'){
-      const dur = duration || (state==='hit'?400 : state==='cast'?800 : 600);
-      this._returnTimer = setTimeout(()=>{
-        this._current = 'idle';
-        this._applyState('idle');
-        // Drain hit queue
-        if(this._hitQueue.length > 0 && state !== 'idle'){
-          this._hitQueue.shift(); // consume without visual (already shown)
-        }
-      }, dur);
-    }
+  _transition(state,duration){
+    clearTimeout(this._returnTimer);
+    this._current=state;this._applyState(state);
+    if(state==='idle'||state==='rage')return;
+    const el=document.getElementById(this._artId);
+    const actual=el?Math.max(...getComputedStyle(el).animationDuration.split(',').map(v=>parseFloat(v)*(v.trim().endsWith('ms')?1:1000))):0;
+    const life=duration||(Number.isFinite(actual)&&actual>0?actual:state==='hit'?400:800);
+    this._returnTimer=setTimeout(()=>{
+      this._returnTimer=null;this._current=this._raging?'rage':'idle';this._applyState(this._current);
+    },Math.min(10000,Math.max(120,life)));
   },
 
   _applyState(state){
@@ -224,43 +209,13 @@ const BVS = {
 
     // ── Look up the Boss Studio profile's custom animation cssClass ──────────
     let profileAnimClass = '';
-    let profileAnimDur = 0; // actual duration in ms for one-shot states
     try {
-      const _found = (typeof wbcGetActiveBoss === 'function') && wbcGetActiveBoss();
-      if(_found) {
-        const profile = (typeof bveGetLinkedProfile === 'function') ? bveGetLinkedProfile(_found.boss) : null;
-        if(profile && profile.animations && profile.animations[state]) {
-          const _alGetFn = (typeof alGet === 'function') ? alGet
-                         : (typeof window._alGet === 'function') ? window._alGet : null;
-          const animPreset = _alGetFn ? _alGetFn(profile.animations[state]) : null;
-          if(animPreset && animPreset.cssClass) {
-            profileAnimClass = animPreset.cssClass;
-            // Extract duration from Boss Studio CSS rule so we know how long to show it
-            // hit/cast are transient — parse their animation duration from the stylesheet
-            if(state === 'hit' || state === 'cast') {
-              try {
-                // Find the rule for this class and read its animation duration
-                for(let i = 0; i < document.styleSheets.length; i++) {
-                  try {
-                    const rules = document.styleSheets[i].cssRules || [];
-                    for(let j = 0; j < rules.length; j++) {
-                      const r = rules[j];
-                      if(r.selectorText && r.selectorText.trim() === '.' + profileAnimClass) {
-                        const anim = r.style.animationDuration || r.style.animation || '';
-                        const match = anim.match(/([\d.]+)s/);
-                        if(match) profileAnimDur = parseFloat(match[1]) * 1000;
-                        break;
-                      }
-                    }
-                  } catch(e) {}
-                  if(profileAnimDur) break;
-                }
-              } catch(e) {}
-            }
-          }
-        }
-      }
-    } catch(e) { /* silent — fallback to default BVE animation */ }
+      const battle=typeof WBR!=='undefined'&&WBR.bossIdx!=null?AppStore.getBossEvent(WBR.bossIdx):null;
+      const boss=battle||((typeof wbcGetActiveBoss==='function'&&wbcGetActiveBoss())||{}).boss;
+      const profile=boss&&bveGetLinkedProfile(boss);
+      const preset=bveResolveAnimation(profile,state);
+      profileAnimClass=preset?.cssClass||'';
+    } catch(e) { /* A deleted preset falls back to the built-in state. */ }
 
     // Remove all state classes + any previously applied profile animation class
     el.classList.remove('state-idle','state-hit','state-cast','state-rage');
@@ -310,12 +265,12 @@ const BVS = {
 
   /** Enter rage mode permanently until reset — also swaps to rageArtwork if configured */
   enterRage(){
-    if(this._returnTimer) clearTimeout(this._returnTimer);
-    this._current = 'rage';
-    this._applyState('rage');
+    this._raging=true;
+    if(!['cast','hit'].includes(this._current)){this._current='rage';this._applyState('rage');}
     // ── Swap to rageArtwork image if the Boss Studio profile has one ─────────
     try {
-      const _found = (typeof wbcGetActiveBoss === 'function') && wbcGetActiveBoss();
+      const _battle=typeof WBR!=='undefined'&&WBR.bossIdx!=null?AppStore.getBossEvent(WBR.bossIdx):null;
+      const _found = _battle?{boss:_battle}:((typeof wbcGetActiveBoss === 'function') && wbcGetActiveBoss());
       if(_found) {
         const profile = (typeof bveGetLinkedProfile === 'function') ? bveGetLinkedProfile(_found.boss) : null;
         if(profile && profile.rageArtwork && profile.rageArtwork.value) {
@@ -336,6 +291,8 @@ const BVS = {
                 div.className = artEl.className;
                 Object.assign(div.dataset, artEl.dataset);
                 div.textContent = raSrc;
+                div.classList.add('is-emoji');
+                div.style.cssText=artEl.style.cssText;
                 artEl.parentNode.replaceChild(div, artEl);
               } else {
                 artEl.textContent = raSrc;
@@ -354,7 +311,7 @@ const BVS = {
                 artEl.appendChild(img);
               }
             }
-            artEl.classList.add('rage-crossfade');
+            document.getElementById(this._artId)?.classList.add('rage-crossfade');
             // Mark so we don't double-swap on repeated enterRage() calls
             const finalEl = document.getElementById(this._artId);
             if(finalEl) finalEl.dataset.bvsRageSwapped = '1';
@@ -368,7 +325,7 @@ const BVS = {
     if(this._returnTimer) clearTimeout(this._returnTimer);
     this._returnTimer = null;
     this._current = 'idle';
-    this._hitQueue = [];
+    this._raging = false;
     // Clear rage swap flag so that if the battle resets the swap can happen again
     const artEl = document.getElementById(this._artId);
     if(artEl) delete artEl.dataset.bvsRageSwapped;
@@ -613,6 +570,18 @@ function bveGetArtSrc(profile, slot){
 /**
  * Get the Boss Studio profile linked to a World Boss Event (if any).
  */
+// Event snapshots carry custom slot definitions to other devices. Their CSS
+// must still exist in the application; a preset never executes arbitrary code.
+function bveResolveAnimation(profile,state){
+  const id=profile?.animations?.[state];if(!id)return null;
+  const saved=profile.animationPresets?.[state];
+  const preset=saved?.id===id&&typeof saved.cssClass==='string'?saved:(typeof alGet==='function'?alGet(id):null);
+  if(!preset)return null;
+  const cssClass=String(preset.cssClass||'').split(/\s+/).filter(c=>/^-?[_a-zA-Z][_a-zA-Z0-9-]*$/.test(c)).join(' ');
+  return {...preset,cssClass};
+}
+window.bveResolveAnimation=bveResolveAnimation;
+
 function bveGetLinkedProfile(bossEvent){
   if(bossEvent?._visualProfile)return bossEvent._visualProfile;
   if(!bossEvent || !bossEvent._bossLibraryId) return null;

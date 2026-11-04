@@ -199,18 +199,20 @@
   // Duplicate signals do not restart a skill or accumulate extra particle layers.
   if(s.ctx.casts.has(kind))return true;
   const requested=Number(spec.durationSec),duration=Number.isFinite(requested)&&requested>0?Math.min(60000,Math.max(600,requested*1000)):2500;
-  const meta=skills[kind],id=++serial,delay=media.matches?0:650;
+  const meta=skills[kind],id=++serial,delay=media.matches?0:1200;
   const el=document.createElement('div');el.id='rfx-cast-'+id;el.className='rfx-cast';el.setAttribute('role','status');el.title=spec.name||meta.name;el.style.setProperty('--rfx-tone',meta.tone);el.style.setProperty('--rfx-cast-time',delay+'ms');
   el.innerHTML=`${svg(kind)}<div><span class="rfx-cast-state">Preparing skill</span><strong>${esc(spec.name||meta.name)}</strong><small>${esc(meta.detail)}</small></div><i class="rfx-cast-charge"></i>`;
   const bar=document.getElementById('camp-enemy-bar');bar.querySelectorAll('.rfx-cast').forEach(n=>n.remove());bar.appendChild(el);s.ctx.casts.set(kind,el);
+  const halo=effect('cast-halo',`<i></i><b></b>${svg(kind)}`,Math.max(100,delay));if(halo){halo.style.setProperty('--rfx-tone',meta.tone);halo.style.setProperty('--rfx-cast-time',delay+'ms');}
   effect('telegraph',`<i></i><b></b>${svg(kind)}`,Math.max(100,delay));
-  if(typeof BVS!=='undefined')BVS.request('cast',delay+400);
+  if(typeof BVS!=='undefined')BVS.request('cast',Math.max(delay,400));
   later(s.ctx,()=>{if(!el.isConnected&&context!==s.ctx)return;el.classList.add('is-cast');el.querySelector('.rfx-cast-state').textContent='Skill active';perform(kind,spec,duration);},delay);
   later(s.ctx,()=>{el.remove();s.ctx.casts.delete(kind);},delay+duration);
   return true;
  }
  function phase(index,number){const s=scope();if(!s||s.ctx.index!==index)return false;const p=wbpGetPhases(s.boss).find(p=>Number(p.phase)===Number(number))||wbpGetCurrentPhase(s.boss);s.ctx.phase=Number(number);s.scene.dataset.rfxPhase=String(number);announce('Phase '+number+' · '+(p.label||p.name),' '+(p.description||'The boss changes its stance.'),'phase',5000,number>=3?'#ff6252':number>=2?'#dec498':'#b6ceda');if(!media.matches){effect('phase-wave','<i></i><i></i>',1600);surge('phase','Phase '+number,p.label||p.name||'The battle escalates');}return true;}
  function rage(index,cfg,first=false){const s=scope();if(!s||s.ctx.index!==index)return false;const active=wbrageIsActive(s.boss);const entering=active&&!s.ctx.raging;s.ctx.raging=active;s.scene.classList.toggle('rfx-raging',active);
+  if(typeof BVS!=='undefined'&&active&&!BVS._raging)BVS.enterRage();
   const badge=document.getElementById('rfx-rage');badge.innerHTML=active?`${svg('rage')}<strong>Enraged</strong><span>Faster skills · stronger minion pressure</span>`:'';
   badge.hidden=!active;
   let aura=s.ctx.stage.querySelector('.rfx-rage-aura');if(active&&cfg.showAura!==false&&!aura){aura=document.createElement('div');aura.className='rfx-rage-aura';aura.innerHTML='<i></i><b></b>'+Array.from({length:8},(_,i)=>`<em style="--i:${i}"></em>`).join('');s.ctx.stage.appendChild(aura);}if(!active||cfg.showAura===false)aura?.remove();
@@ -227,7 +229,20 @@
   });
  }
  function minionHit(id,correct){const s=scope();if(!s)return;const node=document.getElementById('wbm-minion-alert-'+id);if(!node)return;node.classList.remove('rfx-arrive-left','rfx-arrive-right');node.classList.add(correct?'rfx-minion-defeat':'rfx-minion-resist');if(!correct)later(s.ctx,()=>node.classList.remove('rfx-minion-resist'),600);}
- function hit(damage,critical=false){const s=scope();if(!s)return;const el=effect('hit'+(critical?' is-critical':''),`${svg('hit','rfx-hit-sigil')}<span class="rfx-hit-value">−${Math.max(0,Number(damage)||0).toLocaleString()}<small>${critical?'Critical strike':'Confirmed hit'}</small></span>`,1100);if(el)el.setAttribute('aria-hidden','true');s.stage.classList.add('rfx-impact');later(s.ctx,()=>s.stage.classList.remove('rfx-impact'),420);}
+ function hit(damage,critical=false,label=''){const s=scope();if(!s)return;if(typeof BVS!=='undefined'){BVS.request('hit');BVS.flashHit();}const el=effect('hit'+(critical?' is-critical':''),`${svg('hit','rfx-hit-sigil')}<span class="rfx-hit-value">−${Math.max(0,Number(damage)||0).toLocaleString()}<small>${esc(label||(critical?'Critical strike':'Confirmed hit'))}</small></span>`,1100);if(el)el.setAttribute('aria-hidden','true');s.stage.classList.add('rfx-impact');later(s.ctx,()=>s.stage.classList.remove('rfx-impact'),420);}
+ // One visual per contributor per sync window keeps a full class readable.
+ // The feed still retains each confirmed answer receipt separately.
+ function raidHits(hits){
+  const s=scope();if(!s||!hits.length)return;
+  const players=new Map();
+  for(const h of hits){const p=players.get(h.studentId)||{...h,damage:0};p.damage+=h.damage;p.crit=p.crit||h.crit;players.set(h.studentId,p);}
+  const rows=[...players.values()],mine=rows.find(r=>r.studentId===currentUser.id),others=rows.filter(r=>r!==mine);
+  const shown=[...(mine?[mine]:[]),...others.slice(0,mine?2:3)];
+  shown.forEach((r,i)=>later(s.ctx,()=>hit(r.damage,r.crit,(r.studentId===currentUser.id?'You':r.name)+(r.crit?' · Critical':'')),i*210));
+  if(others.length>(mine?2:3)){
+   const rest=others.slice(mine?2:3);later(s.ctx,()=>hit(rest.reduce((n,r)=>n+r.damage,0),false,rest.length+' more raiders'),shown.length*210);
+  }
+ }
  function sync(index){const s=scope();if(!s||s.ctx.index!==index)return;if(s.ctx.challenge&&(WBR.answerPending||!challengeAlive(s.ctx.challenge)))clearChallenge();
   const p=wbpGetCurrentPhase(s.boss),number=Number(p.phase||1);s.scene.dataset.rfxPhase=String(number);
   document.getElementById('rfx-phase').innerHTML=`${svg('phase')}<strong>Phase ${number}</strong><span>${esc(p.label||p.name||'Battle')}</span>`;
@@ -242,5 +257,5 @@
  }
  function stop(){if(!context)return;clearChallenge();document.querySelectorAll('.raid-battle .wbm-minion-alert').forEach(node=>node.classList.remove('rfx-minion-enraged','rfx-arrive-left','rfx-arrive-right','rfx-minion-defeat','rfx-minion-resist'));document.querySelectorAll('.rfx-minion-rage').forEach(node=>node.remove());for(const t of context.timers)clearTimeout(t);context.field?.remove();context.stage?.remove();context.screen?.remove();document.querySelectorAll('#rfx-state,#rfx-announcer,.rfx-cast,.rfx-health-echo').forEach(n=>n.remove());const scene=document.getElementById('camp-scene');scene?.classList.remove('rfx-ready','rfx-raging','rfx-reduced','rfx-player-ko');if(scene){delete scene.dataset.rfxPhase;scene.classList.remove('rfx-camera-impact');for(const kind of context.pressures)scene.classList.remove('rfx-under-'+kind);}document.getElementById('camp-enemy-sprite')?.classList.remove('rfx-impact','rfx-stomp','rfx-roar-source');context=null;}
  media.addEventListener('change',()=>{const index=context?.index;stop();if(index!=null&&open())sync(index);});
- window.RaidFX=Object.freeze({cast,phase,rage,sync,minions,minionHit,hit,stop});
+ window.RaidFX=Object.freeze({cast,phase,rage,sync,minions,minionHit,hit,raidHits,stop});
 })();

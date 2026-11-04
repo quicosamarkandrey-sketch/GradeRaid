@@ -49,7 +49,7 @@
 .raid-battle:not(.raid-loot-active) .rfx-raging #camp-enemy-hp{background:linear-gradient(90deg,#be1934,#ff5948,#ffb278)!important}
 .raid-battle:not(.raid-loot-active) .rfx-raging .camp-question-box{background:linear-gradient(135deg,#482139eb,#242744f5);border-color:#f16c685c;box-shadow:0 15px 55px #5b102c44,inset 0 1px #ffb9a512}
 .raid-battle:not(.raid-loot-active) .rfx-raging #rfx-phase strong,.raid-battle:not(.raid-loot-active) #rfx-rage{color:#ff9d8b}
-.raid-battle:not(.raid-loot-active) .rfx-raging #wb-boss-sprite-art{filter:drop-shadow(0 0 22px #ff243c88) drop-shadow(0 8px 28px #8f0b2577) saturate(1.45)!important}
+.raid-battle:not(.raid-loot-active) .rfx-raging #wb-boss-sprite-art{filter:drop-shadow(0 0 22px #ff243c88) drop-shadow(0 8px 28px #8f0b2577) saturate(1.45)}
 .raid-battle:not(.raid-loot-active) .rfx-raging .rfx-arena-floor{color:#ff6755;opacity:.85}
 .raid-battle:not(.raid-loot-active) .rfx-raging .rfx-rage-aura{color:#ff403b;filter:drop-shadow(0 0 20px #ff303b66)}
 .raid-battle:not(.raid-loot-active) .rfx-raging .rfx-rage-aura i{border-color:#ff5548;box-shadow:0 0 35px #ff283c44,inset 0 0 35px #ff283c22;animation-duration:3s}
@@ -128,3 +128,32 @@
 
 /* Only the question and skill cue remain in the panel while choices are airborne. */
 .raid-battle #camp-options:has(.rfx-flight-placeholder){display:none}
+
+/* Shared raid feedback and a readable skill wind-up. */
+.raid-contributors{border-top:1px solid #7dacc72b;margin-top:10px;padding-top:9px;color:#d5e8f2}
+.raid-contributors summary{cursor:pointer;padding:5px 0;font-size:11px;font-weight:650}
+.raid-contribution-list{max-height:230px;overflow-y:auto;overscroll-behavior:contain;padding-right:5px}
+.raid-contributor{padding:9px 0;border-bottom:1px solid #7dacc71a}
+.raid-contributor>div:first-child{display:flex;justify-content:space-between;gap:12px;font-size:11px}
+.raid-contributor strong{overflow-wrap:anywhere}.raid-contributor small{color:#8ee1d4;font-weight:500}.raid-contributor b{font-variant-numeric:tabular-nums;color:#c5e7ff}
+.raid-contributor>span{display:block;font-size:9px;color:#9db6c8;margin-top:3px}
+.raid-contribution-track{height:3px;background:#ffffff12;border-radius:4px;margin-top:5px;overflow:hidden}.raid-contribution-track i{display:block;height:100%;background:#79c9e4;transition:width .3s ease}
+.raid-battle .rfx-cast-halo{position:absolute;inset:8% 12%;display:grid;place-items:center;color:var(--rfx-tone);pointer-events:none}
+.rfx-cast-halo>i,.rfx-cast-halo>b{position:absolute;width:80%;aspect-ratio:1;border-radius:50%;border:2px solid currentColor;opacity:.6;box-shadow:0 0 25px color-mix(in srgb,currentColor 35%,transparent)}
+.rfx-cast-halo>i{border-style:dashed;animation:rfx-cast-orbit var(--rfx-cast-time) linear both}.rfx-cast-halo>b{animation:rfx-cast-gather var(--rfx-cast-time) ease-in both}
+.rfx-cast-halo>svg{position:absolute;top:5%;width:28px;height:28px;filter:drop-shadow(0 2px 5px #071422)}
+.rfx-cast-halo>span{position:absolute;bottom:2%;max-width:100%;padding:5px 12px;border:1px solid currentColor;border-radius:20px;background:#0c192deb;font:600 11px/1.4 var(--fb);text-align:center}
+.raid-battle:not(.raid-loot-active) #camp-enemy-bar:has(.rfx-cast:not(.is-cast)) #rfx-announcer{visibility:hidden}
+.raid-battle:not(.raid-loot-active) #camp-enemy-bar:has(#rfx-announcer.is-visible) .rfx-cast:not(.is-cast){visibility:visible}
+.raid-battle .rfx-cast-charge{height:4px}
+.raid-battle .rfx-hit-value small{max-width:240px;white-space:normal;overflow-wrap:anywhere;text-transform:none;font-size:11px;letter-spacing:.02em}
+@keyframes rfx-cast-orbit{from{transform:rotate(-80deg) scale(1.12);opacity:.15}to{transform:rotate(35deg) scale(.92);opacity:.85}}
+@keyframes rfx-cast-gather{0%{transform:scale(1.35);opacity:0}65%{opacity:.5}100%{transform:scale(.35);opacity:0}}
+@media(max-width:600px){.raid-contribution-list{max-height:170px}.rfx-cast-halo>span{font-size:9px;padding:3px 8px}}
+@media(prefers-reduced-motion:reduce){.rfx-cast-halo>i,.rfx-cast-halo>b{animation:none!important}.raid-contribution-track i{transition:none}}
+
+.raid-battle:not(.raid-loot-active) #wbr-live-feed{max-height:none;overflow:visible}
+.raid-battle #wbr-live-feed>.wbr-feed-list{max-height:140px;overflow:auto;overscroll-behavior:contain}
+@media(max-width:600px){.raid-battle #wbr-live-feed>.wbr-feed-list{max-height:105px}}
+
+.raid-sync-status{display:flex;gap:6px;align-items:center;margin:7px 0 10px;font:500 9px/1.4 var(--fb);color:#9cc9bb}.raid-sync-status:before{content:'';width:5px;height:5px;border-radius:50%;background:#88d6b7}.raid-sync-status.is-offline{color:#edc485}.raid-sync-status.is-offline:before{background:#edc485}
