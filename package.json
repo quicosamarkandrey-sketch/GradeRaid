@@ -20,7 +20,9 @@
     "test:boss-ultimate-db": "node tests/database/world-boss-ultimate.cjs",
     "test:boss-ultimate": "node tests/browser/world-boss-ultimate.cjs",
     "test:recitation": "node tests/database/recitation-studio.cjs && node tests/browser/recitation-studio.cjs",
-    "test:attendance": "node tests/database/attendance-station.cjs && node tests/browser/attendance-station.cjs"
+    "test:attendance": "node tests/database/attendance-station.cjs && node tests/browser/attendance-station.cjs",
+    "build:pixi": "node build/build-pixi.js",
+    "test:boss-pixi": "node tests/browser/world-boss-pixi.cjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.13",
@@ -31,5 +33,8 @@
     "eslint": "^9.13.0",
     "globals": "^15.11.0",
     "jsdom": "^25.0.1"
+  },
+  "dependencies": {
+    "pixi.js": "8.22.0"
   }
 }

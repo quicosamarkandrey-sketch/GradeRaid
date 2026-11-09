@@ -447,6 +447,7 @@ export async function restoreSession(){
 // clicking "Logout" — signOut() explicitly revokes/clears that session.
 export async function doLogout(){
   window.AttendanceStation?.unmount();
+  window.RaidCanvas?.stop();window.RaidCanvas?.stopPreview();window.RaidCanvas?.stopDefeat();
   // Cleanup 5: closeProfile absorbed from index.html monkey patch (doLogout → closeProfile → _origLogout)
   if(typeof closeProfile==='function')closeProfile();
   const logoutBtn=document.getElementById('sidebar-logout-btn');

@@ -204,6 +204,7 @@ const BVS = {
   },
 
   _applyState(state){
+    window.RaidCanvas?.state(state);
     const el = document.getElementById(this._artId);
     if(!el) return;
 

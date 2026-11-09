@@ -200,6 +200,7 @@
   effect('surge rfx-surge-'+kind,`<i></i><div><small>${esc(detail)}</small><strong>${esc(title)}</strong><b></b></div>`,1900,'screen');impact(kind);
  }
  function perform(kind,spec,duration){
+  window.RaidCanvas?.emit(kind,spec);
   const s=scope();if(!s)return;const quiet=media.matches,life=quiet?900:duration;
   pressure(kind,life);challenge(kind,duration,spec);
   if(['earthquake','berserk_roar','meteor_shower','lightning_storm','void_lance'].includes(kind))impact(kind);
@@ -239,6 +240,7 @@
   const el=document.createElement('div');el.id='rfx-cast-'+id;el.className='rfx-cast';el.setAttribute('role','status');el.title=spec.name||meta.name;el.style.setProperty('--rfx-tone',meta.tone);el.style.setProperty('--rfx-cast-time',delay+'ms');
   el.innerHTML=`${svg(kind)}<div><span class="rfx-cast-state">Preparing skill</span><strong>${esc(spec.name||meta.name)}</strong><small>${esc(meta.detail)}</small></div><i class="rfx-cast-charge"></i>`;
   const bar=document.getElementById('camp-enemy-bar');bar.querySelectorAll('.rfx-cast').forEach(n=>n.remove());bar.appendChild(el);s.ctx.casts.set(kind,el);
+  window.RaidCanvas?.emit('cast',{kind});
   const halo=effect('cast-halo',`<i></i><b></b>${svg(kind)}`,Math.max(100,delay));if(halo){halo.style.setProperty('--rfx-tone',meta.tone);halo.style.setProperty('--rfx-cast-time',delay+'ms');}
   effect('telegraph',`<i></i><b></b>${svg(kind)}`,Math.max(100,delay));
   if(typeof BVS!=='undefined')BVS.request('cast',Math.max(delay,400));
@@ -246,12 +248,13 @@
   later(s.ctx,()=>{el.remove();s.ctx.casts.delete(kind);},delay+duration);
   return true;
  }
- function phase(index,number){const s=scope();if(!s||s.ctx.index!==index)return false;const p=wbpGetPhases(s.boss).find(p=>Number(p.phase)===Number(number))||wbpGetCurrentPhase(s.boss);s.ctx.phase=Number(number);s.scene.dataset.rfxPhase=String(number);announce('Phase '+number+' · '+(p.label||p.name),' '+(p.description||'The boss changes its stance.'),'phase',5000,number>=3?'#ff6252':number>=2?'#dec498':'#b6ceda');if(!media.matches){effect('phase-wave','<i></i><i></i>',1600);surge('phase','Phase '+number,p.label||p.name||'The battle escalates');}return true;}
- function rage(index,cfg,first=false){const s=scope();if(!s||s.ctx.index!==index)return false;const active=wbrageIsActive(s.boss);const entering=active&&!s.ctx.raging;s.ctx.raging=active;s.scene.classList.toggle('rfx-raging',active);
+ function phase(index,number){const s=scope();if(!s||s.ctx.index!==index)return false;window.RaidCanvas?.emit('phase',{number});const p=wbpGetPhases(s.boss).find(p=>Number(p.phase)===Number(number))||wbpGetCurrentPhase(s.boss);s.ctx.phase=Number(number);s.scene.dataset.rfxPhase=String(number);announce('Phase '+number+' · '+(p.label||p.name),' '+(p.description||'The boss changes its stance.'),'phase',5000,number>=3?'#ff6252':number>=2?'#dec498':'#b6ceda');if(!media.matches){effect('phase-wave','<i></i><i></i>',1600);surge('phase','Phase '+number,p.label||p.name||'The battle escalates');}return true;}
+ function rage(index,cfg,first=false){const s=scope();if(!s||s.ctx.index!==index)return false;const active=wbrageIsActive(s.boss);window.RaidCanvas?.rage(active);const entering=active&&!s.ctx.raging;s.ctx.raging=active;s.scene.classList.toggle('rfx-raging',active);
   if(typeof BVS!=='undefined'&&active&&!BVS._raging)BVS.enterRage();
   const badge=document.getElementById('rfx-rage');badge.innerHTML=active?`${svg('rage')}<strong>Enraged</strong><span>Faster skills · stronger minion pressure</span>`:'';
   badge.hidden=!active;
   let aura=s.ctx.stage.querySelector('.rfx-rage-aura');if(active&&cfg.showAura!==false&&!aura){aura=document.createElement('div');aura.className='rfx-rage-aura';aura.innerHTML='<i></i><b></b>'+Array.from({length:8},(_,i)=>`<em style="--i:${i}"></em>`).join('');s.ctx.stage.appendChild(aura);}if(!active||cfg.showAura===false)aura?.remove();
+  if(entering)window.RaidCanvas?.emit('rage');
   if(entering&&cfg.showBanner!==false)surge('rage','ENRAGED','The boss unleashes its full power');
   if(entering&&(cfg.showBanner!==false||cfg.showToast!==false))announce('Rage mode · '+s.boss.name,cfg.dialogue||'The boss draws on its last reserves. Minions are enraged.','rage',5500,'#ff5c50');
   minions();return true;
@@ -259,13 +262,13 @@
  function minions(){if(!context||!open())return;const s=scope();if(!s)return;const raging=wbrageIsActive(s.boss);
   document.querySelectorAll('.raid-battle .wbm-minion-alert').forEach(node=>{
    const id=node.id;node.classList.remove('wbm-entry-left','wbm-entry-right');
-   if(!s.ctx.seen.has(id)){s.ctx.seen.add(id);node.classList.add(node.closest('#wbr-minion-dock-right')?'rfx-arrive-right':'rfx-arrive-left');later(s.ctx,()=>node.classList.remove('rfx-arrive-left','rfx-arrive-right'),650);}
+   if(!s.ctx.seen.has(id)){s.ctx.seen.add(id);window.RaidCanvas?.emit('minion_arrive',{node});node.classList.add(node.closest('#wbr-minion-dock-right')?'rfx-arrive-right':'rfx-arrive-left');later(s.ctx,()=>node.classList.remove('rfx-arrive-left','rfx-arrive-right'),650);}
    node.classList.toggle('rfx-minion-enraged',raging);let chip=node.querySelector('.rfx-minion-rage');
    if(raging&&!chip){chip=document.createElement('span');chip.className='rfx-minion-rage';chip.textContent='Enraged';node.querySelector('.wbm-minion-info')?.appendChild(chip);}if(!raging)chip?.remove();
   });
  }
- function minionHit(id,correct){const s=scope();if(!s)return;const node=document.getElementById('wbm-minion-alert-'+id);if(!node)return;node.classList.remove('rfx-arrive-left','rfx-arrive-right');node.classList.add(correct?'rfx-minion-defeat':'rfx-minion-resist');if(!correct)later(s.ctx,()=>node.classList.remove('rfx-minion-resist'),600);}
- function hit(damage,critical=false,label=''){const s=scope();if(!s)return;if(typeof BVS!=='undefined'){BVS.request('hit');BVS.flashHit();}const el=effect('hit'+(critical?' is-critical':''),`${svg('hit','rfx-hit-sigil')}<span class="rfx-hit-value">−${Math.max(0,Number(damage)||0).toLocaleString()}<small>${esc(label||(critical?'Critical strike':'Confirmed hit'))}</small></span>`,1100);if(el)el.setAttribute('aria-hidden','true');s.stage.classList.add('rfx-impact');later(s.ctx,()=>s.stage.classList.remove('rfx-impact'),420);}
+ function minionHit(id,correct){const s=scope();if(!s)return;const node=document.getElementById('wbm-minion-alert-'+id);if(!node)return;window.RaidCanvas?.emit('minion_hit',{node,correct});node.classList.remove('rfx-arrive-left','rfx-arrive-right');node.classList.add(correct?'rfx-minion-defeat':'rfx-minion-resist');if(!correct)later(s.ctx,()=>node.classList.remove('rfx-minion-resist'),600);}
+ function hit(damage,critical=false,label=''){const s=scope();if(!s)return;window.RaidCanvas?.emit('hit',{critical});if(typeof BVS!=='undefined'){BVS.request('hit');BVS.flashHit();}const el=effect('hit'+(critical?' is-critical':''),`${svg('hit','rfx-hit-sigil')}<span class="rfx-hit-value">−${Math.max(0,Number(damage)||0).toLocaleString()}<small>${esc(label||(critical?'Critical strike':'Confirmed hit'))}</small></span>`,1100);if(el)el.setAttribute('aria-hidden','true');s.stage.classList.add('rfx-impact');later(s.ctx,()=>s.stage.classList.remove('rfx-impact'),420);}
  // One visual per contributor per sync window keeps a full class readable.
  // The feed still retains each confirmed answer receipt separately.
  function raidHits(hits){
@@ -281,6 +284,7 @@
   }
  }
  function endCataclysm(){
+  window.RaidCanvas?.solar(0);
   if(!context)return;if(context.challenge?.kind==='cataclysm')clearChallenge();
   if(context.solar){cancelAnimationFrame(context.solar.frame);context.solar.layer.remove();context.solar=null;}
   context.screen?.querySelectorAll('.rfx-cataclysm-storm,.rfx-solar-volley,.rfx-text-fragments,.rfx-crown-hit').forEach(n=>n.remove());
@@ -328,6 +332,7 @@
   sweep.frame=requestAnimationFrame(frame);
  }
  function cataclysm(index,u){
+  window.RaidCanvas?.solar(performance.now()+Math.max(0,u.endsAt-Date.now()-(AppStore.getBossEvent(index)?._raidClockOffset||0)));
   const s=scope();if(!s||s.ctx.index!==index)return;
   const remaining=Math.max(0,u.endsAt-Date.now()-(s.boss._raidClockOffset||0));if(!remaining)return;
   if(s.ctx.solar?.id!==u.id&&!media.matches){if(s.ctx.solar)cancelAnimationFrame(s.ctx.solar.frame);s.ctx.solar?.layer.remove();startSolarSweep(s,u);}
@@ -338,7 +343,7 @@
    else if(c.staticSolarWave!==wave){c.staticSolarWave=wave;c.nodes.filter(n=>Date.now()-(c.revealed.get(n)||0)>1500).slice(0,Math.max(1,c.nodes.length-1)).forEach(n=>n.classList.add('rfx-obscured','rfx-solar-broken'));}
   }
  }
- function sync(index){const s=scope();if(!s||s.ctx.index!==index)return;if(s.ctx.challenge&&(WBR.answerPending||!challengeAlive(s.ctx.challenge)))clearChallenge();
+ function sync(index){const s=scope();if(!s||s.ctx.index!==index)return;window.RaidCanvas?.sync(index);if(s.ctx.challenge&&(WBR.answerPending||!challengeAlive(s.ctx.challenge)))clearChallenge();
   const p=wbpGetCurrentPhase(s.boss),number=Number(p.phase||1);s.scene.dataset.rfxPhase=String(number);
   document.getElementById('rfx-phase').innerHTML=`${svg('phase')}<strong>Phase ${number}</strong><span>${esc(p.label||p.name||'Battle')}</span>`;
   if(s.ctx.phase!==null&&s.ctx.phase!==number)phase(index,number);else s.ctx.phase=number;
@@ -350,7 +355,7 @@
   const echo=track?.querySelector('.rfx-health-echo');if(echo){if(s.ctx.hp===null||hp>=s.ctx.hp)echo.style.width=hp+'%';else{echo.style.width=s.ctx.hp+'%';later(s.ctx,()=>{if(echo.isConnected)echo.style.width=hp+'%';},180);}s.ctx.hp=hp;}
   minions();
  }
- function stop(){if(!context)return;endCataclysm();clearChallenge();document.querySelectorAll('.raid-battle .wbm-minion-alert').forEach(node=>node.classList.remove('rfx-minion-enraged','rfx-arrive-left','rfx-arrive-right','rfx-minion-defeat','rfx-minion-resist'));document.querySelectorAll('.rfx-minion-rage').forEach(node=>node.remove());for(const t of context.timers)clearTimeout(t);context.field?.remove();context.stage?.remove();context.screen?.remove();document.querySelectorAll('#rfx-state,#rfx-announcer,.rfx-cast,.rfx-health-echo').forEach(n=>n.remove());const scene=document.getElementById('camp-scene');scene?.classList.remove('rfx-ready','rfx-raging','rfx-reduced','rfx-player-ko');if(scene){delete scene.dataset.rfxPhase;scene.classList.remove('rfx-camera-impact');for(const kind of context.pressures)scene.classList.remove('rfx-under-'+kind);}document.getElementById('camp-enemy-sprite')?.classList.remove('rfx-impact','rfx-stomp','rfx-roar-source');context=null;}
+ function stop(){window.RaidCanvas?.stop();document.getElementById('raid-effects-quality')?.remove();if(!context)return;endCataclysm();clearChallenge();document.querySelectorAll('.raid-battle .wbm-minion-alert').forEach(node=>node.classList.remove('rfx-minion-enraged','rfx-arrive-left','rfx-arrive-right','rfx-minion-defeat','rfx-minion-resist'));document.querySelectorAll('.rfx-minion-rage').forEach(node=>node.remove());for(const t of context.timers)clearTimeout(t);context.field?.remove();context.stage?.remove();context.screen?.remove();document.querySelectorAll('#rfx-state,#rfx-announcer,.rfx-cast,.rfx-health-echo').forEach(n=>n.remove());const scene=document.getElementById('camp-scene');scene?.classList.remove('rfx-ready','rfx-raging','rfx-reduced','rfx-player-ko');if(scene){delete scene.dataset.rfxPhase;scene.classList.remove('rfx-camera-impact');for(const kind of context.pressures)scene.classList.remove('rfx-under-'+kind);}document.getElementById('camp-enemy-sprite')?.classList.remove('rfx-impact','rfx-stomp','rfx-roar-source');context=null;}
  media.addEventListener('change',()=>{const index=context?.index;stop();if(index!=null&&open())sync(index);});
  window.RaidFX=Object.freeze({cast,phase,rage,sync,minions,minionHit,hit,raidHits,cataclysm,endCataclysm,crownShatter,stop});
 })();

@@ -77,9 +77,10 @@ function _bsCardSlotPips(boss) {
     { key: 'rage', label: 'Rage', val: anim.rage, rage: true  },
   ];
   const pips = slots.map(s => {
-    const animName = s.val && typeof window._alGet === 'function' ? (window._alGet(s.val) || {}).name : null;
+    const authored=boss.motionAssets?.slots?.[s.key];
+    const animName = authored?(authored.type==='grid'?'Spritesheet':'Atlas clip'):s.val && typeof window._alGet === 'function' ? (window._alGet(s.val) || {}).name : null;
     const title    = animName ? `${s.label}: ${animName}` : `${s.label}: unassigned`;
-    return `<div class="bs-card-slot-pip ${s.val ? 'filled' : ''} ${s.rage ? 'rage-pip' : ''}" title="${_esc(title)}"></div>`;
+    return `<div class="bs-card-slot-pip ${s.val||authored ? 'filled' : ''} ${s.rage ? 'rage-pip' : ''}" title="${_esc(title)}"></div>`;
   }).join('');
   return `<div class="bs-card-slot-pips" title="Animation slots: Idle / Cast / Hit / Rage">${pips}</div>`;
 }
@@ -196,7 +197,7 @@ function _bsRenderBossTab() {
   const themed = all.filter(b => b.visual?.themeColor && b.visual.themeColor !== BS_DEFAULT_THEME).length;
   const hasArt = all.filter(b => b.artwork?.value).length;
   const hasRage = all.filter(b => b.rageArtwork?.value).length;
-  const fullySlotted = all.filter(b => { const a = b.animations || {}; return a.idle && a.cast && a.hit && a.rage; }).length;
+  const fullySlotted = all.filter(b => { const a = b.animations || {}; return ['idle','cast','hit','rage'].every(k=>a[k]||b.motionAssets?.slots?.[k]); }).length;
   return `
   <div class="bs-hero"><div class="bs-hero-inner">
     <div class="bs-hero-icon">🎭</div>
@@ -271,7 +272,8 @@ window.bsOpenPreview = function (id) {
   const accent = _cssColor(boss.visual?.cardAccent, BS_DEFAULT_ACCENT);
   const animSlots = boss.animations || {};
   const slotRows = ['idle', 'cast', 'hit', 'rage'].map(s => {
-    const preset = animSlots[s] && typeof window._alGet === 'function' ? window._alGet(animSlots[s]) : null;
+    const authored=boss.motionAssets?.slots?.[s];
+    const preset = authored?{name:authored.type==='grid'?'Spritesheet animation':'Atlas animation'}:animSlots[s] && typeof window._alGet === 'function' ? window._alGet(animSlots[s]) : null;
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04)"><span style="font-size:11px;color:var(--text-muted);width:32px;text-transform:uppercase;font-weight:700">${s}</span><span style="font-size:12px;font-weight:700;color:${preset ? accent : 'var(--text-muted)'}">${preset ? _esc(preset.name) : 'Unassigned'}</span></div>`;
   }).join('');
 

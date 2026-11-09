@@ -88,6 +88,7 @@ window._bsCloseEditor = function () {
 };
 
 window._bsForceCloseEditor = function () {
+  window.BossMotionStudio?.close();
   const overlay = document.getElementById('bs-editor-overlay');
   if (overlay) overlay.classList.remove('open');
   document.body.style.overflow = '';
@@ -120,9 +121,9 @@ window._bsSyncEditorPreview = function () {
   if (np) np.textContent = d.name || 'New Boss';
   ['idle', 'cast', 'hit', 'rage'].forEach(k => {
     const pip = document.getElementById(`bsed-pip-${k}`);
-    if (pip) pip.classList.toggle('filled', !!(d.animations?.[k]));
+    if (pip) pip.classList.toggle('filled', !!(d.animations?.[k]||d.motionAssets?.slots?.[k]));
     const btn = document.getElementById(`bsed-btn-${k}`);
-    if (btn) { const assigned = d.animations?.[k] && typeof window._alGet === 'function' && window._alGet(d.animations[k]); btn.disabled = !assigned; btn.style.opacity = assigned ? '1' : '0.5'; if (!assigned) btn.classList.remove('active'); }
+    if (btn) { const assigned = d.animations?.[k] && typeof window._alGet === 'function' && window._alGet(d.animations[k]); const usable=assigned||d.motionAssets?.slots?.[k];btn.disabled = !usable; btn.style.opacity = usable ? '1' : '0.5'; if (!assigned) btn.classList.remove('active'); }
   });
   const tagDiv = document.getElementById('bsed-tag-preview');
   if (tagDiv) tagDiv.innerHTML = (d.tags || []).slice(0, 5).map(t => `<span class="bs-card-tag" style="border-color:${_cssColor(theme)}55;color:${_cssColor(theme)}">${_esc(t)}</span>`).join('');
@@ -138,6 +139,8 @@ window._bsEditorPlayState = function (stateKey) {
   const d = window._bsDraft; if (!d) return;
   const animId = d.animations?.[stateKey];
   const preset = animId && typeof window._alGet === 'function' ? window._alGet(animId) : null;
+  if(d.motionAssets?.slots?.[stateKey]){window.BossMotionStudio?.playMain(stateKey);return;}
+  window.RaidCanvas?.stopPreview();
   if (!preset) { const btn = document.getElementById(`bsed-btn-${stateKey}`); if (btn) { btn.style.transform = 'scale(0.9)'; setTimeout(() => btn.style.transform = '', 150); } return; }
   const art = document.getElementById('bsed-stage-art'); if (!art) return;
   const useArt = (stateKey === 'rage' && d.rageArtwork?.value) ? d.rageArtwork : d.artwork;
@@ -511,7 +514,7 @@ function _bsUpdateReadiness(){
   if(d.artwork && d.artwork.value) score += 25;                     // has artwork
   if(d.lore && d.lore.trim()) score += 10;                         // has lore
   if(d.visual && d.visual.themeColor && d.visual.themeColor !== BS_DEFAULT_THEME) score += 10; // custom theme
-  const animCount = ['idle','cast','hit','rage'].filter(k => d.animations && d.animations[k]).length;
+  const animCount = ['idle','cast','hit','rage'].filter(k => (d.animations && d.animations[k])||d.motionAssets?.slots?.[k]).length;
   score += animCount * 7;                                            // up to 28 for all 4 slots
   if(d.tags && d.tags.length > 0) score += 5;                      // has tags
 
@@ -532,6 +535,7 @@ function _bsUpdateReadiness(){
 window.bsSaveForm = async function () {
   const d = window._bsDraft; if (!d || window._bsSaving) return;
   const identity=currentUser?.id;
+  if(window.BossMotionStudio&&!window.BossMotionStudio.validateDraft(d)){window._bsSetToolTab('animations');return;}
   // Read all form fields into draft
   const getName    = id => (document.getElementById(id)?.value || '').trim();
   d.name           = document.getElementById('bsf-name') ? getName('bsf-name') : d.name;
@@ -786,10 +790,11 @@ function _bsRenderFormModal(isEdit){
 
     <!-- ══ ANIMATIONS PANEL ══ -->
     <div class="bsf-tool-panel" data-panel="animations" style="display:none">
+      ${window.BossMotionStudio?window.BossMotionStudio.panel(d):''}
 
       <div class="bsf-section">
         <div class="bsf-section-title">
-          <span class="material-symbols-outlined">animation</span>Animation Slots
+          <span class="material-symbols-outlined">animation</span>Fallback motion presets
           <span class="bsf-slot-badge" style="background:rgba(78,222,163,0.08);border-color:rgba(78,222,163,0.2);color:var(--secondary)">Animation Library</span>
         </div>
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.15);border-radius:8px;padding:9px 12px">
@@ -824,33 +829,6 @@ function _bsRenderFormModal(isEdit){
               </button>
             </div>
           </div>`}).join('')}
-        </div>
-      </div>
-
-      <div class="bsf-section">
-        <div class="bsf-section-title">
-          <span class="material-symbols-outlined">grain</span>Visual Effect Slots
-          <span class="bsf-slot-badge">Future</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">
-          Aura and particle effect library slots — reserved for the next phase.
-        </div>
-        <div class="bsf-slot-grid">
-          ${[
-            {key:'aura',     icon:'auto_awesome', label:'Aura Effect',     sub:'Persistent ambient glow or aura around the boss'},
-            {key:'particle', icon:'grain',        label:'Particle Effect', sub:'Particle system emitted during gameplay'},
-          ].map(s=>`
-          <div class="bsf-slot-row">
-            <div class="bsf-slot-icon"><span class="material-symbols-outlined">${s.icon}</span></div>
-            <div class="bsf-slot-info">
-              <div class="bsf-slot-label">${s.label}</div>
-              <div class="bsf-slot-sub">${s.sub}</div>
-            </div>
-            <input type="text" placeholder="Effect ID…"
-              value="${_esc((d.effects&&d.effects[s.key])||'')}"
-              style="width:120px;font-size:11px;opacity:0.6"
-              oninput="if(!window._bsDraft.effects)window._bsDraft.effects={};window._bsDraft.effects['${s.key}']=this.value.trim()||null">
-          </div>`).join('')}
         </div>
       </div>
 

@@ -3,7 +3,10 @@
  'use strict';
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const motion=matchMedia('(prefers-reduced-motion: reduce)');
- const glyph=kind=>`<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">${kind==='Legendary'?'<path d="m7 13 7 6 6-11 6 11 7-6-4 19H11Z"/><path d="M13 27h14"/>':kind==='Epic'?'<path d="m20 4 13 16-13 16L7 20Z"/><path d="m20 4-5 16 5 16 5-16Zm-13 16h26"/>':kind==='Rare'?'<path d="m20 5 12 7v16l-12 7-12-7V12Z"/><path d="m20 11 6 9-6 9-6-9Z"/>':'<path d="m6 14 14-7 14 7v17l-14 7-14-7Zm0 0 14 8 14-8M20 22v16"/>'}</svg>`;
+ const glyph=kind=>{
+  const art=kind==='Legendary'?'<path d="M5 17 20 10l15 7v16l-15 5-15-5Z" fill="currentColor" fill-opacity=".18"/><path d="m5 17 15 6 15-6M20 23v15M5 25l15 6 15-6"/><path d="M8 16V9l7 4 5-9 5 9 7-4v7" fill="currentColor" fill-opacity=".6"/><path d="m8 9 7 4 5-9 5 9 7-4M12 16h16" stroke="#fff2cc"/><path d="m17 24 3-2 3 2v6l-3 2-3-2Z" fill="#fff2cc" fill-opacity=".85"/>':kind==='Epic'?'<path d="m20 3 14 17-14 17L6 20Z" fill="currentColor" fill-opacity=".32"/><path d="m20 3-6 17 6 17 6-17ZM6 20h28"/><path d="m20 3-6 17H6Z" fill="#fff" fill-opacity=".45"/><path d="m26 20 8 0-14 17Z" fill="#1a102e" fill-opacity=".65"/><path d="m20 10 6 10-6 9-6-9Z" fill="currentColor" fill-opacity=".85"/><path d="M7 34h26M12 38h16" stroke-opacity=".6"/>':kind==='Rare'?'<path d="m20 3 12 8 3 17-15 10L5 28l3-17Z" fill="currentColor" fill-opacity=".22"/><path d="m20 3-7 11 7 15 7-15ZM8 11l5 3-8 14 15 1 15-1-8-14 5-3M20 29v9"/><path d="m20 3-7 11 7 15Z" fill="#e5f9ff" fill-opacity=".4"/><path d="m20 29 7-15 8 14Z" fill="currentColor" fill-opacity=".5"/>':'<path d="m7 13 13-7 13 7v19l-13 6-13-6Z" fill="currentColor" fill-opacity=".2"/><path d="m7 13 13 7 13-7M20 20v18M7 24l13 6 13-6"/><path d="m7 13 13-7 13 7-13 7Z" fill="#fff" fill-opacity=".28"/><path d="m16 10 13 7v8l-5 2v-8l-13-7Z" fill="currentColor" fill-opacity=".6"/><path d="m17 22 3-1 3 1v5l-3 1-3-1Z" fill="#f7fbff" fill-opacity=".7"/>';
+  return `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round" aria-hidden="true">${art}</svg>`;
+ };
  let session=null;
  const boss=()=>session&&AppStore.getBossEvent(session.index);
  const same=c=>session===c&&currentUser?.id===c.owner&&boss()?._id===c.bossId&&(boss()?.raidRunId||'legacy')===c.run;
@@ -11,7 +14,7 @@
  function opensAt(b){return startTime(b)+Math.min(4000,Math.max(0,(b.lootDuration??120)*250))-(b._raidClockOffset||0);}
  function remaining(b){return Math.max(0,Math.ceil((startTime(b)+(b.lootDuration??120)*1000-Date.now()-(b._raidClockOffset||0))/1000));}
  function schedule(c,fn,ms){const timer=setTimeout(()=>{c.timers.delete(timer);if(same(c))fn();},ms);c.timers.add(timer);return timer;}
- function stop(){
+ function stop(){window.RaidCanvas?.stopDefeat();
   const c=session;if(!c)return;session=null;for(const timer of c.timers)clearTimeout(timer);clearInterval(c.clock);c.resize?.disconnect();document.removeEventListener('keydown',c.keys);c.root.remove();
   document.getElementById('campaign-overlay')?.classList.remove('raid-loot-active');
  }
@@ -49,6 +52,7 @@
   }return used;
  }
  function pickupBurst(c,node,receipt){
+  window.RaidCanvas?.loot('pickup',{x:parseFloat(node.style.left),y:parseFloat(node.style.top)+node.offsetHeight/2,color:node.style.getPropertyValue('--drop-accent')});
   if(motion.matches)return;const pop=document.createElement('div');pop.className='rla-pickup-pop';pop.setAttribute('aria-hidden','true');
   pop.style.left=node.style.left;pop.style.top=(parseFloat(node.style.top)+node.offsetHeight/2)+'px';pop.style.setProperty('--drop-accent',node.style.getPropertyValue('--drop-accent'));
   pop.innerHTML='<i></i>'+Array.from({length:8},(_,i)=>`<b style="--angle:${i*45}deg"></b>`).join('')+`<strong>${esc(receipt.itemName)}</strong>`;c.field.appendChild(pop);
@@ -66,12 +70,12 @@
   // The server release/expiry clocks remain authoritative for every pickup.
   const span=Math.max(1,nodes.length-1),gap=Math.min(180,Math.max(100,2800/span),8000/span);
   nodes.forEach((node,i)=>{
-   const delay=550+i*gap;node._landed=false;node.dataset.emissionOrder=i;node.classList.add('rla-awaiting');node.style.setProperty('--drop-delay',delay+'ms');
+   const delay=550+i*gap;node._landed=false;node.dataset.emissionOrder=i;node.dataset.sheen=String(i<12);node.classList.add('rla-awaiting');node.style.setProperty('--drop-delay',delay+'ms');
    c.emissionTimers.push(schedule(c,()=>{
-    if(!node.isConnected||c.taken.has(node.dataset.tokenKey))return;node.classList.remove('rla-awaiting');node.dataset.emitted='true';
+    if(!node.isConnected||c.taken.has(node.dataset.tokenKey))return;node.classList.remove('rla-awaiting');node.dataset.emitted='true';window.RaidCanvas?.loot('launch',{node,color:node.style.getPropertyValue('--drop-accent')});
     const pulse=document.createElement('i');pulse.className='rla-ejection';pulse.setAttribute('aria-hidden','true');pulse.style.color=node.style.getPropertyValue('--drop-accent');c.field.appendChild(pulse);schedule(c,()=>pulse.remove(),320);
    },delay));
-   c.emissionTimers.push(schedule(c,()=>{node._landed=true;node.classList.add('rla-landed');if(i===nodes.length-1){c.emitting=false;c.root.classList.remove('rla-emitting');if(boss()?.status==='loot'&&Date.now()>=opensAt(boss())&&wbcMyRecord(c.index)?.totalDamage>0&&boss()._raidLootVersion===2)message('Pick up each treasure. Your confirmed pieces are saved.');}update();},delay+1000));
+   c.emissionTimers.push(schedule(c,()=>{node._landed=true;node.classList.add('rla-landed');window.RaidCanvas?.loot('land',{x:parseFloat(node.style.left),y:parseFloat(node.style.top)+node.offsetHeight/2,color:node.style.getPropertyValue('--drop-accent')});if(i===nodes.length-1){c.emitting=false;c.root.classList.remove('rla-emitting');if(boss()?.status==='loot'&&Date.now()>=opensAt(boss())&&wbcMyRecord(c.index)?.totalDamage>0&&boss()._raidLootVersion===2)message('Pick up each treasure. Your confirmed pieces are saved.');}update();},delay+1000));
   });
  }
  function collect(c,node,receipt){
@@ -94,7 +98,7 @@
   const art=typeof bveRenderBossArt==='function'?bveRenderBossArt(b,{id:'raid-loot-boss-art',stateClass:'state-defeated'}):esc(b.image||b.name);
   root.innerHTML=`<header class="rla-header"><div><span>WORLD BOSS · TREASURE</span><strong>${esc(b.name)}</strong></div><button type="button" class="rla-exit">Leave arena</button></header><div class="rla-victory"><span>RAID COMPLETE</span><h1>${esc(b.victoryTitle||'VICTORY')}</h1><p>${esc(b.victoryMessage||'The boss has fallen. Your claimed treasure is yours to keep.')}</p></div><div class="rla-field" aria-label="Scattered boss loot"><div class="rla-detonation" aria-hidden="true"><i></i><b></b><em></em></div><div class="rla-shockwave" aria-hidden="true"></div><div class="rla-boss">${art}<svg class="rla-body-rift" viewBox="0 0 180 160" aria-hidden="true"><path d="m90 25-9 30 14 13-16 20 12 20-10 27m1-80-26-4-14-15m51 31 26-11 18 5m-57 27-26 9-17-7m54 17 26 1 16 17"/></svg><div class="rla-boss-seal" aria-hidden="true"></div></div><div class="rla-fragments" aria-hidden="true">${Array.from({length:motion.matches?0:28},(_,i)=>`<i style="--i:${i};--angle:${i*137.5}deg;--reach:${110+(i%7)*25}px"></i>`).join('')}</div></div><footer class="rla-footer"><p id="raid-loot-notice" role="status" aria-live="polite"></p><div id="raid-loot-secured"></div><div id="raid-loot-latest"></div><button type="button" class="rla-results">View raid results</button><p class="rla-inventory-note">Confirmed drops are saved in My Inventory.</p></footer>`;
   scene.appendChild(root);
-  const c={index,owner:currentUser.id,bossId:b._id,run:b.raidRunId||'legacy',root,field:root.querySelector('.rla-field'),drops:new Map(),busy:new Set(),timers:new Set(),taken:new Set(),initial:true,ready:false,cinematic,emitting:false,emissionTimers:[]};session=c;
+  const c={index,owner:currentUser.id,bossId:b._id,run:b.raidRunId||'legacy',root,field:root.querySelector('.rla-field'),drops:new Map(),busy:new Set(),timers:new Set(),taken:new Set(),initial:true,ready:false,cinematic,emitting:false,emissionTimers:[]};session=c;window.RaidCanvas?.defeat(c.field,b,document.getElementById('raid-loot-boss-art'),cinematic);
   root.querySelector('.rla-exit').onclick=()=>wbrCloseBattle();root.querySelector('.rla-results').onclick=()=>RaidExperience.openSummary(index);
   c.keys=event=>{if(event.key==='Escape'&&!event.defaultPrevented&&!document.querySelector('#modal-overlay[style*="flex"]')){event.preventDefault();wbrCloseBattle();}};document.addEventListener('keydown',c.keys);
   for(const reward of b.lootRewards||[])for(let slot=0;slot<Math.max(0,Math.floor(Number(reward.quantity)||0));slot++){
@@ -127,7 +131,7 @@
    const mine=wblrClaimedByStudent(b,reward.id,c.owner),busy=c.busy.has(node.dataset.tokenKey),limit=reward.claimLimit||1;
    node.disabled=!node._landed||!ready||!eligible||mine>=limit||busy||b._raidLootVersion!==2;node.setAttribute('aria-busy',String(busy));
    const state=busy?'Picking up…':mine>=limit?'Personal limit reached':!live?'Looting finished':!node._landed?'Landing…':wait?'Get ready':!eligible?'Contribution required':'Pick up';
-   const markup=`<span class="rla-drop-visual" aria-hidden="true"><span class="rla-drop-dust"></span><span class="rla-drop-icon">${glyph(reward.rarity)}</span></span><strong>${esc(reward.itemName)}</strong><span class="rla-drop-hint"></span>`;
+   const markup=`<span class="rla-drop-visual" aria-hidden="true"><span class="rla-drop-dust"></span><span class="rla-loot-plinth"></span><span class="rla-drop-icon">${glyph(reward.rarity)}</span></span><strong>${esc(reward.itemName)}</strong><span class="rla-drop-hint"></span>`;
    if(node._lootMarkup!==markup){node.innerHTML=markup;node._lootMarkup=markup;}
    const hint=node.querySelector('.rla-drop-hint');if(hint.textContent!==state)hint.textContent=state;
    node.setAttribute('aria-label',`${reward.itemName}, ${reward.rarity||'Common'}. ${state}`);node.title=reward.itemName+' · '+(reward.rarity||'Common');

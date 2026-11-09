@@ -7,7 +7,7 @@
  const now=b=>Date.now()+(b?._raidClockOffset||0);
  const lossText=(hit,rec)=>'You lost '+hit.damage+' heart'+(hit.damage===1?'':'s')+' · '+(rec?.hp??hit.after)+'/'+(rec?.maxHp??hit.maxHp)+' left';
  function busy(index){const b=AppStore.getBossEvent(index),u=b?.raidUltimate;return !!(u&&['casting','eruption'].includes(u.phase)&&(u.phase==='casting'||now(b)<u.endsAt));}
- function stop(){clearTimeout(damageTimer);document.getElementById('rux-player-damage')?.remove();document.getElementById('camp-lives')?.classList.remove('rux-health-hit');window.RaidFX?.endCataclysm();clearInterval(timer);timer=null;session=null;document.querySelectorAll('#raid-ultimate,#raid-ultimate-core').forEach(n=>n.remove());document.getElementById('camp-scene')?.classList.remove('rux-charging','rux-eruption','rux-broken');}
+ function stop(){window.RaidCanvas?.ultimate(null);clearTimeout(damageTimer);document.getElementById('rux-player-damage')?.remove();document.getElementById('camp-lives')?.classList.remove('rux-health-hit');window.RaidFX?.endCataclysm();clearInterval(timer);timer=null;session=null;document.querySelectorAll('#raid-ultimate,#raid-ultimate-core').forEach(n=>n.remove());document.getElementById('camp-scene')?.classList.remove('rux-charging','rux-eruption','rux-broken');}
  function sync(index){
   const b=AppStore.getBossEvent(index),u=b?.raidUltimate,scene=document.getElementById('camp-scene');
   if(!scene||!document.querySelector('.raid-battle.open')||WBR.phase!=='battle'||b?.status!=='active'||!u?.id||!['casting','eruption','interrupted'].includes(u.phase)){if(session)stop();return;}
@@ -18,6 +18,7 @@
   if(!panel){panel=document.createElement('section');panel.id='raid-ultimate';panel.setAttribute('aria-label','Class ultimate challenge');panel.innerHTML='<div class="rux-heading"><span class="rux-tag">CLASS INTERRUPT</span><strong>CATACLYSM</strong><span class="rux-clock"></span></div><p class="rux-instruction"></p><div class="rux-track"><i></i></div><div class="rux-foot"><strong></strong><span></span></div><div class="rux-announcement" role="status" aria-live="polite"></div>';document.querySelector('.camp-question-box')?.before(panel);}
   let core=document.getElementById('raid-ultimate-core');
   if(!core){core=document.createElement('div');core.id='raid-ultimate-core';core.setAttribute('aria-hidden','true');core.innerHTML='<div class="rux-solar-shaft"></div><div class="rux-solar-crown"><svg viewBox="0 0 200 200">'+Array.from({length:12},(_,i)=>`<path transform="rotate(${i*30} 100 100)" d="m100 8 6 51-6 14-6-14Z"/>`).join('')+'<circle cx="100" cy="100" r="32"/><circle class="rux-sun-disc" cx="100" cy="100" r="23"/></svg></div><svg class="rux-cracks" viewBox="0 0 200 200"><path d="m100 15-16 43 20 18-18 26 15 17-24 66M84 58 49 66 29 94m75-18 32-22 36 8m-86 40-35 25-27-8m77 0 37 18 28 40"/></svg>'+Array.from({length:10},(_,i)=>`<i class="rux-splinter" style="--angle:${i*36}deg"></i>`).join('')+'<div class="rux-outcome"></div>';document.getElementById('camp-enemy-sprite')?.appendChild(core);}
+  window.RaidCanvas?.ultimate({id:u.id,phase:u.phase,progress:u.progress||0,target:u.target||1});
   panel.dataset.phase=u.phase;core.dataset.phase=u.phase;
   core.querySelector('.rux-outcome').textContent=u.phase==='interrupted'?'CAST BROKEN':u.phase==='eruption'&&reduced()?'SOLAR BARRAGE':'';
   const changed=session.phase!==u.phase;
