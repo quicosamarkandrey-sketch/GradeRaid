@@ -13,7 +13,12 @@ const fixture=require('../helpers/attendance-station-db.cjs'),{chromium}=require
   AppStore.updateState(d=>{d.students=[{id:'alex',name:'Alex Rivera',classId:'room-a',init:'AR',attendance:100,coins:0,xp:0},{id:'bea',name:'Bea Cruz',classId:'room-a',init:'BC',attendance:100,coins:0,xp:0},{id:'cam',name:'Cam Reyes',classId:'room-a',init:'CR',attendance:100,coins:0,xp:0}];d.attendanceLogs=[];d.classSections=[{id:'room-a',name:'Room A',gradeLevel:'8',sectionName:'A',isActive:true}];});
   document.getElementById('boot-loading').style.display='none';document.getElementById('login-screen').style.display='none';document.getElementById('main-app').style.display='block';setupSidebar();navTo('a-scanner');
  });await boot();
- await page.locator('#as-ready').filter({hasText:'Ready for cards'}).waitFor();await page.locator('[data-as=activate]').click();
+ await page.locator('#as-ready').filter({hasText:'Ready for cards'}).waitFor();await page.locator('[data-as=monitor]').click();await page.locator('.as-monitor').waitFor();
+ assert.equal(await page.locator('#sidebar').isVisible(),false,'Monitor mode removes app navigation');
+ const canvas=await page.locator('#as-stage').evaluate(n=>getComputedStyle(n).backgroundImage);assert.doesNotMatch(canvas,/rgb\(38, 63, 50\)/,'No green station wash');
+ await page.locator('[data-as=activate]').click();
+ const savedPhoto=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=c.height=256;const g=c.getContext('2d');g.fillStyle='#9aaec3';g.fillRect(0,0,256,256);g.fillStyle='#364452';g.beginPath();g.arc(128,265,100,Math.PI,0);g.fill();g.fillStyle='#e3c4ac';g.beginPath();g.arc(128,105,52,0,Math.PI*2);g.fill();return c.toDataURL();});
+ await db.query('update profiles set profile_pic_url=$1',[savedPhoto]);await page.waitForTimeout(3200);
  await page.evaluate(()=>{window.testTones=[];window.AudioContext=class{constructor(){this.state='suspended';this.currentTime=0;this.destination={};}async resume(){this.state='running';}async close(){}createOscillator(){return{frequency:{set value(v){testTones.push(v);}},connect(){},start(){},stop(){}};}createGain(){return{gain:{setValueAtTime(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){}};}};});await page.locator('[data-as=sound]').click();
  const tap=async tag=>{await page.locator('#as-capture').focus();await page.keyboard.type(tag);await page.keyboard.press('Enter');};
  // Back-to-back taps are accepted while the previous one waits for SQL.
@@ -21,7 +26,14 @@ const fixture=require('../helpers/attendance-station-db.cjs'),{chromium}=require
  assert.deepEqual(await page.evaluate(()=>confirmations.slice(0,2)),['Alex Rivera','Bea Cruz']);assert.deepEqual(scans.slice(0,2),['1001','1002']);
  assert.equal((await db.query('select coins from profiles where id=$1',['alex'])).rows[0].coins,10);
  assert.doesNotMatch(await page.locator('#as-stage').textContent(),/Cumulative|Class Rank|Below 75|Coins/);
- await page.waitForTimeout(350);await page.screenshot({path:'/workspace/attendance-arrival-desktop.png'});
+ await page.waitForTimeout(1000);assert.equal(await page.locator('.as-portrait img').getAttribute('src'),savedPhoto);
+ assert.equal(await page.locator('.as-portrait img').evaluate(n=>n.complete&&n.naturalWidth>0),true);assert.equal(await page.locator('.as-portrait img').evaluate(n=>getComputedStyle(n).opacity),'1');
+ const portrait=await page.locator('.as-portrait').boundingBox();assert.ok(portrait.width>=300,'Student portrait is monitor-sized');assert.ok(Math.abs(portrait.width-portrait.height)<2,'Portrait is square');
+ assert.equal(await page.locator('.as-receipt').evaluate(n=>getComputedStyle(n).backgroundColor),'rgb(255, 255, 255)');
+ await page.screenshot({path:'/workspace/attendance-arrival-desktop.png'});
+ await page.waitForTimeout(5000);assert.equal(await page.locator('.as-receipt h1').textContent(),'Bea Cruz','Last confirmed student stays visible without another tap');assert.match(await page.locator('.as-next-ready').textContent(),/Ready for the next card/);
+ for(const viewport of [{width:1366,height:768},{width:1920,height:1080}]){await page.setViewportSize(viewport);await page.waitForTimeout(350);const reveal=await page.locator('.as-receipt').boundingBox(),stage=await page.locator('#as-stage').boundingBox();assert.ok(reveal.y>=stage.y-1&&reveal.y+reveal.height<=stage.y+stage.height+1,'Entire student reveal fits monitor '+JSON.stringify(viewport));}
+ await page.setViewportSize({width:1440,height:1000});await page.waitForTimeout(350);
  const first=(await db.query("select scanned_at from attendance_logs where student_id='alex'")).rows[0].scanned_at;
  await page.waitForTimeout(2600);await tap('1001');await page.locator('.as-duplicate').waitFor();assert.equal(new Date((await db.query("select scanned_at from attendance_logs where student_id='alex'")).rows[0].scanned_at).getTime(),new Date(first).getTime());
  // Unknown cards show a calm public message, never the ID.
@@ -44,6 +56,6 @@ const fixture=require('../helpers/attendance-station-db.cjs'),{chromium}=require
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(350);assert.ok(await page.locator('.as-station').evaluate(n=>n.scrollWidth<=n.clientWidth+1),'No station overflow at '+width+' '+JSON.stringify(await page.locator('.as-station').evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth,overflow:[...n.querySelectorAll('*')].filter(e=>e.getClientRects().length&&e.getBoundingClientRect().right>n.getBoundingClientRect().right+1).slice(0,6).map(e=>({tag:e.tagName,cls:e.className,width:e.getBoundingClientRect().width}))}))));}
  await page.setViewportSize({width:390,height:1000});await page.waitForTimeout(350);await page.screenshot({path:'/workspace/attendance-station-phone.png'});
  await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(2600);await tap('1001');await page.locator('.as-receipt').waitFor();assert.equal(await page.locator('.as-receipt').evaluate(n=>getComputedStyle(n).animationName),'none');
- await page.evaluate(()=>navTo('a-dashboard'));assert.equal(await page.evaluate(()=>AttendanceStation.mounted()),false);assert.deepEqual(errors,[]);
- console.log('PASS: actual scanner route, keyboard reader FIFO under delayed SQL, neutral arrival receipts, duplicate first-time preservation, private error review with password gate, test reader without attendance, offline durable receipt/reconnect, manual correction/reward reversal, audit, finalize, 320/390/768/1440, reduced motion and cleanup.');
+ await page.evaluate(()=>navTo('a-dashboard'));assert.equal(await page.evaluate(()=>document.body.classList.contains('as-monitor-mode')),false);assert.equal(await page.evaluate(()=>AttendanceStation.mounted()),false);assert.deepEqual(errors,[]);
+ console.log('PASS: actual scanner route, keyboard reader FIFO under delayed SQL, neutral arrival receipts, duplicate first-time preservation, private error review with password gate, test reader without attendance, monitor view and exit, saved square photo, black/white canvas and white reveal, held last confirmation until next tap, offline durable receipt/reconnect, manual correction/reward reversal, audit, finalize, 320/390/768/1440, reduced motion and cleanup.');
  }finally{await browser?.close();if(server)await new Promise(r=>server.close(r));await db.close();}})().catch(e=>{console.error(e);process.exit(1)});

@@ -9,7 +9,7 @@
  const button=(action,text,attrs='')=>`<button type="button" data-as="${action}" ${attrs}>${text}</button>`;
  const here=status=>['Early','On Time','Late'].includes(status);
  const reasonLabels={unknown_card:'Card not registered',wrong_section:'Card belongs to another section',review_time:'Delayed scan / arrival time needs review',existing_exception:'An absent or excused entry already exists',no_schedule:'No attendance schedule',no_class_today:'No class scheduled today',not_open:'Tapped before opening',closed:'Tapped after the window closed',finalized:'Attendance already finalized'};
- let root=null,classId='',owner='',snapshot=null,generation=0,poll=null,tick=null,captureTimer=null,displayTimer=null,staffTimer=null,nfc=null,staff=false,teacherTab='here',processing=false,refreshing=false,modalBusy=false,paused=false,ready=false,offset=0,lastRead=null,displayQueue=[],showing=false,audio=null,sound=false,volume=memory.get('eq-attendance-volume',.25),lastTags=new Map(),proof=false,mutation=null;
+ let root=null,classId='',owner='',snapshot=null,generation=0,poll=null,tick=null,captureTimer=null,displayTimer=null,staffTimer=null,nfc=null,staff=false,teacherTab='here',processing=false,refreshing=false,modalBusy=false,paused=false,ready=false,offset=0,lastRead=null,displayQueue=[],showing=false,displayStartedAt=0,currentDisplay=null,audio=null,sound=false,volume=memory.get('eq-attendance-volume',.25),lastTags=new Map(),proof=false,mutation=null;
  let lastLogSignature='',writeVersion=0;
  let queue=memory.get('eq-attendance-queue-v1',[]);
  const shown=new Set(memory.get('eq-attendance-shown-v1',[]));
@@ -54,7 +54,7 @@
  }
  async function refresh(){
   if(!root||refreshing)return;refreshing=true;
-  try{const version=writeVersion;const next=await rpc('snapshot');if(version!==writeVersion)return;snapshot=next;mergeSnapshot();offset=new Date(snapshot.serverTime).getTime()-Date.now();ready=true;renderSummary();renderStatus();if(staff&&!['manual','preflight','close'].includes(teacherTab)&&!document.activeElement?.closest('#as-teacher-body input,#as-teacher-body select'))renderTeacherBody();}
+  try{const version=writeVersion;const next=await rpc('snapshot');if(version!==writeVersion)return;snapshot=next;if(currentDisplay?.ok&&!snapshot.logs.some(l=>String(l.id)===String(currentDisplay.log?.id)&&l.status===currentDisplay.status)){clearTimeout(displayTimer);showing=false;currentDisplay=null;idle();}mergeSnapshot();offset=new Date(snapshot.serverTime).getTime()-Date.now();ready=true;renderSummary();renderStatus();if(staff&&!['manual','preflight','close'].includes(teacherTab)&&!document.activeElement?.closest('#as-teacher-body input,#as-teacher-body select'))renderTeacherBody();}
   catch(e){if(!e.stale){ready=false;renderStatus();publicNotice('Connection unavailable. Unconfirmed taps stay pending.');message(e.message);if(!snapshot)idle('Station needs attention','Ask your teacher to check the connection or finish setup.');}}
   finally{refreshing=false;}
  }
@@ -71,11 +71,12 @@
   if(!root)return;
   const active=document.hasFocus()&&!document.hidden,s=scheduleState();
   const label=paused?'Scanner paused':!navigator.onLine?'Offline · taps will stay pending':!ready?'Connecting to attendance':!active?'Activate this window to scan':staff||modalOpen()?'Teacher controls open':!s.open?s.label:'Ready for cards';
-  root.querySelector('#as-ready').textContent=label;root.querySelector('#as-ready').dataset.tone=paused||!ready||!active?'attention':'ready';
+  if(root.querySelector('#as-ready').textContent!==label)root.querySelector('#as-ready').textContent=label;root.querySelector('#as-ready').dataset.tone=paused||!ready||!active?'attention':'ready';
   root.querySelector('#as-window').textContent=s.detail;
   root.querySelector('#as-queue').textContent=ownQueue().length?ownQueue().length+' scans pending confirmation':'Only confirmed attendance is shown';
   root.querySelector('[data-as="pause"]').textContent=paused?'Resume scanner':'Pause scanner';
   root.querySelectorAll('[data-as="sound"]').forEach(n=>n.innerHTML=svg('sound')+(sound?'Sound on · mute':'Enable sound'));
+  const cue=root.querySelector('.as-next-ready');if(cue){const text=paused?'Scanner paused':!active?'Activate window to scan':!ready||!navigator.onLine?'Offline · next taps stay pending':!s.open?s.label:ownQueue().length?'Checking next card…':'Ready for the next card';if(cue.textContent!==text)cue.textContent=text;cue.dataset.ready=String(!paused&&active&&ready&&navigator.onLine&&s.open);}
   const stage=root.querySelector('#as-stage');if(stage?.dataset.state==='idle'){const key=[s.label,ready,paused].join();if(stage.dataset.key!==key){idle(paused?'Scanning is paused':s.open?'Welcome to class.':s.label,paused?'Your teacher will resume scanning shortly.':s.open?'Tap your card once on the reader.':s.detail);stage.dataset.key=key;}}
  }
  function renderSummary(){
@@ -91,20 +92,28 @@
   const canTap=ready&&!paused&&scheduleState().open;
   stage.innerHTML=`<div class="as-idle"><div class="as-reader-mark">${svg('card')}<i></i><i></i></div><p class="as-eyebrow">YOUR CLASSROOM STARTS HERE</p><h1>${esc(title)}</h1><p>${esc(detail)}</p>${canTap?'<div class="as-tap-instruction"><span>01</span> Tap your card <b>→</b> <span>02</span> Wait for your name</div>':'<div class="as-tap-instruction">Your teacher can help with an attendance entry.</div>'}</div>`;
  }
- function enqueueDisplay(result){displayQueue.push(result);nextDisplay();}
+ function finishDisplay(){
+  showing=false;if(!root)return;if(displayQueue.length)nextDisplay();else{idle();renderStatus();}
+ }
+ function enqueueDisplay(result){
+  displayQueue.push(result);
+  if(showing){clearTimeout(displayTimer);displayTimer=setTimeout(finishDisplay,Math.max(0,1250-(Date.now()-displayStartedAt)));}
+  else nextDisplay();
+ }
  function nextDisplay(){
-  if(showing||!displayQueue.length||!root||staff)return;showing=true;
-  const result=displayQueue.shift(),stage=root.querySelector('#as-stage');clearTimeout(displayTimer);
+  if(showing||!displayQueue.length||!root||staff)return;showing=true;displayStartedAt=Date.now();
+  const result=displayQueue.shift(),stage=root.querySelector('#as-stage');clearTimeout(displayTimer);currentDisplay=result;
   if(result.ok){
    const r=student(result.studentId),duplicate=result.alreadyRecorded,arrival=result.log?.scanned_at;
    stage.dataset.state='confirmed';
-   stage.innerHTML=`<article class="as-receipt ${duplicate?'as-duplicate':''}"><div class="as-receipt-label">${svg(duplicate?'clock':'check')} ${duplicate?'YOU’RE ALREADY CHECKED IN':'ATTENDANCE RECORDED'}</div><div class="as-receipt-main"><div class="as-portrait">${photo(r)}</div><div><p class="as-eyebrow">${esc(classLabel())}</p><h1>${esc(r?.name||'Student')}</h1><p class="as-welcome">${duplicate?'Your first arrival time is saved.':'You’re checked in. Have a great class.'}</p><div class="as-arrival-time">${schoolTime(arrival)} <span>${esc(result.status)}</span></div></div></div><footer>${svg('check')} ${duplicate?'No new entry or rewards added.':'Saved to your attendance history.'}</footer></article>`;
+   stage.innerHTML=`<article class="as-receipt ${duplicate?'as-duplicate':''}" data-status="${esc(result.status)}"><div class="as-receipt-label"><span class="as-confirmation">${svg(duplicate?'clock':'check')} ${duplicate?'Already recorded':'Attendance confirmed'}</span><span class="as-receipt-date">${esc(new Date(arrival).toLocaleDateString('en-PH',{timeZone:'Asia/Manila',month:'short',day:'numeric',year:'numeric'}))}</span></div><div class="as-receipt-main"><div class="as-portrait-frame"><div class="as-portrait">${photo(r)}</div><span class="as-photo-corner as-photo-corner-top" aria-hidden="true"></span><span class="as-photo-corner as-photo-corner-bottom" aria-hidden="true"></span></div><div class="as-identity"><p class="as-reveal-kicker">${duplicate?'Good to see you again.':'Welcome to class.'}</p><h1>${esc(r?.name||'Student')}</h1><p class="as-student-section">${esc(classLabel())}</p><div class="as-arrival-time"><div><span class="as-meta-label">${duplicate?'FIRST CHECK-IN':'ARRIVAL TIME'}</span><strong>${schoolTime(arrival)}</strong></div><span class="as-attendance-badge">${esc(result.status)}</span></div><p class="as-welcome">${duplicate?'Your original arrival is saved. You’re all set.':'You’re here. You’re checked in. Have a great class.'}</p></div></div><footer><span>${svg('check')} ${duplicate?'One attendance entry. No duplicate rewards.':'Saved to your attendance history.'}</span><span class="as-receipt-signoff as-next-ready" aria-hidden="true">Ready for the next card</span></footer><div class="as-reveal-line" aria-hidden="true"></div></article>`;
    tone(duplicate?'duplicate':'success');
   }else{
    stage.dataset.state='attention';stage.innerHTML=`<div class="as-attention"><div class="as-reader-mark">${svg('card')}</div><p class="as-eyebrow">LET’S GET THIS SORTED</p><h1>Please see your teacher.</h1><p>${result.error==='review_time'?'Your tap was received. Your teacher will check the arrival time.':'Your attendance needs a quick check before it can be confirmed.'}</p><small>You can step aside so the next student can tap.</small></div>`;tone('attention');
   }
   // Accept every new tap immediately; recognition is a separate, bounded queue.
-  displayTimer=setTimeout(()=>{showing=false;if(!root)return;if(displayQueue.length)nextDisplay();else{idle();renderStatus();}},displayQueue.length?950:1800);
+  if(displayQueue.length||!result.ok)displayTimer=setTimeout(finishDisplay,displayQueue.length?1250:3200);else displayTimer=null;
+  renderStatus();
  }
  async function ingest(raw){
   if(!root||paused||staff||modalOpen())return;
@@ -150,7 +159,7 @@
  function touchTeacher(){clearTimeout(staffTimer);if(staff)staffTimer=setTimeout(lockTeacher,120000);}
  function lockTeacher(){
   staff=false;mutation=null;clearTimeout(staffTimer);root?.querySelector('#as-teacher')?.remove();root?.classList.remove('as-private');if(root){root.querySelector('.as-shell').inert=false;root.querySelector('#as-capture').disabled=false;}
-  if(root){idle();renderStatus();nextDisplay();root.querySelector('#as-capture')?.focus({preventScroll:true});}
+  if(root){if(!showing)idle();renderStatus();if(showing&&displayQueue.length)finishDisplay();else nextDisplay();root.querySelector('#as-capture')?.focus({preventScroll:true});}
  }
  function openTeacher(requestedTab='here'){
   if(!root||staff)return;const panel=document.createElement('section');panel.id='as-teacher';panel.className='as-teacher';panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.setAttribute('aria-label','Teacher controls');
@@ -193,7 +202,7 @@
  async function mutate(action,payload){
   if(modalBusy)return null;modalBusy=true;root?.querySelectorAll('#as-teacher button[type=submit]').forEach(n=>n.disabled=true);
   const encoded=JSON.stringify([action,payload]);if(mutation?.key!==encoded)mutation={key:encoded,id:id()};
-  try{const result=await rpc(action,{...payload,id:mutation.id});if(result.ok===false)throw new Error(result.message||'Change not confirmed');writeVersion++;syncLog({...result,date:payload.date});mutation=null;await refresh();message('Saved. Attendance and rewards follow the confirmed record.');return result;}
+  try{const result=await rpc(action,{...payload,id:mutation.id});if(result.ok===false)throw new Error(result.message||'Change not confirmed');writeVersion++;syncLog({...result,date:payload.date});if(action==='finalize'||action==='reopen'){clearTimeout(displayTimer);showing=false;currentDisplay=null;displayQueue=[];idle();}mutation=null;await refresh();message('Saved. Attendance and rewards follow the confirmed record.');return result;}
   catch(e){if(!e.stale)message(e.message+' Your change is not yet confirmed. Retry with the same values to check it safely.');return null;}
   finally{modalBusy=false;root?.querySelectorAll('#as-teacher button[type=submit]').forEach(n=>n.disabled=false);}
  }
@@ -208,7 +217,8 @@
   if(a==='teacher')return openTeacher();if(a==='lock')return lockTeacher();
   if(a==='pause'){paused=!paused;renderStatus();if(!paused)root.querySelector('#as-capture').focus();return;}
   if(a==='sound')return toggleSound();
-  if(a==='fullscreen'){try{if(document.fullscreenElement)await document.exitFullscreen();else await root.requestFullscreen();}catch{publicNotice('Use the browser’s full-screen option.');}return;}
+  if(a==='monitor'){setMonitor(!root.classList.contains('as-monitor'));return;}
+  if(a==='fullscreen'){setMonitor(true);try{if(document.fullscreenElement)await document.exitFullscreen();else await root.requestFullscreen();}catch{publicNotice('Use the browser’s full-screen option.');}return;}
   if(a==='activate'){root.querySelector('#as-capture').focus();renderStatus();return;}
   if(!staff||!root.querySelector('#as-teacher-body'))return;
   if(a==='tab'){teacherTab=b.dataset.tab;mutation=null;renderTeacherBody();return;}
@@ -227,13 +237,19 @@
    if(confirm(a==='finalize'?'Finalize today’s attendance and mark the listed students absent?':'Reopen the station? Existing attendance entries are kept for review.')){const result=await mutate(a,{reason,date:snapshot.date});if(result)renderTeacherBody();}return;
   }
  }
+ function setMonitor(enabled){
+  if(!root)return;root.classList.toggle('as-monitor',enabled);document.body.classList.toggle('as-monitor-mode',enabled);memory.set('eq-attendance-monitor',enabled);
+  const button=root.querySelector('[data-as="monitor"]');if(button){button.textContent=enabled?'Exit monitor view':'Monitor view';button.setAttribute('aria-pressed',String(enabled));}
+  if(!enabled&&document.fullscreenElement===root)document.exitFullscreen().catch(()=>{});
+ }
  function mount(options={}){
   unmount();root=document.getElementById('a-scanner');if(!root)return;root.classList.add('as-station');classId=options.classId||'default-class';owner=identity();
   const state=AppStore.getState(),classes=window.getActiveClassIds?window.getActiveClassIds(state):[...new Set((state.students||[]).map(r=>r.classId))].filter(Boolean);
   if(classes.length&&!classes.includes(classId)){root=null;window._rfidOnClassChange(classes[0]);return;}
   if(!classes.length)classes.push(classId);const at=generation;
-  root.innerHTML=`<input id="as-capture" aria-label="RFID reader input" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="none"><div class="as-shell"><header class="as-header"><div class="as-brand">${svg('card')}<div><p class="as-eyebrow">CLASSROOM CHECK-IN</p><select id="as-class" aria-label="Attendance section">${classes.map(c=>`<option value="${esc(c)}" ${c===classId?'selected':''}>${esc(window.getClassLabel?window.getClassLabel(c,state):c)}</option>`).join('')}</select></div></div><div class="as-header-tools"><time id="as-clock"></time>${button('sound',svg('sound')+'Enable sound')}${button('fullscreen','Full screen')}${button('teacher',svg('lock')+'Teacher view')}</div></header><div class="as-status-strip"><span id="as-ready" role="status">Connecting to attendance</span><span id="as-window"></span>${button('activate','Activate scanner')}${button('pause','Pause scanner')}</div><main class="as-main"><section id="as-stage" aria-live="polite" aria-atomic="true"></section><aside class="as-sidebar"><p class="as-eyebrow">TODAY, TOGETHER</p><div class="as-headcount"><strong id="as-arrived">—</strong><span>/ <b id="as-total">—</b> here</span></div><div class="as-progress"><i id="as-progress"></i></div><p id="as-count-caption"></p><div class="as-arrivals-heading"><h2>Latest arrivals</h2><span>LIVE</span></div><ol id="as-arrivals"></ol><p class="as-sidebar-note">Wait for your name before moving on.<br>Only confirmed taps count as attendance.</p></aside></main><footer class="as-footer"><span id="as-public-notice" role="status">Waiting for the station to connect.</span><span id="as-queue"></span></footer></div>`;
+  root.innerHTML=`<input id="as-capture" aria-label="RFID reader input" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="none"><div class="as-shell"><header class="as-header"><div class="as-brand">${svg('card')}<div><p class="as-eyebrow">CLASSROOM CHECK-IN</p><select id="as-class" aria-label="Attendance section">${classes.map(c=>`<option value="${esc(c)}" ${c===classId?'selected':''}>${esc(window.getClassLabel?window.getClassLabel(c,state):c)}</option>`).join('')}</select></div></div><div class="as-header-tools"><time id="as-clock"></time>${button('sound',svg('sound')+'Enable sound')}${button('monitor','Monitor view','aria-pressed="false"')}${button('fullscreen','Full screen')}${button('teacher',svg('lock')+'Teacher view')}</div></header><div class="as-status-strip"><span id="as-ready" role="status">Connecting to attendance</span><span id="as-window"></span>${button('activate','Activate scanner')}${button('pause','Pause scanner')}</div><main class="as-main"><section id="as-stage" aria-live="polite" aria-atomic="true"></section><aside class="as-sidebar"><p class="as-eyebrow">TODAY, TOGETHER</p><div class="as-headcount"><strong id="as-arrived">—</strong><span>/ <b id="as-total">—</b> here</span></div><div class="as-progress"><i id="as-progress"></i></div><p id="as-count-caption"></p><div class="as-arrivals-heading"><h2>Latest arrivals</h2><span>LIVE</span></div><ol id="as-arrivals"></ol><p class="as-sidebar-note">Wait for your name before moving on.<br>Only confirmed taps count as attendance.</p></aside></main><footer class="as-footer"><span id="as-public-notice" role="status">Waiting for the station to connect.</span><span id="as-queue"></span></footer></div>`;
   root.onclick=async e=>{await click(e);if(root&&!staff&&!paused)focusReader();};root.onkeydown=e=>{if(e.target.id==='as-reader-test'&&e.key==='Enter'){e.preventDefault();testReader(e.target);return;}captureKey(e);};root.onpointerdown=()=>{if(staff)touchTeacher();};root.oninput=e=>{if(staff)touchTeacher();if(e.target.id==='as-reader-test'){clearTimeout(captureTimer);captureTimer=setTimeout(()=>testReader(e.target),200);}if(e.target.matches('[data-as-volume]')){volume=Number(e.target.value);memory.set('eq-attendance-volume',volume);}if(e.target.id==='as-search'){const term=e.target.value.toLowerCase();root.querySelectorAll('[data-name]').forEach(n=>n.hidden=!n.dataset.name.includes(term));}};
+  setMonitor(memory.get('eq-attendance-monitor',false));
   root.querySelector('#as-class').onchange=e=>window._rfidOnClassChange(e.target.value);
   idle('Getting the classroom ready…','Checking today’s attendance schedule.');
   refresh().then(()=>{if(generation===at&&root){if(ready)idle();renderStatus();flush();}});
@@ -243,7 +259,8 @@
  }
  function unmount(){
   generation++;lastLogSignature='';writeVersion=0;refreshing=false;processing=false;modalBusy=false;clearInterval(poll);clearInterval(tick);clearTimeout(displayTimer);clearTimeout(captureTimer);clearTimeout(staffTimer);poll=tick=null;nfc?.abort();nfc=null;audio?.close().catch(()=>{});audio=null;sound=false;
-  if(root){root.onclick=root.onkeydown=root.oninput=root.onpointerdown=null;root.classList.remove('as-station','as-private');root.querySelector('#as-teacher')?.remove();}root=null;snapshot=null;staff=false;ready=false;paused=false;showing=false;displayQueue=[];lastTags.clear();proof=false;lastRead=null;mutation=null;
+  document.body.classList.remove('as-monitor-mode');if(document.fullscreenElement===root&&root)document.exitFullscreen().catch(()=>{});
+  if(root){root.onclick=root.onkeydown=root.oninput=root.onpointerdown=null;root.classList.remove('as-station','as-private','as-monitor');root.querySelector('#as-teacher')?.remove();}root=null;snapshot=null;staff=false;ready=false;paused=false;showing=false;currentDisplay=null;displayQueue=[];lastTags.clear();proof=false;lastRead=null;mutation=null;
  }
  window.AttendanceStation={mount,unmount,ingest,openTeacher,mounted:()=>!!root};
  window.addEventListener('online',()=>{if(root)refresh().then(flush);});window.addEventListener('offline',()=>{ready=false;renderStatus();});window.addEventListener('focus',()=>{renderStatus();focusReader();});window.addEventListener('blur',renderStatus);document.addEventListener('visibilitychange',()=>{renderStatus();if(!document.hidden)focusReader();});

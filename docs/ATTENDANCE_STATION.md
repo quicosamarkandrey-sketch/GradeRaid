@@ -10,9 +10,13 @@ This SQL has been tested locally. Pushing the repository does not apply SQL to h
 
 ## Student-facing design
 
-An ink-green canvas, warm white arrival receipt, square saved profile photo and large name replace the busy dashboard shown after each tap. The receipt contains the saved first arrival time and Early / On Time / Late status. It deliberately omits cumulative attendance percentage, absence warnings, wallet balance and rank. Unknown/wrong-section card IDs are never shown publicly.
+A black canvas, white student reveal, large square saved profile photo and bold name replace the busy dashboard shown after each tap. The receipt contains the saved first arrival time and Early / On Time / Late status. It deliberately omits cumulative attendance percentage, absence warnings, wallet balance and rank. Unknown/wrong-section card IDs are never shown publicly.
 
 The idle screen gives two steps: tap once, then wait for your name. The side panel shows Here / enrolled (including late students), not-yet-recorded count and the latest five arrivals. Absent and excused students are not counted as here or as unrecorded. Photos support uploaded raster data images and normal image URLs; missing/failed images fall back to initials.
+
+**Monitor view** fills the available screen with the student reveal and moves recent arrivals into a slim lower strip. Exit monitor view restores the app navigation; the setting is remembered on that browser. Full screen also enables monitor view. Each new confirmed scan has a short photo reveal, staggered name/arrival entrance and checkmark animation. Photographs keep their original colors; green is limited to confirmed/ready cues, amber to late/attention and blue to early status.
+
+The last confirmed student stays visible until another result is ready, with a live **Ready for the next card** cue. Queued arrivals each receive at least 1.25 seconds rather than overwriting one another, then the last one remains. Attention messages clear after a short interval. Finalizing attendance, a day change or a correction invalidating the held record clears the old reveal.
 
 Confirmed, duplicate and attention results have distinct short tones. **Enable sound** requires a browser gesture; audio starts muted each visit. Staff can change volume. Muting retains all visual feedback. Reduced-motion preferences disable receipt transitions.
 
