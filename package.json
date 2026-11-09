@@ -19,7 +19,8 @@
     "test:boss-loot": "node tests/browser/world-boss-loot-race.cjs",
     "test:boss-ultimate-db": "node tests/database/world-boss-ultimate.cjs",
     "test:boss-ultimate": "node tests/browser/world-boss-ultimate.cjs",
-    "test:recitation": "node tests/database/recitation-studio.cjs && node tests/browser/recitation-studio.cjs"
+    "test:recitation": "node tests/database/recitation-studio.cjs && node tests/browser/recitation-studio.cjs",
+    "test:attendance": "node tests/database/attendance-station.cjs && node tests/browser/attendance-station.cjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.13",

@@ -89,6 +89,12 @@ let _rfidKioskMode = false;
  * Mounts the full-screen attendance kiosk into #a-scanner.
  */
 window.renderRfidScanner = function () {
+  if (window.AttendanceStation && _rfidScanMode === 'attendance') {
+    window.unmountRfidScanner();
+    window.AttendanceStation.mount({ classId: _rfidSelectedClassId });
+    return;
+  }
+  window.AttendanceStation?.unmount();
   _rfidScannerMounted = true;
   _rfidSelectedClassId = _rfidSelectedClassId || 'default-class';
 
@@ -229,6 +235,7 @@ function _rfidRefreshClassSelectCounts() {
  * See nav.js integration note above.
  */
 window.unmountRfidScanner = function () {
+  window.AttendanceStation?.unmount();
   _rfidScannerMounted = false;
   if (_rfidFocusInterval) { clearInterval(_rfidFocusInterval); _rfidFocusInterval = null; }
   if (_rfidInactivityTimer) { clearTimeout(_rfidInactivityTimer); _rfidInactivityTimer = null; }
@@ -995,6 +1002,12 @@ window._rfidSaveSchedule = async function () {
 };
 
 window._rfidCloseSession = async function () {
+  if (window.AttendanceStation) {
+    closeModalForce();
+    if (!window.AttendanceStation.mounted()) { _rfidScanMode = 'attendance'; window.renderRfidScanner(); }
+    window.AttendanceStation.openTeacher('close');
+    return;
+  }
   if (!confirm(`Close today's attendance for "${_rfidSelectedClassId}"? Every student with no scan will be marked Absent.`)) return;
   const result = await AttendanceService.closeAttendanceSession(_rfidSelectedClassId);
   if (!result.ok) { toast(result.error || 'Could not close session.', '#ffb4ab'); return; }

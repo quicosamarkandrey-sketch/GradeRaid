@@ -388,6 +388,7 @@ async function restoreSession(){
 // silently re-authenticate the same user on next page load, even after
 // clicking "Logout" — signOut() explicitly revokes/clears that session.
 async function doLogout(){
+  window.AttendanceStation?.unmount();
   // Cleanup 5: closeProfile absorbed from index.html monkey patch (doLogout → closeProfile → _origLogout)
   if(typeof closeProfile==='function')closeProfile();
   const logoutBtn=document.getElementById('sidebar-logout-btn');

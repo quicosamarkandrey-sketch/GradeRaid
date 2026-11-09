@@ -160,3 +160,5 @@ import '../modules/world-boss/loot-arena.js';
 import '../modules/world-boss/raid-experience.js';
 
 import '../modules/recitation/session-studio.js';
+
+import '../modules/attendance/arrival-station.js';

@@ -1,0 +1,35 @@
+const fixture=require('../helpers/attendance-station-db.cjs'),fs=require('node:fs'),assert=require('node:assert/strict'),crypto=require('node:crypto');
+(async()=>{const {db,rpc}=await fixture();try{
+ const uuid=()=>crypto.randomUUID(),stamp=()=>new Date().toISOString(),wallet=async sid=>(await db.query('select coins,xp from profiles where id=$1',[sid])).rows[0];
+ await db.exec('set role anon');await assert.rejects(rpc('snapshot'),/permission denied/);await db.exec('reset role');
+ await assert.rejects(rpc('snapshot',{},'student'),/authorized/);await assert.rejects(rpc('snapshot',{},'teacher','room-b'),/authorized/);
+ await db.exec('set role authenticated');let snap=await rpc('snapshot');await assert.rejects(db.query('select * from attendance_scan_receipts'),/permission denied/);await db.exec('reset role');assert.equal(snap.roster.length,3);assert.equal(snap.logs.length,0);
+ const first=uuid();let result=await rpc('scan',{id:first,tag:'1001',capturedAt:stamp()});assert.equal(result.ok,true);assert.equal(result.status,'On Time');assert.equal((await wallet('alex')).coins,10);
+ const retry=await rpc('scan',{id:first,tag:'1001',capturedAt:stamp()});assert.equal(retry.duplicate,true);assert.equal((await wallet('alex')).coins,10);
+ const repeat=await rpc('scan',{id:uuid(),tag:'1001',capturedAt:stamp()});assert.equal(repeat.alreadyRecorded,true);assert.equal(repeat.log.scanned_at,result.log.scanned_at);
+ assert.equal((await db.query('select count(*)::int n from attendance_logs')).rows[0].n,1);
+ const wrong=await rpc('scan',{id:uuid(),tag:'2001',capturedAt:stamp()});assert.equal(wrong.error,'wrong_section');const unknown=await rpc('scan',{id:uuid(),tag:'9999',capturedAt:stamp()});assert.equal(unknown.error,'unknown_card');
+ const delayed=await rpc('scan',{id:uuid(),tag:'1002',capturedAt:new Date(Date.now()-120000).toISOString()});assert.equal(delayed.error,'review_time');assert.equal((await wallet('bea')).coins,0);
+ // Even a short network delay across the late cutoff needs teacher review.
+ await db.exec("update attendance_schedules set late_cutoff=((clock_timestamp() at time zone 'Asia/Manila')-interval '2 seconds')::time");
+ const boundary=await rpc('scan',{id:uuid(),tag:'1003',capturedAt:new Date(Date.now()-6000).toISOString()});assert.equal(boundary.error,'review_time');
+ await db.exec("update attendance_schedules set late_cutoff='23:59:58'");
+ const captured=(await db.query('select captured_at from attendance_scan_receipts where id=$1',[delayed.receiptId])).rows[0].captured_at;
+ const manualId=uuid();result=await rpc('manual',{id:manualId,student:'bea',status:'Auto',arrivedAt:captured,date:snap.date,reason:'Verified actual arrival during outage',receipt:delayed.receiptId});assert.equal(result.ok,true);assert.equal(result.log.entry_method,'Manual');assert.equal(new Date(result.log.scanned_at).getTime(),new Date(captured).getTime());assert.equal((await wallet('bea')).coins,10);
+ assert.equal((await rpc('manual',{id:manualId,student:'bea',status:'Auto',arrivedAt:captured,date:snap.date,reason:'Verified actual arrival during outage',receipt:delayed.receiptId})).duplicate,true);assert.equal((await wallet('bea')).coins,10);
+ await rpc('manual',{id:uuid(),student:'bea',status:'Absent',date:snap.date,reason:'Corrected mistaken check-in'});assert.equal((await wallet('bea')).coins,0,'Correction reverses attendance rewards');
+ const absentTap=await rpc('scan',{id:uuid(),tag:'1002',capturedAt:stamp()});assert.equal(absentTap.error,'existing_exception','Absent entry is never celebrated as checked-in');
+ await assert.rejects(rpc('manual',{id:uuid(),student:'outside',status:'Absent',reason:'Correction'}),/classroom/);
+ await assert.rejects(rpc('manual',{id:uuid(),student:'alex',status:'Absent',reason:'x'}),/reason/);
+ await assert.rejects(rpc('manual',{id:uuid(),student:'alex',status:'Auto',arrivedAt:new Date(Date.now()+3600000).toISOString(),date:snap.date,reason:'Arrival'}),/valid arrival/);
+ await assert.rejects(rpc('finalize',{id:uuid(),reason:'Teacher reviewed all arrivals'}),/Resolve scan issues/);
+ for(const issue of (await rpc('snapshot')).reviews)await rpc('dismiss',{id:uuid(),receipt:issue.id,reason:'Checked directly with the student'});
+ result=await rpc('finalize',{id:uuid(),reason:'End-of-class review complete'});assert.equal(result.absencesRecorded,1);snap=await rpc('snapshot');assert.equal(snap.finalized,true);assert.equal(snap.logs.length,3);assert.equal((await wallet('cam')).coins,0);
+ const lateTap=await rpc('scan',{id:uuid(),tag:'1003',capturedAt:stamp()});assert.ok(['existing_exception','finalized'].includes(lateTap.error));
+ await rpc('manual',{id:uuid(),student:'cam',status:'Excused',reason:'Approved medical absence',date:snap.date,receipt:lateTap.receiptId});assert.equal((await rpc('snapshot')).logs.find(l=>l.student_id==='cam').status,'Excused');
+ await rpc('reopen',{id:uuid(),reason:'Reopened for reviewed corrections'});assert.equal((await rpc('snapshot')).finalized,false);
+ assert.ok((await rpc('snapshot')).audit.some(a=>a.before_log?.status==='On Time'&&a.after_log?.status==='Absent'),'Before and after records audited');
+ await db.exec("update attendance_schedules set day_off=true");await assert.rejects(rpc('finalize',{id:uuid(),reason:'Attempting closure'}),/No class/);await db.exec("update attendance_schedules set day_off=false");
+ await db.exec(fs.readFileSync('supabase/phase83_attendance_station.sql','utf8'));
+ console.log('PASS: staff authorization, native UUID schema, snapshot, atomic retry/duplicate preservation, real reward triggers and correction reversal, wrong-section/unknown-card review, delayed and cutoff-crossing taps, manual arrival time, audit trail, finalization gate, absent/excused preservation, reopen, day-off and repeatable migration.');
+ }finally{await db.close();}})().catch(e=>{console.error(e);process.exit(1)});
