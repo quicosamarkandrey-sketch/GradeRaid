@@ -21,7 +21,7 @@ async function setup(){
  insert into seats values('00000000-0000-4000-8000-000000000011','00000000-0000-4000-8000-000000000010',0,0,'A1'),('00000000-0000-4000-8000-000000000012','00000000-0000-4000-8000-000000000010',140,0,'A2');
  insert into seat_assignments(seat_id,layout_id,student_id) values('00000000-0000-4000-8000-000000000011','00000000-0000-4000-8000-000000000010','alex'),('00000000-0000-4000-8000-000000000012','00000000-0000-4000-8000-000000000010','bea');
  set app.uid='00000000-0000-4000-8000-000000000001';`);
- for(const file of ['phase30_recitation_rls_fix.sql','phase71_recitation_session_sync.sql','phase81_recitation_presentation.sql'])await db.exec(fs.readFileSync('supabase/'+file,'utf8'));
+ for(const file of ['phase30_recitation_rls_fix.sql','phase71_recitation_session_sync.sql','phase81_recitation_presentation.sql','phase82_recitation_spotlight.sql'])await db.exec(fs.readFileSync('supabase/'+file,'utf8'));
  const rpc=async(action,payload={},device='teacher-phone-12345678901234567890',identity='teacher',classId='room-a')=>{
   await db.exec(`set app.uid='${identity==='teacher'?'00000000-0000-4000-8000-000000000001':identity==='anonymous'?'':'00000000-0000-4000-8000-000000000002'}'`);
   return (await db.query('select recitation_presentation($1,$2,$3,$4::jsonb) result',[classId,action,device,JSON.stringify(payload)])).rows[0].result;

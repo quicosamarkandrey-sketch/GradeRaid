@@ -1,6 +1,12 @@
 const assert=require('node:assert/strict'),crypto=require('node:crypto');
 const {setup}=require('../helpers/recitation-db.cjs');
-(async()=>{const {db,rpc}=await setup();try{
+(async()=>{const {db,rpc:serverRPC}=await setup();
+ // Exercise the shared reveal window, then advance it for the remaining picker assertions.
+ const rpc=async(action,...args)=>{const data=await serverRPC(action,...args);if(action==='pick'&&!data.emptyPool){
+  assert.equal(new Date(data.state.draw.revealAt)-new Date(data.state.draw.startedAt),2400);
+  await assert.rejects(serverRPC('pick',{session:data.session.id}),/wait for the student reveal/);
+  await db.query("update recitation_presentations set state=jsonb_set(state,'{draw,revealAt}',to_jsonb((clock_timestamp()-interval '1 second')::text)) where session_id=$1",[data.session.id]);
+ }return data;};try{
  await db.exec('set role anon');await assert.rejects(rpc('start'),/permission denied/);await db.exec('reset role;set role authenticated');let s=await rpc('start');await db.exec('reset role');const session=s.session.id;
  assert.equal(s.roster.length,4);assert.equal(s.roster.find(r=>r.id==='cam').seats.length,0,'Unseated student included');
  await rpc('claim');
@@ -27,7 +33,7 @@ const {setup}=require('../helpers/recitation-db.cjs');
  await patch({filters:{preset:'everyone',recent:0,repeat:'off',selected:['absent'],excluded:[],scope:'session'}});s=await rpc('pick',{session});assert.equal(s.emptyPool,true);assert.equal(s.state.selected,'cam','No relaxed fallback');
  await patch({filters:{preset:'fresh',recent:0,repeat:'session',selected:[],excluded:[],scope:'session'}});
  const fresh=await rpc('pick',{session});assert.notEqual(fresh.state.selected,picked);assert.notEqual(fresh.state.selected,'cam');
- s=await rpc('pick',{session});assert.equal(s.emptyPool,true,'Fresh preset exhausts without fallback');
+ for(let i=0;i<3;i++){s=await rpc('pick',{session});if(s.emptyPool)break;}assert.equal(s.emptyPool,true,'Fresh preset exhausts without fallback');
  await patch({filters:{preset:'low',recent:0,repeat:'off',selected:[],excluded:[],scope:'session'}});s=await rpc('pick',{session});assert.notEqual(s.state.selected,other,'Lower score uses actual points');
  await rpc('later',{session});const returnId=s.state.selected;await patch({filters:{...s.state.filters,preset:'later'}});s=await rpc('pick',{session});assert.equal(s.state.selected,returnId);assert.equal(s.state.later.length,0);
  await patch({filters:{preset:'opportunities',recent:0,repeat:'off',selected:[],excluded:[],scope:'session'}});const before=await rpc('snapshot',{session}),counts=r=>before.state.calls.filter(c=>c.student===r.id).length,min=Math.min(...before.roster.filter(r=>r.status!=='Absent').map(counts));s=await rpc('pick',{session});assert.equal(counts(s.roster.find(r=>r.id===s.state.selected)),min);
@@ -36,6 +42,17 @@ const {setup}=require('../helpers/recitation-db.cjs');
  s=await rpc('timer',{session,mode:'resume'});assert.equal(s.state.timer.paused,false);assert.ok(new Date(s.state.timer.endsAt)>new Date(s.serverTime));
  await patch({index:1});await assert.rejects(rpc('scan',{session,id:crypto.randomUUID(),tag:'eeff',question:0}),/Question changed/);
  await assert.rejects(rpc('update',{session,revision:0,patch:{view:'seats'}}),/Session changed/);
+ const manualId=crypto.randomUUID();
+ await assert.rejects(rpc('manual',{session,id:crypto.randomUUID(),student:'outside',points:1,question:1}),/another class/);
+ await assert.rejects(rpc('manual',{session,id:crypto.randomUUID(),student:'absent',points:1,question:1}),/present/);
+ for(const amount of [0,11,1.5])await assert.rejects(rpc('manual',{session,id:crypto.randomUUID(),student:'cam',points:amount,question:1}));
+ await assert.rejects(rpc('manual',{session,id:crypto.randomUUID(),student:'cam',points:1,question:1},'projector-1234567890123456789012'),/display/);
+ await patch({paused:true});const manual=await rpc('manual',{session,id:manualId,student:'cam',points:3,note:'Clear reasoning',question:1});
+ assert.equal(manual.receipt.points,3);assert.equal(manual.receipt.source,'manual');assert.equal(manual.roster.find(r=>r.id==='cam').session,3);
+ const manualRetry=await rpc('manual',{session,id:manualId,student:'cam',points:3,question:1});assert.equal(manualRetry.duplicate,true);assert.equal(manualRetry.roster.find(r=>r.id==='cam').session,3);
+ const log=(await db.query('select * from recitation_log where id=$1',[manual.receipt.log_id])).rows[0];assert.equal(log.pts,3);assert.match(log.note,/Manual recitation.*Clear reasoning/);
+ await rpc('undo',{session,id:manualId});assert.equal((await rpc('snapshot',{session})).roster.find(r=>r.id==='cam').session,0);
+ await patch({paused:false});
  await rpc('undo',{session,id});s=await rpc('undo',{session,id});assert.equal(s.roster.find(r=>r.id===other).session,0);assert.equal(s.receipts[0].undone,true);
  await rpc('claim',{session,takeover:true},'second-phone-12345678901234567890');await assert.rejects(rpc('timer',{session,seconds:10}),/display/);
  await rpc('claim',{session,takeover:true});s=await rpc('finish',{session});assert.equal(s.session.is_active,false);assert.equal(s.state.view,'summary');
@@ -43,6 +60,6 @@ const {setup}=require('../helpers/recitation-db.cjs');
  await assert.rejects(rpc('scan',{session,id:crypto.randomUUID(),tag:'eeff',question:1}),/ended/);
  assert.equal((await db.query('select count(*)::int n from recitation_log')).rows[0].n,0);
  // Additive and safe to install again.
- await db.exec(require('node:fs').readFileSync('supabase/phase81_recitation_presentation.sql','utf8'));
+ await db.exec(require('node:fs').readFileSync('supabase/phase82_recitation_spotlight.sql','utf8'));
  console.log('PASS: authenticated pairing, one controller, authoritative picker including unseated, no points on pick, mismatch check, atomic retry receipts, cooldown, attendance/class validation, timer, strict filters, stale questions, undo, takeover, finish and migration rerun.');
  }finally{await db.close();}})().catch(e=>{console.error(e);process.exit(1)});

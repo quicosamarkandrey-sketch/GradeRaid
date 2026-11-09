@@ -17,6 +17,8 @@ const {setup}=require('../helpers/recitation-db.cjs'),{chromium}=require('@playw
   });
  }
  const [phone,display]=pages;
+ const profilePhoto=await phone.evaluate(()=>{const c=document.createElement('canvas');c.width=c.height=48;const ctx=c.getContext('2d');ctx.fillStyle='#5687ae';ctx.fillRect(0,0,48,48);return c.toDataURL('image/png');});
+ await db.query("update profiles set profile_pic_url=$1 where role='student'",[profilePhoto]);
  await phone.evaluate(()=>RecitationStudio.open({classId:'room-a'}));await phone.locator('[data-rs=host]').click();await phone.locator('[data-rs=pick]').waitFor();
  await phone.evaluate(()=>{window.NDEFReader=class{async scan({signal}){window.testNFC=this;window.nfcArmed=true;signal.addEventListener('abort',()=>window.nfcArmed=false);}};});await phone.locator('[data-rs=nfc]').click();assert.equal(await phone.evaluate(()=>nfcArmed),true);
  await phone.locator('[data-tab=connect]').click();const code=await phone.locator('.rs-code').textContent();
@@ -25,13 +27,29 @@ const {setup}=require('../helpers/recitation-db.cjs'),{chromium}=require('@playw
  await phone.locator('[data-tab=questions]').click();await phone.locator('#rs-questions').fill('What makes a strong explanation? | Private answer: evidence\nHow can you improve it? | Private answer: revision');await phone.locator('[data-rs=save-questions]').click();await display.getByRole('heading',{name:'What makes a strong explanation?'}).waitFor();
  assert.doesNotMatch(await display.locator('#rs-stage').textContent(),/Private answer/);
  await phone.locator('[data-rs=timer][data-seconds="20"]').click();await display.locator('#rs-timer').filter({hasText:'think it through'}).waitFor();
- await phone.locator('[data-tab=live]').click();await phone.locator('[data-rs=pick]').click();await display.locator('.rs-speaker h2').waitFor();
+ await phone.locator('[data-tab=live]').click();const pickStart=Date.now();await phone.locator('[data-rs=pick]').click();await phone.locator('.rs-draw').waitFor();await display.locator('.rs-draw').waitFor();
+ assert.equal(await phone.locator('.rs-speaker').count(),0,'Winner is hidden during suspense');assert.match(await phone.locator('#rs-selected').textContent(),/Choosing/);assert.equal(await phone.locator('[data-rs=pick]').isDisabled(),true);
+ assert.equal((await db.query('select count(*)::int n from recitation_log')).rows[0].n,0);
+ await phone.screenshot({path:'/workspace/recitation-suspense-phone.png'});await display.screenshot({path:'/workspace/recitation-suspense-desktop.png'});
+ await display.locator('.rs-speaker h2').waitFor();assert.ok(Date.now()-pickStart>=2200,'Shared suspense lasts roughly 2.4 seconds');await phone.locator('.rs-speaker h2').waitFor();
+ const portrait=display.locator('.rs-speaker-avatar img');assert.equal(await portrait.getAttribute('src'),profilePhoto);await display.waitForFunction(()=>{const n=document.querySelector('.rs-speaker-avatar img');return n?.complete&&n.naturalWidth>0;});
+ assert.ok(await display.locator('.rs-speaker-avatar').evaluate(n=>parseFloat(getComputedStyle(n).borderRadius)<n.clientWidth/3),'Profile frame is square');
+ const selectedId=await display.locator('.rs-speaker-avatar').getAttribute('data-student');
+ const newPhoto=await phone.evaluate(()=>{const c=document.createElement('canvas');c.width=c.height=48;const ctx=c.getContext('2d');ctx.fillStyle='#8b6f97';ctx.fillRect(0,0,48,48);return c.toDataURL();});
+ await db.query('update profiles set profile_pic_url=$1 where id=$2',[newPhoto,selectedId]);
+ await display.waitForFunction(src=>document.querySelector('.rs-speaker-avatar img')?.getAttribute('src')===src,newPhoto);
+
  assert.equal((await db.query('select count(*)::int n from recitation_log')).rows[0].n,0);
  const called=await phone.locator('#rs-selected').textContent(),other=called.includes('Alex')?'ccdd':'aabb';await phone.locator('#rs-scanner').selectOption('selected');
  assert.equal(await phone.evaluate(()=>nfcArmed),true,'NFC remains armed across remote tabs and question controls');await phone.evaluate(tag=>testNFC.onreading({serialNumber:tag}),other);await phone.locator('.rs-warning').waitFor();assert.equal((await db.query('select count(*)::int n from recitation_log')).rows[0].n,0);
  await phone.locator('[data-rs=mismatch-award]').click();await display.locator('.rs-recognition-card').waitFor();await phone.waitForTimeout(2200);await display.waitForTimeout(500);
  assert.equal(await display.evaluate(()=>recognitions),1,'One animation despite polling echoes');
  await phone.locator('[data-rs=undo]').click();await display.locator('.rs-corrected').waitFor();assert.equal((await db.query('select count(*)::int n from recitation_log')).rows[0].n,0);
+ // A cardless student receives the same confirmed award/undo feedback.
+ await phone.locator('.rs-manual summary').click();await phone.locator('#rs-manual-student').selectOption('cam');await phone.locator('#rs-manual-points').fill('3');await phone.locator('#rs-manual-note').fill('Clear explanation');
+ await phone.locator('#rs-manual-form button[type=submit]').click();await display.locator('.rs-recognition-card').filter({hasText:'+3'}).waitFor();assert.match(await phone.locator('#rs-live-summary').textContent(),/3 points/);
+ const manualLog=(await db.query("select * from recitation_log where student_id='cam'")).rows[0];assert.equal(manualLog.pts,3);assert.match(manualLog.note,/Clear explanation/);assert.doesNotMatch(await display.locator('#rs-stage').textContent(),/Clear explanation/);
+ assert.match(await phone.locator('[data-rs=undo]').textContent(),/Undo \+3/);await phone.locator('[data-rs=undo]').click();await display.locator('.rs-corrected').filter({hasText:'−3'}).waitFor();assert.equal((await db.query('select count(*)::int n from recitation_log')).rows[0].n,0);
  // Offline queue survives browser reload without optimistic scoring.
  await phone.locator('#rs-scanner').selectOption('open');await phone.context().setOffline(true);await phone.evaluate(()=>RecitationStudio.ingest('eeff'));assert.match(await phone.locator('#rs-status').textContent(),/pending/);assert.equal((await db.query('select count(*)::int n from recitation_log')).rows[0].n,0);
  await phone.evaluate(()=>RecitationStudio.close());await phone.context().setOffline(false);await phone.reload();await phone.waitForFunction(()=>window.RecitationStudio);
@@ -41,7 +59,11 @@ const {setup}=require('../helpers/recitation-db.cjs'),{chromium}=require('@playw
  await phone.screenshot({path:'/workspace/recitation-remote-phone.png'});await display.screenshot({path:'/workspace/recitation-presentation-desktop.png'});
  for(const width of [320,390,768]){await phone.setViewportSize({width,height:1000});assert.ok(await phone.locator('.rs-app').evaluate(n=>n.scrollWidth<=innerWidth+1),'Phone has no horizontal overflow at '+width);}
  await phone.emulateMedia({reducedMotion:'reduce'});await phone.locator('[data-tab=live]').click();await phone.locator('[data-rs=undo]').click();await phone.locator('.rs-corrected').waitFor();assert.equal(await phone.locator('.rs-corrected').evaluate(n=>getComputedStyle(n).animationName),'none');
+ await phone.locator('[data-rs=pick]').click();await phone.locator('.rs-draw').waitFor();assert.equal(await phone.locator('.rs-draw-avatar img').count(),0,'Reduced-motion picker keeps a steady placeholder');
+ await phone.waitForTimeout(500);assert.equal(await phone.locator('.rs-draw-name').textContent(),'Your next speaker');await phone.locator('.rs-speaker').waitFor();await display.locator('.rs-speaker').waitFor();
+ assert.equal(await phone.locator('.rs-speaker-avatar').getAttribute('data-student'),await display.locator('.rs-speaker-avatar').getAttribute('data-student'),'Both devices reveal the same server-selected student');
+ assert.equal((await db.query('select count(*)::int n from recitation_log')).rows[0].n,0,'Suspense still awards no points');
  phone.on('dialog',d=>d.accept());await phone.locator('[data-rs=finish]').click();await display.locator('.rs-summary').waitFor();assert.match(await display.locator('.rs-summary').textContent(),/Session complete/);
  await phone.locator('[data-rs=close]').click();await display.locator('[data-rs=close]').click();await phone.waitForTimeout(100);assert.deepEqual(errors,[]);assert.equal(await phone.locator('.rs-app').count(),0);assert.equal(await phone.locator('body').evaluate(n=>n.classList.contains('rs-open')),false);
- assert.deepEqual(errors,[]);console.log('PASS: real app, authenticated phone + projector backed by actual SQL; private notes, question/timer sync, no points on pick, mismatch, single confirmation animation, undo, offline reload queue, seating/unseated, 320/390/768 layouts, reduced motion, summary and cleanup.');
+ assert.deepEqual(errors,[]);console.log('PASS: real app, authenticated phone + projector backed by actual SQL; private notes, question/timer sync, no points on pick, mismatch, shared 2.4s suspense, saved embedded profile photos and live photo updates, square frames, manual +3 and undo, single confirmation animation, offline reload queue, seating/unseated, 320/390/768 layouts, reduced motion, summary and cleanup.');
  }finally{await browser?.close();if(server)await new Promise(r=>server.close(r));await db.close();}})().catch(e=>{console.error(e);process.exit(1)});

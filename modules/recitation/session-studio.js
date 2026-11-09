@@ -8,14 +8,21 @@
  const store={get(k,f){try{return JSON.parse(localStorage.getItem(k))??f;}catch{return f;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}catch{return false;}}};
  const device=store.get('eq-recitation-device',null)||uid();store.set('eq-recitation-device',device);
  let generation=0;
- let root=null,snap=null,role='display',classId='',poll=null,tick=null,abort=null,busy=false,syncing=false,offset=0,seen=new Map(),awardQueue=[],playing=false,recognitionTimer=null,queue=store.get('eq-recitation-pending',[]),mismatch=null,lastTag=new Map(),keyBuffer='',keyAt=0,keyTimer=null,lastFocus=null;
+ let root=null,snap=null,role='display',classId='',poll=null,tick=null,abort=null,busy=false,syncing=false,offset=0,seen=new Map(),awardQueue=[],playing=false,recognitionTimer=null,queue=store.get('eq-recitation-pending',[]),mismatch=null,lastTag=new Map(),keyBuffer='',keyAt=0,keyTimer=null,lastFocus=null,lastManualAt=0;
  const button=(a,t,extra='')=>`<button type="button" data-rs="${a}" ${extra}>${t}</button>`;
  const state=()=>snap?.state||{};
  const current=()=>state().questions?.[state().index||0];
  const person=id=>snap?.roster.find(r=>r.id===id);
  const name=id=>person(id)?.name||'Student';
  const pending=()=>queue.filter(q=>q.session===snap?.session.id);
- const photo=r=>r?.photo&&/^https?:\/\//i.test(r.photo)?`<img src="${esc(r.photo)}" alt="">`:`<span>${esc(r?.init||r?.name?.split(' ').map(n=>n[0]).slice(0,2).join('')||'—')}</span>`;
+ const photo=r=>{
+  const source=String(r?.photo||'').trim(),initials=esc(r?.init||r?.name?.split(' ').map(n=>n[0]).slice(0,2).join('')||'—');
+  const safe=/^https?:\/\//i.test(source)||/^data:image\/(png|jpe?g|webp|gif|avif);base64,[a-z0-9+/=\s]+$/i.test(source)||/^\.?\.?\//.test(source);
+  return `<span class="rs-photo-fallback">${initials}</span>`+(safe?`<img src="${esc(source)}" alt="" onerror="this.remove()">`:'');
+ };
+ const points=r=>Number(r.points)||1;
+ const total=receipts=>receipts.reduce((sum,r)=>sum+points(r),0);
+ const drawing=()=>!!(snap?.session.is_active&&state().draw&&new Date(state().draw.revealAt).getTime()>Date.now()+offset);
  function report(message){const n=root?.querySelector('#rs-message');if(n)n.textContent=message;}
  async function rpc(action,payload={}){
   const requestGeneration=generation;
@@ -41,38 +48,46 @@
  }
  async function act(action,payload={}){
   if(busy)return;busy=true;paintStatus();
-  try{const data=await rpc(action,payload);adopt(data);if(data.emptyPool)report('No students match these filters. Adjust the filters; nothing was relaxed.');return data;}
+  try{const data=await rpc(action,payload);adopt(data);if(action==='manual'&&!data.receipt)throw new Error('Install phase82_recitation_spotlight.sql to enable manual awards.');if(data.emptyPool)report('No students match these filters. Adjust the filters; nothing was relaxed.');return data;}
   catch(e){if(!e.stale)report(friendly(e));return null;}
   finally{busy=false;paintStatus();}
  }
- function friendly(e){return /recitation_presentation|schema cache|does not exist/i.test(e.message)?'Recitation Studio needs phase81_recitation_presentation.sql installed in Supabase before it can connect.':e.message;}
+ function friendly(e){if(/Unknown recitation action/i.test(e.message))return 'Install phase82_recitation_spotlight.sql in Supabase to enable manual awards and shared calling animations.';return /recitation_presentation|schema cache|does not exist/i.test(e.message)?'Recitation Studio needs its Supabase migrations (phase81 and phase82) installed before it can connect.':e.message;}
  async function patch(values){return act('update',{revision:snap.revision,patch:values});}
  function connection(){return navigator.onLine?'Connected':role==='display'?'Offline · showing last confirmed state':'Offline · scans stay pending';}
  function paintStatus(){
   if(!root||!snap)return;
   const n=root.querySelector('#rs-status');if(n)n.textContent=`${connection()} · ${!snap.session.is_active?'Session ended':role==='display'?(navigator.onLine?'Presentation synced':'Reconnecting'):state().paused?'Scanner paused':abort?'NFC ready':'Reader ready'}${pending().length?' · '+pending().length+' pending':''}`;
-  root.querySelectorAll('[data-controller]').forEach(n=>n.disabled=busy||role!=='remote'||!snap.session.is_active);
+  root.querySelectorAll('[data-controller]').forEach(n=>n.disabled=busy||drawing()||role!=='remote'||!snap.session.is_active);
   root.querySelector('#rs-role')?.replaceChildren(document.createTextNode(role==='remote'?'Teacher remote':'Classroom presentation'));
-  const score=root.querySelector('#rs-live-summary');if(score)score.textContent=`${snap.receipts.filter(r=>!r.undone).length} points · ${new Set(snap.receipts.filter(r=>!r.undone).map(r=>r.student_id)).size} contributors`;
-  const last=[...snap.receipts].reverse().find(r=>!r.undone);const undo=root.querySelector('[data-rs="undo"]');if(undo){undo.disabled=busy||role!=='remote'||!last;undo.textContent=last?`Undo +1 · ${name(last.student_id)}`:'No award to undo';}
-  const selected=root.querySelector('#rs-selected');if(selected)selected.textContent=state().selected?`Called: ${name(state().selected)}`:'No speaker selected';
+  const score=root.querySelector('#rs-live-summary');if(score)score.textContent=`${total(snap.receipts.filter(r=>!r.undone))} points · ${new Set(snap.receipts.filter(r=>!r.undone).map(r=>r.student_id)).size} contributors`;
+  const last=[...snap.receipts].reverse().find(r=>!r.undone);const undo=root.querySelector('[data-rs="undo"]');if(undo){undo.disabled=busy||role!=='remote'||!last;undo.textContent=last?`Undo +${points(last)} · ${name(last.student_id)}`:'No award to undo';}
+  const selected=root.querySelector('#rs-selected');if(selected)selected.textContent=drawing()?'Choosing a student…':state().selected?`Called: ${name(state().selected)}`:'No speaker selected';
   const waiting=root.querySelector('#rs-pending');if(waiting)waiting.innerHTML=queue.filter(q=>q.classId===classId).map(q=>`<div class="rs-pending-row"><span>${esc(q.label||'Card')} · ${esc(q.error||(q.session!==snap.session.id?'Previous session · waiting to reconcile':'Waiting to sync'))}</span>${button('discard','Discard',`data-id="${q.id}"`)}</div>`).join('');
+  for(const id of ['rs-manual-student','rs-volunteer']){
+   const select=root.querySelector('#'+id);if(!select)continue;
+   const members=snap.roster.filter(r=>['Early','On Time','Late'].includes(r.status)),signature=JSON.stringify(members.map(r=>[r.id,r.name]));
+   if(select.dataset.roster!==signature){const value=select.value;select.innerHTML=`<option value="">${id==='rs-volunteer'?'Choose a raised hand':'Choose a student'}</option>`+members.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');select.value=members.some(r=>r.id===value)?value:'';select.dataset.roster=signature;}
+  }
   const later=root.querySelector('#rs-later-count');if(later)later.textContent=`${(state().later||[]).length} in return-later queue`;
   if(!snap.session.is_active)stopNFC();
  }
- let stageKey='';
+ let stageKey='',stagePhotos=[];
  const inertSiblings=new Map();
  function paintStage(){
   const target=root?.querySelector('#rs-stage');if(!target||!snap)return;
   const st=state(),q=current(),selected=person(st.selected),scope=st.scoreScope||'session';
-  const oldSeat=[...target.querySelectorAll('.rs-seat')].find(n=>n.dataset.student===st.selected)?.getBoundingClientRect();
+  const oldSeat=[...target.querySelectorAll('.rs-seat')].find(n=>n.dataset.student===st.selected)?.getBoundingClientRect()||target.querySelector('.rs-draw-avatar')?.getBoundingClientRect();
   const scopeLabel={session:'this session',today:'today',period:'reporting period'}[scope];
-  const key=JSON.stringify([snap.revision,role]);if(stageKey===key)return;stageKey=key;
+  const sources=snap.roster.map(r=>r.photo),photosChanged=sources.length!==stagePhotos.length||sources.some((src,i)=>src!==stagePhotos[i]);
+  const key=JSON.stringify([snap.revision,role,drawing()]);if(stageKey===key&&!photosChanged)return;stageKey=key;stagePhotos=sources;
   const question=`<div class="rs-question"><p class="rs-eyebrow">${q?'Question '+((st.index||0)+1)+' / '+st.questions.length:'Classroom recitation'}</p><h1>${esc(q?.text||'Every voice counts.')}</h1>${q?.image&&/^https?:\/\//i.test(q.image)?`<img class="rs-question-image" src="${esc(q.image)}" alt="Question illustration">`:''}</div>`;
   let body='';
   if(!snap.session.is_active){
    const awarded=snap.receipts.filter(r=>!r.undone),contributors=new Set(awarded.map(r=>r.student_id));
-   body=`<div class="rs-summary"><p class="rs-eyebrow">Session complete</p><h1>Thank you for showing up.<br>And speaking up.</h1><div class="rs-summary-stats"><div><strong>${awarded.length}</strong><span>recitation points</span></div><div><strong>${contributors.size}</strong><span>contributors</span></div><div><strong>${new Set([...(st.calls||[]).map(c=>c.question),...awarded.map(r=>r.question_index)]).size}</strong><span>questions discussed</span></div></div><p>Your confirmed points are saved to your recitation history.</p></div>`;
+   body=`<div class="rs-summary"><p class="rs-eyebrow">Session complete</p><h1>Thank you for showing up.<br>And speaking up.</h1><div class="rs-summary-stats"><div><strong>${total(awarded)}</strong><span>recitation points</span></div><div><strong>${contributors.size}</strong><span>contributors</span></div><div><strong>${new Set([...(st.calls||[]).map(c=>c.question),...awarded.map(r=>r.question_index)]).size}</strong><span>questions discussed</span></div></div><p>Your confirmed points are saved to your recitation history.</p></div>`;
+  }else if(drawing()){
+   body=`<div class="rs-draw" data-draw="${esc(st.draw.id)}"><div class="rs-draw-question">${question}</div><div class="rs-draw-card"><p class="rs-eyebrow">Who will take the floor?</p><div class="rs-draw-avatar"></div><h2 class="rs-draw-name" aria-hidden="true"></h2><p class="rs-draw-caption" role="status">Choosing a student…</p><div class="rs-draw-track"><i></i></div></div></div>`;
   }else if(st.view==='seats'){
    const seated=snap.roster.filter(r=>(r.seats||[]).some(s=>s.layout===st.layout));
    const allSeats=seated.flatMap(r=>r.seats.filter(s=>s.layout===st.layout));
@@ -85,22 +100,35 @@
    body=`<div class="rs-spotlight" data-call="${esc(latestCall?.at||'')}"><div class="rs-spot-question">${question}</div><div class="rs-speaker"><p class="rs-eyebrow">The floor is yours</p><div class="rs-speaker-avatar" data-student="${esc(selected.id)}">${photo(selected)}<strong>${esc(selected[scope]||0)}</strong></div><h2>${esc(selected.name)}</h2><p>Recitation points · ${scopeLabel}</p></div></div>`;
   }else body=question;
   target.innerHTML=`<div class="rs-stage-content">${body}</div><div id="rs-timer" class="rs-timer" aria-live="off"></div><div class="rs-stage-footer"><span>${esc(window.getClassLabel?window.getClassLabel(classId,AppStore.getState()):classId)}</span><span>${esc(scopeLabel)} · recitation</span></div>`;
-  paintTimer();
+  paintTimer();paintDraw();
   const avatar=target.querySelector('.rs-speaker-avatar');if(oldSeat&&avatar&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
    const to=avatar.getBoundingClientRect();avatar.animate([{transform:`translate(${oldSeat.x+oldSeat.width/2-to.x-to.width/2}px,${oldSeat.y+oldSeat.height/2-to.y-to.height/2}px) scale(${Math.min(oldSeat.width/to.width,1)})`,opacity:.35},{transform:'translate(0,0) scale(1)',opacity:1}],{duration:700,easing:'cubic-bezier(.15,.8,.2,1)'});
   }
  }
+ function paintDraw(){
+  const card=root?.querySelector('.rs-draw');if(!card||!drawing())return;
+  const draw=state().draw,elapsed=Math.max(0,Date.now()+offset-new Date(draw.startedAt).getTime()),ids=draw.candidates||[];
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const step=Math.floor(12*Math.log1p(elapsed/600));
+  const candidate=person(ids[step%Math.max(ids.length,1)]);
+  const avatar=card.querySelector('.rs-draw-avatar'),label=card.querySelector('.rs-draw-name');
+  if(!reduced&&candidate&&avatar.dataset.student!==candidate.id){avatar.innerHTML=photo(candidate);avatar.dataset.student=candidate.id;label.textContent=candidate.name;}
+  if(reduced){avatar.innerHTML='<span aria-hidden="true">?</span>';label.textContent='Your next speaker';}
+  card.querySelector('.rs-draw-track i').style.width=(reduced?100:Math.min(100,elapsed/2400*100))+'%';
+ }
  function paintTimer(){
+  if(root?.querySelector('.rs-draw')&&!drawing()){stageKey='';paintStage();paintStatus();poolCount();animateNext();return;}
+  paintDraw();
   const n=root?.querySelector('#rs-timer'),t=state().timer;if(!n)return;
   const seconds=t?.paused?Number(t.remaining):Math.max(0,Math.ceil((new Date(t?.endsAt).getTime()-(Date.now()+offset))/1000));
   n.hidden=!t||!snap?.session.is_active;
   n.textContent=t?(t.paused?seconds+'s · paused':seconds>0?seconds+'s · think it through':'Thinking time complete'):'';
  }
  function animateNext(){
-  if(playing||!awardQueue.length||!root)return;
+  if(playing||drawing()||!awardQueue.length||!root)return;
   const r=awardQueue.shift(),student=person(r.student_id);if(!student)return animateNext();
   playing=true;const layer=root.querySelector('#rs-recognition');
-  layer.innerHTML=`<div class="rs-recognition-card ${r.undo?'rs-corrected':''}" role="status"><div class="rs-recognition-avatar">${photo(student)}<strong>${r.undo?'−1':'+1'}</strong></div><div><p>${r.undo?'Score corrected':'Answer recognised'}</p><h2>${esc(student.name)}</h2><span>${esc(student[state().scoreScope||'session']||0)} points · ${{session:'this session',today:'today',period:'reporting period'}[state().scoreScope||'session']}</span></div></div>`;
+  layer.innerHTML=`<div class="rs-recognition-card ${r.undo?'rs-corrected':''}" role="status"><div class="rs-recognition-avatar">${photo(student)}<strong>${r.undo?'−':'+'}${points(r)}</strong></div><div><p>${r.undo?'Score corrected':'Answer recognised'}</p><h2>${esc(student.name)}</h2><span>${esc(student[state().scoreScope||'session']||0)} points · ${{session:'this session',today:'today',period:'reporting period'}[state().scoreScope||'session']}</span></div></div>`;
   recognitionTimer=setTimeout(()=>{if(layer.isConnected){flyToScore(r,layer);layer.innerHTML='';}playing=false;animateNext();},1800);
  }
  function flyToScore(receipt,layer){
@@ -108,20 +136,21 @@
   const target=[...root.querySelectorAll('[data-student]')].find(n=>n.dataset.student===receipt.student_id);
   const source=layer.querySelector('.rs-recognition-avatar');if(!target||!source)return;
   const a=source.getBoundingClientRect(),b=target.getBoundingClientRect(),spark=document.createElement('span');
-  spark.className='rs-score-flight';spark.textContent=receipt.undo?'−1':'+1';spark.style.cssText=`left:${a.x+a.width/2}px;top:${a.y+a.height/2}px`;root.append(spark);
+  spark.className='rs-score-flight';spark.textContent=(receipt.undo?'−':'+')+points(receipt);spark.style.cssText=`left:${a.x+a.width/2}px;top:${a.y+a.height/2}px`;root.append(spark);
   const animation=spark.animate([{transform:'translate(-50%,-50%) scale(1)',opacity:1},{transform:`translate(${b.x+b.width/2-a.x-a.width/2}px,${b.y+b.height/2-a.y-a.height/2}px) scale(.4)`,opacity:0}],{duration:550,easing:'cubic-bezier(.2,.7,.2,1)'});
   animation.onfinish=()=>{spark.remove();target.classList.add('rs-score-confirmed');setTimeout(()=>target.classList.remove('rs-score-confirmed'),600);};
  }
  function build(){
   root.innerHTML=`<header class="rs-header"><div><p class="rs-eyebrow" id="rs-role"></p><strong>Recitation Studio</strong></div><div class="rs-header-actions"><span id="rs-status" role="status"></span>${button('fullscreen','Full screen')}${button('switch',role==='remote'?'Preview presentation':'Remote controls')}${button('close','Close','aria-label="Close Recitation Studio"')}</div></header>
    <main class="rs-workspace ${role==='display'?'rs-display':''}"><section id="rs-stage" class="rs-stage" aria-label="Classroom presentation"></section>${role==='remote'?`<aside class="rs-remote"><div class="rs-remote-tabs" role="tablist" aria-label="Remote tools">${['live','questions','filters','connect'].map((t,i)=>button('tab',t[0].toUpperCase()+t.slice(1),`role="tab" aria-selected="${i===0}" data-tab="${t}"`)).join('')}</div>
-   <section class="rs-tab" data-panel="live"><p class="rs-eyebrow">Face-to-face participation</p><h2 id="rs-selected">No speaker selected</h2><div class="rs-actions">${button('pick','Call a student','class="rs-primary" data-controller')}${button('later','Return later','data-controller')}</div><label>Volunteer<select id="rs-volunteer"><option value="">Choose a raised hand</option>${snap.roster.filter(r=>['Early','On Time','Late'].includes(r.status)).map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></label>${button('volunteer','Give this student the floor','data-controller')}<label>Calling preset<select id="rs-preset"><option value="everyone">Everyone present</option><option value="fresh">Fresh voices · not called this session</option><option value="opportunities">Fewer speaking opportunities</option><option value="low">Lower recitation score</option><option value="later">Return-later queue</option></select></label><small id="rs-later-count"></small><div class="rs-rule"></div><label>Scanner mode<select id="rs-scanner"><option value="open">Open · award any present student</option><option value="selected">Selected speaker · check card identity</option></select></label><div class="rs-actions">${button('nfc','Enable phone NFC','data-controller')}${button('pause','Pause scans','data-controller')}</div><form id="rs-card-form"><label>External reader / card ID<input id="rs-card" autocomplete="off" placeholder="Tap card or enter ID" aria-label="Card ID"></label><button type="submit" data-controller>Record +1</button></form><small>Keyboard readers work while the studio is open. NFC requires a compatible Android browser and readable NFC cards.</small><div id="rs-mismatch"></div><div class="rs-rule"></div><div class="rs-actions">${button('undo','Undo last point')}${button('finish','Finish session','data-controller')}</div><p id="rs-live-summary"></p><div id="rs-pending"></div></section>
+   <section class="rs-tab" data-panel="live"><p class="rs-eyebrow">Face-to-face participation</p><h2 id="rs-selected">No speaker selected</h2><div class="rs-actions">${button('pick','Call a student','class="rs-primary" data-controller')}${button('later','Return later','data-controller')}</div><label>Volunteer<select id="rs-volunteer"><option value="">Choose a raised hand</option>${snap.roster.filter(r=>['Early','On Time','Late'].includes(r.status)).map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></label>${button('volunteer','Give this student the floor','data-controller')}<label>Calling preset<select id="rs-preset"><option value="everyone">Everyone present</option><option value="fresh">Fresh voices · not called this session</option><option value="opportunities">Fewer speaking opportunities</option><option value="low">Lower recitation score</option><option value="later">Return-later queue</option></select></label><small id="rs-later-count"></small><div class="rs-rule"></div><label>Scanner mode<select id="rs-scanner"><option value="open">Open · award any present student</option><option value="selected">Selected speaker · check card identity</option></select></label><div class="rs-actions">${button('nfc','Enable phone NFC','data-controller')}${button('pause','Pause scans','data-controller')}</div><form id="rs-card-form"><label>External reader / card ID<input id="rs-card" autocomplete="off" placeholder="Tap card or enter ID" aria-label="Card ID"></label><button type="submit" data-controller>Record +1</button></form><small>Keyboard readers work while the studio is open. NFC requires a compatible Android browser and readable NFC cards.</small><div id="rs-mismatch"></div><div class="rs-rule"></div><details class="rs-manual"><summary>No card? Give points manually</summary><form id="rs-manual-form"><label>Student<select id="rs-manual-student" required><option value="">Choose a student</option>${snap.roster.filter(r=>['Early','On Time','Late'].includes(r.status)).map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></label>${button('manual-called','Use called student','data-controller')}<div class="rs-manual-fields"><label>Points<input id="rs-manual-points" type="number" min="1" max="10" step="1" value="1" required></label><label>Private note (optional)<input id="rs-manual-note" maxlength="300" placeholder="e.g. Explained their reasoning"></label></div><button type="submit" data-controller>Award points</button><small>Only present students. Uses the same rewards and undo as a card tap.</small></form></details><div class="rs-rule"></div><div class="rs-actions">${button('undo','Undo last point')}${button('finish','Finish session','data-controller')}</div><p id="rs-live-summary"></p><div id="rs-pending"></div></section>
    <section class="rs-tab" data-panel="questions" hidden><h2>Question stage</h2><div class="rs-actions">${button('prev','← Previous','data-controller')}${button('next','Next →','data-controller')}</div><label>Presentation mode<select id="rs-view"><option value="question">Question focus</option><option value="seats">Seating and scores</option><option value="spotlight">Speaker spotlight</option></select></label><label>Seating layout<select id="rs-layout"></select></label><label>Show score totals<select id="rs-scope"><option value="session">This session</option><option value="today">Today</option><option value="period">Reporting period</option></select></label><label>Reporting period starts<input type="date" id="rs-period"></label><div class="rs-rule"></div><h3>Thinking time</h3><div class="rs-actions">${[10,20,30].map(s=>button('timer',s+'s',`data-seconds="${s}" data-controller`)).join('')}${button('timer-pause','Pause','data-controller')}${button('timer-resume','Resume','data-controller')}${button('timer-extend','+10s','data-controller')}</div><small>The timer never calls a student automatically.</small><div class="rs-rule"></div><label>Import a quiz<select id="rs-quiz"><option value="">Choose a question set</option></select></label>${button('import','Import questions','data-controller')}<label>Questions · one per line<textarea id="rs-questions" rows="5" placeholder="What did you notice? | Private answer note"></textarea></label><small>Add | followed by a private answer note. Notes never appear on the presentation.</small>${button('save-questions','Save question deck','data-controller')}<label>Image URL for current question<input type="url" id="rs-image" placeholder="https://…"></label>${button('image','Save question image','data-controller')}<div id="rs-answer-note" class="rs-answer-note"></div></section>
    <section class="rs-tab" data-panel="filters" hidden><h2>Who can be called?</h2><p>Only students marked Early, On Time or Late are eligible, including students without seats.</p><label>Exclude recent picks<select id="rs-recent"><option value="0">None</option><option value="2">Last 2</option><option value="3">Last 3</option><option value="5">Last 5</option></select></label><label>No repeats<select id="rs-repeat"><option value="question">Within this question</option><option value="session">Within this session</option><option value="off">Allow repeats</option></select></label><label>Lower-score period<select id="rs-filter-scope"><option value="session">This session</option><option value="today">Today</option><option value="period">Reporting period</option></select></label><label>Seat group<select id="rs-seat-group"><option value="">All students</option></select></label><p>Or select students below to make a temporary group. Leave the group empty to include everyone.</p><div class="rs-filter-roster" id="rs-filter-roster"></div><div class="rs-actions">${button('save-filters','Apply filters','data-controller')}${button('clear-filters','Reset filters','data-controller')}</div><p id="rs-pool"></p></section>
    <section class="rs-tab" data-panel="connect" hidden><h2>Pair the presentation</h2><p>Open Live Monitor → Recitation Studio on the classroom computer, choose Join presentation and enter:</p><strong class="rs-code">${esc(snap.code)}</strong><p>Both devices must be signed in as staff for this class. Students do not need a device.</p>${button('display-tab','Open presentation in new tab')}${button('takeover','Take control on this phone')}<label><input type="checkbox" id="rs-vibration" ${store.get('eq-recitation-vibration',true)?'checked':''}> Vibrate on confirmed scan</label><p>Phone and presentation need internet for live updates. Offline scans remain pending on this phone until confirmed. Keep this browser open for NFC scanning.</p><p>Web NFC cannot read 125 kHz RFID cards. Use a compatible external reader or enter the card ID.</p></section>
    <div class="rs-message" id="rs-message" role="status" aria-live="polite"></div></aside>`:''}</main><div id="rs-recognition" class="rs-recognition" aria-live="polite"></div>`;
   root.onclick=click;root.onchange=change;root.onkeydown=e=>{if(e.key!=='Tab')return;const nodes=[...root.querySelectorAll('button,input,select,textarea')].filter(n=>!n.disabled&&n.getClientRects().length);if(!nodes.length)return;if(e.shiftKey&&document.activeElement===nodes[0]){e.preventDefault();nodes.at(-1).focus();}else if(!e.shiftKey&&document.activeElement===nodes.at(-1)){e.preventDefault();nodes[0].focus();}};
   root.querySelector('#rs-card-form')?.addEventListener('submit',e=>{e.preventDefault();const input=root.querySelector('#rs-card');if(input.value.trim()){ingest(input.value.trim());input.value='';}});
+  root.querySelector('#rs-manual-form')?.addEventListener('submit',manualAward);
   hydrate();stageKey='';paintStage();paintStatus();
  }
  function hydrate(){
@@ -161,12 +190,13 @@
   if(a==='takeover'){if(confirm('Move control to this phone? The other device will become a display.')){const data=await act('claim',{takeover:true});if(data){role='remote';build();}}return;}
   if(a==='display-tab'){const url=new URL(location.href);url.searchParams.set('recitation',snap.code);window.open(url.href,'_blank','noopener');return;}
   if(a==='nfc')return abort?stopNFC():startNFC();
+  if(a==='manual-called'){if(!state().selected)return report('Call a student first, or choose one from the list.');root.querySelector('#rs-manual-student').value=state().selected;return;}
   if(a==='volunteer'){const student=root.querySelector('#rs-volunteer').value;if(!student)return report('Choose the student who volunteered.');await act('select',{student});poolCount();return;}
   if(a==='pick'||a==='later'){await act(a);poolCount();return;}
   if(a==='pause'){await patch({paused:!state().paused});b.textContent=state().paused?'Resume scans':'Pause scans';return;}
   if(a==='undo'){const last=[...snap.receipts].reverse().find(r=>!r.undone);if(last){await act('undo',{id:last.id});await window.LearningRewards?.refreshStudent(last.student_id);}return;}
   if(a==='finish'){
-   if(pending().length){report('Sync or discard the pending cards before finishing.');return;}
+   if(pending().length){report('Sync or discard the pending awards before finishing.');return;}
    if(confirm('Finish this session and show the classroom summary?')){await act('finish');stopNFC();}return;
   }
   if(a==='prev'||a==='next'){const next=(state().index||0)+(a==='next'?1:-1);if(next>=0&&next<(state().questions||[]).length){await patch({index:next,view:'question'});updatePrivateNote();poolCount();}return;}
@@ -210,19 +240,30 @@
   queue.push(item);if(!persistQueue()){queue.pop();return report('Phone storage is unavailable. No scan sent; enable browser storage and scan again.');}
   report(navigator.onLine?'Reading card…':'Offline. Card saved as pending; no point confirmed yet.');paintStatus();await flush();
  }
+ async function manualAward(e){
+  e.preventDefault();if(Date.now()-lastManualAt<1000)return;if(busy||syncing||drawing()||role!=='remote'||!snap?.session.is_active)return;
+  const student=root.querySelector('#rs-manual-student').value,amount=Number(root.querySelector('#rs-manual-points').value),note=root.querySelector('#rs-manual-note').value.trim();
+  if(!person(student)||!Number.isInteger(amount)||amount<1||amount>10)return report('Choose a present student and 1–10 whole points.');
+  if(pending().some(q=>q.kind==='manual'&&q.student===student&&q.question===(state().index||0)))return report('An award for this student is already pending. Sync or discard it first.');
+  lastManualAt=Date.now();
+  const item={id:uid(),kind:'manual',student,points:amount,note,session:snap.session.id,classId,question:state().index||0,questionText:current()?.text||'',createdAt:Date.now(),label:`Manual +${amount} · ${name(student)}`};
+  queue.push(item);if(!persistQueue()){queue.pop();return report('Phone storage unavailable. No points sent.');}
+  report(navigator.onLine?'Saving manual award…':'Manual award saved as pending. No point confirmed yet.');paintStatus();await flush();
+ }
  async function flush(){
-  if(syncing||role!=='remote'||!navigator.onLine||!root||!snap)return;syncing=true;
+  if(syncing||drawing()||role!=='remote'||!navigator.onLine||!root||!snap)return;syncing=true;
   try{for(const item of queue.filter(q=>q.classId===classId)){
    if(item.error)continue;
    try{
-    const data=await rpc('scan',{session:item.session,id:item.id,tag:item.tag,question:item.question,questionText:item.questionText,override:!!item.override});if(data.session.id===snap.session.id)adopt(data);
+    const data=await rpc(item.kind==='manual'?'manual':'scan',{student:item.student,points:item.points,note:item.note,session:item.session,id:item.id,tag:item.tag,question:item.question,questionText:item.questionText,override:!!item.override});if(data.session.id===snap.session.id)adopt(data);
+    if(item.kind==='manual'&&!data.receipt)throw new Error('Install phase82_recitation_spotlight.sql to enable manual awards.');
     if(data.mismatch){mismatch=item;item.error='Different card — teacher decision needed';persistQueue();root.querySelector('#rs-mismatch').innerHTML=`<div class="rs-warning"><strong>${esc(name(data.scannedStudent))} tapped.</strong><p>The called speaker is ${esc(name(state().selected))}. No point has been recorded.</p>${button('mismatch-award','Award the student who tapped')}${button('mismatch-keep','Keep waiting for called speaker')}</div>`;break;}
-    queue=queue.filter(q=>q.id!==item.id);persistQueue();report(data.receipt?.undone?'This scan was already corrected.':'Confirmed +1 · '+name(data.receipt?.student_id));
+    queue=queue.filter(q=>q.id!==item.id);persistQueue();report(data.receipt?.undone?'This scan was already corrected.':'Confirmed +'+points(data.receipt)+' · '+name(data.receipt?.student_id));
     if(!data.duplicate&&store.get('eq-recitation-vibration',true))navigator.vibrate?.([45,35,70]);
     if(data.receipt)window.LearningRewards?.refreshStudent(data.receipt.student_id);
    }catch(e){
     if(e.stale)break;
-    const message=friendly(e);if(/fetch|network|connection|timeout|offline/i.test(message)){report('Connection interrupted. Card stays pending and will retry safely.');break;}
+    const message=friendly(e);if(/fetch|network|connection|timeout|offline/i.test(message)){report('Connection interrupted. Award stays pending and will retry safely.');break;}
     item.error=message;persistQueue();report(message);
    }
   }}finally{syncing=false;paintStatus();poolCount();}
@@ -241,7 +282,7 @@
   clearTimeout(keyTimer);keyTimer=setTimeout(()=>{if(keyBuffer.length>2)ingest(keyBuffer);keyBuffer='';},140);
  }
  async function refresh(){if(!root||!snap)return;try{const data=await rpc('snapshot');adopt(data);poolCount();await flush();}catch(e){if(e.stale)return;report(friendly(e));const status=root?.querySelector('#rs-status');if(status)status.textContent='Reconnecting · unconfirmed cards stay pending';}}
- function close(){generation++;clearTimeout(recognitionTimer);playing=false;busy=false;clearInterval(poll);clearInterval(tick);clearTimeout(keyTimer);keyBuffer='';poll=tick=null;stopNFC();document.removeEventListener('keydown',keyScan,true);root?.remove();for(const [n,value] of inertSiblings)n.inert=value;inertSiblings.clear();root=null;snap=null;awardQueue=[];seen.clear();stageKey='';document.body.classList.remove('rs-open');lastFocus?.focus?.();}
+ function close(){generation++;clearTimeout(recognitionTimer);playing=false;busy=false;clearInterval(poll);clearInterval(tick);clearTimeout(keyTimer);keyBuffer='';poll=tick=null;stopNFC();document.removeEventListener('keydown',keyScan,true);root?.remove();for(const [n,value] of inertSiblings)n.inert=value;inertSiblings.clear();root=null;snap=null;awardQueue=[];seen.clear();stageKey='';stagePhotos=[];document.body.classList.remove('rs-open');lastFocus?.focus?.();}
  async function open(options={}){
   if(root)close();generation++;window._lmStopWebNfcCapture?.();lastFocus=document.activeElement;classId=options.classId||document.querySelector('#lm-class-select')?.value||window.ActiveSection?.get?.()||'default-class';role=options.role||'remote';
   root=document.createElement('div');root.className='rs-app';root.setAttribute('role','dialog');root.setAttribute('aria-label','Recitation Studio');root.setAttribute('aria-modal','true');for(const n of document.body.children){if(n.tagName!=='SCRIPT'&&n.tagName!=='STYLE'){inertSiblings.set(n,n.inert);n.inert=true;}}document.body.append(root);document.body.classList.add('rs-open');
