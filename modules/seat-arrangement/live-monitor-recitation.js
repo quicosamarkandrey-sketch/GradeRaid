@@ -154,6 +154,7 @@
   }
 
   async function _lmSubmitScan(tagId) {
+    if (document.body.classList.contains('rs-open')) return;
     if (!tagId) return;
     const result = await RecitationService.processScannerTap(tagId, _lmClassId);
     if (!result.ok) {

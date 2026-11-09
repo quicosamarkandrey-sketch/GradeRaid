@@ -210,6 +210,7 @@ const LMView = window.LMView = (() => {
           }</select>
 
           <div style="margin-left:auto"></div>
+          <button class="lm-fullscreen-btn" onclick="window.RecitationStudio.open()">Recitation Studio</button>
 
           <button class="lm-fullscreen-btn${_lmKioskMode ? ' active' : ''}" id="lm-fullscreen-btn"
             onclick="window._lmToggleKioskMode()"
