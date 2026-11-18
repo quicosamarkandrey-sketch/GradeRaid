@@ -458,6 +458,8 @@ export async function doLogout(options = {}){
   const expired=options.expired===true;
   window.UXStates?.onLogout(expired);
   if(typeof closeModalForce==='function')closeModalForce();
+  window.RecitationStudio?.close();
+  window.unmountClassroomMonitor?.();
   window.AttendanceStation?.unmount();
   window.RaidCanvas?.stop();window.RaidCanvas?.stopPreview();window.RaidCanvas?.stopDefeat();
   // Cleanup 5: closeProfile absorbed from index.html monkey patch (doLogout → closeProfile → _origLogout)

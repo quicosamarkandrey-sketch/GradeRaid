@@ -69,12 +69,11 @@ const root=path.resolve(__dirname,'../..');
   const wrap=await page.locator('#lm-canvas-wrap').boundingBox();
   await page.mouse.move(wrap.x+10,wrap.y+10);await page.mouse.down();await page.mouse.move(wrap.x+70,wrap.y+40);await page.mouse.up();
   await page.locator('[data-lm-action=fit]').click();await centered();
-  await page.evaluate(()=>{_lmRecitationMode=true;_lmSessionStartAt=new Date().toISOString();_lmRender(document.getElementById('a-classroom-monitor'),getActiveClassIds(AppStore.getState()),AppStore.getState());});
+  await page.evaluate(()=>{_lmRecitationMode=true;_lmSessionStartAt=new Date().toISOString();_lmReconcileSessionState();_lmRender(document.getElementById('a-classroom-monitor'),getActiveClassIds(AppStore.getState()),AppStore.getState());});
   await page.locator('[data-lm-action=projection]').click();await centered();
   assert.equal(await page.locator('#lm-sidebar').isVisible(),false);
-  assert.equal(await page.locator('.lm-recitation-badge').first().isVisible(),false);
-  await page.locator('#lm-show-scores').check();assert.equal(await page.locator('.lm-recitation-badge').first().isVisible(),true);
-  await page.locator('#lm-show-scores').uncheck();
+  assert.equal(await page.locator('.lm-recitation-badge,#lm-show-scores,#lm-recitation-toggle,#lm-coldcall-btn').count(),0,'Recitation controls and scores now live in Studio');
+  assert.equal(await page.evaluate(()=>_lmRecitationMode),false,'Live Monitor does not re-arm the legacy recitation scanner');
   for(const width of [390,1440]){
    await page.setViewportSize({width,height:1000});await page.waitForTimeout(200);await centered();
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));

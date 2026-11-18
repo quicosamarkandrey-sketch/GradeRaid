@@ -59,7 +59,6 @@ const LMView = window.LMView = (() => {
       <span class="lm-zoom-controls"><button class="btn btn-ghost" data-lm-action="out" aria-label="Zoom out">−</button>
       <output id="lm-zoom-label" aria-label="Zoom relative to fit">100%</output>
       <button class="btn btn-ghost" data-lm-action="in" aria-label="Zoom in">+</button></span>
-      <label><input type="checkbox" id="lm-show-scores" ${view.scores ? 'checked' : ''}> Show scores in projection</label>
       <span class="lm-pan-hint">Drag empty space to pan</span>
     </div><div class="lm-attendance-filters" id="lm-attendance-filters" role="group" aria-label="Highlight attendance"></div>
     <div class="lm-filter-summary" id="lm-filter-summary" role="status" aria-live="polite"></div>`;
@@ -84,7 +83,7 @@ const LMView = window.LMView = (() => {
     const summary = document.getElementById('lm-filter-summary');
     if (summary) {
       const counts = stats(), total = counts[view.filter];
-      summary.textContent = view.filter === 'All' ? 'Showing all seats · Attendance highlights do not change who can be picked.' : `${view.filter === 'Unscanned' ? 'Not checked in' : view.filter}: ${matched} seated · ${Math.max(0,total-matched)} without a seat. Highlight only; picker eligibility stays unchanged.`;
+      summary.textContent = view.filter === 'All' ? 'Showing all seats · Attendance highlights are view-only.' : `${view.filter === 'Unscanned' ? 'Not checked in' : view.filter}: ${matched} seated · ${Math.max(0,total-matched)} without a seat. Highlight only; saved attendance stays unchanged.`;
     }
   }
   function filters() {
@@ -130,8 +129,6 @@ const LMView = window.LMView = (() => {
       } else if (action === 'fit') reset();
       else {view.zoom=Math.max(.5,Math.min(3,view.zoom+(action==='in'?.15:-.15)));fitCanvas();}
     });
-    const checkbox=document.getElementById('lm-show-scores');
-    if (checkbox) checkbox.onchange=()=>{view.scores=checkbox.checked;applyMode();};
     const wrap=document.getElementById('lm-canvas-wrap');
     if (wrap) {
       wrap.onpointerdown=e=>{
@@ -146,7 +143,7 @@ const LMView = window.LMView = (() => {
   }
   function cleanup() {gesture=null;view.projection=false;view.scores=false;view.key=null;document.body.classList.remove('lm-projection-mode','lm-private-scores');}
   document.addEventListener('keydown',e=>{
-    if (e.defaultPrevented || e.key!=='Escape' || !document.getElementById('a-classroom-monitor')?.classList.contains('active')) return;
+    if (document.querySelector('.rs-app') || e.defaultPrevented || e.key!=='Escape' || !document.getElementById('a-classroom-monitor')?.classList.contains('active')) return;
     if (view.projection) {view.projection=false;applyMode();document.querySelector('[data-lm-action="projection"]')?.setAttribute('aria-pressed','false');const b=document.querySelector('[data-lm-action="projection"]');if(b)b.textContent='Projection view';reset();}
     else if (_lmKioskMode) window._lmToggleKioskMode();
   });
@@ -156,8 +153,6 @@ const LMView = window.LMView = (() => {
   function _lmRender(page, classIds, state) {
     _lmClearCycle();
     const layouts = (state.classroomLayouts || []).filter(l => l.classId === _lmClassId);
-    const coldCallDisabled = !_lmLayoutId ||
-      (_lmStrategy === 'spatial_block' && _lmTargetedSeatIds.size === 0);
 
     page.innerHTML = `
       <div class="lm-page">
@@ -173,7 +168,7 @@ const LMView = window.LMView = (() => {
           }</select>
 
           <div style="margin-left:auto"></div>
-          <button class="lm-fullscreen-btn" onclick="window.RecitationStudio.open()">Recitation Studio</button>
+          <button class="lm-fullscreen-btn" onclick="window.RecitationStudio.open({classId:document.getElementById('lm-class-select')?.value})">Recitation Studio</button>
 
           <button class="lm-fullscreen-btn${_lmKioskMode ? ' active' : ''}" id="lm-fullscreen-btn"
             onclick="window._lmToggleKioskMode()"
@@ -181,39 +176,6 @@ const LMView = window.LMView = (() => {
             ${_lmKioskMode ? '⤢ Exit Fullscreen' : '⛶ Fullscreen'}
           </button>
 
-          ${_lmRecitationMode ? `
-          <div class="lm-toolbar-sep" style="width:1px;height:28px;background:var(--border)"></div>
-
-          <select class="lm-strategy-select" id="lm-strategy-select" title="Cold Call Strategy"
-            onchange="window._lmOnStrategyChange(this.value)">
-            <option value="pure_random" ${_lmStrategy==='pure_random'?'selected':''}>🎲 Pure Random</option>
-            <option value="least_participative" ${_lmStrategy==='least_participative'?'selected':''}>🤫 Least Participative</option>
-            <option value="late_only" ${_lmStrategy==='late_only'?'selected':''}>⏰ Late Only</option>
-            <option value="spatial_block" ${_lmStrategy==='spatial_block'?'selected':''}>📍 Roll Selected Seats Only</option>
-          </select>
-
-          ${_lmStrategy === 'spatial_block' ? `
-            <span class="lm-target-hint">
-              👆 Tap present/late seats below to target them
-              <span class="lm-target-count">${_lmTargetedSeatIds.size}</span>
-            </span>
-          ` : ''}
-          <button class="lm-coldcall-btn" id="lm-coldcall-btn" onclick="window._lmStartColdCall()"
-            ${coldCallDisabled ? 'disabled' : ''}>
-            🎯 Pick Random Student
-          </button>
-          ` : ''}
-          <button class="lm-recitation-toggle${_lmRecitationMode ? ' active' : ''}" id="lm-recitation-toggle"
-            onclick="window._lmToggleRecitationMode()">
-            ${_lmRecitationMode ? '🎤 Recitation Active' : '🎤 Start Recitation Session'}
-          </button>
-          ${_lmRecitationMode && _lmWebNfcSupported() ? `
-          <button class="lm-recitation-toggle${_lmWebNfcActive ? ' active' : ''}" id="lm-webnfc-toggle"
-            title="${_lmWebNfcActive ? 'Stop using this phone as an NFC reader' : 'Use this phone as an NFC reader — tap to arm, then hold cards to the back of the phone'}"
-            onclick="window._lmToggleWebNfc()">
-            ${_lmWebNfcActive ? '📱 NFC On — Roaming' : '📱 Use This Phone as Reader'}
-          </button>
-          ` : ''}
         </div>
 
         ${LMView.controls()}

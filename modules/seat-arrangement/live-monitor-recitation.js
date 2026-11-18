@@ -1,36 +1,7 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// LIVE MONITOR — recitation session lifecycle + Scanner B (keyboard-wedge
-// RFID)
-//
-// Phase 6 (Decompose God Files) extraction from live_monitor.js. Owns
-// cross-device recitation-session reconciliation (auto entering/exiting
-// Recitation Mode to match the authoritative RecitationService session),
-// starting/stopping a session locally, and the keyboard-wedge scanner
-// listener (buffers keystrokes between an RFID reader's rapid keydown
-// events, on inactivity submits the buffered tag). No behavior change —
-// every function below is moved verbatim.
-//
-// WHY THIS WAS SAFE TO EXTRACT: every function here reads/writes the shared
-// module state declared in live_monitor.js (same shared top-level `let`
-// bindings every other Phase 6 split in this file already relies on — see
-// live-monitor-render.js's header for the full explanation). The one
-// cross-file call — _lmStopWebNfcCapture() inside window._lmToggleRecitationMode,
-// "don't leave the phone's NFC radio armed after the session ends" — is a
-// single defensive cleanup call into live-monitor-webnfc.js, not mutual
-// coupling, so these stayed as separate files rather than combined the way
-// campaign_engine.js's reveal+dialogue beats were (where BOTH sides called
-// into each other's cleanup symmetrically).
-//
-// Exports: _lmReconcileSessionState(), window._lmToggleRecitationMode(),
-//   _lmStartRecitationSession(), _lmStopRecitationSession(),
-//   _lmStartScannerBListener(), _lmStopScannerBListener(), _lmSubmitScan(),
-//   _lmFinalizeScan()
-//
-// DEPENDENCIES: the module state declared in live_monitor.js, RecitationService,
-// AppStore, toast(), _lmRender(), _lmStopWebNfcCapture() (live-monitor-webnfc.js)
-// — all globals already available wherever this file loads, same as when
-// this code lived inside live_monitor.js.
-// ─────────────────────────────────────────────────────────────────────────────
+/* Live Monitor now owns attendance and room viewing. Recitation Studio owns
+ * recitation controls and reader capture. The legacy toggle opens Studio;
+ * reconciliation stops local legacy capture without ending the shared session.
+ * Older scan functions remain available for cleanup/backward compatibility. */
 
 'use strict';
 
@@ -48,38 +19,12 @@
   // UI state — neither calls AppStore.updateState() — so this never
   // re-enters itself through the subscriber it's called from.
   function _lmReconcileSessionState() {
-    if (!_lmClassId || typeof RecitationService === 'undefined') return;
-    const active = RecitationService.getActiveSession(_lmClassId);
-    if (active && !_lmRecitationMode) {
-      // Join using the OTHER device's authoritative start time, not a fresh
-      // timestamp of our own, so both devices score the exact same window.
-      _lmStartRecitationSession(active.startedAt);
-    } else if (!active && _lmRecitationMode) {
-      _lmStopRecitationSession();
-    }
+    if (_lmRecitationMode) _lmStopRecitationSession();
+    _lmStopScannerBListener();
   }
-
-  window._lmToggleRecitationMode = async function () {
-    if (_lmRecitationMode) {
-      // Confirm before stopping — this now ends the session on every
-      // device it's synced to (Phase 71), not just this tab, so an
-      // accidental click has a bigger blast radius than it used to.
-      if (!confirm('End this recitation session? This will end it on every device it\'s synced to.')) return;
-      const result = await RecitationService.stopSession(_lmClassId);
-      if (!result.ok) { toast('⚠️ ' + result.error, '#ffb95f'); return; }
-      _lmStopRecitationSession();
-    } else {
-      const result = await RecitationService.startSession(_lmClassId);
-      if (!result.ok) { toast('⚠️ ' + result.error, '#ffb95f'); return; }
-      // result.session.startedAt is authoritative — idempotent server-side,
-      // so if another device juuust started this same session, we join
-      // THEIRS instead of stamping our own new start time.
-      _lmStartRecitationSession(result.session ? result.session.startedAt : null);
-    }
-    const page = document.getElementById('a-classroom-monitor');
-    const state = AppStore.getState();
-    const classIds = window.getActiveClassIds(state);
-    _lmRender(page, classIds, state);
+  window._lmToggleRecitationMode = function () {
+    _lmReconcileSessionState();
+    return window.RecitationStudio.open({classId:_lmClassId});
   };
 
   function _lmStartRecitationSession(startedAtISO) {
@@ -187,3 +132,5 @@
 window._lmReconcileSessionState = _lmReconcileSessionState;
 window._lmStopRecitationSession = _lmStopRecitationSession;
 window._lmSubmitScan = _lmSubmitScan;
+
+window._lmStopScannerBListener = _lmStopScannerBListener;
