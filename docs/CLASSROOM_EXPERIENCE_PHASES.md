@@ -38,10 +38,21 @@ No new SQL migration is required. Existing phase81/phase82 Recitation Studio mig
 
 ## Phase 2 — Boss Studio rehearsal
 
-Next implementation phase: recommendation 4. Build a non-scoring encounter rehearsal with a scrubbable lifecycle (idle, cast, hit, rage, interrupt, defeat, loot), device previews and the same rendering/asset paths as battle. Rehearsal must not create events, score answers, claim inventory or send battle actions. Include loading/error feedback and clear controls for authored versus fallback motion.
+Implemented: recommendation 4. Animations → Open encounter rehearsal uses the same validated assets and Pixi scene as battle. The isolated director's timeline covers idle, cast, hit, rage, interrupt/eruption, defeat and loot. It includes playback/scrubbing, quality controls, device frames, asset-error fallback and cleanup, with no scoring or inventory calls. See [Boss rehearsal guide](BOSS_REHEARSAL.md).
 
 ## Phase 3 — Distinct boss identities
 
-After rehearsal: recommendation 5. Use per-boss lighting, arena materials, casting language, impact texture and ultimate presentation. Keep readable gameplay cues and the device quality/reduced-motion budgets. Rehearsal becomes the place to assess and tune each identity before an event is launched.
+Implemented: recommendation 5. Theme → Encounter identity offers Classic, Obsidian, Clockwork and Veil art directions with bounded intensity. Saved identity settings deploy with the linked event's visual profile. Arena details, procedural casting accents and ultimate seals/titles differ; the existing server-owned combat rules remain. See [Boss rehearsal guide](BOSS_REHEARSAL.md).
 
-Each phase is a reviewable implementation with its own validation and GitHub update, rather than shipping unfinished controls for later phases.
+## Original approved recommendations
+
+| Item | Delivered |
+|---|---|
+| 1. Answer Stage | Question/call/speaker/recognition flow with a clean classroom seating presentation |
+| 2. Score-to-seat feedback | Confirmed award/correction arcs to visible student totals |
+| 3. Teacher remote | Persistent thumb dock, cardless awards, undo and private controls |
+| 4. Full Boss Studio rehearsal | Scrubbable lifecycle with device and quality previews |
+| 5. Distinct boss identities | Three opt-in art directions plus the Classic fallback |
+| 6. Seating overview/focus | Fit, pan, zoom, row/speaker focus, mini-map and seat action panel on the remote; presentation auto-fits without tools |
+
+The earlier items were grouped into one classroom implementation because they share a session and presentation. The boss tools complete the remaining approved items. Recommendations 7–9 remain excluded.

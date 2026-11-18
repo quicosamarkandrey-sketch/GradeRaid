@@ -1,6 +1,7 @@
 const fixture=require('../helpers/raid-ultimate-db.cjs'),{chromium}=require('@playwright/test'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 (async()=>{const {db,rpc,users,boss}=await fixture();let browser,server;try{
  await db.query("update boss_events set skills=jsonb_set(skills,'{cataclysm,durationSec}','35') where id=$1",[boss]);
+ await db.query('update boss_events set visual_profile=$2 where id=$1',[boss,JSON.stringify({visualIdentity:{version:1,type:'clockwork',intensity:'balanced'}})]);
  const root=path.resolve(__dirname,'../..');server=http.createServer((req,res)=>{const file=path.resolve(root,'.'+(req.url==='/'?'/index.html':req.url.split('?')[0]));if(!file.startsWith(root+path.sep))return res.writeHead(403).end();fs.readFile(file,(err,data)=>{res.writeHead(err?404:200,{'Content-Type':file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html'});res.end(err?'Missing':data);});});await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
  browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});const pages=[],errors=[];
  for(const [i,user] of ['alex','bea'].entries()){
@@ -15,7 +16,7 @@ const fixture=require('../helpers/raid-ultimate-db.cjs'),{chromium}=require('@pl
  }
  const [alex,bea]=pages,refresh=()=>Promise.all(pages.map(p=>p.evaluate(()=>RaidExperience.refresh())));
  await bea.evaluate(()=>{const actualNow=Date.now;Date.now=()=>actualNow()+30000;});
- await rpc('teacher','ultimate');await refresh();for(const p of pages){await p.locator('#raid-ultimate[data-phase="casting"]').waitFor();assert.doesNotMatch(await p.locator('.rux-clock').textContent(),/Confirming/,'Server clock corrects device skew');assert.match(await p.locator('.rux-foot strong').textContent(),/0 \/ 2/);assert.equal(await p.locator('#rfx-answer-flight').count(),0,'Casting leaves answer choices stable');}
+ await rpc('teacher','ultimate');await refresh();for(const p of pages){await p.locator('#raid-ultimate[data-phase="casting"]').waitFor();assert.equal(await p.locator('.rux-heading strong').textContent(),'Core Overload');assert.equal(await p.locator('#raid-ultimate-core').getAttribute('data-identity'),'clockwork');assert.equal(await p.locator('.rux-sun-disc').count(),1);assert.doesNotMatch(await p.locator('.rux-clock').textContent(),/Confirming/,'Server clock corrects device skew');assert.match(await p.locator('.rux-foot strong').textContent(),/0 \/ 2/);assert.equal(await p.locator('#rfx-answer-flight').count(),0,'Casting leaves answer choices stable');}
  await alex.screenshot({path:'/workspace/cataclysm-charging-desktop.png'});await bea.screenshot({path:'/workspace/cataclysm-charging-phone.png'});
  await alex.locator('#wbr-opt-0').click();await alex.waitForFunction(()=>answerShatters>0&&crownShatters>0);await alex.waitForFunction(()=>!WBR.answerPending);await refresh();assert.match(await bea.locator('.rux-foot strong').textContent(),/1 \/ 2/);
  assert.equal(await bea.locator('#raid-ultimate-core').evaluate(n=>n.style.getPropertyValue('--rux-fracture')),'0.5');

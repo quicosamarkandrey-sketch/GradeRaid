@@ -88,6 +88,7 @@ window._bsCloseEditor = function () {
 };
 
 window._bsForceCloseEditor = function () {
+  window.BossRehearsal?.close();
   window.BossMotionStudio?.close();
   const overlay = document.getElementById('bs-editor-overlay');
   if (overlay) overlay.classList.remove('open');
@@ -114,6 +115,7 @@ window._bsSyncEditorPreview = function () {
   const aura   = d.visual?.auraColor  || BS_DEFAULT_AURA;
   const accent = d.visual?.cardAccent || BS_DEFAULT_ACCENT;
   const stage  = document.getElementById('bsed-main-stage');
+  window.BossIdentity?.apply(stage,d);
   if (stage)  stage.style.setProperty('--bs-stage-glow', _hexToRgba(theme, 0.3));
   const hpFill = document.getElementById('bsed-hp-fill');
   if (hpFill) { hpFill.style.setProperty('--bs-hp-color', aura); hpFill.style.setProperty('--bs-hp-color2', theme); }
@@ -793,6 +795,7 @@ function _bsRenderFormModal(isEdit){
 
     <!-- ══ ANIMATIONS PANEL ══ -->
     <div class="bsf-tool-panel" data-panel="animations" style="display:none">
+      <section class="bsf-section"><h3>Encounter rehearsal</h3><p style="font-size:12px;color:var(--text-muted)">Inspect idle, casting, damage, rage, ultimate, defeat and treasure on one timeline.</p><button type="button" class="btn btn-ghost" onclick="BossRehearsal.open()">Open encounter rehearsal</button></section>
       ${window.BossMotionStudio?window.BossMotionStudio.panel(d):''}
 
       <div class="bsf-section">
@@ -839,6 +842,7 @@ function _bsRenderFormModal(isEdit){
 
     <!-- ══ THEME PANEL ══ -->
     <div class="bsf-tool-panel" data-panel="theme" style="display:none">
+      ${window.BossIdentity?BossIdentity.panel(d):''}
 
       <div class="bsf-section">
         <div class="bsf-section-title">
