@@ -240,6 +240,7 @@ export function _navToCore(id){
   // but bounce the page too so a teacher never even sees the shell render.
   if(ADMIN_ONLY_NAV_IDS.indexOf(id)!==-1 && currentRole!=='admin'){
     console.warn('[EduQuest] blocked non-admin navigation to admin-only page:', id);
+    window.UXStates?.notice('permission',{title:'Administrator access required',description:'This page is reserved for school administrators. Ask your administrator to review your access if you need it.'});
     id = (currentRole==='teacher') ? 'a-dashboard' : 's-dashboard';
   }
   // Remove cart FAB when leaving the store

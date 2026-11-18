@@ -20,7 +20,7 @@
  function readiness(b){const qs=wbcGetBossQuestions(b);return `<div class="raid-readiness"><span class="${b.image?'is-ready':''}">${icon(b.image?'check_circle':'radio_button_unchecked')}Identity</span><span class="${qs.length?'is-ready':''}">${icon(qs.length?'check_circle':'radio_button_unchecked')}${qs.length} questions</span><span class="${(b.lootRewards||[]).length?'is-ready':''}">${icon((b.lootRewards||[]).length?'check_circle':'radio_button_unchecked')}${(b.lootRewards||[]).length} loot items</span></div>`;}
  function adminCards(){
   const rows=visible().filter(({boss:b})=>(filter==='all'||b.status===filter)&&(b.name+' '+(b.description||'')).toLowerCase().includes(search.toLowerCase()));
-  if(!rows.length)return `<div class="raid-empty">${icon('swords')}<h2>${visible().length?'No raids match this view':'Build your first class raid'}</h2><p>Create a boss identity in Studio, add questions, then launch an event for your section.</p><button class="btn btn-primary" onclick="openBossForm(null)">Create event</button></div>`;
+  if(!rows.length)return `<div class="raid-empty">${icon('swords')}<h2>${visible().length?'No raids match this view':'Build your first class raid'}</h2><p>${visible().length?'Try a shorter event name or clear your search and status filters.':'Create a boss identity in Studio, add questions, then launch an event for your section.'}</p><button class="btn btn-primary" onclick="${visible().length?'RaidExperience.clearFilters()':'openBossForm(null)'}">${visible().length?'Clear filters':'Create event'}</button></div>`;
   return rows.map(({boss:b,index:i})=>{
    const rewards=payout(b),participants=Object.values(wbcGetParticipants(i)),running=['active','loot'].includes(b.status);
    return `<article class="raid-event-card" data-raid-index="${i}"><div class="raid-event-art">${art(b)}<span class="raid-state is-${esc(b.status)}">${status(b)}</span><span class="raid-difficulty">${esc(b.difficulty||'Normal')}</span></div><div class="raid-event-body"><span class="raid-eyebrow">${esc(typeof getClassLabel==='function'?getClassLabel(b.classId):b.classId||'Class raid')}</span><h2>${esc(b.name||'Untitled boss')}</h2><p>${esc(b.description||'A shared challenge for your class.')}</p><div class="raid-event-dates">${icon('calendar_month')}${date(b.startDate)} — ${date(b.endDate)}</div>${meter(b)}<div class="raid-card-stats">${stat(num(rewards.xp),'Victory XP')}${stat(num(rewards.coins),'Victory coins')}${stat(num(participants.length),'Raiders')}</div>${readiness(b)}
@@ -111,7 +111,7 @@
  function updateLootClock(){const root=document.querySelector('[data-raid-loot]');if(!root)return;const b=AppStore.getBossEvent(Number(root.dataset.raidLoot));if(!b)return;const left=seconds(b),clock=document.getElementById('raid-loot-clock');if(clock)clock.textContent=Math.floor(left/60)+':'+String(left%60).padStart(2,'0');if(!left)document.querySelectorAll('.raid-loot-card button').forEach(el=>{el.disabled=true;el.textContent='Loot closed';});}
  function connection(ok){
   const status=document.getElementById('raid-sync-state');if(!status)return;
-  status.classList.toggle('is-offline',!ok);status.textContent=ok?'Raid synced':'Reconnecting · progress is saved';
+  status.classList.toggle('is-offline',!ok);status.textContent=ok?'Raid synced':'Reconnecting · awaiting confirmation';
   status.title=ok?'Last confirmed server update: '+new Date().toLocaleTimeString():'Waiting for the server. Attacks and rewards require confirmation.';
  }
  async function refresh(){
@@ -136,7 +136,7 @@
  window.wbmAdminReviveStudent=(i,studentId)=>RaidService.managed(AppStore.getBossEvent(i))?command(i,'revive',{studentId},()=>wbmOpenRevivePanel(i)):previousRevive(i,studentId);
  window.wbmSelfRevive=async i=>{if(!RaidService.managed(AppStore.getBossEvent(i)))return previousSelfRevive(i);AppStore.flushNow?.();await DBService.flushPendingUpload?.();return command(i,'revive',{studentId:currentUser.id},()=>{wbmStopKoTimer();_wbmRefreshBattleArea(i);if(WBR.bossIdx===i)wbrShowEncounter();});};
  document.addEventListener('keydown',e=>{const picker=document.getElementById('bflp-overlay');if(!picker)return;if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();picker.remove();document.querySelector('[onclick="bfOpenLibraryPicker()"]')?.focus();}else if(['Enter',' '].includes(e.key)&&e.target.matches('.bflp-card')){e.preventDefault();e.target.click();}},true);
- window.RaidExperience=Object.freeze({renderAdmin,renderStudent,renderLoot,openSummary,showVictory,createStarter,refresh});
+ window.RaidExperience=Object.freeze({clearFilters(){filter='all';search='';renderAdmin();document.getElementById('raid-search')?.focus();},renderAdmin,renderStudent,renderLoot,openSummary,showVictory,createStarter,refresh});
  window.renderAdminBossEvents=renderAdmin;window.renderStudentWorldBoss=renderStudent;
  window.bossActivate=i=>lifecycle(i,'activate');window.bossEnd=i=>lifecycle(i,'end');window.bossDelete=i=>lifecycle(i,'delete');window.wblrAdminFinalizeLoot=i=>lifecycle(i,'finalize');
  window.wblrClaimReward=claim;window.wblrRenderStudentLootPage=renderLoot;window.wblrShowLootRain=renderLoot;

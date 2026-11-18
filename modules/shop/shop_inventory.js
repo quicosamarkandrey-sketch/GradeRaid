@@ -125,6 +125,7 @@ window.invFilter = function () {
 
   if (!inv.length) {
     const isEmpty = !q && cat === 'all' && statusF === 'all';
+    if(window.UXStates){UXStates.render(grid,isEmpty?'empty':'zero',{title:isEmpty?'Your inventory starts here':'No items match your filters',description:isEmpty?'Earn coins through class activities, then choose your first reward in the Armory.':'Try a shorter item name or clear the category and status filters.',actionLabel:isEmpty?'Explore the Armory':'Clear filters',onAction:()=>{if(isEmpty){navTo('s-store');return;}document.getElementById('inv-search').value='';document.getElementById('inv-cat-filter').value='all';document.getElementById('inv-status-filter').value='all';invFilter();document.getElementById('inv-search').focus();}});return;}
     grid.innerHTML = `<div class="inv-empty">
       <div style="font-size:56px;margin-bottom:16px">${uiIcon('bag')}</div>
       <div style="font-family:var(--fh);font-size:18px;font-weight:800;margin-bottom:8px;color:var(--on-surface)">${isEmpty ? 'Inventory Empty' : 'No items match'}</div>
@@ -182,6 +183,7 @@ window.invHistFilter = function () {
   if (!list) return;
 
   if (!records.length) {
+    if(window.UXStates){const filtered=q||cat!=='all';UXStates.render(list,filtered?'zero':'empty',{title:filtered?'No purchases match':'No purchases yet',description:filtered?'Clear your search and category to see all purchases.':'Your Armory purchases will appear here, including claim codes and status.',actionLabel:filtered?'Clear filters':'Explore the Armory',onAction:()=>{if(!filtered){navTo('s-store');return;}document.getElementById('inv-hist-search').value='';document.getElementById('inv-hist-cat').value='all';invHistFilter();}});return;}
     list.innerHTML = `<div class="student-empty-state" style="text-align:center;padding:60px;color:var(--text-muted);font-size:13px">
       <div style="font-size:40px;margin-bottom:12px">${uiIcon('calendar')}</div>
       <div style="font-weight:700;margin-bottom:4px">No purchase history</div>

@@ -60,30 +60,27 @@
    * @param {Object} [opts]
    * @param {string} [opts.label='Loading…'] — text shown next to the spinner
    */
-  function eqButtonLoading(btn, isLoading, opts) {
+  const loadingStates = new WeakMap();
+  const pendingActions = new WeakMap();
+  function eqButtonLoading(btn, isLoading, opts = {}) {
     if (!btn) return;
-    opts = opts || {};
-
     if (isLoading) {
-      if (btn.dataset.eqLoading === '1') return; // already loading — don't clobber saved original
-      btn.dataset.eqLoading = '1';
-      btn.dataset.eqOrigHtml = btn.innerHTML;
-      // Lock the button's current rendered width before swapping content,
-      // so "Enter Quest →" → spinner+"Signing in…" doesn't reflow/shrink
-      // the button (and, on the login form, doesn't shift the card layout).
-      btn.style.minWidth = btn.offsetWidth + 'px';
-      btn.disabled = true;
-      btn.classList.add('eq-btn-loading');
-      var label = opts.label || 'Loading…';
-      btn.innerHTML = '<span class="material-symbols-outlined eq-btn-spinner">progress_activity</span>' + label;
+      if (loadingStates.has(btn)) return;
+      const previous = { html: btn.innerHTML, disabled: btn.disabled, minWidth: btn.style.minWidth, busy: btn.getAttribute('aria-busy'), live: btn.getAttribute('aria-live') };
+      loadingStates.set(btn, previous);
+      btn.dataset.eqLoading = '1'; btn.dataset.eqOrigHtml = previous.html;
+      btn.style.minWidth = btn.offsetWidth + 'px'; btn.disabled = true;
+      btn.classList.add('eq-btn-loading'); btn.setAttribute('aria-busy', 'true'); btn.setAttribute('aria-live', 'polite');
+      const spinner = document.createElement('span'); spinner.className = 'material-symbols-outlined eq-btn-spinner'; spinner.textContent = 'progress_activity'; spinner.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span'); label.textContent = opts.label || 'Loading…';
+      btn.replaceChildren(spinner, label);
+      previous.timer = setTimeout(() => { if (btn.isConnected && loadingStates.has(btn)) { label.textContent = 'Still working…'; btn.title = 'Waiting for the server. Keep this page open; do not submit again.'; } }, 5000);
+      previous.title = btn.getAttribute('title');
     } else {
-      if (btn.dataset.eqLoading !== '1') return; // never entered loading state — nothing to restore
-      btn.innerHTML = btn.dataset.eqOrigHtml;
-      btn.disabled = false;
-      btn.classList.remove('eq-btn-loading');
-      btn.style.minWidth = '';
-      delete btn.dataset.eqLoading;
-      delete btn.dataset.eqOrigHtml;
+      const previous = loadingStates.get(btn); if (!previous) return;
+      clearTimeout(previous.timer); btn.innerHTML = previous.html; btn.disabled = previous.disabled; btn.style.minWidth = previous.minWidth;
+      for (const [name, value] of [['aria-busy', previous.busy], ['aria-live', previous.live], ['title', previous.title]]) { if (value === null) btn.removeAttribute(name); else btn.setAttribute(name, value); }
+      btn.classList.remove('eq-btn-loading'); delete btn.dataset.eqLoading; delete btn.dataset.eqOrigHtml; loadingStates.delete(btn);
     }
   }
   window.eqButtonLoading = eqButtonLoading;
@@ -101,12 +98,12 @@
    * @param {Function} fn — () => Promise<any> | any
    */
   async function eqWithButtonLoading(btn, label, fn) {
-    eqButtonLoading(btn, true, { label: label });
-    try {
-      return await fn();
-    } finally {
-      eqButtonLoading(btn, false);
-    }
+    if (btn && pendingActions.has(btn)) return pendingActions.get(btn);
+    eqButtonLoading(btn, true, { label });
+    const action = Promise.resolve().then(fn);
+    if (btn) pendingActions.set(btn, action);
+    try { return await action; }
+    finally { if (btn) pendingActions.delete(btn); eqButtonLoading(btn, false); }
   }
   window.eqWithButtonLoading = eqWithButtonLoading;
 

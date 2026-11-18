@@ -569,7 +569,7 @@ window.removeOption = function(qi, oi) {
 
 window.saveQuiz = async function() {
   draftQuiz.coinReward=Math.max(0,Math.min(40,Number(draftQuiz.coinReward)||0));
-  if (!draftQuiz.title.trim()) { toast('❌ Title required', '#ffb4ab'); return; }
+  if (!draftQuiz.title.trim()) { window.UXStates?.fieldError('qb-title','Give this quest a title.');document.getElementById('qb-title')?.focus();return; }
   if (draftQuiz.questions.length === 0) { toast('❌ Add at least 1 question', '#ffb4ab'); return; }
   // Phase 4 — chain fields sanitize: an empty/whitespace chainId is treated
   // as "not chained" (chainOrder/chainLabel become meaningless without it),
@@ -607,7 +607,7 @@ window.saveQuiz = async function() {
   // be both < start and > end at once unless the dates are backwards), so
   // catch it here rather than silently publishing a quest nobody can ever see.
   if (draftQuiz.startDate && draftQuiz.endDate && draftQuiz.endDate < draftQuiz.startDate) {
-    toast('❌ "Available Until" must be on or after "Available From"', '#ffb4ab'); return;
+    window.UXStates?.fieldError('qb-end-date','Choose a date on or after Available From.');document.getElementById('qb-end-date')?.focus();return;
   }
   const existIdx = (AppStore.getSlice(s => s.quizzes) || []).findIndex(q => q.id === draftQuiz.id);
   AppStore.updateState(draft => {
@@ -630,7 +630,8 @@ window.saveQuiz = async function() {
   const sectionIds = draftQuizSections.slice();
   draftQuiz = null;
   renderAdminQuizzes();
-  toast('🚀 Quest published!');
+  window.UXStates?.discard('quest');
+  toast('Quest saved on this device. Syncing changes…');
 
   // Phase 15: persist the section assignment — set_quiz_sections() only
   // ever touches quiz_sections rows for THIS quiz_id, and only ones the
@@ -733,3 +734,10 @@ window.openQuizAnalytics = function(id) {
 };
 
 console.log('[EduQuest] Admin Quiz Builder loaded.');
+
+window.UXStates?.registerDraft('quest', {
+ label:'quest',
+ get:()=>document.getElementById('qb-title')&&draftQuiz?{quiz:draftQuiz,sections:draftQuizSections,isEdit:(AppStore.getSlice(s=>s.quizzes)||[]).some(q=>q.id===draftQuiz.id)}:null,
+ clear:()=>{draftQuiz=null;draftQuizSections=[];},
+ restore:data=>{if(data.isEdit&&!(AppStore.getSlice(s=>s.quizzes)||[]).some(q=>q.id===data.quiz.id))throw new Error('Quest unavailable');navTo('a-quizzes');draftQuiz=data.quiz;draftQuizSections=data.sections||[];renderQuizBuilderModal();}
+});

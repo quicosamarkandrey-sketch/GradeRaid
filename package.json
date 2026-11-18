@@ -22,7 +22,8 @@
     "test:recitation": "node tests/database/recitation-studio.cjs && node tests/browser/recitation-studio.cjs",
     "test:attendance": "node tests/database/attendance-station.cjs && node tests/browser/attendance-station.cjs",
     "build:pixi": "node build/build-pixi.js",
-    "test:boss-pixi": "node tests/browser/world-boss-pixi.cjs"
+    "test:boss-pixi": "node tests/browser/world-boss-pixi.cjs",
+    "test:ux": "node tests/browser/ux-states.cjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.13",

@@ -97,6 +97,7 @@ window.renderStudentStore = function (cat = 'all') {
     }).join('')}
   </div>` : `<div class="student-empty-state" style="text-align:center;padding:80px;color:var(--text-muted);font-size:13px">No items in this category.</div>`}`;
 
+  if(!items.length&&window.UXStates){const empty=document.querySelector('#s-store .student-empty-state');if(empty)empty.style.padding='0';UXStates.render(empty,cat==='all'?'empty':'zero',{title:cat==='all'?'The Armory is being stocked':'No rewards in this category',description:cat==='all'?'Your teacher will add rewards here. Keep earning coins through class activities.':'Other rewards may be available. Browse all categories to find your next goal.',actionLabel:cat==='all'?'View my progress':'Browse all rewards',onAction:()=>cat==='all'?navTo('s-attendance'):renderStudentStore('all')});}
   _cartRenderFab();
   // Promotions carousel — typeof guard (promotions.js loads after store.js)
   if (typeof promoRenderCarousel === 'function') promoRenderCarousel();

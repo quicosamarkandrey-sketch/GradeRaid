@@ -546,6 +546,7 @@ window.bsSaveForm = async function () {
     toast('❌ Boss name is required', '#ffb4ab');
     const errEl = document.getElementById('bsf-name-err'); if (errEl) errEl.style.display = '';
     window._bsSetToolTab('identity');
+    window.UXStates?.fieldError('bsf-name','Give this boss a name.');window.UXStates?.focusError(document.getElementById('bs-editor-overlay'));
     return;
   }
   if (!d.visual) d.visual = {};
@@ -560,6 +561,8 @@ window.bsSaveForm = async function () {
     if (savingToast && typeof savingToast.dismiss === 'function') savingToast.dismiss();
     toast(saved?.ok?`"${d.name}" saved to your library.`:`"${d.name}" saved on this device. Reconnect to sync the library.`, saved?.ok?'#4edea3':'#d0bcff');
     if(currentUser?.id!==identity||window._bsDraft!==d)return;
+    window.UXStates?.discard('boss-profile');
+    if(saved?.ok)window.UXStates?.notice('success',{title:'Boss profile saved',description:'Link it to a World Boss event, then add questions before launching.',actionLabel:'Open World Boss events',onAction:()=>navTo('a-bossevents')});
     _bsDirtyFlag = false;
     window._bsForceCloseEditor();
     bsLoad();
@@ -942,3 +945,10 @@ function _bsRenderFormModal(isEdit){
 window._bsRenderFormModal = _bsRenderFormModal;
 
 console.log('[EduQuest] boss-studio/editor.js loaded — bsOpenCreate, bsOpenEdit, full editor overlay registered.');
+
+window.UXStates?.registerDraft('boss-profile', {
+ label:'boss profile',
+ get:()=>document.getElementById('bs-editor-overlay')?.classList.contains('open')&&_bsDirtyFlag?{profile:window._bsDraft,isEdit:!!bsGet(window._bsDraft.id)}:null,
+ clear:()=>window._bsForceCloseEditor(),
+ restore:async data=>{const owner=currentUser?.id;navTo('a-boss-studio');if(data.isEdit&&!bsGet(data.profile.id))await window._bsInitRemoteLibrary?.();if(currentUser?.id!==owner)throw new Error('Session changed');if(data.isEdit&&!bsGet(data.profile.id))throw new Error('Profile unavailable');window._bsDraft=data.profile;_bsDirtyFlag=true;_bsOpenEditorOverlay(data.isEdit);}
+});

@@ -22,6 +22,7 @@
 //  typeof guard (titles module) for the equipped-title chip.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+let _mySectionOwner = null, _mySectionRequest = 0;
 let _mySectionCache = null; // last successful fetch, so re-render (e.g. after nav away/back) doesn't always refetch
 
 window.renderMySection = async function () {
@@ -30,16 +31,19 @@ window.renderMySection = async function () {
   const st = currentUser;
   if (!st) return;
 
-  el.innerHTML = _mySectionSkeletonHTML();
-
-  const info = await _mySectionFetch();
-  _mySectionCache = info;
-  _mySectionPaint(info);
+  const owner=st.id, request=++_mySectionRequest;
+  if(_mySectionOwner!==owner){_mySectionCache=null;_mySectionOwner=owner;}
+  if(!_mySectionCache)el.innerHTML=_mySectionSkeletonHTML();
+  const result=window.UXStates?await UXStates.task(el,'Updating your section',_mySectionFetch,{scope:owner,retry:()=>renderMySection()}):{ok:true,value:await _mySectionFetch()};
+  if(currentUser?.id!==owner||request!==_mySectionRequest||!result.ok)return;
+  const info=result.value.syncError&&_mySectionCache?{..._mySectionCache,syncError:result.value.syncError}:result.value;_mySectionCache=info;_mySectionPaint(info);
+  if(info.syncError&&window.UXStates){const box=document.createElement('div');box.className='ux-request';el.prepend(box);const copy=UXStates.explain(info.syncError);UXStates.render(box,copy.type,{...copy,title:copy.type==='permission'?copy.title:'Showing information stored on this device',description:copy.type==='permission'?copy.description:'The latest section details could not be confirmed. The roster below may be incomplete or out of date.',actionLabel:'Try again',onAction:()=>renderMySection()});}
 };
 
 async function _mySectionFetch() {
-  const st = currentUser;
+  const st = currentUser;let failure=null;
   try {
+    if(navigator.onLine===false)throw new Error('Offline');
     if (typeof DBService !== 'undefined' && DBService.rpc) {
       const { data, error } = await DBService.rpc('get_my_section_info', {});
       if (!error && data) {
@@ -50,9 +54,11 @@ async function _mySectionFetch() {
           source: 'remote',
         };
       }
+      failure=error||new Error('Section data not available');
       if (error) console.warn('[MySection] get_my_section_info failed, falling back to local cache:', error);
     }
   } catch (e) {
+    failure=e;
     console.warn('[MySection] get_my_section_info threw, falling back to local cache:', e);
   }
 
@@ -87,7 +93,7 @@ async function _mySectionFetch() {
       shopProductCount: (typeof AppStore !== 'undefined') ? (AppStore.getSlice(s => s.store) || []).length : 0,
     } : null,
     classmates,
-    source: 'local',
+    source: 'local',syncError:failure||new Error('Section connection unavailable'),
   };
 }
 

@@ -423,6 +423,7 @@ window.bossFormSetDiff = function (d) {
 };
 
 window.clearFieldErr = function (input, errId) {
+  window.UXStates?.clearField(input);
   input.classList.remove('input-error');
   const el = document.getElementById(errId);
   if (el) el.classList.remove('show');
@@ -431,6 +432,7 @@ window.clearFieldErr = function (input, errId) {
 window.showFieldErr = function (fieldId, errId) {
   const inp = document.getElementById(fieldId);
   const err = document.getElementById(errId);
+  window.UXStates?.fieldError(inp,err?.textContent||'Check this field.',errId);
   if (inp) inp.classList.add('input-error');
   if (err) err.classList.add('show');
 };
@@ -530,7 +532,7 @@ window.saveBossForm = function () {
   d.victoryMessage      = (document.getElementById('bf-vic-msg')?.value    || '').trim();
 
   let valid = true;
-  if (!_wbSpawnableSections().some(section=>section.id===d.classId)) { toast('Select a section you manage.');valid=false; }
+  if (!_wbSpawnableSections().some(section=>section.id===d.classId)) { window.UXStates?.fieldError('bf-section','Choose an active section you manage. Create a section in Section Maker if none are available.');valid=false; }
   if (!d.classId)                              { toast('⚠️ You need an active section to spawn a boss into — create one in Section Maker first.', '#ffb4ab'); valid = false; }
   if (!d.name)                                 { showFieldErr('bf-name',  'bf-name-err');  valid = false; }
   if (!d.image && !d._bossLibraryId)           { toast('⚠️ Please link a Boss Studio profile or add an emoji/image', '#ffb4ab'); valid = false; }
@@ -542,7 +544,7 @@ window.saveBossForm = function () {
   if (d.coinReward < 0)                        { showFieldErr('bf-coins', 'bf-coins-err'); valid = false; }
   if (d.participationReward < 0)               { showFieldErr('bf-part',  'bf-part-err');  valid = false; }
   if (d.victoryReward < 0)                     { showFieldErr('bf-victory','bf-victory-err'); valid = false; }
-  if (!valid) { toast('⚠️ Please fix the highlighted fields', '#ffb4ab'); return; }
+  if (!valid) { window.UXStates?.focusError(document.getElementById('modal-content')||document);toast('Please fix the highlighted fields.'); return; }
 
   // BUGFIX: was `d.currentHp === undefined` only — didn't cover null/0/NaN,
   // any of which would still reach the upsert as an invalid current_hp.
@@ -568,6 +570,7 @@ window.saveBossForm = function () {
     else        draft.bossEvents.push(saveObj);
   }, { type: isEdit ? 'world-boss:updated' : 'world-boss:created', payload: { name: saveObj.name } });
   toast(isEdit ? '✅ Boss "' + _esc(saveObj.name) + '" updated!' : '💀 Boss "' + _esc(saveObj.name) + '" created!');
+  window.UXStates?.discard('boss-event');
   closeModalForce(); renderAdminBossEvents();
   } finally {
     window._bossFormSaving = false;
@@ -576,14 +579,14 @@ window.saveBossForm = function () {
 
 // ── Boss form open ────────────────────────────────────────────────────────────
 
-window.openBossForm = function (bossIndex) {
+window.openBossForm = function (bossIndex, recoveredDraft = null) {
   const isEdit     = bossIndex !== null && bossIndex !== undefined;
-  const boss       = isEdit ? { ...(AppStore.getSlice(s => s.bossEvents) || [])[bossIndex] } : {
+  const boss       = recoveredDraft || (isEdit ? { ...(AppStore.getSlice(s => s.bossEvents) || [])[bossIndex] } : {
     name: '', description: '', image: '💀', maxHp: 10000, currentHp: 10000,
     startDate: new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()), endDate: new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()+7*86400000)), difficulty: 'Normal',
     xpReward: 500, coinReward: 250, participationReward: 100, victoryReward: 300,
     lootRewards: wblrDefaultRewards(), status: 'draft', createdAt: Date.now(),
-  };
+  });
   window._bossDraft = { ...boss, _index: isEdit ? bossIndex : null };
   const diffOptions  = ['Easy', 'Normal', 'Hard', 'Legendary'];
   const emojiPresets = ['💀','👾','🐉','👹','🧙','🦹','🤖','👺','🦄','🌋','⚡','🌑','🔱','🧿','👁️'];
@@ -862,3 +865,14 @@ window.bfSkipLibraryLink = function () {
   const legacy  = document.getElementById('bf-legacy-visual');
   if (legacy)   legacy.style.display = 'block';
 };
+
+window.UXStates?.registerDraft('boss-event', {
+ label:'boss event',
+ get:()=>document.getElementById('bf-name')&&window._bossDraft?window._bossDraft:null,
+ clear:()=>{window._bossDraft=null;},
+ restore:data=>{
+  const index=data._id?(AppStore.getSlice(s=>s.bossEvents)||[]).findIndex(b=>b._id===data._id):null;
+  if(index===-1)throw new Error('Event unavailable');
+  navTo('a-bossevents');openBossForm(index,data);
+ }
+});

@@ -52,10 +52,19 @@ async function doLogin(){
   err.style.display='none';
   pendingErr.style.display='none';
 
+  if (btn?.dataset.eqLoading === '1') return;
+  window.UXStates?.clearField('login-user');window.UXStates?.clearField('login-pass');
   if (!email || !p) {
+    if(!email)window.UXStates?.fieldError('login-user','Enter your email address.');
+    if(!p)window.UXStates?.fieldError('login-pass','Enter your password.');
+    window.UXStates?.focusError(document.getElementById('login-screen'));
     err.innerHTML='❌ Please enter your email and password.';
     err.style.display='block';
     return;
+  }
+
+  if (navigator.onLine === false) {
+    err.textContent='You’re offline. Connect to the internet, then sign in again.';err.style.display='block';return;
   }
 
   // BUGFIX (confusing "dead" login button): signInWithPassword() + the
@@ -387,7 +396,10 @@ async function restoreSession(){
 // this, the Supabase client would keep its access token in localStorage and
 // silently re-authenticate the same user on next page load, even after
 // clicking "Logout" — signOut() explicitly revokes/clears that session.
-async function doLogout(){
+async function doLogout(options = {}){
+  const expired=options.expired===true;
+  window.UXStates?.onLogout(expired);
+  if(typeof closeModalForce==='function')closeModalForce();
   window.AttendanceStation?.unmount();
   window.RaidCanvas?.stop();window.RaidCanvas?.stopPreview();window.RaidCanvas?.stopDefeat();
   // Cleanup 5: closeProfile absorbed from index.html monkey patch (doLogout → closeProfile → _origLogout)
@@ -437,11 +449,11 @@ async function doLogout(){
   if (typeof AppStore !== 'undefined' && typeof AppStore.flushNow === 'function') {
     AppStore.flushNow(); // synchronous: flushes the 300ms persist debounce, which itself queues a fresh upload if the state was dirty
   }
-  if (typeof DBService !== 'undefined' && typeof DBService.flushPendingUpload === 'function') {
+  if (!expired && typeof DBService !== 'undefined' && typeof DBService.flushPendingUpload === 'function') {
     await DBService.flushPendingUpload(); // flushes that upload (whether just (re)queued above, or already pending) before we tear the session down
   }
   const client = (typeof DBService !== 'undefined') ? DBService.getAuthClient() : null;
-  if (client) { try { await client.auth.signOut(); } catch (e) { console.warn('[auth] signOut failed:', e); } }
+  if (client && !expired) { try { await client.auth.signOut(); } catch (e) { console.warn('[auth] signOut failed:', e); } }
   // BUGFIX: without this, switching accounts on the same browser (e.g.
   // testing as Teacher A then Teacher B, or after an ownership transfer
   // moves a teacher's content elsewhere) left the PREVIOUS account's cached
