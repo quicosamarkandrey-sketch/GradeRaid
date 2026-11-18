@@ -34,3 +34,15 @@
 @media(max-width:850px){.rs-remote-tabs{top:var(--rs-header-height,100px)}.rs-app:has(.rs-remote) .rs-header [data-rs=fullscreen]{display:none}}
 .rs-room .rs-seat{padding:6px!important;grid-template-rows:60px 1fr 11px}.rs-room .rs-seat-avatar{width:60px;height:60px}.rs-room .rs-seat-name{font-size:var(--rs-name-size,17px)}.rs-room.is-roster .rs-unseated{max-height:60vh}
 .rs-speaker,.rs-spot-question,.rs-draw-card,.rs-draw-question,.rs-recognition-card>div:last-child{min-width:0}.rs-speaker h2,.rs-draw-name,.rs-recognition-card h2{overflow-wrap:anywhere}
+/* The classroom screen is a stage, not an editor. */
+.rs-app[data-room-presentation=true]>.rs-header{display:none}
+.rs-app[data-room-presentation=true] .rs-workspace{min-height:100dvh}
+.rs-app[data-room-presentation=true] .rs-stage{padding:24px;min-height:100dvh;align-items:stretch;background:#101315}
+.rs-app[data-room-presentation=true] .rs-stage-content{display:flex;flex-direction:column;justify-content:center;width:100%;max-width:none}
+.rs-room.is-presentation{border:0;border-radius:0;box-shadow:none;background:transparent;overflow:visible}
+.rs-display .rs-room.is-presentation .rs-room-viewport{height:calc(100dvh - 48px);background:none;border:0;border-radius:0;cursor:default;touch-action:auto}
+.rs-room.is-presentation:has(.rs-unseated-display) .rs-room-viewport{height:calc(100dvh - 205px)}
+.rs-room.is-presentation .rs-unseated-display{padding:10px 0 0;margin:0;border:0;background:transparent;max-height:145px;overflow:auto}
+.rs-room.is-presentation .rs-unseated-grid{display:flex;justify-content:center;flex-wrap:wrap;gap:15px;margin:0}
+.rs-room.is-presentation.is-roster .rs-unseated-display{max-height:calc(100dvh - 48px)}
+@media(max-width:850px){.rs-app[data-room-presentation=true] .rs-stage{padding:14px}.rs-display .rs-room.is-presentation .rs-room-viewport{height:calc(100dvh - 28px)}.rs-room.is-presentation:has(.rs-unseated-display) .rs-room-viewport{height:calc(100dvh - 185px)}}

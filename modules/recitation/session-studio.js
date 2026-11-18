@@ -80,6 +80,7 @@
  function paintStage(){
   const target=root?.querySelector('#rs-stage');if(!target||!snap)return;
   const st=state(),q=current(),selected=person(st.selected),scope=st.scoreScope||'session';
+  const roomPresentation=role==='display'&&snap.session.is_active&&st.view==='seats'&&!drawing();root.dataset.roomPresentation=String(roomPresentation);
   const oldSeat=[...target.querySelectorAll('.rs-seat')].find(n=>n.dataset.student===st.selected)?.getBoundingClientRect()||target.querySelector('.rs-draw-avatar')?.getBoundingClientRect();
   const scopeLabel={session:'this session',today:'today',period:'reporting period'}[scope];
   const roomShape=st.view==='seats'?snap.roster.map(r=>[r.id,r.name,r.seats]):null;
@@ -93,13 +94,13 @@
   }else if(drawing()){
    body=`<div class="rs-draw" data-draw="${esc(st.draw.id)}"><div class="rs-draw-question">${question}</div><div class="rs-draw-card"><p class="rs-eyebrow">Who will take the floor?</p><div class="rs-draw-avatar"></div><h2 class="rs-draw-name" aria-hidden="true"></h2><p class="rs-draw-caption" role="status">Choosing a student…</p><div class="rs-draw-track"><i></i></div></div></div>`;
   }else if(st.view==='seats'){
-   body=`<div class="rs-seat-heading"><span>${esc(q?.text||'Your classroom, together.')}</span><small>Confirmed recitation points · ${scopeLabel}</small></div>${RecitationRoom.markup(snap.roster,st,photo,role==='remote')}`;
+   body=`${role==='remote'?`<div class="rs-seat-heading"><span>${esc(q?.text||'Your classroom, together.')}</span><small>Confirmed recitation points · ${scopeLabel}</small></div>`:''}${RecitationRoom.markup(snap.roster,st,photo,role==='remote')}`;
   }else if(st.view==='spotlight'&&selected){
    const latestCall=[...(st.calls||[])].reverse().find(c=>c.student===selected.id);
    body=`<div class="rs-spotlight" data-call="${esc(latestCall?.at||'')}"><div class="rs-spot-question">${question}</div><div class="rs-speaker"><p class="rs-eyebrow">The floor is yours</p><div class="rs-speaker-avatar" data-student="${esc(selected.id)}">${photo(selected)}<strong>${esc(selected[scope]||0)}</strong></div><h2>${esc(selected.name)}</h2><p>Recitation points · ${scopeLabel}</p></div></div>`;
   }else body=question;
   RecitationRoom.unmount();
-  target.innerHTML=`<div class="rs-stage-rail" id="rs-stage-rail"></div><div class="rs-stage-content">${body}</div><div id="rs-timer" class="rs-timer" aria-live="off"></div><div class="rs-stage-footer"><span>${esc(window.getClassLabel?window.getClassLabel(classId,AppStore.getState()):classId)}</span><span>${esc(scopeLabel)} · recitation</span></div>`;
+  target.innerHTML=`${roomPresentation?'':'<div class="rs-stage-rail" id="rs-stage-rail"></div>'}<div class="rs-stage-content">${body}</div>${roomPresentation?'':`<div id="rs-timer" class="rs-timer" aria-live="off"></div><div class="rs-stage-footer"><span>${esc(window.getClassLabel?window.getClassLabel(classId,AppStore.getState()):classId)}</span><span>${esc(scopeLabel)} · recitation</span></div>`}`;
   if(st.view==='seats'&&!drawing()&&snap.session.is_active)RecitationRoom.mount(target,snap.roster,st,snap.session.id+':'+(st.layout||'roster'));
   refreshStageData();paintRail();paintTimer();paintDraw();
   const avatar=target.querySelector('.rs-speaker-avatar');if(oldSeat&&avatar&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
@@ -300,6 +301,7 @@
   catch(e){if(abort!==controller)return;stopNFC();report('NFC could not start: '+e.message);}
  }
  function stopNFC(){const wasActive=!!abort;abort?.abort();abort=null;if(wasActive)paintStatus();}
+ function presentationKey(e){if(root&&role==='display'&&e.key==='Escape'&&!document.fullscreenElement&&!e.defaultPrevented){e.preventDefault();e.stopPropagation();close();}}
  function keyScan(e){
   if(!root||role!=='remote'||!snap?.session.is_active||state().paused||e.ctrlKey||e.metaKey||e.altKey||e.target.closest('input,textarea,select,[contenteditable]'))return;
   if(e.key==='Enter'){if(keyBuffer.length>2){e.preventDefault();ingest(keyBuffer);}keyBuffer='';return;}
@@ -308,10 +310,10 @@
   clearTimeout(keyTimer);keyTimer=setTimeout(()=>{if(keyBuffer.length>2)ingest(keyBuffer);keyBuffer='';},140);
  }
  async function refresh(){if(!root||!snap)return;try{const data=await rpc('snapshot');adopt(data);poolCount();await flush();}catch(e){if(e.stale)return;report(friendly(e));const status=root?.querySelector('#rs-status');if(status)status.textContent='Reconnecting · unconfirmed cards stay pending';}}
- function close(){generation++;headerObserver?.disconnect();headerObserver=null;RecitationRoom.reset();for(const entry of flights){entry.animation.cancel();entry.spark.remove();}flights.clear();for(const timer of flightTimers)clearTimeout(timer);flightTimers.clear();inspecting=null;clearTimeout(recognitionTimer);playing=false;busy=false;clearInterval(poll);clearInterval(tick);clearTimeout(keyTimer);keyBuffer='';poll=tick=null;stopNFC();document.removeEventListener('keydown',keyScan,true);root?.remove();for(const [n,value] of inertSiblings)n.inert=value;inertSiblings.clear();root=null;snap=null;awardQueue=[];seen.clear();stageKey='';document.body.classList.remove('rs-open');lastFocus?.focus?.();}
+ function close(){generation++;headerObserver?.disconnect();headerObserver=null;RecitationRoom.reset();for(const entry of flights){entry.animation.cancel();entry.spark.remove();}flights.clear();for(const timer of flightTimers)clearTimeout(timer);flightTimers.clear();inspecting=null;clearTimeout(recognitionTimer);playing=false;busy=false;clearInterval(poll);clearInterval(tick);clearTimeout(keyTimer);keyBuffer='';poll=tick=null;stopNFC();document.removeEventListener('keydown',keyScan,true);document.removeEventListener('keydown',presentationKey,true);root?.remove();for(const [n,value] of inertSiblings)n.inert=value;inertSiblings.clear();root=null;snap=null;awardQueue=[];seen.clear();stageKey='';document.body.classList.remove('rs-open');lastFocus?.focus?.();}
  async function open(options={}){
   if(root)close();generation++;window._lmStopWebNfcCapture?.();window._lmStopScannerBListener?.();lastFocus=document.activeElement;classId=options.classId||document.querySelector('#lm-class-select')?.value||window.ActiveSection?.get?.()||'default-class';role=options.role||'remote';
-  root=document.createElement('div');root.className='rs-app';root.setAttribute('role','dialog');root.setAttribute('aria-label','Recitation Studio');root.setAttribute('aria-modal','true');for(const n of document.body.children){if(n.tagName!=='SCRIPT'&&n.tagName!=='STYLE'){inertSiblings.set(n,n.inert);n.inert=true;}}document.body.append(root);document.body.classList.add('rs-open');
+  root=document.createElement('div');root.className='rs-app';root.setAttribute('role','dialog');root.setAttribute('aria-label','Recitation Studio');root.setAttribute('aria-modal','true');for(const n of document.body.children){if(n.tagName!=='SCRIPT'&&n.tagName!=='STYLE'){inertSiblings.set(n,n.inert);n.inert=true;}}document.body.append(root);document.body.classList.add('rs-open');document.addEventListener('keydown',presentationKey,true);
   root.innerHTML=`<div class="rs-setup"><p class="rs-eyebrow">Teach from anywhere in the room</p><h1>One classroom.<br>Every voice.</h1><p>Use your phone as the scanner and remote. Keep questions and confirmed scores on the classroom screen.</p><div class="rs-actions">${button('host','Start / resume on this phone','class="rs-primary"')}${button('close','Close')}</div><form id="rs-join"><label>Join an existing presentation<input name="code" maxlength="8" placeholder="8-character pairing code" autocomplete="off" required></label><button>Join presentation</button></form><p id="rs-message" role="status"></p></div>`;
   const connect=async(code)=>{
    try{
