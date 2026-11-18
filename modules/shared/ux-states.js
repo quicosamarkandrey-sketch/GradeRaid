@@ -42,7 +42,7 @@
     const id = options.id || 'ux-feedback';
     document.getElementById(id)?.remove();
     const box = el('div', 'ux-notice'); box.id = id; stack().append(box);
-    render(box, type, options);
+    render(box, type, options);window.AppMotion?.enter(box,'notice');
     if (options.dismissible !== false) {
       const close = el('button', 'ux-notice-close', '×'); close.type = 'button'; close.setAttribute('aria-label', 'Dismiss notification'); close.onclick = () => box.remove(); box.append(close);
     }
@@ -77,6 +77,7 @@
   function fieldError(input, message, existingId) {
     if (typeof input === 'string') input = document.getElementById(input);
     if (!input) return;
+    const repeated=input.getAttribute('aria-invalid')==='true';
     const id = existingId || input.id + '-ux-error';
     let hint = document.getElementById(id);
     if (!hint) { hint = el('div', 'ux-field-error'); hint.id = id; (input.closest('.form-group') || input.parentElement).append(hint); }
@@ -84,6 +85,7 @@
     input.classList.add('input-error'); input.setAttribute('aria-invalid', 'true');
     const described = new Set((input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean)); described.add(id);
     input.setAttribute('aria-describedby', [...described].join(' ')); input.dataset.uxError = id;
+    if(!repeated)window.AppMotion?.enter(input,'error');
   }
   function clearField(input) {
     if (typeof input === 'string') input = document.getElementById(input);

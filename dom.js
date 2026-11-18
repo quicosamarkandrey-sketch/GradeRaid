@@ -45,16 +45,18 @@ const _eqDialogFocus = (() => {
 function toast(msg,color='#4edea3'){
   const el=document.getElementById('toast');
   el.style.display='block';el.style.borderColor=color+'55';el.style.boxShadow=`0 0 20px ${color}33`;
-  el.innerHTML=msg;clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',2800);
+  el.innerHTML=msg;window.AppMotion?.enter(el,'notice');clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',2800);
 }
 function showModal(content,size='md'){
+  const wasOpen=document.getElementById('modal-overlay').style.display==='flex';
   document.getElementById('modal-box').className='modal-box '+size;
   document.getElementById('modal-content').innerHTML=content;
   document.getElementById('modal-overlay').style.display='flex';
   _eqDialogFocus.opened();
+  window.AppMotion?.enter(document.getElementById('modal-box'),wasOpen?'update':'dialog');
 }
 function closeModal(e){if(!e||e.target===document.getElementById('modal-overlay'))closeModalForce();}
-function closeModalForce(){document.getElementById('modal-overlay').style.display='none';_eqDialogFocus.closed();}
+function closeModalForce(){window.AppMotion?.cancel(document.getElementById('modal-box'));document.getElementById('modal-overlay').style.display='none';_eqDialogFocus.closed();}
 
 // ── Phase 7 (2026-08-10, session 2): explicit window export ──
 // These were previously implicit globals (bare top-level function

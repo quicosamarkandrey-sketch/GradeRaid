@@ -1,0 +1,28 @@
+/* Choreography: anticipation → contact → overshoot → settle. Gameplay clocks stay unchanged. */
+@keyframes rfx-cast-body{0%{transform:translateY(0) scale(1)}22%{transform:translateY(7px) scale(1.035,.955)}72%{transform:translateY(-9px) scale(.975,1.04)}100%{transform:translateY(-2px) scale(.995,1.01)}}
+@keyframes rfx-recoil{0%,100%{transform:translate(0) scale(1)}12%{transform:translate(-4px,4px) scale(1.075,.9) rotate(-1deg)}36%{transform:translate(6px,-6px) scale(.955,1.055) rotate(1.2deg)}70%{transform:translate(-1px,1px) scale(1.015,.985)}}
+.raid-battle #camp-enemy-sprite.rfx-impact .bve-boss-wrap{animation-duration:260ms;animation-timing-function:cubic-bezier(.16,1,.3,1)}
+.raid-battle .rfx-ready .bve-boss-art.state-hit:not([class*="bs-anim"]){animation-duration:260ms}
+/* Number becomes readable immediately; settling and drift are secondary decoration. */
+@keyframes rfx-hit-value{0%{opacity:0;transform:translate(-50%,9px) scale(1.08,.8)}12%{opacity:1;transform:translate(-50%,-4px) scale(.97,1.06)}25%{opacity:1;transform:translate(-50%,0) scale(1)}66%{opacity:1;transform:translate(-50%,-8px) scale(1)}100%{opacity:0;transform:translate(calc(-50% + 12px),-34px) scale(.97)}}
+.rfx-hit-value{animation-timing-function:cubic-bezier(.16,1,.3,1)}
+/* Backdrop movement stays behind the readable question and controls. */
+.raid-battle .rfx-camera-impact #camp-bg{animation-duration:280ms!important;scale:1}
+@keyframes rfx-camera{0%,100%{translate:0}14%{translate:-4px 2px}34%{translate:3px -1px}56%{translate:-2px 1px}78%{translate:1px 0}}
+/* Arc samples preserve the body-origin pause and the original one-second landing clock. */
+@keyframes rla-treasure-flight{
+ 0%{opacity:0;transform:translate(var(--drop-from-x),var(--drop-from-y)) scale(.65) rotate(calc(var(--drop-spin)*.1))}
+ 6%{opacity:1;transform:translate(var(--drop-from-x),var(--drop-from-y)) scale(.9) rotate(calc(var(--drop-spin)*.1))}
+ 14%{opacity:1;transform:translate(var(--drop-from-x),var(--drop-from-y)) scale(.94,1.08) rotate(calc(var(--drop-spin)*.2));animation-timing-function:ease-out}
+ 30%{transform:translate(calc(var(--drop-from-x)*.75),calc(var(--drop-from-y)*.75 - var(--drop-apex)*.75)) scale(.92,1.12) rotate(calc(var(--drop-spin)*.4));animation-timing-function:ease-in-out}
+ 46%{transform:translate(calc(var(--drop-from-x)*.5),calc(var(--drop-from-y)*.5 - var(--drop-apex))) scale(1.08,.98) rotate(calc(var(--drop-spin)*.65));animation-timing-function:ease-in}
+ 62%{transform:translate(calc(var(--drop-from-x)*.25),calc(var(--drop-from-y)*.25 - var(--drop-apex)*.75)) scale(.96,1.08) rotate(calc(var(--drop-spin)*.9))}
+ 74%{transform:translate(0,0) scale(1.16,.76) rotate(calc(var(--drop-tilt) - 12deg));animation-timing-function:ease-out}
+ 85%{transform:translate(0,-16px) scale(.95,1.06) rotate(calc(var(--drop-tilt) + 6deg));animation-timing-function:ease-in}
+ 93%{transform:translate(0,0) scale(1.035,.96) rotate(calc(var(--drop-tilt) - 2deg));animation-timing-function:ease-out}
+ 100%{opacity:1;transform:rotate(var(--drop-tilt))}
+}
+/* Pickup acknowledgement is brief; the server still decides when a piece disappears. */
+.rla-drop.is-collected .rla-drop-visual{animation-duration:280ms}.rla-drop.is-claimed-away .rla-drop-visual{animation-duration:180ms}
+@keyframes rla-pickup{0%{opacity:1;transform:rotate(var(--drop-tilt)) scale(1)}22%{opacity:1;transform:translateY(3px) scale(1.12,.85)}48%{opacity:1;transform:translateY(-12px) scale(.94,1.1)}100%{opacity:0;transform:translate(12px,-55px) scale(.15) rotate(15deg)}}
+@media(prefers-reduced-motion:reduce){.raid-battle .rfx-camera-impact #camp-bg{animation:none!important;scale:1}.rla-drop-visual,.rfx-hit-value{animation:none!important}.rfx-hit-value{opacity:1;transform:translateX(-50%)}}

@@ -34,6 +34,7 @@ import '../modules/quest-chains.js';
 import '../nav.js';
 import '../topbar.js';
 import '../modules/shared/button-loading.js';
+import '../modules/shared/motion.js';
 import '../modules/shared/ux-states.js';
 import '../modules/shared/notification-service.js';
 import '../auth.js';
