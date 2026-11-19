@@ -31,7 +31,7 @@
    const before=t.roster[sid],delta=Math.max(0,(Number(r.totalDamage)||0)-(Number(before?.totalDamage)||0));
    if(!delta)continue;
    const history=r.answerHistory||[],start=Number(before?.lastQIdx)||0;
-   const recent=history.slice(start).filter(h=>Number(h.damage)>0);
+   const recent=history.slice(Math.max(0,start-(r.answerHistoryOffset||0))).filter(h=>Number(h.damage)>0);
    const described=recent.reduce((n,h)=>n+Number(h.damage),0);
    const values=described===delta?recent:[{damage:delta,aggregate:true}];
    for(const h of values)hits.push({id:[boss.raidRunId,sid,h.questionIdx??r.lastQIdx,r.totalDamage,h.aggregate?'sum':'hit'].join(':'),ts:Date.now(),type:'hit',studentId:sid,name:r.studentName||'Raider',init:r.studentInit||'?',damage:Number(h.damage),crit:!!h.isCrit,aggregate:!!h.aggregate});
@@ -45,6 +45,7 @@
   const index=(AppStore.getSlice(s=>s.bossEvents)||[]).findIndex(b=>b._id===uuid);if(index<0)return false;
   const previous=AppStore.getBossEvent(index);
   const roster=_deriveBossParticipants(data.participants||[],{[uuid]:index})[index]||{};
+  for(const row of data.participants||[]){const record=roster[row.student_id];if(record)record.answerHistoryOffset=Number(row.answer_history_offset)||0;}
   const sameRun=previous.raidRunId===data.boss?.raid_run_id;
   const t=tracker(index,previous,identity),u=data.boss?.raid_ultimate;
   const oldHp=t.roster[identity]?.hp,newHp=roster[identity]?.hp;

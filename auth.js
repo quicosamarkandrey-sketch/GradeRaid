@@ -439,7 +439,7 @@ async function doLogout(options = {}){
   if (typeof shStopCountsRefresh === 'function') shStopCountsRefresh();
   if(quizTimer)clearInterval(quizTimer);
   if (typeof DBService !== 'undefined' && typeof DBService.teardownRealtime === 'function') {
-    DBService.teardownRealtime();
+    DBService.teardownRealtime({ forgetCache: true });
   }
 
   // Now that nothing can re-dirty state, flush whatever's already pending

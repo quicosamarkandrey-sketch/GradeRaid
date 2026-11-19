@@ -2,10 +2,13 @@
 
 ## Activate the update
 
+For the latest classroom upgrade and measurements, see [Classroom bandwidth](CLASSROOM_BANDWIDTH.md).
+
 1. Deploy the updated `main` branch.
 2. Run **`supabase/phase84_egress_optimization.sql`** in the project's Supabase SQL Editor. Install the existing classroom/world-boss migrations through phase83 first. The migration is additive and repeatable; native text and UUID boss IDs are supported.
-3. Reload every teacher, projector, scanner and student tab. Old tabs continue using the original full-response endpoints and subscriptions until reloaded.
-4. Check **Organization → Usage → current billing cycle**, including Database, Realtime and Storage egress. Compare active teaching periods with similar class sizes; the counters are cumulative and this change does not erase a previous overage.
+3. Run **`supabase/phase85_classroom_bandwidth.sql`** after phase84 to enable change-driven sessions, v2 packets and the latest classroom optimizations.
+4. Reload every teacher, projector, scanner and student tab. Old tabs continue using the original full-response endpoints and subscriptions until reloaded.
+5. Check **Organization → Usage → current billing cycle**, including Database, Realtime and Storage egress. Compare active teaching periods with similar class sizes; the counters are cumulative and this change does not erase a previous overage.
 
 The app works before the migration by falling back to its existing RPCs when the new endpoint is missing. Most bandwidth savings require the migration **and reloaded clients**. Network/permission failures never select a legacy scoring path or replay a mutation.
 

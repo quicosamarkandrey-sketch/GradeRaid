@@ -119,6 +119,8 @@ const DBService = (function () {
     provider          : 'unresolved',
     schemaVersion     : _SCHEMA_VER,
     asyncReady        : 'partial',  // [BLOCKER-SYNC] — see file header
+    tableSyncConnected: false,
+    tableSyncVersion  : 0,
     signalChannelReady: false,      // flipped true once Realtime channel subscribes
     schemaVersioned   : true,       // [BLOCKER-SCHEMA] resolved
     authReady         : 'partial',  // [BLOCKER-AUTH] — see file header
@@ -453,15 +455,32 @@ const DBService = (function () {
   let _noticeRetryTimer = null;
   let _realtimeEpoch = 0;
   const _signalSubscribers = {};
+  const _remoteWatchers = new Map(), _ownedRefreshTables = new Set();
+  function _dispatchRemoteNotice(notice) {
+    let owned = false;
+    for (const watcher of _remoteWatchers.values()) if (watcher.tables.has(notice.table)) {
+      try { if (watcher.handler(notice) === true) owned = true; }
+      catch (error) { console.warn('[DBService] live view refresh failed:', error.message); }
+    }
+    if (!Object.hasOwn(_REALTIME_TABLE_GROUPS, notice.table)) return;
+    if (owned) _ownedRefreshTables.add(notice.table);
+    else _schedulePullRefresh(notice.table);
+  }
+
 
   function _setupRealtimeSignals(client) {
+    const stamp = ++_realtimeEpoch;
+    clearTimeout(_noticeRetryTimer); _noticeRetryTimer = null;
+    _meta.tableSyncConnected = false; _meta.tableSyncVersion = 0;
+    for (const channel of [_signalChannel, _tableSyncChannel]) if (channel) client.removeChannel(channel);
+    _tableSyncChannel = null;
     _signalChannel = client.channel('eduquest-signals');
     _signalChannel.on('broadcast', { event: '*' }, (msg) => {
       const handlers = _signalSubscribers[msg.event] || [];
       handlers.forEach(fn => { try { fn(msg.payload); } catch (e) { console.error(e); } });
     });
     _signalChannel.subscribe((status) => {
-      _meta.signalChannelReady = (status === 'SUBSCRIBED');
+      if (stamp === _realtimeEpoch) _meta.signalChannelReady = (status === 'SUBSCRIBED');
     });
 
     // Also subscribe to table changes so other tabs' writes refresh _cache
@@ -531,20 +550,23 @@ const DBService = (function () {
       // one tab's local _lmSessionStartAt variable.
       .on('postgres_changes', { event: '*', schema: 'public', table: 'recitation_sessions' }, () => _schedulePullRefresh('recitation_sessions'))
       .subscribe();
-    const stamp = ++_realtimeEpoch;
     if (!window.EgressTransport) { _tableSyncChannel = legacy(); return; }
     // Only missing-migration errors select the legacy subscription. Auth/network
     // failures must not silently create a second stream of full row images.
     const attachNotices = () => client.rpc('egress_sync_status').then(({ data, error }) => {
       if (stamp !== _realtimeEpoch) return;
       if (['PGRST202', '42883'].includes(error?.code)) { _tableSyncChannel = legacy(); return; }
-      if (error || data?.v !== 1) { _noticeRetryTimer = setTimeout(attachNotices, 15000); return; }
+      if (error || !Number.isInteger(data?.v) || data.v < 1) { _noticeRetryTimer = setTimeout(attachNotices, 15000); return; }
+      _meta.tableSyncVersion = data.v;
       _tableSyncChannel = client.channel('eduquest-compact-sync')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_invalidations' }, payload => {
+          if (stamp !== _realtimeEpoch) return;
           const table = payload.new?.table_name;
-          if (Object.hasOwn(_REALTIME_TABLE_GROUPS, table)) _schedulePullRefresh(table);
+          if (table) _dispatchRemoteNotice({ table, classId: payload.new.class_id, studentId: payload.new.student_id, revision: payload.new.revision });
         }).subscribe(status => {
-          if (status === 'SUBSCRIBED') { _schedulePullRefresh(); }
+          if (stamp !== _realtimeEpoch) return;
+          _meta.tableSyncConnected = status === 'SUBSCRIBED';
+          if (_meta.tableSyncConnected) { _schedulePullRefresh(); }
         });
     }).catch(() => { if (stamp === _realtimeEpoch) _noticeRetryTimer = setTimeout(attachNotices, 15000); });
     attachNotices();
@@ -984,9 +1006,10 @@ const DBService = (function () {
      * nothing can re-dirty state through this path during that window.
      * Safe to call even if no channel was ever set up (e.g. offline mode).
      */
-    teardownRealtime: function () {
+    teardownRealtime: function (options = {}) {
+      _meta.tableSyncConnected = false; _meta.tableSyncVersion = 0; _ownedRefreshTables.clear();
       _realtimeEpoch++; _refreshRunning = null; _refreshFailures = 0;
-      window.EgressTransport?.clear();
+      window.EgressTransport?.clear({ forget: !!options.forgetCache });
       clearTimeout(_noticeRetryTimer); _noticeRetryTimer = null;
       const client = _getClient();
       if (client) {
@@ -1038,6 +1061,14 @@ const DBService = (function () {
 
     get storageKey() { return _localStorageProvider.key; },
 
+    liveSyncReady: function () { return _meta.tableSyncConnected && _meta.tableSyncVersion >= 2 && navigator.onLine; },
+    watchRemoteChanges: function (tables, handler) {
+      const key = Symbol(); _remoteWatchers.set(key, { tables: new Set(tables), handler });
+      return () => { _remoteWatchers.delete(key); };
+    },
+    releaseRemoteTables: function (tables) {
+      for (const table of tables) if (_ownedRefreshTables.delete(table)) _schedulePullRefresh(table);
+    },
     diagnostics: function () {
       return Object.assign({}, _meta, { egress: window.EgressTransport?.diagnostics() });
     },
@@ -1184,6 +1215,7 @@ const DBService = (function () {
     // no-clobber property table-by-table before each is converted to delta
     // sync.
     _test: {
+      receiveRemoteNotice: _dispatchRemoteNotice,
       pushCacheToSupabase: _pushCacheToSupabase,
       tableSyncConfigs: TableSyncRepository.tableSyncConfigs,
     },

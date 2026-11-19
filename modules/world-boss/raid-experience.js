@@ -10,7 +10,7 @@
  const payout=b=>({xp:Math.max(0,b.xpReward??500)+Math.max(0,b.participationReward??100),coins:Math.max(0,b.coinReward??250)+Math.max(0,b.victoryReward??300)});
  const date=d=>d?new Intl.DateTimeFormat('en',{month:'short',day:'numeric',year:'numeric',timeZone:'Asia/Manila'}).format(new Date(String(d).length===10?d+'T00:00:00+08:00':d)):'No date';
  function art(b){const profile=typeof bveGetLinkedProfile==='function'?bveGetLinkedProfile(b):null,preset=typeof bveResolveAnimation==='function'?bveResolveAnimation(profile,'idle'):null;return typeof bveRenderBossArt==='function'?bveRenderBossArt(b,{stateClass:'state-idle'+(preset?.cssClass?' '+preset.cssClass:'')}):esc(b.image||'');}
- let lastPagePoll=0;
+ let live=null,authoritativeFallback=false;let lastPagePoll=0;
  let search='',filter='all',owner=null,ticker=null,polling=false,claimKeys=new Map(),claimPending=new Set(),selected=null;
  function reset(){if(owner!==currentUser?.id){owner=currentUser?.id;search='';filter='all';selected=null;claimKeys.clear();claimPending.clear();}}
  const status=b=>b.status==='loot'?'Loot open':b.status==='active'?(RaidService.expired(b)?'Expired':'Live now'):b.status==='ended'?(b.defeatedAt?'Completed':'Ended'):'Draft';
@@ -115,13 +115,14 @@
   status.title=ok?'Last confirmed server update: '+new Date().toLocaleTimeString():'Waiting for the server. Attacks and rewards require confirmation.';
  }
  async function refresh(){
-  if(polling||document.hidden||!currentUser)return;const studentPage=document.getElementById('s-world-boss')?.classList.contains('active'),battle=WBR.bossIdx!=null,adminPage=document.getElementById('a-bossevents')?.classList.contains('active');if(!studentPage&&!battle&&!adminPage)return;
-  polling=true;try{const indices=battle?[WBR.bossIdx]:visible().filter(x=>['active','loot','defeated'].includes(x.boss.status)).map(x=>x.index);
-   for(const i of indices){const b=AppStore.getBossEvent(i);if(!RaidService.managed(b)||WBR.answerPending||claimPending.size)continue;const before=b.status;const result=await RaidService.action(i,'snapshot');if(WBR.bossIdx===i)connection(result.ok);if(!result.ok)continue;
+  if(polling||document.hidden||!currentUser)return false;const studentPage=document.getElementById('s-world-boss')?.classList.contains('active'),battle=WBR.bossIdx!=null,adminPage=document.getElementById('a-bossevents')?.classList.contains('active');if(!studentPage&&!battle&&!adminPage)return false;
+  let ok=true,touched=false;polling=true;try{const indices=battle?[WBR.bossIdx]:visible().filter(x=>['active','loot','defeated'].includes(x.boss.status)).map(x=>x.index);
+   for(const i of indices){const b=AppStore.getBossEvent(i);if(!RaidService.managed(b))continue;if(WBR.answerPending||claimPending.size){ok=false;continue;}touched=true;const before=b.status;const result=await RaidService.action(i,'snapshot');if(WBR.bossIdx===i)connection(result.ok);if(!result.ok){ok=false;if(result.code==='42501'||/not found|another section|unavailable/i.test(result.reason||'')){authoritativeFallback=true;DBService.releaseRemoteTables?.(['boss_events','boss_participants','loot_claims']);}continue;}authoritativeFallback=false;
     const fresh=AppStore.getBossEvent(i);if(battle){if(WBR.phase==='loot')window.RaidLootArena?.update();continue;}
     if(studentPage){if(before!==fresh.status||!document.querySelector('[data-raid-loot]'))renderStudent();else renderLoot(i);}
     else if(adminPage&&document.getElementById('modal-overlay')?.style.display==='none'){const list=document.getElementById('raid-event-list');if(list)list.innerHTML=adminCards();}
    }
+   return ok&&touched;
   }finally{polling=false;}
  }
  const studio=window.renderBossStudio;
@@ -150,7 +151,7 @@
  document.addEventListener('keydown',e=>{if(WBR.bossIdx==null)return;if(e.key==='Tab'){if(document.querySelector('#modal-overlay[style*="flex"]'))return;const nodes=[...document.querySelectorAll('.raid-battle button:not(:disabled),.raid-battle input,.raid-battle select,.raid-battle [tabindex="0"]')].filter(el=>el.getClientRects().length);const first=nodes[0],last=nodes.at(-1);if(nodes.length&&e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(nodes.length&&!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}return;}if(e.target.closest('input,textarea,select,button'))return;if(['1','2','3','4'].includes(e.key)&&WBR.phase==='battle'){const button=document.getElementById('wbr-opt-'+(Number(e.key)-1));if(button&&!button.disabled){e.preventDefault();button.click();}}});
  AppStore.subscribe('raid-experience',(state,event)=>{
   if(event?.type==='session:booted')reset();
-  if(['world-boss:server-synced','world-boss:defeated'].includes(event?.type)&&WBR.bossIdx===event.payload?.bossIdx){connection(true);if(WBR.phase==='battle')wbrUpdateHUD();else window.RaidUltimate?.sync(WBR.bossIdx);}
+  if(['world-boss:server-synced','world-boss:defeated'].includes(event?.type)&&WBR.bossIdx===event.payload?.bossIdx){live?.synced();connection(true);if(WBR.phase==='battle')wbrUpdateHUD();else window.RaidUltimate?.sync(WBR.bossIdx);}
   if(event?.type==='world-boss:player-hit'&&WBR.bossIdx===event.payload?.bossIdx&&WBR.phase==='battle')window.RaidUltimate?.playerHit(event.payload);
   if(event?.type==='world-boss:raid-hits'&&WBR.bossIdx===event.payload?.bossIdx&&WBR.phase==='battle'){
    const hits=event.payload.hits;
@@ -159,5 +160,12 @@
   }
   if(event?.type==='nav:navigated'){if(WBR.bossIdx!=null&&event.payload?.id!=='s-world-boss')wbrCloseBattle();setTimeout(refresh,50);}
  });
- ticker=setInterval(()=>{updateLootClock();},1000);setInterval(()=>{if(WBR.bossIdx!=null)refresh();else if(Date.now()-lastPagePoll>=5000){lastPagePoll=Date.now();refresh();}},1000);
+ ticker=setInterval(()=>{updateLootClock();},1000);
+ live=LiveSync.create({active:()=>WBR.bossIdx!=null&&!!currentUser,tables:['boss_events','boss_participants','loot_claims'],matches:n=>n.classId===AppStore.getBossEvent(WBR.bossIdx)?.classId,owns:()=>!authoritativeFallback,minGapMs:750,refresh,interval:()=>DBService.liveSyncReady?.()?(WBR.phase==='loot'?15000:8000):1000,deadline:()=>{
+  const b=AppStore.getBossEvent(WBR.bossIdx);if(!b)return Infinity;if(b.status==='loot'&&b.lootStartedAt)return b.lootStartedAt+(b.lootDuration??120)*1000-(b._raidClockOffset||0)+150;const u=b.raidUltimate||{},serverOffset=b._raidClockOffset||0;
+  const me=wbcMyRecord(WBR.bossIdx),eligible=me&&!me.isKO&&(me.lastQIdx||0)<wbcGetBossQuestions(b).length;
+  const at=u.phase==='casting'?u.deadline:u.phase==='eruption'?u.endsAt:(eligible&&b.skills?.cataclysm?.automatic!==false&&b.skills?.cataclysm?.enabled!==false?u.nextAt:null);
+  return Number(at)>0?Number(at)-serverOffset+150:Infinity;
+ }});
+ setInterval(()=>{if(WBR.bossIdx==null&&Date.now()-lastPagePoll>=(DBService.liveSyncReady?.()?30000:5000)){lastPagePoll=Date.now();refresh();}},1000);
 })();

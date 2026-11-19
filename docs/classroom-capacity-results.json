@@ -1,0 +1,35 @@
+[
+  {
+    "students": 10,
+    "coldBytesPerClientBefore": 206540,
+    "coldBytesPerClientAfter": 86980,
+    "sampleActiveBytesBefore": 585864,
+    "sampleActiveBytesAfter": 104256,
+    "activeReductionPercent": 82,
+    "modeled20MinuteClassDataMB": 53,
+    "modeled20MinutePreviousDataMB": 296,
+    "assumptions": "400-question bank; 5 answers batched every 2 seconds; 80 prior answers each; representative viewer; excludes media and Realtime/header bytes"
+  },
+  {
+    "students": 30,
+    "coldBytesPerClientBefore": 510260,
+    "coldBytesPerClientAfter": 139600,
+    "sampleActiveBytesBefore": 573381,
+    "sampleActiveBytesAfter": 71584,
+    "activeReductionPercent": 88,
+    "modeled20MinuteClassDataMB": 112,
+    "modeled20MinutePreviousDataMB": 878,
+    "assumptions": "400-question bank; 5 answers batched every 2 seconds; 80 prior answers each; representative viewer; excludes media and Realtime/header bytes"
+  },
+  {
+    "students": 50,
+    "coldBytesPerClientBefore": 813980,
+    "coldBytesPerClientAfter": 192220,
+    "sampleActiveBytesBefore": 571304,
+    "sampleActiveBytesAfter": 71584,
+    "activeReductionPercent": 87,
+    "modeled20MinuteClassDataMB": 189,
+    "modeled20MinutePreviousDataMB": 1473,
+    "assumptions": "400-question bank; 5 answers batched every 2 seconds; 80 prior answers each; representative viewer; excludes media and Realtime/header bytes"
+  }
+]

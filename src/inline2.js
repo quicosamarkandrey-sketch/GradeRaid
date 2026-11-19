@@ -2703,6 +2703,7 @@ export function saveEmail() {
 
 // Staged picture change — null means "no pending change", '' means "pending removal", dataUrl means "pending new pic"
 export let _profPendingPic = null;
+let _profPicReadEpoch = 0;
 
 export function handleProfilePicUpload(event) {
   const file = event.target.files[0];
@@ -2710,9 +2711,12 @@ export function handleProfilePicUpload(event) {
   if (!file.type.startsWith('image/')) { toast('⚠️ Please select an image file.', '#ffb4ab'); event.target.value = ''; return; }
   if (file.size > 2 * 1024 * 1024) { toast('⚠️ Image must be under 2 MB.', '#ffb4ab'); event.target.value = ''; return; }
 
+  const epoch = ++_profPicReadEpoch, owner = currentUser?.id, section = document.getElementById('prof-pic-section');
   const reader = new FileReader();
-  reader.onload = function(e) {
-    _profPendingPic = e.target.result; // stage — do NOT save to DB yet
+  reader.onload = async function(e) {
+    const optimized = await window.ProfileImageTransfer?.optimize(file, e.target.result) || e.target.result;
+    if (epoch !== _profPicReadEpoch || currentUser?.id !== owner || section !== document.getElementById('prof-pic-section')) { event.target.value = ''; return; }
+    _profPendingPic = optimized; // stage — do NOT save to DB yet
 
     // Update the preview inside the edit tab only
     const preview = document.querySelector('#prof-pic-section .profile-pic-preview');
@@ -2738,6 +2742,7 @@ export function handleProfilePicUpload(event) {
 }
 
 export function removeProfilePic() {
+  _profPicReadEpoch++;
   _profPendingPic = ''; // stage removal — '' means clear it on save
 
   // Update preview to show initials

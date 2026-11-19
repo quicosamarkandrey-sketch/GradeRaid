@@ -26,7 +26,11 @@
     "test:ux": "node tests/browser/ux-states.cjs",
     "test:motion": "node tests/browser/motion.cjs",
     "test:boss-rehearsal": "node tests/browser/boss-rehearsal.cjs",
-    "test:egress": "node tests/database/egress.cjs"
+    "test:egress": "node tests/database/egress.cjs",
+    "test:classroom-bandwidth": "node tests/database/live-notices.cjs && node tests/database/classroom-capacity.cjs",
+    "test:transfer-cache": "node tests/browser/transfer-cache.cjs",
+    "test:recitation-live": "node tests/browser/recitation-live-sync.cjs",
+    "test:profile-image-transfer": "node tests/browser/profile-image-transfer.cjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.13",

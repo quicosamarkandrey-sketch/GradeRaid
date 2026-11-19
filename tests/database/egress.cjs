@@ -1,7 +1,7 @@
 /* Actual PostgreSQL + production transport: byte savings, authorization,
  * mutable fields/deletions, cold reconnects and text/UUID compatibility. */
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const migration=fs.readFileSync('supabase/phase84_egress_optimization.sql','utf8');
+const migration=fs.readFileSync('supabase/phase84_egress_optimization.sql','utf8')+fs.readFileSync('supabase/phase85_classroom_bandwidth.sql','utf8');
 const source=fs.readFileSync('repository/egress-transport.js','utf8');
 function transport(db,uid){
  const sandbox={window:{},TextEncoder,currentUser:{id:uid}};vm.runInNewContext(source,sandbox);

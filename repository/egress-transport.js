@@ -2,7 +2,7 @@
  * Wire byte counters estimate JSON payloads, not Supabase billing/compression. */
 (function(){
  'use strict';
- const caches=new Map(),missing=new Set(),inflight=new Map();let epoch=0;
+ const caches=new Map(),missing=new Set(),inflight=new Map(),packetVersions=new Map();let epoch=0;const owners=new Set();
  const routes={world_boss_action:'world_boss_delta',recitation_presentation:'recitation_presentation_delta',attendance_station:'attendance_station_delta'};
  const stats={requests:0,wireBytes:0,fullBytes:0,compactResponses:0,legacyResponses:0};
  const clone=x=>JSON.parse(JSON.stringify(x));
@@ -24,32 +24,40 @@
   return clone(result);
  }
  function decode(wire,state){
-  if(wire?.__egress!==1)return wire;
+  if(![1,2].includes(wire?.__egress))return wire;
   // Commit only after a complete, valid packet has been reconstructed.
   const parts=new Map(state.parts),hashes={...state.hashes};
   for(const key of wire.removed||[]){parts.delete(key);delete hashes[key];}
-  for(const [key,value] of Object.entries(wire.changes||{})){parts.set(key,value);hashes[key]=wire.versions[key];}
+  if(wire.__egress===2){for(const [path,version,value] of wire.changed||[]){const key=JSON.stringify(path);parts.set(key,value);hashes[key]=version;}}
+  else for(const [key,value] of Object.entries(wire.changes||{})){parts.set(key,value);hashes[key]=wire.versions[key];}
   const result=materialize(parts);state.parts=parts;state.hashes=hashes;return result;
  }
  async function request(client,name,params={},options={}){
   const owner=await identity(client),stamp=epoch;
   const target=options.table?'egress_table_snapshot':routes[name];if(!target)return client.rpc(name,params);
-  const scope=JSON.stringify([owner,target,options.table?params.p_table:params.p_boss_id||params.p_class_id||'',params.p_device||'',options.table?params.p_order:'',options.table?params.p_limit:'',options.table?params.p_ascending:'']);
+  const project=client.supabaseUrl||window.__EDUQUEST_SUPABASE_URL__||'';
+  const scope=JSON.stringify([project,owner,target,options.table?params.p_table:params.p_boss_id||params.p_class_id||'',params.p_device||'',options.table?params.p_order:'',options.table?params.p_limit:'',options.table?params.p_ascending:'']);
   const snapshot=options.table||params.p_action==='snapshot',pendingKey=scope+':snapshot:'+JSON.stringify(params);
   if(snapshot&&inflight.has(pendingKey))return inflight.get(pendingKey);
-  let state=caches.get(scope);if(!state){state={parts:new Map(),hashes:{},tail:Promise.resolve(),jobs:0};caches.set(scope,state);}
+  owners.add(owner);
+  let state=caches.get(scope);if(!state){state={parts:new Map(),hashes:{},tail:Promise.resolve(),jobs:0};
+   state.ready=options.table&&window.EgressCache?EgressCache.load(scope).then(saved=>{if(saved&&stamp===epoch){try{const parts=new Map(saved.parts);materialize(parts);state.parts=parts;state.hashes={...saved.hashes};}catch{state.parts.clear();state.hashes={};}}}).catch(()=>{}):Promise.resolve();
+   caches.set(scope,state);
+  }
   state.jobs++;
   const run=state.tail.catch(()=>{}).then(async()=>{
+   await state.ready;
    if(stamp!==epoch||owner!==await identity(client))return {data:null,error:{message:'Account changed.',code:'ACCOUNT_CHANGED'}};
-   const known={v:1,hashes:state.hashes},args=options.table?{...params,p_known:known}:{...params,p_payload:{...params.p_payload,_egress:known}};
+   const known={v:packetVersions.get(target)||1,hashes:state.hashes},args=options.table?{...params,p_known:known}:{...params,p_payload:{...params.p_payload,_egress:known}};
    let result;
    if(missing.has(target))result=await options.fallback();
    else {result=await client.rpc(target,args);if(['PGRST202','42883'].includes(result.error?.code)){missing.add(target);result=await options.fallback();}}
    if(stamp!==epoch||owner!==await identity(client))return {data:null,error:{message:'Account changed.',code:'ACCOUNT_CHANGED'}};
    if(result.error)return result;
-   const wire=result.data;let data;
+   const wire=result.data;if(wire?.packetVersion===2||wire?.__egress===2)packetVersions.set(target,2);else if(![1,2].includes(wire?.__egress))packetVersions.delete(target);let data;
    try{data=decode(wire,state);}catch(error){state.parts.clear();state.hashes={};return {data:null,error:{message:error.message,code:'COMPACT_RESET'}};}
-   stats.requests++;stats.wireBytes+=bytes(wire);stats.fullBytes+=bytes(data);stats[wire?.__egress===1?'compactResponses':'legacyResponses']++;
+   if(options.table&&[1,2].includes(wire?.__egress)&&(Object.keys(wire.changes||{}).length||(wire.changed||[]).length||(wire.removed||[]).length))window.EgressCache?.save(scope,owner,state);
+   stats.requests++;stats.wireBytes+=bytes(wire);stats.fullBytes+=bytes(data);stats[[1,2].includes(wire?.__egress)?'compactResponses':'legacyResponses']++;
    return {...result,data};
   });
   state.tail=run;if(snapshot){inflight.set(pendingKey,run);run.finally(()=>{if(inflight.get(pendingKey)===run)inflight.delete(pendingKey);}).catch(()=>{});}
@@ -64,6 +72,6 @@
   const result=await request(client,'',args,{table:true,fallback:async()=>{const r=await fallback();return r.error?r:{...r,data:{rows:r.data}};}});
   return result.error?result:{...result,data:result.data.rows};
  }
- function clear(){epoch++;caches.clear();inflight.clear();missing.clear();}
- window.EgressTransport={rpc,table,clear,decode,materialize,diagnostics:()=>({...stats,estimatedSavedPercent:stats.fullBytes?Math.max(0,Math.round((1-stats.wireBytes/stats.fullBytes)*100)):0,compactUnavailable:[...missing]})};
+ function clear(options={}){if(options.forget)for(const owner of owners)window.EgressCache?.forget(owner);owners.clear();epoch++;caches.clear();inflight.clear();missing.clear();packetVersions.clear();}
+ window.EgressTransport={rpc,table,clear,decode,materialize,diagnostics:()=>({...stats,estimatedSavedPercent:stats.fullBytes?Math.max(0,Math.round((1-stats.wireBytes/stats.fullBytes)*100)):0,compactUnavailable:[...missing],cache:window.EgressCache?.diagnostics()})};
 })();

@@ -1,5 +1,5 @@
 const {setup}=require('../helpers/recitation-db.cjs'),{chromium}=require('@playwright/test'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-(async()=>{const {db,rpc}=await setup();let browser,server;try{await db.exec(fs.readFileSync('supabase/phase84_egress_optimization.sql','utf8'));
+(async()=>{const {db,rpc}=await setup();let browser,server;try{await db.exec(fs.readFileSync('supabase/phase84_egress_optimization.sql','utf8'));await db.exec(fs.readFileSync('supabase/phase85_classroom_bandwidth.sql','utf8'));
  const base=path.resolve(__dirname,'../..');
  server=http.createServer((req,res)=>{const file=path.resolve(base,'.'+(req.url.split('?')[0]==='/'?'/index.html':req.url.split('?')[0]));if(!file.startsWith(base+path.sep))return res.writeHead(403).end();fs.readFile(file,(err,data)=>{res.writeHead(err?404:200,{'Content-Type':file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html'});res.end(err?'Missing':data);});});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;

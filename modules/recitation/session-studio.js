@@ -7,7 +7,7 @@
  const uid=()=>crypto.randomUUID();
  const store={get(k,f){try{return JSON.parse(localStorage.getItem(k))??f;}catch{return f;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}catch{return false;}}};
  const device=store.get('eq-recitation-device',null)||uid();store.set('eq-recitation-device',device);
- let refreshing=false;let generation=0;const flights=new Set(),flightTimers=new Set();let inspecting=null,recognitionUndo=false,headerObserver=null;
+ let live=null;let refreshing=false;let generation=0;const flights=new Set(),flightTimers=new Set();let inspecting=null,recognitionUndo=false,headerObserver=null;
  let root=null,snap=null,role='display',classId='',poll=null,tick=null,abort=null,busy=false,syncing=false,offset=0,seen=new Map(),awardQueue=[],playing=false,recognitionTimer=null,queue=store.get('eq-recitation-pending',[]),mismatch=null,lastTag=new Map(),keyBuffer='',keyAt=0,keyTimer=null,lastFocus=null,lastManualAt=0;
  const button=(a,t,extra='')=>`<button type="button" data-rs="${a}" ${extra}>${t}</button>`;
  const state=()=>snap?.state||{};
@@ -36,7 +36,7 @@
   if(!root)return;
   // An older poll response must not roll back a newer control/award response.
   if(snap&&data.session.id===snap.session.id&&data.revision<snap.revision)return;
-  snap=data;classId=data.session.class_id;
+  snap=data;classId=data.session.class_id;live?.synced();
   if(!initial&&role==='remote'&&!data.controllerMine){role='display';stopNFC();build();report('Control moved to another device.');}
   offset=new Date(data.serverTime).getTime()-Date.now();
   for(const r of data.receipts){
@@ -309,8 +309,8 @@
   if(Date.now()-keyAt>100)keyBuffer='';keyAt=Date.now();keyBuffer+=e.key;
   clearTimeout(keyTimer);keyTimer=setTimeout(()=>{if(keyBuffer.length>2)ingest(keyBuffer);keyBuffer='';},140);
  }
- async function refresh(){if(!root||!snap||refreshing||document.hidden||!navigator.onLine)return;refreshing=true;const stamp=generation;try{const data=await rpc('snapshot');adopt(data);poolCount();await flush();}catch(e){if(e.stale)return;report(friendly(e));const status=root?.querySelector('#rs-status');if(status)status.textContent='Reconnecting · unconfirmed cards stay pending';}finally{if(stamp===generation)refreshing=false;}}
- function close(){refreshing=false;generation++;headerObserver?.disconnect();headerObserver=null;RecitationRoom.reset();for(const entry of flights){entry.animation.cancel();entry.spark.remove();}flights.clear();for(const timer of flightTimers)clearTimeout(timer);flightTimers.clear();inspecting=null;clearTimeout(recognitionTimer);playing=false;busy=false;clearInterval(poll);clearInterval(tick);clearTimeout(keyTimer);keyBuffer='';poll=tick=null;stopNFC();document.removeEventListener('keydown',keyScan,true);document.removeEventListener('keydown',presentationKey,true);root?.remove();for(const [n,value] of inertSiblings)n.inert=value;inertSiblings.clear();root=null;snap=null;awardQueue=[];seen.clear();stageKey='';document.body.classList.remove('rs-open');lastFocus?.focus?.();}
+ async function refresh(){if(!root||!snap||refreshing||document.hidden||!navigator.onLine)return false;refreshing=true;const stamp=generation;try{const data=await rpc('snapshot');adopt(data);poolCount();await flush();return true;}catch(e){if(e.stale)return;report(friendly(e));const status=root?.querySelector('#rs-status');if(status)status.textContent='Reconnecting · unconfirmed cards stay pending';return false;}finally{if(stamp===generation)refreshing=false;}}
+ function close(){live?.stop();live=null;refreshing=false;generation++;headerObserver?.disconnect();headerObserver=null;RecitationRoom.reset();for(const entry of flights){entry.animation.cancel();entry.spark.remove();}flights.clear();for(const timer of flightTimers)clearTimeout(timer);flightTimers.clear();inspecting=null;clearTimeout(recognitionTimer);playing=false;busy=false;clearInterval(poll);clearInterval(tick);clearTimeout(keyTimer);keyBuffer='';poll=tick=null;stopNFC();document.removeEventListener('keydown',keyScan,true);document.removeEventListener('keydown',presentationKey,true);root?.remove();for(const [n,value] of inertSiblings)n.inert=value;inertSiblings.clear();root=null;snap=null;awardQueue=[];seen.clear();stageKey='';document.body.classList.remove('rs-open');lastFocus?.focus?.();}
  async function open(options={}){
   if(root)close();generation++;window._lmStopWebNfcCapture?.();window._lmStopScannerBListener?.();lastFocus=document.activeElement;classId=options.classId||document.querySelector('#lm-class-select')?.value||window.ActiveSection?.get?.()||'default-class';role=options.role||'remote';
   root=document.createElement('div');root.className='rs-app';root.setAttribute('role','dialog');root.setAttribute('aria-label','Recitation Studio');root.setAttribute('aria-modal','true');for(const n of document.body.children){if(n.tagName!=='SCRIPT'&&n.tagName!=='STYLE'){inertSiblings.set(n,n.inert);n.inert=true;}}document.body.append(root);document.body.classList.add('rs-open');document.addEventListener('keydown',presentationKey,true);
@@ -319,7 +319,7 @@
    try{
     const data=await rpc(code?'join':'start',code?{code}:{});adopt(data,true);
     if(!code&&(!data.controllerActive||data.controllerMine)){const claimed=await rpc('claim');adopt(claimed,true);role='remote';}else role='display';
-    build();root.querySelector('button')?.focus();document.addEventListener('keydown',keyScan,true);poll=setInterval(refresh,1200);tick=setInterval(paintTimer,250);for(const q of queue)if(q.error==='Different card — teacher decision needed')q.error=null;persistQueue();flush();
+    build();root.querySelector('button')?.focus();document.addEventListener('keydown',keyScan,true);live?.stop();live=LiveSync.create({active:()=>!!root&&!!snap,tables:['recitation_presentations','recitation_scan_receipts','recitation_sessions','recitation_log','profiles','attendance_logs','classroom_layouts','seats','seat_assignments'],matches:n=>n.classId===classId,owns:n=>['recitation_log','profiles'].includes(n.table),refresh,interval:()=>DBService.liveSyncReady?.()?15000:1200});tick=setInterval(paintTimer,250);for(const q of queue)if(q.error==='Different card — teacher decision needed')q.error=null;persistQueue();flush();
    }catch(e){if(!e.stale)report(friendly(e));}
   };
   root.onclick=e=>{const a=e.target.closest('[data-rs]')?.dataset.rs;if(a==='close')close();if(a==='host')connect();};

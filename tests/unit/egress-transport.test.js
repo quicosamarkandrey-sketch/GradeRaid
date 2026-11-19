@@ -28,3 +28,9 @@ test('account switch and explicit logout invalidate in-flight snapshots and cach
  const pending=api.rpc(client,'recitation_presentation',params());await new Promise(r=>setImmediate(r));context.currentUser.id='b';api.clear();release();assert.equal((await pending).error.code,'ACCOUNT_CHANGED');
  let known;client.rpc=async(name,args)=>{known=args.p_payload._egress;return {data:start()};};await api.rpc(client,'recitation_presentation',params());assert.equal(Object.keys(known.hashes).length,0);
 });
+
+test('v2 packets negotiate only after server support, preserve fields and downgrade without replaying mutations',async()=>{
+ const {api}=load(),seen=[];let step=0;const client={rpc:async(name,args)=>{seen.push(args.p_payload._egress.v);step++;if(step===1)return {data:{...start(),packetVersion:2}};if(step===2)return {data:{__egress:2,changed:[[['boss','hp'],'v2',75]],removed:[]}};if(step===3)return {data:{ok:true}};return {data:start()};}};
+ assert.equal((await api.rpc(client,'world_boss_action',params())).data.boss.hp,100);let reply=await api.rpc(client,'world_boss_action',params());assert.equal(reply.data.boss.hp,75);assert.equal(reply.data.roster[0].photo,'cached portrait');
+ reply=await api.rpc(client,'world_boss_action',params('answer'));assert.equal(reply.data.ok,true);assert.equal(seen.length,3,'Downgrade never resubmits an answer');await api.rpc(client,'world_boss_action',params());assert.deepEqual(seen,[1,2,2,1]);
+});

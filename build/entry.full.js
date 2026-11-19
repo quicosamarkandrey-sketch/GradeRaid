@@ -6,11 +6,14 @@ import '../error-capture.js';
 // in the shipped page, loaded before this bundle. Not imported here.
 import './inline/inline0.js';
 import '../supabase-client.js';
+import '../modules/shared/profile-image-transfer.js';
+import '../repository/egress-cache.js';
 import '../repository/egress-transport.js';
 import '../repository/table-sync.js';
 import '../repository/pull-mappers.js';
 import '../repository/realtime-groups.js';
 import '../db-service.js';
+import '../repository/live-sync.js';
 import '../dsm-service.js';
 import '../db-schema.js';
 import '../modules/core/state-manager.js';
