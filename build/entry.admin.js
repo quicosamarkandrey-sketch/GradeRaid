@@ -4,6 +4,7 @@
 import '../error-capture.js';
 import './inline/inline0.js';
 import '../supabase-client.js';
+import '../repository/egress-transport.js';
 import '../repository/table-sync.js';
 import '../repository/pull-mappers.js';
 import '../repository/realtime-groups.js';

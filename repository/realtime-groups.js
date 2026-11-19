@@ -87,7 +87,7 @@
 
   const _REFRESH_GROUPS = {
     profiles: {
-      fetch: async (client) => ({ profiles: await client.from('profiles').select('*') }),
+      fetch: async (client) => ({ profiles: await _egressRead(client, 'profiles') }),
       apply: (raw, cache) => ({
         students: _deriveStudents(raw.profiles.data, cache.quizHistory),
         admin: _deriveAdmin(raw.profiles.data, cache.admin),
@@ -103,9 +103,9 @@
       // benefit.
       fetch: async (client) => {
         const [bossEvents, bossParticipants, lootClaims] = await Promise.all([
-          client.from('boss_events').select('*'),
-          client.from('boss_participants').select('*'),
-          client.from('loot_claims').select('*'),
+          _egressRead(client, 'boss_events'),
+          _egressRead(client, 'boss_participants'),
+          _egressRead(client, 'loot_claims'),
         ]);
         return { bossEvents, bossParticipants, lootClaims };
       },
@@ -121,8 +121,8 @@
     achievements: {
       fetch: async (client) => {
         const [achievements, userAchievements] = await Promise.all([
-          client.from('achievements').select('*'),
-          client.from('user_achievements').select('*'),
+          _egressRead(client, 'achievements'),
+          _egressRead(client, 'user_achievements'),
         ]);
         return { achievements, userAchievements };
       },
@@ -133,23 +133,23 @@
     },
     pointLog: {
       fetch: async (client) => ({
-        pointLog: await client.from('point_log').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.point_log),
+        pointLog: await _egressRead(client, 'point_log', { order: 'created_at', ascending: false, limit: _HISTORY_LIMITS.point_log }),
       }),
       apply: (raw) => ({ pointLog: _derivePointLog(raw.pointLog.data) }),
     },
     recitationLog: {
       fetch: async (client) => ({
-        recitationLog: await client.from('recitation_log').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.recitation_log),
+        recitationLog: await _egressRead(client, 'recitation_log', { order: 'created_at', ascending: false, limit: _HISTORY_LIMITS.recitation_log }),
       }),
       apply: (raw) => ({ recitationLog: _deriveRecitationLog(raw.recitationLog.data) }),
     },
     rfidCards: {
-      fetch: async (client) => ({ rfidCards: await client.from('rfid_cards').select('*') }),
+      fetch: async (client) => ({ rfidCards: await _egressRead(client, 'rfid_cards') }),
       apply: (raw) => ({ rfidCards: _deriveRfidCards(raw.rfidCards.data) }),
     },
     attendanceLogs: {
       fetch: async (client) => ({
-        attendanceLogs: await client.from('attendance_logs').select('*').order('log_date', { ascending: false }).limit(_HISTORY_LIMITS.attendance_logs),
+        attendanceLogs: await _egressRead(client, 'attendance_logs', { order: 'log_date', ascending: false, limit: _HISTORY_LIMITS.attendance_logs }),
       }),
       apply: (raw) => ({ attendanceLogs: _deriveAttendanceLogs(raw.attendanceLogs.data) }),
     },
@@ -160,19 +160,19 @@
       // of re-fetching titles too.
       fetch: async (client) => {
         const [mailMessages, profiles] = await Promise.all([
-          client.from('mail_messages').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.mail_messages),
-          client.from('profiles').select('*'),
+          _egressRead(client, 'mail_messages', { order: 'created_at', ascending: false, limit: _HISTORY_LIMITS.mail_messages }),
+          _egressRead(client, 'profiles'),
         ]);
         return { mailMessages, profiles };
       },
       apply: (raw, cache) => ({ mail: _deriveMail(raw.mailMessages.data, raw.profiles.data, cache.titles) }),
     },
     quizSectionAssignments: {
-      fetch: async (client) => ({ quizSections: await client.from('quiz_sections').select('*') }),
+      fetch: async (client) => ({ quizSections: await _egressRead(client, 'quiz_sections') }),
       apply: (raw) => ({ quizSectionAssignments: _deriveQuizSectionAssignments(raw.quizSections.data) }),
     },
     achievementSectionAssignments: {
-      fetch: async (client) => ({ achievementSections: await client.from('achievement_sections').select('*') }),
+      fetch: async (client) => ({ achievementSections: await _egressRead(client, 'achievement_sections') }),
       apply: (raw) => ({ achievementSectionAssignments: _deriveAchievementSectionAssignments(raw.achievementSections.data) }),
     },
     titles: {
@@ -181,9 +181,9 @@
       // once, and all three only ever feed the "titles domain" of the cache.
       fetch: async (client) => {
         const [titles, titleUnlocks, titleSections] = await Promise.all([
-          client.from('titles').select('*'),
-          client.from('title_unlocks').select('*'),
-          client.from('title_sections').select('*'),
+          _egressRead(client, 'titles'),
+          _egressRead(client, 'title_unlocks'),
+          _egressRead(client, 'title_sections'),
         ]);
         return { titles, titleUnlocks, titleSections };
       },
@@ -194,14 +194,14 @@
       }),
     },
     quizzes: {
-      fetch: async (client) => ({ quizzes: await client.from('quizzes').select('*') }),
+      fetch: async (client) => ({ quizzes: await _egressRead(client, 'quizzes') }),
       apply: (raw) => ({ quizzes: _deriveQuizzes(raw.quizzes.data) }),
     },
     campaign: {
       fetch: async (client) => {
         const [campaignWorlds, campaignStageSections] = await Promise.all([
-          client.from('campaign_worlds').select('*').order('sort_order', { ascending: true }),
-          client.from('campaign_stage_sections').select('*'),
+          _egressRead(client, 'campaign_worlds', { order: 'sort_order', ascending: true }),
+          _egressRead(client, 'campaign_stage_sections'),
         ]);
         return { campaignWorlds, campaignStageSections };
       },
@@ -215,17 +215,17 @@
     },
     orders: {
       fetch: async (client) => ({
-        orders: await client.from('orders').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.orders),
+        orders: await _egressRead(client, 'orders', { order: 'created_at', ascending: false, limit: _HISTORY_LIMITS.orders }),
       }),
       apply: (raw) => ({ orders: _deriveOrders(raw.orders.data) }),
     },
     inventory: {
-      fetch: async (client) => ({ inventory: await client.from('inventory').select('*') }),
+      fetch: async (client) => ({ inventory: await _egressRead(client, 'inventory') }),
       apply: (raw) => ({ inventory: _deriveInventory(raw.inventory.data) }),
     },
     quizHistory: {
       fetch: async (client) => ({
-        quizHistory: await client.from('quiz_history').select('*').order('completed_at', { ascending: false }).limit(_HISTORY_LIMITS.quiz_history),
+        quizHistory: await _egressRead(client, 'quiz_history', { order: 'completed_at', ascending: false, limit: _HISTORY_LIMITS.quiz_history }),
       }),
       apply: (raw, cache) => {
         const { quizHistoryByStudent, completedQuizzesByStudent } = _deriveQuizHistory(raw.quizHistory.data);
@@ -243,17 +243,17 @@
     },
     notifications: {
       fetch: async (client) => ({
-        notifications: await client.from('notifications').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.notifications),
+        notifications: await _egressRead(client, 'notifications', { order: 'created_at', ascending: false, limit: _HISTORY_LIMITS.notifications }),
       }),
       apply: (raw) => ({ notifications: _deriveNotifications(raw.notifications.data) }),
     },
     studentSkills: {
-      fetch: async (client) => ({ studentSkills: await client.from('student_skills').select('*') }),
+      fetch: async (client) => ({ studentSkills: await _egressRead(client, 'student_skills') }),
       apply: (raw) => ({ studentSkills: _deriveStudentSkills(raw.studentSkills.data) }),
     },
     // Phase 71 — cross-device "Start Recitation Session" sync.
     recitationSessions: {
-      fetch: async (client) => ({ recitationSessions: await client.from('recitation_sessions').select('*') }),
+      fetch: async (client) => ({ recitationSessions: await _egressRead(client, 'recitation_sessions') }),
       apply: (raw) => ({ recitationSessions: _deriveRecitationSessions(raw.recitationSessions.data) }),
     },
   };
@@ -267,3 +267,13 @@
 // See PHASE7_WINDOW_EXPORT_AUDIT.md.
 window._REALTIME_TABLE_GROUPS = _REALTIME_TABLE_GROUPS;
 window._REFRESH_GROUPS = _REFRESH_GROUPS;
+
+function _egressRead(client, table, options = {}) {
+  if (window.EgressTransport) return EgressTransport.table(client, table, options);
+  let query = client.from(table).select('*');
+  if (options.order) query = query.order(options.order, { ascending: options.ascending ?? false });
+  if (options.limit != null) query = query.limit(options.limit);
+  return query;
+}
+
+window._egressRead = _egressRead;

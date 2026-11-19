@@ -241,38 +241,38 @@ const DBService = (function () {
            orders, inventoryRows, campaignStageSections, quizHistoryRows, notifications, studentSkillRows,
            recitationSessions] =
       await Promise.all([
-        client.from('profiles').select('*'),
-        client.from('boss_events').select('*'),
-        client.from('boss_participants').select('*'),
-        client.from('loot_claims').select('*'),
-        client.from('achievements').select('*'),
-        client.from('user_achievements').select('*'),
-        client.from('registrations').select('*'),
+        _egressRead(client, 'profiles'),
+        _egressRead(client, 'boss_events'),
+        _egressRead(client, 'boss_participants'),
+        _egressRead(client, 'loot_claims'),
+        _egressRead(client, 'achievements'),
+        _egressRead(client, 'user_achievements'),
+        _egressRead(client, 'registrations'),
         // Priority 2 Fix 2 — bounded history windows on the 8 append-only
         // tables (see _HISTORY_LIMITS above). "load more" beyond this
         // default window goes through loadMoreHistory() (public API).
-        client.from('point_log').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.point_log),
-        client.from('redemptions').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.redemptions),
-        client.from('recitation_log').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.recitation_log),
-        client.from('rfid_cards').select('*'),
-        client.from('attendance_schedules').select('*'),
-        client.from('attendance_logs').select('*').order('log_date', { ascending: false }).limit(_HISTORY_LIMITS.attendance_logs),
-        client.from('shop_products').select('*'), // Phase 14
-        client.from('mail_messages').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.mail_messages), // Phase 15
-        client.from('quiz_sections').select('*'), // Phase 15
-        client.from('achievement_sections').select('*'), // Phase 16
-        client.from('titles').select('*'), // Phase 18
-        client.from('title_unlocks').select('*'), // Phase 18
-        client.from('quizzes').select('*'), // Phase 20 — quiz content (was local-only; see phase20_quiz_content_sync.sql)
-        client.from('title_sections').select('*'), // Phase 21 — read side of title section-scoping
-        client.from('campaign_worlds').select('*').order('sort_order', { ascending: true }), // Phase 22 — campaign content (was local-only; see phase22_campaign_content_sync.sql)
-        client.from('orders').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.orders), // Phase 48
-        client.from('inventory').select('*'), // Phase 48
-        client.from('campaign_stage_sections').select('*'), // Phase 53 — read side of campaign per-section visibility (table existed since Phase 14, never wired up until now)
-        client.from('quiz_history').select('*').order('completed_at', { ascending: false }).limit(_HISTORY_LIMITS.quiz_history), // Phase 57 — was local-only; see phase57_quiz_history_sync.sql
-        client.from('notifications').select('*').order('created_at', { ascending: false }).limit(_HISTORY_LIMITS.notifications), // Phase 67 — student notification bell; see phase67_notifications.sql
-        client.from('student_skills').select('*'), // Phase 7 (Campaign Redesign) — see phase68_campaign_student_skills.sql
-        client.from('recitation_sessions').select('*'), // Phase 71 — cross-device "Start Recitation Session" sync; see phase71_recitation_session_sync.sql
+        _egressRead(client, 'point_log', { order: 'created_at', ascending: false, limit: _HISTORY_LIMITS.point_log }),
+        _egressRead(client, 'redemptions', { order: 'created_at', ascending: false, limit: _HISTORY_LIMITS.redemptions }),
+        _egressRead(client, 'recitation_log', { order: 'created_at', ascending: false, limit: _HISTORY_LIMITS.recitation_log }),
+        _egressRead(client, 'rfid_cards'),
+        _egressRead(client, 'attendance_schedules'),
+        _egressRead(client, 'attendance_logs', { order: 'log_date', ascending: false, limit: _HISTORY_LIMITS.attendance_logs }),
+        _egressRead(client, 'shop_products'), // Phase 14
+        _egressRead(client, 'mail_messages', { order: 'created_at', ascending: false, limit: _HISTORY_LIMITS.mail_messages }), // Phase 15
+        _egressRead(client, 'quiz_sections'), // Phase 15
+        _egressRead(client, 'achievement_sections'), // Phase 16
+        _egressRead(client, 'titles'), // Phase 18
+        _egressRead(client, 'title_unlocks'), // Phase 18
+        _egressRead(client, 'quizzes'), // Phase 20 — quiz content (was local-only; see phase20_quiz_content_sync.sql)
+        _egressRead(client, 'title_sections'), // Phase 21 — read side of title section-scoping
+        _egressRead(client, 'campaign_worlds', { order: 'sort_order', ascending: true }), // Phase 22 — campaign content (was local-only; see phase22_campaign_content_sync.sql)
+        _egressRead(client, 'orders', { order: 'created_at', ascending: false, limit: _HISTORY_LIMITS.orders }), // Phase 48
+        _egressRead(client, 'inventory'), // Phase 48
+        _egressRead(client, 'campaign_stage_sections'), // Phase 53 — read side of campaign per-section visibility (table existed since Phase 14, never wired up until now)
+        _egressRead(client, 'quiz_history', { order: 'completed_at', ascending: false, limit: _HISTORY_LIMITS.quiz_history }), // Phase 57 — was local-only; see phase57_quiz_history_sync.sql
+        _egressRead(client, 'notifications', { order: 'created_at', ascending: false, limit: _HISTORY_LIMITS.notifications }), // Phase 67 — student notification bell; see phase67_notifications.sql
+        _egressRead(client, 'student_skills'), // Phase 7 (Campaign Redesign) — see phase68_campaign_student_skills.sql
+        _egressRead(client, 'recitation_sessions'), // Phase 71 — cross-device "Start Recitation Session" sync; see phase71_recitation_session_sync.sql
       ]);
 
     for (const r of [profiles, bossEvents, bossParticipants, lootClaims, achievements, userAchievements,
@@ -380,7 +380,7 @@ const DBService = (function () {
 
   const _FULL_PULL_SENTINEL = '__full__';
 
-  async function _applyScopedRefresh(client, changedTables) {
+  async function _applyScopedRefresh(client, changedTables, valid = () => true) {
     // No cache yet, or an explicit/unmapped full-refresh request: fall back
     // to the original full 27-table pull. This is the safe default —
     // realtime only ever subscribes after the first full pull has already
@@ -388,7 +388,8 @@ const DBService = (function () {
     // _REALTIME_TABLE_GROUPS falls back here too, rather than silently
     // no-op'ing on a table this file doesn't know how to scope yet.
     if (!_cache || changedTables.includes(_FULL_PULL_SENTINEL)) {
-      _cache = await _pullCacheFromSupabase(client);
+      const fresh = await _pullCacheFromSupabase(client);
+      if (valid()) _cache = fresh;
       return;
     }
 
@@ -399,7 +400,8 @@ const DBService = (function () {
       groups.add(g);
     }
     if (groups.has(_FULL_PULL_SENTINEL)) {
-      _cache = await _pullCacheFromSupabase(client);
+      const fresh = await _pullCacheFromSupabase(client);
+      if (valid()) _cache = fresh;
       return;
     }
 
@@ -418,7 +420,7 @@ const DBService = (function () {
 
     const merged = { ..._cache };
     results.forEach(partial => Object.assign(merged, partial));
-    _cache = merged;
+    if (valid()) _cache = merged;
   }
 
   // ── Repository layer — owned by repository/table-sync.js (Phase 6) ───────
@@ -448,6 +450,8 @@ const DBService = (function () {
   // live for the whole tab lifetime, including through and after logout.
   // See teardownRealtime() below for why that matters.
   let _tableSyncChannel = null;
+  let _noticeRetryTimer = null;
+  let _realtimeEpoch = 0;
   const _signalSubscribers = {};
 
   function _setupRealtimeSignals(client) {
@@ -479,7 +483,7 @@ const DBService = (function () {
     // correctness anymore — RLS is the actual boundary. Left as a follow-up
     // rather than rewritten in this pass, since it touches _cache merge
     // logic other modules depend on.
-    _tableSyncChannel = client
+    const legacy = () => client
       .channel('eduquest-table-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => _schedulePullRefresh('profiles'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'boss_events' }, () => _schedulePullRefresh('boss_events'))
@@ -527,6 +531,24 @@ const DBService = (function () {
       // one tab's local _lmSessionStartAt variable.
       .on('postgres_changes', { event: '*', schema: 'public', table: 'recitation_sessions' }, () => _schedulePullRefresh('recitation_sessions'))
       .subscribe();
+    const stamp = ++_realtimeEpoch;
+    if (!window.EgressTransport) { _tableSyncChannel = legacy(); return; }
+    // Only missing-migration errors select the legacy subscription. Auth/network
+    // failures must not silently create a second stream of full row images.
+    const attachNotices = () => client.rpc('egress_sync_status').then(({ data, error }) => {
+      if (stamp !== _realtimeEpoch) return;
+      if (['PGRST202', '42883'].includes(error?.code)) { _tableSyncChannel = legacy(); return; }
+      if (error || data?.v !== 1) { _noticeRetryTimer = setTimeout(attachNotices, 15000); return; }
+      _tableSyncChannel = client.channel('eduquest-compact-sync')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_invalidations' }, payload => {
+          const table = payload.new?.table_name;
+          if (Object.hasOwn(_REALTIME_TABLE_GROUPS, table)) _schedulePullRefresh(table);
+        }).subscribe(status => {
+          if (status === 'SUBSCRIBED') { _schedulePullRefresh(); }
+        });
+    }).catch(() => { if (stamp === _realtimeEpoch) _noticeRetryTimer = setTimeout(attachNotices, 15000); });
+    attachNotices();
+
   }
 
   let _pullRefreshTimer = null;
@@ -546,25 +568,44 @@ const DBService = (function () {
     // default for anything not yet mapped.
     _pendingRefreshTables.add(table || _FULL_PULL_SENTINEL);
 
-    if (_pullRefreshTimer) clearTimeout(_pullRefreshTimer);
+    if (document.hidden || !navigator.onLine || _pullRefreshTimer || _refreshRunning) return;
     _pullRefreshTimer = setTimeout(async () => {
+      _pullRefreshTimer = null;
+      if (document.hidden || !navigator.onLine || _refreshRunning) return;
+      const client = _getClient(); if (!client) return;
+      const stamp = _sessionEpoch, realtimeStamp = _realtimeEpoch, refreshToken = Symbol();
+      const valid = () => stamp === _sessionEpoch && realtimeStamp === _realtimeEpoch;
       const changedTables = Array.from(_pendingRefreshTables);
-      _pendingRefreshTables = new Set();
-      const client = _getClient();
-      if (!client) return;
+      _pendingRefreshTables = new Set(); _refreshRunning = refreshToken;
       try {
-        await _applyScopedRefresh(client, changedTables);
-        _localStorageProvider.write(JSON.stringify(_cache)); // keep offline mirror current
+        await _applyScopedRefresh(client, changedTables, valid);
+        if (!valid()) return;
+        _refreshFailures = 0;
+        _localStorageProvider.write(JSON.stringify(_cache));
         _meta.lastRemoteSyncAt = new Date().toISOString();
-        // Notify AppStore so subscribed UI re-renders with the synced data.
         if (window.AppStore && typeof window.AppStore.syncFromLegacy === 'function') {
           window.AppStore.syncFromLegacy(_cache, 'state:remote-sync');
         }
       } catch (e) {
+        if (valid() && !['42501','42P01','PGRST202','PGRST205','42883'].includes(e.code)) {
+          _refreshFailures = Math.min(6, _refreshFailures + 1);
+          for (const table of changedTables) _pendingRefreshTables.add(table);
+        }
         console.warn('[DBService] realtime refresh pull failed:', e);
+      } finally {
+        _refreshRunning === refreshToken && (_refreshRunning = null);
+        if (valid() && _pendingRefreshTables.size) {
+          // Retry transient failures slowly; never spin on denied/missing tables.
+          _pullRefreshTimer = setTimeout(() => { _pullRefreshTimer = null; _schedulePullRefresh(Array.from(_pendingRefreshTables)[0]); }, _refreshFailures ? Math.min(60000, 1000 * 2 ** _refreshFailures) : 0);
+        }
       }
-    }, 400);
+    }, 600);
   }
+  let _refreshRunning = null, _refreshFailures = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && _pendingRefreshTables.size) _schedulePullRefresh(Array.from(_pendingRefreshTables)[0]);
+  });
+  window.addEventListener('online', () => { if (_tableSyncChannel) _schedulePullRefresh(); });
 
   // ── Priority 2 Fix 2 follow-up: "load more" beyond the default window ────
   // _HISTORY_LIMITS keeps every pull fast by default. This is the escape
@@ -658,7 +699,6 @@ const DBService = (function () {
             const raw = _localStorageProvider.read();
             _cache = raw ? JSON.parse(raw) : null;
           } catch (e2) { _cache = null; }
-          _setupRealtimeSignals(client);
           return;
         }
 
@@ -779,6 +819,7 @@ const DBService = (function () {
       // save that fired right before switching accounts) immediately, so it
       // can't fire mid-pull and race this function's own cache replacement.
       _sessionEpoch++;
+      DBService.teardownRealtime();
       if (_uploadTimer) { clearTimeout(_uploadTimer); _uploadTimer = null; }
       try {
         _cache = await _pullCacheFromSupabase(client);
@@ -795,6 +836,7 @@ const DBService = (function () {
         _meta.lastRemoteSyncAt = new Date().toISOString();
         _meta.online = true;
         _meta.lastError = null;
+        _setupRealtimeSignals(client);
         if (window.AppStore && typeof window.AppStore.syncFromLegacy === 'function') {
           window.AppStore.syncFromLegacy(_cache, 'state:auth-change-sync');
         }
@@ -943,6 +985,9 @@ const DBService = (function () {
      * Safe to call even if no channel was ever set up (e.g. offline mode).
      */
     teardownRealtime: function () {
+      _realtimeEpoch++; _refreshRunning = null; _refreshFailures = 0;
+      window.EgressTransport?.clear();
+      clearTimeout(_noticeRetryTimer); _noticeRetryTimer = null;
       const client = _getClient();
       if (client) {
         try { if (_signalChannel) client.removeChannel(_signalChannel); } catch (e) { console.warn('[DBService] teardownRealtime: removeChannel(_signalChannel) failed:', e); }
@@ -994,7 +1039,7 @@ const DBService = (function () {
     get storageKey() { return _localStorageProvider.key; },
 
     diagnostics: function () {
-      return Object.assign({}, _meta);
+      return Object.assign({}, _meta, { egress: window.EgressTransport?.diagnostics() });
     },
 
     /**
@@ -1009,7 +1054,7 @@ const DBService = (function () {
     rpc: async function (name, params) {
       const client = _getClient();
       if (!client) return { data: null, error: new Error('Supabase client not available (offline).') };
-      return client.rpc(name, params);
+      return window.EgressTransport ? EgressTransport.rpc(client, name, params) : client.rpc(name, params);
     },
 
     /**
@@ -1033,9 +1078,16 @@ const DBService = (function () {
       const client = _getClient();
       if (!client) return { data: null, error: new Error('Supabase client not available (offline).') };
       try {
+        // Identical sheets reused across animation slots share one immutable URL.
+        // Existing references are untouched; mutable/custom upload paths keep a short TTL.
+        if (bucket === 'boss-art' && /\/library\/(?:img_|motion_)/.test(path) && crypto.subtle && blob?.arrayBuffer) {
+          const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))].map(n => n.toString(16).padStart(2, '0')).join('');
+          path = path.slice(0, path.lastIndexOf('/') + 1) + 'asset_' + hash + '.' + (path.split('.').pop().match(/^[a-z0-9]+$/i)?.[0] || 'bin');
+        }
         const { data, error } = await client.storage.from(bucket).upload(path, blob, {
           contentType: contentType || (blob && blob.type) || 'application/octet-stream',
           upsert: true,
+          cacheControl: bucket === 'boss-art' && /\/library\/(?:img_|motion_|asset_)/.test(path) ? '31536000' : '3600',
         });
         if (error) return { data: null, error };
         const { data: pub } = client.storage.from(bucket).getPublicUrl(data.path);

@@ -53,7 +53,7 @@
   },{type:'attendance:station-snapshot',payload:{classId}});
  }
  async function refresh(){
-  if(!root||refreshing)return;refreshing=true;
+  if(!root||refreshing||document.hidden||!navigator.onLine)return;refreshing=true;
   try{const version=writeVersion;const next=await rpc('snapshot');if(version!==writeVersion)return;snapshot=next;if(currentDisplay?.ok&&!snapshot.logs.some(l=>String(l.id)===String(currentDisplay.log?.id)&&l.status===currentDisplay.status)){clearTimeout(displayTimer);showing=false;currentDisplay=null;idle();}mergeSnapshot();offset=new Date(snapshot.serverTime).getTime()-Date.now();ready=true;renderSummary();renderStatus();if(staff&&!['manual','preflight','close'].includes(teacherTab)&&!document.activeElement?.closest('#as-teacher-body input,#as-teacher-body select'))renderTeacherBody();}
   catch(e){if(!e.stale){ready=false;renderStatus();publicNotice('Connection unavailable. Unconfirmed taps stay pending.');message(e.message);if(!snapshot)idle('Station needs attention','Ask your teacher to check the connection or finish setup.');}}
   finally{refreshing=false;}
@@ -253,7 +253,7 @@
   root.querySelector('#as-class').onchange=e=>window._rfidOnClassChange(e.target.value);
   idle('Getting the classroom ready…','Checking today’s attendance schedule.');
   refresh().then(()=>{if(generation===at&&root){if(ready)idle();renderStatus();flush();}});
-  poll=setInterval(async()=>{await refresh();await flush();},3000);
+  poll=setInterval(async()=>{await refresh();await flush();},5000);
   tick=setInterval(()=>{if(!root)return;const clock=root.querySelector('#as-clock');clock.textContent=schoolTime(new Date(now()),true);renderStatus();focusReader();if(ownQueue().length&&navigator.onLine&&ready)flush();},600);
   focusReader();
  }
@@ -263,5 +263,5 @@
   if(root){root.onclick=root.onkeydown=root.oninput=root.onpointerdown=null;root.classList.remove('as-station','as-private','as-monitor');root.querySelector('#as-teacher')?.remove();}root=null;snapshot=null;staff=false;ready=false;paused=false;showing=false;currentDisplay=null;displayQueue=[];lastTags.clear();proof=false;lastRead=null;mutation=null;
  }
  window.AttendanceStation={mount,unmount,ingest,openTeacher,mounted:()=>!!root};
- window.addEventListener('online',()=>{if(root)refresh().then(flush);});window.addEventListener('offline',()=>{ready=false;renderStatus();});window.addEventListener('focus',()=>{renderStatus();focusReader();});window.addEventListener('blur',renderStatus);document.addEventListener('visibilitychange',()=>{renderStatus();if(!document.hidden)focusReader();});
+ window.addEventListener('online',()=>{if(root)refresh().then(flush);});window.addEventListener('offline',()=>{ready=false;renderStatus();});window.addEventListener('focus',()=>{renderStatus();focusReader();});window.addEventListener('blur',renderStatus);document.addEventListener('visibilitychange',()=>{renderStatus();if(!document.hidden){focusReader();if(root)refresh().then(flush);}});
 })();

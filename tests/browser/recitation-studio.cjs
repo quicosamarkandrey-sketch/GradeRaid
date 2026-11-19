@@ -1,5 +1,5 @@
 const {setup}=require('../helpers/recitation-db.cjs'),{chromium}=require('@playwright/test'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-(async()=>{const {db,rpc}=await setup();let browser,server;try{
+(async()=>{const {db,rpc}=await setup();let browser,server;try{await db.exec(fs.readFileSync('supabase/phase84_egress_optimization.sql','utf8'));
  const base=path.resolve(__dirname,'../..');
  server=http.createServer((req,res)=>{const file=path.resolve(base,'.'+(req.url.split('?')[0]==='/'?'/index.html':req.url.split('?')[0]));if(!file.startsWith(base+path.sep))return res.writeHead(403).end();fs.readFile(file,(err,data)=>{res.writeHead(err?404:200,{'Content-Type':file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html'});res.end(err?'Missing':data);});});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
@@ -7,11 +7,11 @@ const {setup}=require('../helpers/recitation-db.cjs'),{chromium}=require('@playw
  for(const width of [390,1440]){
   const page=await browser.newPage({viewport:{width,height:1000},hasTouch:true});pages.push(page);page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',r=>r.request().url().startsWith(origin)?r.continue():r.fulfill({contentType:'application/javascript',body:''}));
-  await page.exposeFunction('recitationRPC',async(args)=>{try{return {data:await rpc(args.p_action,args.p_payload,args.p_device,'teacher',args.p_class_id)};}catch(e){return {error:{message:e.message}};}});
+  await page.exposeFunction('recitationRPC',async(args)=>{try{return {data:args._wireName==='recitation_presentation_delta'?(await db.query('select recitation_presentation_delta($1,$2,$3,$4) result',[args.p_class_id,args.p_action,args.p_device,JSON.stringify(args.p_payload)])).rows[0].result:await rpc(args.p_action,args.p_payload,args.p_device,'teacher',args.p_class_id)};}catch(e){return {error:{message:e.message}};}});
   await page.goto(origin);await page.waitForFunction(()=>window.RecitationStudio&&window.AppStore);
   await page.evaluate(()=>{
    window.recognitions=0;new MutationObserver(records=>{records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1&&n.matches('.rs-recognition-card'))recognitions++;}));}).observe(document.body,{childList:true,subtree:true});
-   DBService.rpc=(name,args)=>name==='recitation_presentation'?recitationRPC(args):Promise.resolve({error:{message:'Fixture only'}});
+   DBService.rpc=(name,args)=>name==='recitation_presentation'?EgressTransport.rpc({rpc:(n,a)=>recitationRPC({...a,_wireName:n})},name,args):Promise.resolve({error:{message:'Fixture only'}});
    AppStore.updateState(d=>{d.students=[{id:'alex',name:'Alex Rivera',classId:'room-a',init:'AR'},{id:'bea',name:'Bea Cruz',classId:'room-a',init:'BC'}];d.classroomLayouts=[{id:'00000000-0000-4000-8000-000000000010',classId:'room-a',name:'Main room'}];d.quizzes=[{id:'quiz1',classId:'room-a',title:'Plants',questions:[{q:'Why are leaves green?',opts:['Chlorophyll','Water'],answer:0}]}];});
    currentRole='teacher';currentUser={id:'00000000-0000-4000-8000-000000000001',name:'Teacher'};document.getElementById('boot-loading').style.display='none';document.getElementById('login-screen').style.display='none';document.getElementById('main-app').style.display='block';setupSidebar();
   });
@@ -53,7 +53,7 @@ const {setup}=require('../helpers/recitation-db.cjs'),{chromium}=require('@playw
  // Offline queue survives browser reload without optimistic scoring.
  await phone.locator('#rs-scanner').selectOption('open');await phone.context().setOffline(true);await phone.evaluate(()=>RecitationStudio.ingest('eeff'));assert.match(await phone.locator('#rs-status').textContent(),/pending/);assert.equal((await db.query('select count(*)::int n from recitation_log')).rows[0].n,0);
  await phone.evaluate(()=>RecitationStudio.close());await phone.context().setOffline(false);await phone.reload();await phone.waitForFunction(()=>window.RecitationStudio);
- await phone.evaluate(()=>{currentRole='teacher';currentUser={id:'00000000-0000-4000-8000-000000000001',name:'Teacher'};DBService.rpc=(name,args)=>name==='recitation_presentation'?recitationRPC(args):Promise.resolve({error:{message:'Fixture only'}});AppStore.updateState(d=>{d.classroomLayouts=[{id:'00000000-0000-4000-8000-000000000010',classId:'room-a',name:'Main room'}];});RecitationStudio.open({classId:'room-a'});});
+ await phone.evaluate(()=>{currentRole='teacher';currentUser={id:'00000000-0000-4000-8000-000000000001',name:'Teacher'};DBService.rpc=(name,args)=>name==='recitation_presentation'?EgressTransport.rpc({rpc:(n,a)=>recitationRPC({...a,_wireName:n})},name,args):Promise.resolve({error:{message:'Fixture only'}});AppStore.updateState(d=>{d.classroomLayouts=[{id:'00000000-0000-4000-8000-000000000010',classId:'room-a',name:'Main room'}];});RecitationStudio.open({classId:'room-a'});});
  await phone.locator('[data-rs=host]').click();await phone.locator('[data-rs=pick]').waitFor();await phone.waitForFunction(()=>!JSON.parse(localStorage.getItem('eq-recitation-pending')).length);assert.equal((await db.query('select count(*)::int n from recitation_log')).rows[0].n,1);
  await phone.locator('[data-tab=questions]').click();await phone.locator('#rs-layout').selectOption('00000000-0000-4000-8000-000000000010');await phone.locator('#rs-view').selectOption('seats');await display.locator('.rs-seat-room').waitFor();assert.match(await display.locator('.rs-unseated').textContent(),/Cam Reyes/);
  // The phone prioritises the thumb dock; the projection owns a stable, fitted room.

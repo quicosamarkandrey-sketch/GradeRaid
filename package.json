@@ -25,7 +25,8 @@
     "test:boss-pixi": "node tests/browser/world-boss-pixi.cjs",
     "test:ux": "node tests/browser/ux-states.cjs",
     "test:motion": "node tests/browser/motion.cjs",
-    "test:boss-rehearsal": "node tests/browser/boss-rehearsal.cjs"
+    "test:boss-rehearsal": "node tests/browser/boss-rehearsal.cjs",
+    "test:egress": "node tests/database/egress.cjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.13",
