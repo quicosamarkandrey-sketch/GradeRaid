@@ -148,6 +148,7 @@ const spreadsheet = zipSync(Object.fromEntries(Object.entries({
         return { ok: true, section };
       };
     });
+    await page.addScriptTag({ path: 'modules/shared/creator-workspace.js' });
     await page.addScriptTag({ content: fs.readFileSync('modules/admin/sections.js', 'utf8') });
     await page.evaluate(() => renderSectionMaker());
     assert.equal(await page.getByText('Other class', { exact: true }).count(), 0);

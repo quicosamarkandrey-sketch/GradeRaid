@@ -234,26 +234,20 @@ window.openEditQuiz = function(id) { openQuizBuilder(id); };
 // nothing here is saved until the teacher actually fills in and publishes
 // through openQuizBuilder()'s normal flow.
 window.openQuestTemplateChooser = function() {
-  showModal(`<div class="modal-h2">＋ Create Quest</div>
-    <div style="color:var(--text-muted);font-size:13px;margin-bottom:16px">Start from a template or build from scratch.</div>
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-      <div class="glass-card" style="cursor:pointer;padding:14px 16px" onclick="closeModalForce();openQuizBuilder();">
-        <div style="display:flex;align-items:center;gap:12px">
-          <div style="font-size:26px">📄</div>
-          <div><div style="font-weight:700;font-size:14px">Blank Quest</div>
-          <div style="color:var(--text-muted);font-size:12px">Start with zero questions and build it your way.</div></div>
-        </div>
-      </div>
-      ${QUEST_TEMPLATES.map(t => `
-      <div class="glass-card" style="cursor:pointer;padding:14px 16px" onclick="closeModalForce();openQuizBuilder(null, QUEST_TEMPLATES.find(x=>x.id==='${t.id}').build());">
-        <div style="display:flex;align-items:center;gap:12px">
-          <div style="font-size:26px">${t.icon}</div>
-          <div><div style="font-weight:700;font-size:14px">${_esc(t.label)}</div>
-          <div style="color:var(--text-muted);font-size:12px">${_esc(t.desc)}</div></div>
-        </div>
-      </div>`).join('')}
-    </div>
-    <button class="btn btn-ghost" style="width:100%" onclick="closeModalForce()">Cancel</button>`, 'md');
+  const entries = [{ id: '', label: 'Blank quest', desc: 'Build your own question set.' }, ...QUEST_TEMPLATES];
+  const root = CreatorWorkspace.open({
+    key: 'quest-templates', kind: 'quest', area: 'Quests', title: 'Start a quest',
+    footer: 'Choose a template to open the editor.',
+    summary: () => ({ title: 'Quest formats', note: 'A quest can support flashcards, practice and scored attempts. You can change question formats in the editor.' }),
+  }, CreatorWorkspace.section('quest-template', 'Starting point', 'Templates provide editable question shells.', `
+    <div class="creator-templates">${entries.map((entry, index) =>
+      `<button type="button" data-template-index="${index}"><strong>${_esc(entry.label)}</strong><span>${_esc(entry.desc)}</span></button>`).join('')}</div>
+  `));
+  root.querySelector('.creator-templates').addEventListener('click', event => {
+    const button = event.target.closest('button[data-template-index]');
+    if (!button) return;
+    openQuizBuilder(null, entries[Number(button.dataset.templateIndex)]?.build?.());
+  });
 };
 
 // ── CLONE QUEST (Phase 5, quest_board_report.md §17) ───────────────────
@@ -297,20 +291,41 @@ function renderQuizBuilderModal() {
   // achievements' renderBadges(). Already-completed quizzes stay visible
   // to a student regardless of a later reassignment.
   const activeClassIds = (typeof getActiveClassIds === 'function') ? getActiveClassIds() : [];
-  const sectionOpts = activeClassIds.map(cid =>
-    `<option value="${cid}" ${draftQuizSections.includes(cid) ? 'selected' : ''}>${_esc(typeof getClassLabel === 'function' ? getClassLabel(cid) : cid)}</option>`
-  ).join('');
+  const chapter = CreatorWorkspace.section;
+  const isEdit = (AppStore.getSlice(state => state.quizzes) || []).some(quiz => quiz.id === draftQuiz.id);
+  const assignments = activeClassIds.map(value => ({ value, label: window.getClassLabel?.(value) || value }));
 
-  showModal(`<div class="modal-h2">${DB.quizzes.find(q => q.id === draftQuiz.id) ? '✏️ Edit Quest' : '📝 Create Quest'}</div>
-    <p class="form-help" style="margin-bottom:20px">This set supports flashcards, practice, and scored quiz modes. Write clear questions and complete answers so students can study independently.</p>
+  CreatorWorkspace.open({
+    key: 'quest:' + draftQuiz.id, kind: 'quest', area: 'Quests',
+    title: isEdit ? 'Edit quest' : 'Create quest', previewLabel: 'Quest preview',
+    footer: 'Review questions and section assignments before publishing.',
+    getDraft: () => [draftQuiz, draftQuizSections],
+    summary: () => {
+      const quiz = draftQuiz;
+      const first = quiz.questions.find(question => question.q?.trim());
+      const unfinished = quiz.questions.filter(question => !isCompleteQuestQuestion(question)).length;
+      return {
+        title: quiz.title?.trim() || 'Untitled quest', subtitle: quiz.desc,
+        rows: [
+          ['Questions', String(quiz.questions.length)], ['Needs answers', String(unfinished)],
+          ['Time limit', (quiz.timeLimit || 5) + ' min'],
+          ['Reward', quiz.xpReward + ' XP · up to ' + quiz.coinReward + ' coins'],
+          ['Sections', draftQuizSections.length ? String(draftQuizSections.length) + ' assigned' : 'Unassigned'],
+        ],
+        note: first ? 'First prompt: ' + first.q : 'Add your first question to preview its prompt here.',
+      };
+    },
+  }, `${chapter('quest-details', 'Quest details', 'Give the set a title and describe what students will practice.', `
     <div class="form-group"><label class="form-label">Quest Title</label><input type="text" id="qb-title" value="${_esc(draftQuiz.title)}" placeholder="e.g. Science Chapter 5 Quiz" style="width:100%" oninput="draftQuiz.title=this.value"></div>
     <div class="form-group"><label class="form-label">Description</label><input type="text" id="qb-desc" value="${_esc(draftQuiz.desc)}" placeholder="Brief description..." style="width:100%" oninput="draftQuiz.desc=this.value"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+  `)}
+  ${chapter('quest-rules', 'Rewards and timing', 'Set the reward budget and pace of scored attempts.', `
+    <div class="creator-grid">
       <div class="form-group"><label class="form-label">XP Reward</label><input type="number" id="qb-xp" value="${draftQuiz.xpReward}" min="0" style="width:100%" oninput="draftQuiz.xpReward=parseInt(this.value)||0"></div>
       <div class="form-group"><label class="form-label">Quest coin budget (0–40)</label><input type="number" id="qb-coins" value="${draftQuiz.coinReward}" min="0" max="40" style="width:100%" oninput="draftQuiz.coinReward=Math.max(0,Math.min(40,parseInt(this.value)||0))"></div>
       <div class="form-group"><label class="form-label">Time (min)</label><input type="number" id="qb-time" value="${draftQuiz.timeLimit}" min="1" style="width:100%" oninput="draftQuiz.timeLimit=parseInt(this.value)||5"></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="creator-grid">
       <div class="form-group">
         <label class="form-label">Rarity</label>
         <select id="qb-rarity" style="width:100%" onchange="draftQuiz.rarity=this.value">${ACH_RARITIES.map(r => `<option value="${r}"${draftQuiz.rarity === r ? ' selected' : ''}>${r}</option>`).join('')}</select>
@@ -328,7 +343,7 @@ function renderQuizBuilderModal() {
     </div>
     <div class="form-group">
       <label class="form-label">Per-Question Timer (sec) — Phase 3 escalation</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
         ${['Warm-Up','Surge','Overdrive'].map((label, i) => `
         <div>
           <input type="number" id="qb-stage-time-${i}" class="form-control" min="1"
@@ -341,10 +356,12 @@ function renderQuizBuilderModal() {
       </div>
       <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Seconds per question in each stage. Leave a box blank to use the default shown as its placeholder. Questions auto-split into 3 stages by order (first third/second third/final third).</div>
     </div>
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
+  `)}
+  ${chapter('quest-audience', 'Availability and sections', 'Set audience, publishing dates and any quest chain.', `
+    <div class="creator-grid">
       <div class="form-group">
         <label class="form-label">Quest Chain (optional)</label>
-        <input type="text" id="qb-chain-id" value="${draftQuiz.chainId || ''}" placeholder="e.g. chapter-5-reviewer" style="width:100%"
+        <input type="text" id="qb-chain-id" value="${_esc(draftQuiz.chainId || '')}" placeholder="e.g. chapter-5-reviewer" style="width:100%"
           onchange="draftQuiz.chainId=this.value.trim()||null;renderQuizBuilderModal();">
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Quizzes sharing the same chain ID unlock in order — leave blank for a standalone quest. Same ID = same chain, across teachers.</div>
       </div>
@@ -356,10 +373,10 @@ function renderQuizBuilderModal() {
     ${draftQuiz.chainId ? `
     <div class="form-group">
       <label class="form-label">Chain Display Name</label>
-      <input type="text" id="qb-chain-label" value="${draftQuiz.chainLabel || ''}" placeholder="e.g. Chapter 5 Reviewer" style="width:100%" oninput="draftQuiz.chainLabel=this.value">
+      <input type="text" id="qb-chain-label" value="${_esc(draftQuiz.chainLabel || '')}" placeholder="e.g. Chapter 5 Reviewer" style="width:100%" oninput="draftQuiz.chainLabel=this.value">
       <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Shown as the section header on the student's Quest Board. Only needs to be set on one part of the chain.</div>
     </div>` : ''}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="creator-grid">
       <div class="form-group">
         <label class="form-label">Available From (optional)</label>
         <input type="date" id="qb-start-date" value="${draftQuiz.startDate || ''}" style="width:100%" onchange="draftQuiz.startDate=this.value||null">
@@ -373,13 +390,14 @@ function renderQuizBuilderModal() {
     <div class="form-group">
       <label class="form-label">Assign to Section(s)</label>
       ${activeClassIds.length ? `
-      <select id="qb-sections" multiple style="width:100%;height:96px" onchange="updateDraftQuizSections(this)">${sectionOpts}</select>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Leave empty to leave unassigned.</div>
+      ${CreatorWorkspace.sectionChoices('qb-sections', assignments, draftQuizSections, 'updateDraftQuizSections(this)')}
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Select every section that should receive this quest. Clear all to leave it unassigned.</div>
       ` : `
       <div style="font-size:12px;color:var(--text-muted);background:rgba(35,31,56,.5);border-radius:8px;padding:10px 12px">No sections created yet — create one in Section Maker first.</div>
       `}
     </div>
-    <div style="border-top:1px solid var(--border);padding-top:14px;margin:4px 0 14px">
+    `)}
+    ${chapter('quest-questions', 'Questions', 'Build and check the answers students will submit.', `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="font-weight:700;font-size:14px">Questions (${draftQuiz.questions.length})</div>
         <button class="btn btn-success btn-sm" onclick="addQuestion()">＋ Add Question</button>
@@ -388,13 +406,13 @@ function renderQuizBuilderModal() {
         ${draftQuiz.questions.map((q, qi) => renderQuestionBlock(q, qi)).join('')}
         ${draftQuiz.questions.length === 0 ? '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;background:rgba(35,31,56,0.5);border-radius:10px">No questions yet. Click "+ Add Question".</div>' : ''}
       </div>
-    </div>
-    <div style="display:flex;gap:10px">
-      <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button>
+    `)}
+    <div data-creator-actions>
+      <button class="btn btn-ghost" data-creator-close>Cancel</button>
       <button class="btn btn-primary" style="flex:1" onclick="saveQuiz()" ${draftQuiz.questions.length === 0 ? 'disabled' : ''}>
-        ${DB.quizzes.find(q => q.id === draftQuiz.id) ? 'Save Changes' : 'Publish Quest 🚀'}
+        ${isEdit ? 'Save Changes' : 'Publish Quest'}
       </button>
-    </div>`, 'lg');
+    </div>`);
 }
 
 function renderQuestionBlock(q, qi) {
@@ -423,7 +441,7 @@ function renderQuestionBody(q, qi, qType) {
   if (qType === 'tf') {
     return `<div class="form-label" style="margin-bottom:6px">Correct answer</div>
     ${['True', 'False'].map((opt, oi) => `<div class="qb-opt-row">
-      <div onclick="setCorrect(${qi},${oi})" style="width:22px;height:22px;border-radius:50%;border:2px solid ${q.answer === oi ? '#4edea3' : 'var(--border2)'};background:${q.answer === oi ? 'rgba(78,222,163,.2)' : ''};cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px">${q.answer === oi ? '✓' : ''}</div>
+      <button type="button" aria-label="Mark option ${String.fromCharCode(65 + oi)} correct" aria-pressed="${q.answer === oi}" onclick="setCorrect(${qi},${oi})" style="width:22px;height:22px;border-radius:50%;border:2px solid ${q.answer === oi ? '#4edea3' : 'var(--border2)'};background:${q.answer === oi ? 'rgba(78,222,163,.2)' : ''};cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px">${q.answer === oi ? '✓' : ''}</div>
       <span style="flex:1;padding:8px 0;font-size:13px;color:var(--on-surface)">${opt}</span>
     </div>`).join('')}`;
   }
@@ -470,7 +488,7 @@ function renderQuestionBody(q, qi, qType) {
   // mc (default)
   return `<div class="form-label" style="margin-bottom:6px">Answer choices (click ● to mark correct)</div>
   ${q.opts.map((opt, oi) => `<div class="qb-opt-row">
-    <div onclick="setCorrect(${qi},${oi})" style="width:22px;height:22px;border-radius:50%;border:2px solid ${q.answer === oi ? '#4edea3' : 'var(--border2)'};background:${q.answer === oi ? 'rgba(78,222,163,.2)' : ''};cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px">${q.answer === oi ? '✓' : ''}</div>
+    <button type="button" aria-label="Mark option ${String.fromCharCode(65 + oi)} correct" aria-pressed="${q.answer === oi}" onclick="setCorrect(${qi},${oi})" style="width:22px;height:22px;border-radius:50%;border:2px solid ${q.answer === oi ? '#4edea3' : 'var(--border2)'};background:${q.answer === oi ? 'rgba(78,222,163,.2)' : ''};cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px">${q.answer === oi ? '✓' : ''}</button>
     <input type="text" value="${_esc(opt)}" placeholder="Option ${String.fromCharCode(65 + oi)}" style="flex:1" oninput="draftQuiz.questions[${qi}].opts[${oi}]=this.value">
     ${q.opts.length > 2 ? `<button class="btn btn-ghost btn-xs" onclick="removeOption(${qi},${oi})">×</button>` : ''}
   </div>`).join('')}
@@ -537,12 +555,13 @@ window.removeMatchPair = function(qi, pi) {
 };
 
 window.updateDraftQuizSections = function(selectEl) {
-  draftQuizSections = [...selectEl.selectedOptions].map(o => o.value);
+  draftQuizSections = [...(selectEl.selectedOptions || selectEl.querySelectorAll('input:checked'))].map(option => option.value);
 };
 
 window.addQuestion = function() {
   draftQuiz.questions.push({ type: 'mc', q: '', opts: ['', '', '', ''], answer: 0 });
   renderQuizBuilderModal();
+  document.querySelector('#qblock-' + (draftQuiz.questions.length - 1) + ' input')?.focus();
 };
 
 window.removeQuestion = function(qi) {
@@ -562,10 +581,21 @@ window.addOption = function(qi) {
 
 window.removeOption = function(qi, oi) {
   draftQuiz.questions[qi].opts.splice(oi, 1);
-  if (draftQuiz.questions[qi].answer >= draftQuiz.questions[qi].opts.length)
-    draftQuiz.questions[qi].answer = 0;
+  const question = draftQuiz.questions[qi];
+  if (question.answer === oi) question.answer = -1;
+  else if (question.answer > oi) question.answer--;
   renderQuizBuilderModal();
 };
+
+function isCompleteQuestQuestion(question) {
+  if (!question.q?.trim()) return false;
+  const type = eqQType(question);
+  if (type === 'id') return Boolean(String(question.answer || '').trim());
+  if (type === 'enum') return Array.isArray(question.answers) && question.answers.length >= 2 && question.answers.every(answer => answer?.trim());
+  if (type === 'match') return Array.isArray(question.pairs) && question.pairs.length >= 2 && question.pairs.every(pair => pair.left?.trim() && pair.right?.trim());
+  return Array.isArray(question.opts) && question.opts.length >= 2 && question.opts.every(option => option?.trim())
+    && Number.isInteger(question.answer) && question.answer >= 0 && question.answer < question.opts.length;
+}
 
 window.saveQuiz = async function() {
   draftQuiz.coinReward=Math.max(0,Math.min(40,Number(draftQuiz.coinReward)||0));
@@ -591,16 +621,13 @@ window.saveQuiz = async function() {
   // every blank filled (a blank the teacher never intended to be gradeable
   // would otherwise silently count against every student's partial-credit
   // denominator — see eqGradeAnswer's correctList.length divisor).
-  const invalidQuestion = draftQuiz.questions.find(q => {
-    if (!q.q || !q.q.trim()) return true;
-    const qType = eqQType(q);
-    if (qType === 'id') return !q.answer || !String(q.answer).trim();
-    if (qType === 'enum') return !Array.isArray(q.answers) || q.answers.length < 2 || q.answers.some(a => !a || !a.trim());
-    if (qType === 'match') return !Array.isArray(q.pairs) || q.pairs.length < 2 || q.pairs.some(p => !p.left || !p.left.trim() || !p.right || !p.right.trim());
-    return !Array.isArray(q.opts) || q.opts.some(o => !o || !o.trim());
-  });
-  if (invalidQuestion) {
-    toast('❌ Fill in all question fields', '#ffb4ab'); return;
+  const invalidIndex = draftQuiz.questions.findIndex(question => !isCompleteQuestQuestion(question));
+  if (invalidIndex !== -1) {
+    const input = document.querySelector('#qblock-' + invalidIndex + ' input');
+    window.UXStates?.fieldError(input, 'Complete the prompt and answers in question ' + (invalidIndex + 1) + '.');
+    input?.focus();
+    toast('Complete question ' + (invalidIndex + 1) + ' before publishing.', '#ffb4ab');
+    return;
   }
   // Phase 5 — scheduling sanity: an end date before its start date would
   // make eqQuizScheduleStatus() report 'expired' forever (today can never

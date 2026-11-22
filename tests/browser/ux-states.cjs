@@ -12,6 +12,63 @@ const {chromium}=require('@playwright/test'),http=require('node:http'),fs=requir
  // Quest and event authoring adapters restore their actual editors, including question/section state.
  await page.evaluate(()=>{navTo('a-quizzes');openQuizBuilder();});await page.locator('#qb-title').fill('Recovered science quest');await page.evaluate(async()=>{UXStates.capture();closeModalForce();await UXStates.resume('quest');});assert.equal(await page.locator('#qb-title').inputValue(),'Recovered science quest');await page.evaluate(()=>closeModalForce());
  await page.evaluate(()=>{navTo('a-bossevents');openBossForm(null);});await page.locator('#bf-name').fill('Recovered event');await page.evaluate(async()=>{UXStates.capture();closeModalForce();await UXStates.resume('boss-event');});assert.equal(await page.locator('#bf-name').inputValue(),'Recovered event');await page.evaluate(()=>closeModalForce());
+ // The full-screen workspace supports real entry buttons, previews, safe dismissal and pinned actions.
+ await page.setViewportSize({width:320,height:720});
+ await page.evaluate(()=>navTo('a-quizzes'));
+ await page.locator('#a-quizzes [onclick="openQuestTemplateChooser()"]').click();
+ await page.getByRole('button',{name:/Blank quest/}).click();
+ await page.locator('#qb-title').fill('Lab safety');
+ await page.locator('[data-jump="quest-questions"]').click();
+ await page.getByRole('button',{name:/Add Question/}).click();
+ await page.getByPlaceholder('Type your question...').fill('What protects your eyes?');
+ for (const [letter, answer] of [['A','Gloves'],['B','Goggles'],['C','Apron']]) {
+  await page.getByPlaceholder('Option '+letter,{exact:true}).fill(answer);
+ }
+ await page.getByRole('button',{name:'Mark option B correct'}).click();
+ await page.locator('[onclick="removeOption(0,0)"]').click();
+ assert.equal(await page.getByRole('button',{name:'Mark option A correct'}).getAttribute('aria-pressed'),'true');
+ assert.match(await page.locator('.creator-summary').textContent(),/Lab safety/);
+ assert.ok(await page.locator('.creator-footer').evaluate(el=>el.getBoundingClientRect().bottom<=innerHeight+1));
+ await page.screenshot({path:'/tmp/creator-quest-mobile.png'});
+ const horizontalOverflow = await page.locator('.creator-scroll').evaluate(el => [...el.querySelectorAll('*')]
+  .filter(node => node.getBoundingClientRect().right > el.getBoundingClientRect().right + 1)
+  .map(node => node.id || node.className || node.tagName));
+ assert.deepEqual(horizontalOverflow, [], 'Quest form fits narrow phones');
+ page.once('dialog', dialog => dialog.dismiss());
+ await page.keyboard.press('Escape');
+ assert.equal(await page.locator('#qb-title').inputValue(),'Lab safety');
+ page.once('dialog', dialog => dialog.accept());
+ await page.getByRole('button',{name:'Close editor'}).click();
+ await page.locator('#modal-overlay').waitFor({state:'hidden'});
+
+ await page.setViewportSize({width:1440,height:960});
+ await page.evaluate(()=>{ DBService.rpc=async()=>({data:null,error:null});navTo('a-store'); });
+ await page.locator('#a-store [onclick="openAddProduct()"]').click();
+ await page.getByLabel('Name',{exact:true}).fill('Field trip pass');
+ await page.getByLabel('Stock',{exact:true}).fill('0');
+ assert.match(await page.locator('.creator-summary').textContent(),/sold out/);
+ await page.getByRole('button',{name:'Add product',exact:true}).click();
+ assert.equal(await page.evaluate(()=>AppStore.getSlice(s=>s.store.find(item=>item.name==='Field trip pass')?.stock)),0);
+
+ await page.evaluate(()=>navTo('a-achievements'));
+ await page.locator('#a-achievements [onclick="achAdminOpenForm(null)"]').click();
+ await page.getByLabel('Badge Name',{exact:false}).fill('Lab safety badge');
+ await page.locator('[data-creator-kind=badge]').getByLabel('Description',{exact:false}).fill('Practice the safety rules.');
+ await page.locator('#ach-f-sections input[type=checkbox]').first().check();
+ assert.match(await page.locator('.creator-summary').textContent(),/1 selected/);
+ await page.getByRole('button',{name:'Create badge',exact:true}).click();
+ await page.waitForFunction(()=>AppStore.getSlice(s=>s.achievements.some(badge=>badge.name==='Lab safety badge'&&s.achievementSectionAssignments[badge.id]?.includes('science'))));
+
+ await page.evaluate(()=>navTo('a-titles'));
+ await page.locator('#a-titles [onclick="tsAdminOpenDesigner(null)"]').first().click();
+ await page.locator('#ts3-name').fill('Laboratory Warden');
+ await page.locator('#ts3-preview-badge').getByText('Laboratory Warden',{exact:true}).waitFor();
+ await page.screenshot({path:'/tmp/creator-title-desktop.png'});
+ page.once('dialog', dialog => dialog.accept());
+ await page.keyboard.press('Escape');
+ await page.locator('#modal-overlay').waitFor({state:'hidden'});
+
+ await page.evaluate(()=>AppStore.updateState(d=>{d.store=[];}));
  // Permission denial explains the reason and leaves the teacher on an allowed page.
  await page.evaluate(()=>navTo('a-settings'));assert.equal(await page.locator('#a-dashboard.active').count(),1);assert.match(await page.locator('#ux-feedback').textContent(),/Administrator access required/);await page.locator('#ux-feedback .ux-notice-close').click();
  await page.evaluate(()=>{currentRole='student';currentUser=AppStore.getStudent('student-a');setupSidebar();navTo('s-inventory');});await page.getByRole('button',{name:'Explore the Armory',exact:true}).click();assert.equal(await page.locator('#s-store.active').count(),1);assert.match(await page.locator('#s-store').textContent(),/being stocked/);
@@ -21,5 +78,5 @@ const {chromium}=require('@playwright/test'),http=require('node:http'),fs=requir
  await page.evaluate(()=>{DBService.rpc=()=>new Promise(resolve=>window.resolveSection=resolve);window.sectionRequest=renderMySection();});assert.match(await page.locator('#s-my-section').textContent(),/Alex Rivera/);await page.locator('#s-my-section .ux-state-slow').waitFor();await page.evaluate(async()=>{resolveSection({error:{message:'Failed to fetch'}});await sectionRequest;});assert.match(await page.locator('#s-my-section').textContent(),/stored on this device/);assert.match(await page.locator('#s-my-section').textContent(),/Alex Rivera/);assert.equal(await page.locator('#s-my-section').getAttribute('aria-busy'),null);
  // Global connectivity works at desktop and phone widths without erasing a page.
  await context.setOffline(true);await page.locator('#ux-connectivity .ux-state-offline').waitFor();for(const width of [320,390,1440]){await page.setViewportSize({width,height:950});assert.ok(await page.locator('#ux-connectivity').evaluate(n=>{const b=n.getBoundingClientRect();return b.left>=0&&b.right<=innerWidth+1;}));}await page.setViewportSize({width:390,height:950});await page.screenshot({path:'/workspace/ux-states-mobile.png'});await context.setOffline(false);await page.locator('#ux-connectivity .ux-state-success').waitFor();
- assert.deepEqual(errors,[]);console.log('PASS: real login inline validation; session expiry preserves authoring before teardown without a remote flush; owner-isolated recovery into Boss Studio, event and quest editors; permission recovery; inventory/Armory empty and filtered states; slow/cache-fallback section reads retain roster; offline/reconnection at 320/390/1440.');
+ assert.deepEqual(errors,[]);console.log('PASS: full-screen quest, badge, Armory and title authoring; real login inline validation; session expiry preserves authoring before teardown without a remote flush; owner-isolated recovery into Boss Studio, event and quest editors; permission recovery; inventory/Armory empty and filtered states; slow/cache-fallback section reads retain roster; offline/reconnection at 320/390/1440.');
  }finally{await browser?.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);process.exit(1)});

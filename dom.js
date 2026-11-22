@@ -31,7 +31,7 @@ const _eqDialogFocus = (() => {
   document.addEventListener('keydown',e=>{
     const overlay=document.getElementById('modal-overlay'),box=document.getElementById('modal-box');
     if(!overlay||!box||overlay.style.display==='none'||!overlay.getClientRects().length)return;
-    if(e.key==='Escape'&&!e.defaultPrevented){e.preventDefault();window.closeModalForce();return;}
+    if(e.key==='Escape'&&!e.defaultPrevented){e.preventDefault();if(window.CreatorWorkspace?.isOpen())window.CreatorWorkspace.dismiss();else window.closeModalForce();return;}
     if(e.key!=='Tab')return;
     const items=focusables(box),first=items[0],last=items[items.length-1];
     if(!first){e.preventDefault();box.focus();return;}

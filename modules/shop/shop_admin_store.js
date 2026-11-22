@@ -138,41 +138,67 @@ window.stockSave = async function (id) {
 
 // ── Product form ──────────────────────────────────────────────────────────────
 
-/**
- * productForm(item) → HTML string
- * Shared Add/Edit form HTML used by both openAddProduct and openEditProduct.
- * item: null for Add, item object for Edit.
- */
-function productForm(item = null) {
-  const isEdit = !!item;
-  return `<div class="modal-h2">${isEdit ? '✏️ Edit' : '➕ Add'} Product</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group"><label class="form-label">Emoji</label><input type="text" id="pf-emoji" value="${item?.emoji || '🎁'}" style="width:100%;font-size:24px" maxlength="4"></div>
-      <div class="form-group"><label class="form-label">Category</label><select id="pf-cat" style="width:100%">${['food', 'supplies', 'privilege', 'mystery'].map(c => `<option value="${c}" ${item?.cat === c ? 'selected' : ''}>${c.charAt(0).toUpperCase() + c.slice(1)}</option>`).join('')}</select></div>
+function openProductWorkspace(item = null) {
+  const chapter = CreatorWorkspace.section;
+  CreatorWorkspace.open({
+    key: 'product:' + (item?.id || 'new'), kind: 'product', area: 'Armory',
+    title: item ? 'Edit Armory product' : 'Add Armory product', previewLabel: 'Product preview',
+    footer: 'Review the student price and available stock before saving.',
+    summary: () => {
+      const field = id => document.getElementById('pf-' + id);
+      return {
+        title: [field('emoji').value.trim(), field('name').value.trim() || 'Untitled product'].filter(Boolean).join(' '),
+        subtitle: field('desc').value.trim() || 'Add a description for students.',
+        rows: [
+          ['Category', field('cat').selectedOptions[0]?.textContent],
+          ['Price', field('cost').value ? field('cost').value + ' coins' : 'Enter a price'],
+          ['Stock', field('stock').value || 'Enter a quantity'],
+        ],
+        note: field('stock').value === '0' ? 'Students will see this product as sold out.' : '',
+      };
+    },
+  }, `
+  ${chapter('product-details', 'Product details', 'Describe the reward students can redeem in the Armory.', `
+    <div class="creator-grid">
+      <div class="form-group"><label class="form-label" for="pf-emoji">Emoji</label><input type="text" id="pf-emoji" value="${_esc(item?.emoji || '🎁')}" style="width:100%;font-size:24px" maxlength="4"></div>
+      <div class="form-group"><label class="form-label" for="pf-cat">Category</label><select id="pf-cat" style="width:100%">${['food', 'supplies', 'privilege', 'mystery'].map(c => `<option value="${c}" ${item?.cat === c ? 'selected' : ''}>${c.charAt(0).toUpperCase() + c.slice(1)}</option>`).join('')}</select></div>
     </div>
-    <div class="form-group"><label class="form-label">Name</label><input type="text" id="pf-name" placeholder="Product name" value="${_esc(item?.name || '')}" style="width:100%"></div>
-    <div class="form-group"><label class="form-label">Description</label><input type="text" id="pf-desc" placeholder="Short description..." value="${_esc(item?.desc || '')}" style="width:100%"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group"><label class="form-label">Coin Cost</label><p class="form-help">Suggested prices: 50–100 for small rewards, 150–250 for larger rewards, and 400+ for special privileges. Students earn coins from attendance, participation and quests when balanced rewards are enabled.</p><input type="number" id="pf-cost" min="1" value="${item?.cost || 100}" style="width:100%"></div>
-      <div class="form-group"><label class="form-label">Stock</label><input type="number" id="pf-stock" min="0" value="${item?.stock || 10}" style="width:100%"></div>
+    <div class="form-group"><label class="form-label" for="pf-name">Name</label><input type="text" id="pf-name" oninput="this.setCustomValidity('')" placeholder="Product name" value="${_esc(item?.name || '')}" style="width:100%"></div>
+    <div class="form-group"><label class="form-label" for="pf-desc">Description</label><input type="text" id="pf-desc" placeholder="Short description..." value="${_esc(item?.desc || '')}" style="width:100%"></div>
+  `)}
+  ${chapter('product-pricing', 'Price and stock', 'Set the cost per redemption and the quantity available.', `
+    <div class="creator-grid">
+      <div class="form-group"><label class="form-label" for="pf-cost">Coin Cost</label><p class="form-help">Suggested prices: 50–100 for small rewards, 150–250 for larger rewards, and 400+ for special privileges. Students earn coins from attendance, participation and quests when balanced rewards are enabled.</p><input type="number" required id="pf-cost" min="1" value="${item?.cost || 100}" style="width:100%"></div>
+      <div class="form-group"><label class="form-label" for="pf-stock">Stock</label><input type="number" required id="pf-stock" min="0" value="${item?.stock ?? 10}" style="width:100%"></div>
     </div>
-    <div style="display:flex;gap:10px;margin-top:6px">
-      <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button>
-      <button class="btn btn-primary" style="flex:1" onclick="${isEdit ? `doEditProduct('${item.id}')` : 'doAddProduct()'}">${isEdit ? 'Save Changes' : 'Add Product'}</button>
-    </div>`;
+  `)}
+  <div data-creator-actions>
+    <button class="btn btn-ghost" data-creator-close>Cancel</button>
+    <button class="btn btn-primary" onclick="${item ? `doEditProduct('${_esc(item.id)}')` : 'doAddProduct()'}">${item ? 'Save changes' : 'Add product'}</button>
+  </div>`);
 }
 
-/**
- * openAddProduct() → void  [window.openAddProduct]
- * Opens 'md' modal with empty product form.
- */
-window.openAddProduct = function () { showModal(productForm(null), 'md'); };
+window.openAddProduct = () => openProductWorkspace();
+window.openEditProduct = function (id) {
+  const item = (AppStore.getSlice(s => s.store) || []).find(product => product.id === id);
+  if (item) openProductWorkspace(item);
+};
 
-/**
- * openEditProduct(id) → void  [window.openEditProduct]
- * Opens 'md' modal with prefilled product form for the given store item id.
- */
-window.openEditProduct = function (id) { showModal(productForm((AppStore.getSlice(s => s.store) || []).find(i => i.id === id)), 'md'); };
+function readProductForm() {
+  const name = document.getElementById('pf-name');
+  name.setCustomValidity(name.value.trim() ? '' : 'Enter a product name.');
+  const cost = document.getElementById('pf-cost');
+  const stock = document.getElementById('pf-stock');
+  if (![name, cost, stock].every(field => field.reportValidity())) return null;
+  return {
+    name: name.value.trim(),
+    emoji: document.getElementById('pf-emoji').value.trim() || '🎁',
+    desc: document.getElementById('pf-desc').value.trim(),
+    cat: document.getElementById('pf-cat').value,
+    cost: cost.valueAsNumber,
+    stock: stock.valueAsNumber,
+  };
+}
 
 /**
  * doAddProduct() → void  [window.doAddProduct]
@@ -180,30 +206,24 @@ window.openEditProduct = function (id) { showModal(productForm((AppStore.getSlic
  * saveDB() → closeModalForce() → renderAdminStore() → toast.
  */
 window.doAddProduct = async function () {
-  const emoji = document.getElementById('pf-emoji').value.trim() || '🎁';
-  const name  = document.getElementById('pf-name').value.trim();
-  if (!name) { toast('❌ Name required', '#ffb4ab'); return; }
-  const newId    = uid();
-  const newStock = parseInt(document.getElementById('pf-stock').value) || 10;
+  const product = readProductForm();
+  if (!product) return;
+  const newId = uid();
   AppStore.updateState(draft => {
     if (!Array.isArray(draft.store)) draft.store = [];
     draft.store.push({
       id: newId,
       ownerTeacherId: currentUser.id, // Phase 14: shop is per-teacher
-      emoji, name,
-      desc:  document.getElementById('pf-desc').value.trim(),
-      cat:   document.getElementById('pf-cat').value,
-      cost:  parseInt(document.getElementById('pf-cost').value)  || 100,
-      stock: newStock, // local/display value only — see RPC call below
+      ...product,
       addedAt: new Date().toISOString(),
     });
   }, { type: 'shop:product-added', payload: { id: newId } });
-  closeModalForce(); renderAdminStore(); toast(`✅ "${name}" added!`);
+  closeModalForce(); renderAdminStore(); toast(`✅ "${_esc(product.name)}" added!`);
   // Set the real server-side stock now that the row exists. If this fails
   // (e.g. still offline), the product exists with column-default stock
   // until the next successful restock — flagged via toast rather than
   // silently left wrong.
-  const { error } = await DBService.rpc('restock_shop_product', { p_product_id: newId, p_new_stock: newStock });
+  const { error } = await DBService.rpc('restock_shop_product', { p_product_id: newId, p_new_stock: product.stock });
   if (error) toast('⚠️ Product added, but initial stock may not have synced: ' + error.message, '#ffb95f');
 };
 
@@ -215,26 +235,17 @@ window.doAddProduct = async function () {
 window.doEditProduct = async function (id) {
   const existing = (AppStore.getSlice(s => s.store) || []).find(i => i.id === id);
   if (!existing) return;
-  const name = document.getElementById('pf-name').value.trim();
-  if (!name) { toast('❌ Name required', '#ffb4ab'); return; }
-  const newStock   = parseInt(document.getElementById('pf-stock').value) || 0;
-  const stockDirty = newStock !== existing.stock;
+  const product = readProductForm();
+  if (!product) return;
+  const stockDirty = product.stock !== existing.stock;
   AppStore.updateState(draft => {
     const idx = (draft.store || []).findIndex(i => i.id === id);
     if (idx < 0) return;
-    draft.store[idx] = {
-      ...draft.store[idx],
-      emoji: document.getElementById('pf-emoji').value.trim() || '🎁',
-      name,
-      desc:  document.getElementById('pf-desc').value.trim(),
-      cat:   document.getElementById('pf-cat').value,
-      cost:  parseInt(document.getElementById('pf-cost').value)  || 100,
-      stock: newStock, // local/display value — server write happens below if changed
-    };
+    draft.store[idx] = { ...draft.store[idx], ...product };
   }, { type: 'shop:product-updated', payload: { id } });
-  closeModalForce(); renderAdminStore(); toast(`✅ "${name}" updated!`);
+  closeModalForce(); renderAdminStore(); toast(`✅ "${_esc(product.name)}" updated!`);
   if (stockDirty) {
-    const { error } = await DBService.rpc('restock_shop_product', { p_product_id: id, p_new_stock: newStock });
+    const { error } = await DBService.rpc('restock_shop_product', { p_product_id: id, p_new_stock: product.stock });
     if (error) toast('⚠️ Other changes saved, but stock may not have synced: ' + error.message, '#ffb95f');
   }
 };

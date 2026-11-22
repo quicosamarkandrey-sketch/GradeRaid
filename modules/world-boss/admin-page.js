@@ -312,11 +312,15 @@ window.wbcOpenQuestionEditor = function (bossIdx) {
   const qs = boss.bossQuestions || [];
   const allQuizzes = AppStore.getSlice(s => s.quizzes) || [];
   window._wbcDraftQuestions   = JSON.parse(JSON.stringify(qs));
-  showModal(`
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-    <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,rgba(236,72,153,.25),rgba(139,92,246,.2));border:1px solid rgba(236,72,153,.4);display:flex;align-items:center;justify-content:center;font-size:22px">📝</div>
-    <div><div class="modal-h2" style="margin-bottom:2px">Boss Questions — ${_esc(boss.name)}</div><div style="font-size:12px;color:var(--text-muted)">Add questions students will answer to deal damage</div></div>
-  </div>
+  CreatorWorkspace.open({
+    key: 'raid-questions:' + bossIdx, kind: 'boss-questions', area: 'World Boss',
+    title: 'Raid questions', footer: 'Students answer these questions to damage the boss.',
+    getDraft: () => window._wbcDraftQuestions,
+    summary: () => ({
+      title: boss.name, rows: [['Questions', String(window._wbcDraftQuestions.length)]],
+      note: 'Raids support multiple choice and true or false questions. Imported question sets replace the current draft.',
+    }),
+  }, CreatorWorkspace.section('raid-questions', 'Question set', '', `
   ${allQuizzes.length > 0 ? `
   <div class="boss-form-section" style="margin-bottom:16px">
     <div class="boss-form-section-title">Import from a quest</div>
@@ -327,10 +331,11 @@ window.wbcOpenQuestionEditor = function (bossIdx) {
   </div>` : ''}
   <div id="wbq-list">${_wbcRenderQuestionList(qs)}</div>
   <button class="btn btn-ghost btn-block" style="margin-top:10px;border-style:dashed" onclick="wbcAddQuestion(${bossIdx})">＋ Add Question</button>
-  <div style="display:flex;gap:10px;margin-top:14px;padding-top:4px;border-top:1px solid var(--border)">
-    <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Close</button>
-    <button class="btn btn-primary" style="flex:1;background:linear-gradient(135deg,#EC4899,#9333ea)" onclick="wbcSaveQuestions(${bossIdx})">💾 Save Questions</button>
-  </div>`, 'lg');
+  `) + `<div data-creator-actions>
+    <button class="btn btn-ghost" data-creator-close>Cancel</button>
+    <button class="btn btn-primary" onclick="wbcSaveQuestions(${bossIdx})">Save questions</button>
+  </div>`);
+
 };
 
 function _wbcRenderQuestionList(qs) {
@@ -344,9 +349,9 @@ function _wbcRenderQuestionList(qs) {
     <input type="text" value="${_esc(q.q || '')}" placeholder="Type your question..." style="width:100%;margin-bottom:10px" oninput="window._wbcDraftQuestions[${qi}].q=this.value">
     <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px">Click ● to mark correct</div>
     ${(q.opts || ['', '', '', '']).map((opt, oi) => `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <div onclick="window._wbcDraftQuestions[${qi}].answer=${oi};document.getElementById('wbq-list').innerHTML=_wbcRenderQuestionList(window._wbcDraftQuestions)"
-        style="width:22px;height:22px;border-radius:50%;border:2px solid ${q.answer === oi ? '#4edea3' : 'rgba(255,255,255,.15)'};background:${q.answer === oi ? 'rgba(78,222,163,.2)' : ''};cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px">${q.answer === oi ? '✓' : ''}</div>
+    <div class="qb-opt-row">
+      <button type="button" aria-label="Mark option ${String.fromCharCode(65 + oi)} correct" aria-pressed="${q.answer === oi}" onclick="window._wbcDraftQuestions[${qi}].answer=${oi};document.getElementById('wbq-list').innerHTML=_wbcRenderQuestionList(window._wbcDraftQuestions)"
+        style="width:22px;height:22px;border-radius:50%;border:2px solid ${q.answer === oi ? '#4edea3' : 'rgba(255,255,255,.15)'};background:${q.answer === oi ? 'rgba(78,222,163,.2)' : ''};cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px">${q.answer === oi ? '✓' : ''}</button>
       <input type="text" value="${_esc(opt || '')}" placeholder="Option ${String.fromCharCode(65 + oi)}" style="flex:1" oninput="window._wbcDraftQuestions[${qi}].opts[${oi}]=this.value">
     </div>`).join('')}
   </div>`).join('');
@@ -356,6 +361,7 @@ window.wbcAddQuestion = function (bossIdx) {
   if (!window._wbcDraftQuestions) window._wbcDraftQuestions = [];
   window._wbcDraftQuestions.push({ q: '', opts: ['', '', '', ''], answer: 0 });
   document.getElementById('wbq-list').innerHTML = _wbcRenderQuestionList(window._wbcDraftQuestions);
+  document.querySelector('#wbqb-' + (window._wbcDraftQuestions.length - 1) + ' input')?.focus();
 };
 
 window.wbcRemoveQuestion = function (qi) {
@@ -418,6 +424,7 @@ window.bossFormSetDiff = function (d) {
   if (!wrap) return;
   wrap.querySelectorAll('.diff-btn').forEach(btn => {
     btn.className = 'diff-btn';
+    btn.setAttribute('aria-pressed', String(btn.textContent.trim() === d));
     if (btn.textContent.trim() === d) btn.classList.add(diffClass(d));
   });
 };
@@ -605,7 +612,7 @@ window.openBossForm = function (bossIndex, recoveredDraft = null) {
         <div style="font-family:var(--fh);font-size:14px;font-weight:900;color:var(--on-surface)">${_esc(linked.name || 'Unnamed Boss')}</div>
         <div style="font-size:11px;color:rgba(236,72,153,0.8);font-weight:700;margin-top:2px"><span class="material-symbols-outlined" style="font-size:12px;vertical-align:middle">link</span> Boss Studio Profile Linked</div>
       </div>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="bfUnlinkProfile()"><span class="material-symbols-outlined" style="font-size:14px">link_off</span> Change</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="bfOpenLibraryPicker()">Change profile</button>
     </div>
     <input type="hidden" id="bf-library-id" value="${_esc(boss._bossLibraryId || '')}">
     <input type="hidden" id="bf-img" value="${_esc(boss.image || '💀')}">
@@ -620,13 +627,13 @@ window.openBossForm = function (bossIndex, recoveredDraft = null) {
       <button type="button" class="btn btn-primary" onclick="bfOpenLibraryPicker()" style="background:linear-gradient(135deg,rgba(236,72,153,0.8),rgba(139,92,246,0.8));width:100%;padding:12px;font-family:var(--fh);font-weight:800;font-size:13px;gap:8px">
         <span class="material-symbols-outlined" style="font-size:16px">library_books</span> Browse Boss Library
       </button>
-      ${(AppStore.getSlice(s => s.bossLibrary) || []).length === 0 ? `<div style="margin-top:10px;font-size:11px;color:var(--text-muted);text-align:center">No boss profiles yet. <button type="button" class="btn btn-ghost btn-xs" onclick="closeModalForce();navTo('a-boss-studio')" style="margin-left:4px">Open Boss Studio →</button></div>` : ''}
+      ${(AppStore.getSlice(s => s.bossLibrary) || []).length === 0 ? `<div style="margin-top:10px;font-size:11px;color:var(--text-muted);text-align:center">No boss profiles yet. <button type="button" class="btn btn-ghost btn-xs" onclick="if(CreatorWorkspace.dismiss())navTo('a-boss-studio')" style="margin-left:4px">Open Boss Studio →</button></div>` : ''}
     </div>
     <div style="margin-top:10px;text-align:center"><button type="button" style="background:none;border:none;font-size:11px;color:var(--text-muted);cursor:pointer;text-decoration:underline" onclick="bfSkipLibraryLink()">Or use a simple emoji/image instead (legacy)</button></div>
     <div id="bf-legacy-visual" style="display:none;margin-top:12px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <div id="bf-img-preview" style="width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,rgba(236,72,153,0.2),rgba(139,92,246,0.15));border:1.5px solid rgba(236,72,153,0.3);display:flex;align-items:center;justify-content:center;font-size:28px">${(boss.image && (boss.image.startsWith('http') || boss.image.startsWith('data:'))) ? `<img src="${boss.image}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;">` : (boss.image || '💀')}</div>
-        <input type="text" id="bf-img-text" value="${boss.image || '💀'}" placeholder="Emoji or image URL" style="flex:1" oninput="document.getElementById('bf-img').value=this.value;window._bossDraft.image=this.value;const p=document.getElementById('bf-img-preview');if(p)p.textContent=this.value||'💀'">
+        <div id="bf-img-preview" style="width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,rgba(236,72,153,0.2),rgba(139,92,246,0.15));border:1.5px solid rgba(236,72,153,0.3);display:flex;align-items:center;justify-content:center;font-size:28px">${(boss.image && (boss.image.startsWith('http') || boss.image.startsWith('data:'))) ? `<img src="${_esc(boss.image)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;">` : (boss.image || '💀')}</div>
+        <input type="text" id="bf-img-text" value="${_esc(boss.image || '💀')}" placeholder="Emoji or image URL" style="flex:1" oninput="document.getElementById('bf-img').value=this.value;window._bossDraft.image=this.value;const p=document.getElementById('bf-img-preview');if(p)p.textContent=this.value||'💀'">
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${emojiPresets.map(e => `<div onclick="(function(e){document.getElementById('bf-img').value=e;if(document.getElementById('bf-img-text'))document.getElementById('bf-img-text').value=e;const p=document.getElementById('bf-img-preview');if(p)p.textContent=e;window._bossDraft.image=e;})('${e}')" style="width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer">${e}</div>`).join('')}</div>
       <button type="button" class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="document.getElementById('bf-legacy-visual').style.display='none';document.getElementById('bf-no-profile-state')&&(document.getElementById('bf-no-profile-state').style.display='block')">← Back to Library Picker</button>
@@ -637,13 +644,36 @@ window.openBossForm = function (bossIndex, recoveredDraft = null) {
   const lockSection    = isEdit && boss.status && boss.status !== 'draft';
   const currentSectionId = boss.classId || (window.ActiveSection ? window.ActiveSection.get() : 'default-class');
 
-  showModal(`
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-    <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,rgba(236,72,153,0.25),rgba(139,92,246,0.2));border:1px solid rgba(236,72,153,0.4);display:flex;align-items:center;justify-content:center;font-size:20px">${isEdit ? '✏️' : '＋'}</div>
-    <div><div class="modal-h2" style="margin-bottom:2px">${isEdit ? 'Edit Boss' : 'Create Boss'}</div><div style="font-size:12px;color:var(--text-muted)">Configure the World Boss raid event settings</div></div>
-  </div>
-  <div class="boss-form-section">
-    <div class="boss-form-section-title">Event details</div>
+  const chapter = CreatorWorkspace.section;
+  CreatorWorkspace.open({
+    key: 'boss-event:' + (boss._id || (isEdit ? bossIndex : 'new')), kind: 'boss', area: 'World Boss',
+    title: isEdit ? 'Edit raid event' : 'Create raid event', previewLabel: 'Raid readiness',
+    footer: isEdit ? 'Review changes before saving the event.' : 'Save a draft before launching a live raid.',
+    getDraft: () => [window._bossDraft?.difficulty, window._bossDraft?._bossLibraryId],
+    summary: () => {
+      const field = id => document.getElementById(id);
+      const number = id => Number(field(id)?.value) || 0;
+      const sectionLabel = field('bf-section')?.selectedOptions[0]?.textContent;
+      const questionCount = (window._bossDraft?.bossQuestions || []).length;
+      const image = field('bf-img')?.value;
+      const profile = field('bf-library-id')?.value ? document.getElementById('bf-linked-profile-card')?.querySelector('img') : null;
+      const art = field('bf-library-id')?.value ? profile?.getAttribute('src') || image : image;
+      window.CreatorWorkspace.setArtwork(art);
+      return {
+        title: field('bf-name')?.value.trim() || 'Untitled raid',
+        subtitle: sectionLabel || 'Choose a section',
+        rows: [
+          ['Difficulty', window._bossDraft?.difficulty || 'Normal'],
+          ['Boss health', number('bf-maxhp').toLocaleString()],
+          ['Questions', questionCount ? String(questionCount) : 'Add before launch'],
+          ['Victory XP', String(number('bf-xp') + number('bf-part'))],
+          ['Victory coins', String(number('bf-coins') + number('bf-victory'))],
+        ],
+        note: questionCount ? 'Review the event dates and loot pool before launching.' : 'After saving, open Questions, loot & battle tools to add a question set.',
+      };
+    },
+  }, `
+  ${chapter('raid-details', 'Event details', 'Choose which class can see the raid.', `
     <div class="form-group" style="margin-bottom:12px"><label class="form-label">Boss Name <span style="color:#EC4899">*</span></label><input type="text" id="bf-name" value="${_esc(boss.name || '')}" placeholder="e.g. The Void Tyrant" style="width:100%" oninput="window._bossDraft.name=this.value;clearFieldErr(this,'bf-name-err')"><div class="field-err" id="bf-name-err">Boss name is required</div></div>
     <div class="form-group" style="margin-bottom:12px"><label class="form-label">Boss Description</label><textarea id="bf-desc" rows="3" placeholder="Describe the boss lore and threat…" style="width:100%;resize:vertical" oninput="window._bossDraft.description=this.value">${_esc(boss.description || '')}</textarea></div>
     <div class="form-group" style="margin-bottom:0">
@@ -654,35 +684,32 @@ window.openBossForm = function (bossIndex, recoveredDraft = null) {
       ${!spawnSections.length ? `<div style="font-size:11px;color:#ffb4ab;margin-top:6px">You don't advise any active sections yet — create one in Section Maker first.</div>` : ''}
       ${lockSection ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">🔒 Section is locked once a boss has left Draft — this boss shouldn't jump sections mid-event.</div>` : `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">This boss will only be visible to students in the section you pick — no cross-section spawns.</div>`}
     </div>
-  </div>
-  <div class="boss-form-section" id="bf-visual-section"><div class="boss-form-section-title">Boss identity</div>${visualSection}</div>
-  <div class="boss-form-section">
-    <div class="boss-form-section-title">Battle settings</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  `)}
+  ${chapter('raid-identity', 'Boss identity', 'Use a Boss Studio profile or custom artwork.', `<div id="bf-visual-section">${visualSection}</div>`)}
+  ${chapter('raid-battle', 'Battle settings', 'Set difficulty and shared health.', `
+    <div class="creator-grid">
       <div class="form-group" style="margin:0"><label class="form-label">Max HP <span style="color:#EC4899">*</span></label><input type="number" id="bf-maxhp" value="${boss.maxHp || 10000}" min="1" max="9999999" style="width:100%" oninput="window._bossDraft.maxHp=parseInt(this.value)||1;clearFieldErr(this,'bf-hp-err')"><div class="field-err" id="bf-hp-err">Max HP must be at least 1</div></div>
-      <div class="form-group" style="margin:0"><label class="form-label">Difficulty <span style="color:#EC4899">*</span></label><div class="diff-selector" id="bf-diff-wrap">${diffOptions.map(d => `<div class="diff-btn${(boss.difficulty || 'Normal') === d ? ' ' + diffClass(d) : ''}" onclick="bossFormSetDiff('${d}')">${d}</div>`).join('')}</div></div>
+      <div class="form-group" style="margin:0"><label class="form-label">Difficulty <span style="color:#EC4899">*</span></label><div class="diff-selector" id="bf-diff-wrap">${diffOptions.map(d => `<button type="button" class="diff-btn${(boss.difficulty || 'Normal') === d ? ' ' + diffClass(d) : ''}" aria-pressed="${(boss.difficulty || 'Normal') === d}" onclick="bossFormSetDiff('${d}')">${d}</button>`).join('')}</div></div>
     </div>
-  </div>
-  <div class="boss-form-section">
-    <div class="boss-form-section-title">Event dates</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    ${isEdit ? `<div id="bf-battle-tools" class="creator-tool-row"></div>` : ''}
+  `)}
+  ${chapter('raid-dates', 'Event dates', 'Choose the dates when this section can participate.', `
+    <div class="creator-grid">
       <div class="form-group" style="margin:0"><label class="form-label">Start Date <span style="color:#EC4899">*</span></label><input type="date" id="bf-start" value="${boss.startDate || ''}" style="width:100%" onchange="window._bossDraft.startDate=this.value;clearFieldErr(this,'bf-start-err')"><div class="field-err" id="bf-start-err">Start date is required</div></div>
       <div class="form-group" style="margin:0"><label class="form-label">End Date <span style="color:#EC4899">*</span></label><input type="date" id="bf-end" value="${boss.endDate || ''}" style="width:100%" onchange="window._bossDraft.endDate=this.value;clearFieldErr(this,'bf-end-err')"><div class="field-err" id="bf-end-err">End date is required (on or after the start date)</div></div>
     </div>
-  </div>
-  <div class="boss-form-section">
-    <div class="boss-form-section-title">Victory rewards</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+  `)}
+  ${chapter('raid-rewards', 'Victory rewards', 'Review the total payout in Raid readiness.', `
+    <div class="creator-grid" style="margin-bottom:12px">
       <div class="form-group" style="margin:0"><label class="form-label">Base XP reward</label><input type="number" id="bf-xp" value="${boss.xpReward ?? 500}" min="0" style="width:100%" oninput="window._bossDraft.xpReward=parseInt(this.value)||0;clearFieldErr(this,'bf-xp-err')"><div class="field-err" id="bf-xp-err">XP reward must be 0 or more</div></div>
       <div class="form-group" style="margin:0"><label class="form-label">Base coin reward</label><input type="number" id="bf-coins" value="${boss.coinReward ?? 250}" min="0" style="width:100%" oninput="window._bossDraft.coinReward=parseInt(this.value)||0;clearFieldErr(this,'bf-coins-err')"><div class="field-err" id="bf-coins-err">Coin reward must be 0 or more</div></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="creator-grid">
       <div class="form-group" style="margin:0"><label class="form-label">Participation XP bonus</label><input type="number" id="bf-part" value="${boss.participationReward ?? 100}" min="0" style="width:100%" oninput="window._bossDraft.participationReward=parseInt(this.value)||0;clearFieldErr(this,'bf-part-err')"><div class="field-err" id="bf-part-err">Must be 0 or more</div><div style="font-size:10px;color:var(--text-muted);margin-top:5px">Added on victory for raiders who dealt damage</div></div>
       <div class="form-group" style="margin:0"><label class="form-label">Victory coin bonus</label><input type="number" id="bf-victory" value="${boss.victoryReward ?? 300}" min="0" style="width:100%" oninput="window._bossDraft.victoryReward=parseInt(this.value)||0;clearFieldErr(this,'bf-victory-err')"><div class="field-err" id="bf-victory-err">Must be 0 or more</div><div style="font-size:10px;color:var(--text-muted);margin-top:5px">Added to the base coins when the boss is defeated</div></div>
     </div>
-  </div>
-  <div class="boss-form-section">
-    <div class="boss-form-section-title">Victory screen</div>
+  `)}
+  ${chapter('raid-victory', 'Victory screen', 'Customize the narration and message after defeat.', `
     <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;line-height:1.6;background:rgba(255,185,95,0.05);border:1px solid rgba(255,185,95,0.15);border-radius:8px;padding:10px 12px"><span style="color:#ffb95f;font-weight:700">Optional.</span> Customize what appears in the overlay when the boss is defeated.</div>
     <div style="background:rgba(236,72,153,0.05);border:1px solid rgba(236,72,153,0.18);border-radius:12px;padding:14px 16px;margin-bottom:14px">
       <div style="font-family:var(--fm);font-size:9px;color:#EC4899;letter-spacing:.14em;margin-bottom:12px">DEFEAT NARRATION</div>
@@ -694,24 +721,13 @@ window.openBossForm = function (bossIndex, recoveredDraft = null) {
       <div class="form-group" style="margin-bottom:10px"><label class="form-label">Victory Title</label><input type="text" id="bf-vic-title" value="${_esc(boss.victoryTitle || '')}" placeholder="e.g. BOSS DEFEATED!" style="width:100%" oninput="window._bossDraft.victoryTitle=this.value"></div>
       <div class="form-group" style="margin-bottom:0"><label class="form-label">Victory Message</label><textarea id="bf-vic-msg" rows="2" style="width:100%;resize:vertical" oninput="window._bossDraft.victoryMessage=this.value">${_esc(boss.victoryMessage || '')}</textarea></div>
     </div>
-  </div>
-  <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:4px">
-    <button class="btn btn-ghost" onclick="closeModalForce()">Cancel</button>
-    <button class="btn btn-primary" onclick="saveBossForm()" style="background:linear-gradient(135deg,#EC4899,#9333ea);box-shadow:0 4px 16px rgba(236,72,153,.3)">${isEdit ? '✅ Save Changes' : '＋ Create Boss'}</button>
-  </div>`, 'lg');
+  `)}
+  <div data-creator-actions>
+    <button class="btn btn-ghost" data-creator-close>Cancel</button>
+    <button class="btn btn-primary" onclick="saveBossForm()">${isEdit ? 'Save changes' : 'Save raid draft'}</button>
+  </div>`);
 
-  // Event-Driven Communication (Continuation Plan §3, Category A) —
-  // replaces the openBossForm monkey-patches in skills.js/phases.js/rage.js
-  // (each surfaces its own config button inside the modal this function
-  // just opened). Load-order traced: admin-page.js loads first among the
-  // world-boss group (see index.html's "LOAD ORDER FIX" comment), then
-  // skills.js → phases.js → rage.js, each of which used to chain
-  // `_orig`-capturing wrappers around window.openBossForm — confirmed live
-  // and correctly chained (no silent-overwrite bug here, unlike
-  // wbcApplyDamage/renderStudentWorldBoss/renderStudentDashboard), but
-  // still worth collapsing into one idiom. Post-hook, void-return shape —
-  // openBossForm's only job after showModal() is done is DOM injection
-  // into the modal it just opened, so no return value to worry about.
+  // Combat modules mount their controls inside Battle settings for saved events.
   AppStore.emit({ type: 'boss-form:opened', payload: { bossIndex } });
 };
 
@@ -737,17 +753,34 @@ function _bflpRenderModal() {
     <div class="bflp-header">
       <div class="bflp-header-icon">🏰</div>
       <div class="bflp-header-info"><div class="bflp-header-title">Boss Library</div><div class="bflp-header-sub">Select a Boss Studio profile to power this World Boss event</div></div>
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('bflp-overlay').remove()"><span class="material-symbols-outlined" style="font-size:16px">close</span></button>
+      <button class="btn btn-ghost btn-sm" data-bflp-close aria-label="Close boss library"><span class="material-symbols-outlined" style="font-size:16px">close</span></button>
     </div>
     <div class="bflp-search"><div class="bflp-search-inner"><span class="material-symbols-outlined" style="font-size:16px;color:var(--text-muted)">search</span><input type="text" id="bflp-search-inp" placeholder="Search by name, theme, or tag…" oninput="_bflpRefreshGrid(this.value)" autocomplete="off"></div></div>
     <div class="bflp-grid" id="bflp-grid">${_bflpBuildCards(library, _bflpSelected, '')}</div>
     <div class="bflp-footer">
       <div class="bflp-selected-name" id="bflp-sel-label">${_bflpSelected ? ('✅ ' + _esc(library.find(b => b.id === _bflpSelected)?.name || 'Selected')) : 'No boss selected'}</div>
-      <button class="btn btn-ghost" onclick="document.getElementById('bflp-overlay').remove()">Cancel</button>
+      <button class="btn btn-ghost" data-bflp-close>Cancel</button>
       <button class="btn btn-primary" id="bflp-confirm-btn" style="background:linear-gradient(135deg,#EC4899,#9333ea)" ${_bflpSelected ? '' : 'disabled'} onclick="_bflpConfirmSelection()"><span class="material-symbols-outlined" style="font-size:16px">check</span> Use This Boss</button>
     </div>
   </div>`;
-  overlay.addEventListener('click', () => overlay.remove());
+  const opener = document.activeElement;
+  function closePicker() {
+    overlay.remove();
+    if (opener?.isConnected) opener.focus();
+  }
+  overlay.querySelectorAll('[data-bflp-close]').forEach(button => button.addEventListener('click', closePicker));
+  overlay.addEventListener('click', closePicker);
+  overlay.addEventListener('keydown', event => {
+    if (event.key !== 'Tab') return;
+    const items = [...overlay.querySelectorAll('button:not(:disabled), input, [tabindex="0"]')].filter(item => item.getClientRects().length);
+    const next = event.shiftKey ? items.at(-1) : items[0];
+    const edge = event.shiftKey ? items[0] : items.at(-1);
+    if (document.activeElement === edge) {
+      event.preventDefault();
+      next?.focus();
+    }
+    event.stopPropagation();
+  });
   document.body.appendChild(overlay);document.getElementById('bflp-search-inp')?.focus();
 }
 
@@ -758,7 +791,7 @@ function _bflpBuildCards(library, selectedId, query) {
     filtered = library.filter(b => (b.name || '').toLowerCase().includes(q) || (b.description || '').toLowerCase().includes(q) || (b.tags || []).some(t => t.toLowerCase().includes(q)));
   }
   if (!filtered.length) {
-    return `<div class="bflp-empty"><div class="bflp-empty-icon">${query ? '🔍' : '🏰'}</div><div class="bflp-empty-title">${query ? 'No Results' : 'No Boss Profiles'}</div><div class="bflp-empty-sub">${query ? 'Try a different search term.' : 'Create boss profiles in Boss Studio first.'}</div>${!query ? `<button class="btn btn-primary btn-sm" onclick="document.getElementById('bflp-overlay').remove();closeModalForce();navTo('a-boss-studio')">Open Boss Studio</button>` : ''}</div>`;
+    return `<div class="bflp-empty"><div class="bflp-empty-icon">${query ? '🔍' : '🏰'}</div><div class="bflp-empty-title">${query ? 'No Results' : 'No Boss Profiles'}</div><div class="bflp-empty-sub">${query ? 'Try a different search term.' : 'Create boss profiles in Boss Studio first.'}</div>${!query ? `<button class="btn btn-primary btn-sm" onclick="document.getElementById('bflp-overlay').remove();if(CreatorWorkspace.dismiss())navTo('a-boss-studio')">Open Boss Studio</button>` : ''}</div>`;
   }
   return filtered.map(boss => {
     const sel    = boss.id === selectedId;
@@ -815,6 +848,8 @@ window._bflpConfirmSelection = function () {
   }
   document.getElementById('bflp-overlay')?.remove();
   _bflpUpdateFormAfterSelect(boss);
+  document.querySelector('#bf-linked-profile-card button')?.focus();
+  window.CreatorWorkspace?.refresh();
   toast(`✅ Linked "${_esc(boss.name)}"`, '#4edea3');
 };
 
@@ -841,7 +876,7 @@ function _bflpUpdateFormAfterSelect(boss) {
       <div style="font-size:11px;color:rgba(236,72,153,0.8);font-weight:700;margin-top:2px"><span class="material-symbols-outlined" style="font-size:12px;vertical-align:middle">link</span> Boss Studio Profile Linked</div>
       ${boss.tags && boss.tags.length ? `<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">${boss.tags.slice(0, 3).map(t => `<span style="font-size:9px;padding:2px 7px;border-radius:6px;background:${theme}18;border:1px solid ${theme}33;color:${accent}">${_esc(t)}</span>`).join('')}</div>` : ''}
     </div>
-    <button type="button" class="btn btn-ghost btn-sm" onclick="bfUnlinkProfile()"><span class="material-symbols-outlined" style="font-size:14px">link_off</span> Change</button>`;
+    <button type="button" class="btn btn-ghost btn-sm" onclick="bfOpenLibraryPicker()">Change profile</button>`;
   }
   const noState = document.getElementById('bf-no-profile-state');
   if (noState) noState.style.display = 'none';

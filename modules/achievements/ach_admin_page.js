@@ -140,47 +140,60 @@ window.achAdminOpenForm = function (achId) {
   // gap open for renderStudentQuizzes(); that's a separate, not-yet-done
   // piece of work.
   const activeClassIds = (typeof getActiveClassIds === 'function') ? getActiveClassIds() : [];
-  const sectionOpts = activeClassIds.map(cid =>
-    `<option value="${cid}" ${draftAchSections.includes(cid) ? 'selected' : ''}>${_esc(typeof getClassLabel === 'function' ? getClassLabel(cid) : cid)}</option>`
-  ).join('');
-
-  showModal(`
-  <div style="max-width:520px">
-    <h2 style="font-family:var(--fh);font-size:20px;font-weight:900;margin-bottom:20px">${isEdit ? 'Edit' : 'Create'} Badge</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-      <div style="grid-column:1/-1"><label class="form-label">Badge Name *</label><input id="ach-f-name" class="form-control" type="text" placeholder="e.g. Quest Warrior" value="${_esc(d.name || '')}" style="width:100%"></div>
-      <div style="grid-column:1/-1"><label class="form-label">Description *</label><input id="ach-f-desc" class="form-control" type="text" placeholder="Describe how to earn this badge" value="${_esc(d.description || '')}" style="width:100%"></div>
-      <div><label class="form-label">Icon (Emoji)</label><input id="ach-f-icon" class="form-control" type="text" placeholder="🏅" value="${_esc(d.icon || '🏅')}" style="width:100%;font-size:18px"></div>
-      <div><label class="form-label">Rarity</label><select id="ach-f-rarity" class="form-control" style="width:100%">${ACH_RARITIES.map(r => `<option value="${r}"${d.rarity === r ? ' selected' : ''}>${r}</option>`).join('')}</select></div>
-      <div><label class="form-label">Category</label><select id="ach-f-cat" class="form-control" style="width:100%">${cats.map(c => `<option value="${_esc(c)}"${d.category === c ? ' selected' : ''}>${_esc(c)}</option>`).join('')}</select></div>
-      <div><label class="form-label">XP Reward</label><input id="ach-f-xp" class="form-control" type="number" min="0" value="${d.xpReward || 0}" style="width:100%"></div>
-      <div><label class="form-label">Coin Reward 🪙</label><input id="ach-f-coins" class="form-control" type="number" min="0" value="${d.coinReward || 0}" style="width:100%"></div>
-      <div><label class="form-label">Trigger Type</label><select id="ach-f-trigger" class="form-control" style="width:100%" onchange="achAdminUpdateTriggerHint()">${ACH_TRIGGER_TYPES.map(t => `<option value="${t.value}"${d.triggerType === t.value ? ' selected' : ''}>${t.label}</option>`).join('')}</select></div>
-      <div><label class="form-label">Trigger Value</label><input id="ach-f-tval" class="form-control" type="number" min="0" value="${d.triggerValue || 1}" style="width:100%"><div id="ach-trigger-hint" style="font-size:10px;color:var(--text-muted);margin-top:3px">${ACH_TRIGGER_TYPES.find(t => t.value === d.triggerType)?.hint || ''}</div></div>
+  const chapter = CreatorWorkspace.section;
+  CreatorWorkspace.open({
+    key: 'badge:' + formAchId, kind: 'badge', area: 'Achievements',
+    title: isEdit ? 'Edit badge' : 'Create badge', previewLabel: 'Badge preview',
+    footer: 'Review the unlock requirement and section visibility before saving.',
+    summary: () => {
+      const field = id => document.getElementById('ach-f-' + id);
+      const trigger = ACH_TRIGGER_TYPES.find(item => item.value === field('trigger').value);
+      const icon = field('icon').value.trim();
+      return {
+        title: [icon, field('name').value.trim() || 'Untitled badge'].filter(Boolean).join(' '),
+        subtitle: field('desc').value.trim() || 'Add a description for students.',
+        rows: [
+          ['Rarity', field('rarity').value], ['Category', field('cat').value],
+          ['Requirement', trigger ? trigger.label + ' · ' + (field('tval').value || '1') : 'Choose a trigger'],
+          ['Reward', (field('xp').value || '0') + ' XP · ' + (field('coins').value || '0') + ' coins'],
+          ['Sections', draftAchSections.length ? draftAchSections.length + ' selected' : 'All sections'],
+          ['Visibility', !field('active').checked ? 'Inactive' : field('hidden').checked ? 'Hidden until earned' : 'Visible'],
+        ],
+      };
+    },
+  }, `
+    ${chapter('badge-details', 'Badge details', 'Give students a clear name and a description of the badge.', `
+    <div class="creator-grid">
+      <div style="grid-column:1/-1"><label class="form-label" for="ach-f-name">Badge Name *</label><input id="ach-f-name" oninput="this.setCustomValidity('')" class="form-control" type="text" placeholder="e.g. Quest Warrior" value="${_esc(d.name || '')}" style="width:100%"></div>
+      <div style="grid-column:1/-1"><label class="form-label" for="ach-f-desc">Description *</label><input id="ach-f-desc" oninput="this.setCustomValidity('')" class="form-control" type="text" placeholder="Describe how to earn this badge" value="${_esc(d.description || '')}" style="width:100%"></div>
+      <div><label class="form-label" for="ach-f-icon">Icon (Emoji)</label><input id="ach-f-icon" class="form-control" type="text" placeholder="🏅" value="${_esc(d.icon || '🏅')}" style="width:100%;font-size:18px"></div>
+      <div><label class="form-label" for="ach-f-rarity">Rarity</label><select id="ach-f-rarity" class="form-control" style="width:100%">${ACH_RARITIES.map(r => `<option value="${r}"${d.rarity === r ? ' selected' : ''}>${r}</option>`).join('')}</select></div>
+      <div><label class="form-label" for="ach-f-cat">Category</label><select id="ach-f-cat" class="form-control" style="width:100%">${cats.map(c => `<option value="${_esc(c)}"${d.category === c ? ' selected' : ''}>${_esc(c)}</option>`).join('')}</select></div>
+    </div>`)}
+    ${chapter('badge-rewards', 'Unlock and rewards', 'Choose the activity that earns the badge and set its rewards.', `
+    <div class="creator-grid">
+      <div><label class="form-label" for="ach-f-xp">XP Reward</label><input id="ach-f-xp" class="form-control" type="number" min="0" value="${d.xpReward || 0}" style="width:100%"></div>
+      <div><label class="form-label" for="ach-f-coins">Coin Reward 🪙</label><input id="ach-f-coins" class="form-control" type="number" min="0" value="${d.coinReward || 0}" style="width:100%"></div>
+      <div><label class="form-label" for="ach-f-trigger">Trigger Type</label><select id="ach-f-trigger" class="form-control" style="width:100%" onchange="achAdminUpdateTriggerHint()">${ACH_TRIGGER_TYPES.map(t => `<option value="${t.value}"${d.triggerType === t.value ? ' selected' : ''}>${t.label}</option>`).join('')}</select></div>
+      <div><label class="form-label" for="ach-f-tval">Trigger Value</label><input id="ach-f-tval" class="form-control" type="number" min="0" value="${d.triggerValue || 1}" style="width:100%"><div id="ach-trigger-hint" style="font-size:10px;color:var(--text-muted);margin-top:3px">${ACH_TRIGGER_TYPES.find(t => t.value === d.triggerType)?.hint || ''}</div></div>
       <div style="grid-column:1/-1;display:flex;gap:20px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="ach-f-hidden" ${d.isHidden ? 'checked' : ''} style="width:16px;height:16px"> Hidden Achievement <span style="font-size:11px;color:var(--text-muted)">(Students can't see until unlocked)</span></label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="ach-f-active" ${d.active !== false ? 'checked' : ''} style="width:16px;height:16px"> Active</label>
       </div>
-      <div style="grid-column:1/-1">
-        <label class="form-label">Assign to Section(s)</label>
-        ${activeClassIds.length ? `
-        <select id="ach-f-sections" multiple style="width:100%;height:96px" onchange="updateDraftAchSections(this)">${sectionOpts}</select>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Hold Ctrl/Cmd to select multiple. Leave empty to leave unassigned (visible to all).</div>
-        ` : `
-        <div style="font-size:12px;color:var(--text-muted);background:rgba(35,31,56,.5);border-radius:8px;padding:10px 12px">No sections created yet — create one in Section Maker first.</div>
-        `}
-      </div>
-    </div>
-    <div id="ach-form-err" style="color:#ff8080;font-size:12px;margin-top:8px;display:none"></div>
-    <div style="display:flex;gap:10px;margin-top:20px">
-      <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button>
-      <button class="btn btn-primary" style="flex:1" onclick="achAdminSave('${formAchId}')">${isEdit ? 'Save Changes' : 'Create Badge'}</button>
-    </div>
-  </div>`, 'md');
+    </div>`)}
+    ${chapter('badge-sections', 'Section visibility', 'Select the sections that can earn this badge. Leave all unchecked to include every section.', `
+      ${activeClassIds.length
+        ? CreatorWorkspace.sectionChoices('ach-f-sections', activeClassIds.map(value => ({ value, label: getClassLabel(value) })), draftAchSections, 'updateDraftAchSections(this)')
+        : '<p class="form-help">Create a section in Section Maker to assign this badge to a class.</p>'}
+    `)}
+    <div data-creator-actions>
+      <button class="btn btn-ghost" data-creator-close>Cancel</button>
+      <button class="btn btn-primary" onclick="achAdminSave('${_esc(formAchId)}')">${isEdit ? 'Save changes' : 'Create badge'}</button>
+    </div>`);
 };
 
 window.updateDraftAchSections = function (selectEl) {
-  draftAchSections = [...selectEl.selectedOptions].map(o => o.value);
+  draftAchSections = [...(selectEl.selectedOptions || selectEl.querySelectorAll('input:checked'))].map(o => o.value);
 };
 
 window.achAdminUpdateTriggerHint = function () {
@@ -201,11 +214,13 @@ window.achAdminSave = async function (achId) {
   const triggerValue = parseFloat(document.getElementById('ach-f-tval')?.value) || 1;
   const isHidden    = document.getElementById('ach-f-hidden')?.checked  || false;
   const active      = document.getElementById('ach-f-active')?.checked !== false;
-  const errEl       = document.getElementById('ach-form-err');
-
-  if (!name) { if (errEl) { errEl.textContent = 'Badge name is required.'; errEl.style.display = 'block'; } return; }
-  if (!desc) { if (errEl) { errEl.textContent = 'Description is required.'; errEl.style.display = 'block'; } return; }
-  if (errEl) errEl.style.display = 'none';
+  for (const [id, value, message] of [
+    ['ach-f-name', name, 'Enter a badge name.'],
+    ['ach-f-desc', desc, 'Describe how students earn this badge.'],
+  ]) {
+    const field = document.getElementById(id);
+    if (!value) { field.setCustomValidity(message); field.reportValidity(); return; }
+  }
 
   let toastMsg;
   AppStore.updateState(draft => {
@@ -213,7 +228,7 @@ window.achAdminSave = async function (achId) {
     const idx = draft.achievements.findIndex(a => a.id === achId);
     if (idx >= 0) {
       draft.achievements[idx] = { ...draft.achievements[idx], name, description: desc, icon, category: cat, rarity, xpReward, coinReward, isHidden, active, triggerType, triggerValue };
-      toastMsg = `✅ Badge "${name}" updated!`;
+      toastMsg = `✅ Badge "${_esc(name)}" updated!`;
     } else {
       // achId was pre-generated by achAdminOpenForm (Phase 16) so the section
       // picker has a stable id to save against on first creation too.
@@ -221,7 +236,7 @@ window.achAdminSave = async function (achId) {
       // have something to key against — mirrors shop_admin_store.js's
       // doAddProduct() stamping ownerTeacherId at creation time.
       draft.achievements.push({ id: achId, ownerTeacherId: currentUser.id, name, description: desc, icon, category: cat, rarity, xpReward, coinReward, isHidden, active, triggerType, triggerValue, createdAt: new Date().toISOString() });
-      toastMsg = `🏅 Badge "${name}" created!`;
+      toastMsg = `🏅 Badge "${_esc(name)}" created!`;
     }
   }, { type: 'achievements:saved', payload: { id: achId } });
   toast(toastMsg);

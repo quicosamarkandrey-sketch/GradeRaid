@@ -22,6 +22,7 @@ import '../db-migrations.js';
 import '../app-state.js';
 // dom.js — CONVERTED, real import + window bridge
 import { toast, showModal, closeModal, closeModalForce } from '../src/dom.js';
+import '../modules/shared/creator-workspace.js';
 window.toast = toast;
 window.showModal = showModal;
 window.closeModal = closeModal;

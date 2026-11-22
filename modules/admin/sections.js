@@ -287,7 +287,7 @@ function _secAdviserName(adviserId, state) {
 
 window._secOpenCreateModal = async function () {
   await _secEnsureTeacherDir();
-  showModal(_secModalHTML(null), 'lg');
+  openSectionWorkspace(null);
 };
 
 window._secOpenEditModal = async function (sectionId) {
@@ -295,7 +295,7 @@ window._secOpenEditModal = async function (sectionId) {
   const section = (state.classSections || []).find(s => s.id === sectionId);
   if (!section) { toast('❌ Section not found.', '#ffb4ab'); return; }
   await _secEnsureTeacherDir();
-  showModal(_secModalHTML(section), 'lg');
+  openSectionWorkspace(section);
 };
 
 function _secAdviserFieldHTML(section) {
@@ -332,20 +332,38 @@ function _secAdviserFieldHTML(section) {
   </div>`;
 }
 
+function openSectionWorkspace(section) {
+  CreatorWorkspace.open({
+    key: 'section:' + (section?.id || 'new'), kind: 'section', area: 'Sections',
+    title: section ? 'Edit section' : 'Create section', previewLabel: 'Section preview',
+    footer: section ? 'Changes apply to the existing section.' : 'You can import students now or add them later.',
+    summary: () => {
+      const value = id => document.getElementById(id)?.value;
+      const grade = value('sec-form-grade');
+      const scheduled = document.getElementById('sec-form-sched-toggle')?.checked;
+      const file = document.getElementById('sec-form-roster')?.files[0];
+      const days = SEC_DAY_DEFS.filter(day => document.getElementById('sec-form-sched-day-enable-' + day.dow)?.checked).length;
+      return {
+        title: value('sec-form-name')?.trim() || 'Untitled section',
+        subtitle: grade ? 'Grade ' + grade : 'Choose a grade level',
+        rows: [
+          ['Attendance window', scheduled ? value('sec-form-sched-open') + '–' + value('sec-form-sched-close') : 'No changes'],
+          ['Custom days', String(days)],
+          ['Roster', section ? _secStudentCount(AppStore.getState(), section.id) + ' students' : file?.name || 'Add later'],
+        ],
+        note: file ? 'After saving, review the spreadsheet before creating student accounts.' : '',
+      };
+    },
+  }, _secModalHTML(section));
+}
+
 function _secModalHTML(section) {
   const isEdit = !!section;
 
-  return `
-  <div style="font-family:var(--fh);font-size:18px;font-weight:900;margin-bottom:16px">${isEdit ? '✏️ Edit Section' : '＋ New Section'}</div>
-
-  ${isEdit ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px">
-    Renaming or changing the grade relabels this section — it does not create a new one.
-    Its underlying id (<code>${_esc(section.id)}</code>) stays the same, so attendance, schedule,
-    and seating history stay linked.
-  </div>` : ''}
-
+  const chapter = CreatorWorkspace.section;
+  return `${chapter('section-details', 'Section details', isEdit ? 'Updates apply to this section and its existing roster.' : 'Choose the grade and name students will see.', `
   <div class="form-group">
-    <label class="form-label">Grade Level</label>
+    <label class="form-label" for="sec-form-grade">Grade Level</label>
     <select id="sec-form-grade" style="width:100%">
       <option value="">— Select —</option>
       ${GRADE_LEVELS.map(g => `<option value="${g}" ${section && section.gradeLevel === g ? 'selected' : ''}>Grade ${g}</option>`).join('')}
@@ -353,25 +371,24 @@ function _secModalHTML(section) {
   </div>
 
   <div class="form-group">
-    <label class="form-label">Section Name</label>
+    <label class="form-label" for="sec-form-name">Section Name</label>
     <input type="text" id="sec-form-name" placeholder="e.g. Rizal" autocomplete="off" style="width:100%"
            value="${section ? _esc(section.sectionName) : ''}">
   </div>
 
-  ${_secAdviserFieldHTML(section)}
+  ${_secAdviserFieldHTML(section)}`)}
+  ${chapter('section-schedule', 'Attendance schedule', 'Set the weekly defaults, then add exceptions or days off.', _secScheduleFieldsHTML(section))}
 
-  ${_secScheduleFieldsHTML(section)}
-
-  ${!isEdit ? `<div class="form-group">
-    <label class="form-label" for="sec-form-roster">Student roster (optional)</label>
+  ${!isEdit ? chapter('section-roster', 'Import a roster', 'Optional. Review the spreadsheet and its names after creating the section.', `<div class="form-group">
+    <label class="form-label" for="sec-form-roster">Excel or CSV file</label>
     <input type="file" id="sec-form-roster" accept=".xlsx,.csv">
     <small>Choose a roster to review and enroll after creating the section.</small>
-  </div>` : ''}
+  </div>`) : ''}
 
-  <div id="sec-form-err" style="color:#ffb4ab;font-size:13px;margin-bottom:10px;display:none"></div>
+  <div id="sec-form-err" role="alert" tabindex="-1" style="color:#ffb4ab;font-size:13px;margin-bottom:10px;display:none"></div>
 
-  <div style="display:flex;gap:8px">
-    <button class="btn btn-ghost" data-section-form-cancel style="flex:1" onclick="closeModalForce()">Cancel</button>
+  <div data-creator-actions>
+    <button class="btn btn-ghost" data-section-form-cancel data-creator-close>Cancel</button>
     <button class="btn btn-primary" style="flex:1" onclick="_secSubmitForm(${isEdit ? `'${section.id}'` : 'null'})">${isEdit ? 'Save Changes' : 'Create Section'}</button>
   </div>`;
 }
@@ -798,7 +815,7 @@ document.addEventListener('click', event => {
 
 function _secShowFormErr(msg) {
   const errEl = document.getElementById('sec-form-err');
-  if (errEl) { errEl.textContent = '❌ ' + msg; errEl.style.display = 'block'; }
+  if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; errEl.focus(); }
 }
 
 // ── ARCHIVE / RESTORE ───────────────────────────────────

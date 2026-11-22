@@ -363,31 +363,18 @@ AppStore.subscribe('wbs-skill-loop-view-sync', function (state, event) {
   };
 })();
 
-// ── boss-form:opened subscriber — also surface the skills button inside the
-// boss edit form ──────────────────────────────────────────────────────────
-// Continuation Plan §3, Category A — replaces the old monkey-patch of
-// window.openBossForm. Confirmed post-hook/void-return shape, load-order
-// traced (admin-page.js emits this after showModal() renders the form,
-// well before skills.js's subscriber can possibly run — see admin-page.js's
-// emit() call site for the full reasoning). Timing/DOM logic unchanged from
-// the original patch (still relies on the 90ms delay to let the modal
-// settle before querying it).
 AppStore.subscribe('wbs-boss-form-button', function (state, event) {
   if (event.type !== 'boss-form:opened') return;
-  const bossIndex = event.payload.bossIndex;
-  if (bossIndex === null || bossIndex === undefined) return;
-  setTimeout(() => {
-    const actions = document.querySelector('#modal-content .btn-primary');
-    if (!actions) return;
-    if (document.getElementById('wbs-form-btn')) return;
-    const btn = document.createElement('button');
-    btn.id = 'wbs-form-btn';
-    btn.className = 'btn btn-ghost';
-    btn.style.cssText = 'border-color:rgba(139,92,246,.3);color:#a78bfa';
-    btn.innerHTML = '✨ Skills';
-    btn.onclick = () => { closeModalForce(); wbsOpenSkillConfig(bossIndex); };
-    actions.parentNode.insertBefore(btn, actions);
-  }, 90);
+  const { bossIndex } = event.payload;
+  const tools = document.getElementById('bf-battle-tools');
+  if (!tools || !Number.isInteger(bossIndex) || document.getElementById('wbs-form-btn')) return;
+  const button = document.createElement('button');
+  button.id = 'wbs-form-btn';
+  button.type = 'button';
+  button.className = 'btn btn-ghost';
+  button.textContent = 'Skills';
+  button.onclick = () => { if (CreatorWorkspace.dismiss()) wbsOpenSkillConfig(bossIndex); };
+  tools.append(button);
 });
 
 // ── Runtime CSS injection ──────────────────────────────────────────────────────
