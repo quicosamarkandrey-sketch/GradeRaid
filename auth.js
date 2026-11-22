@@ -400,6 +400,7 @@ async function restoreSession(){
 async function doLogout(options = {}){
   const expired=options.expired===true;
   window.UXStates?.onLogout(expired);
+  window.SectionRosterImport?.clear();
   if(typeof closeModalForce==='function')closeModalForce();
   window.RecitationStudio?.close();
   window.unmountClassroomMonitor?.();

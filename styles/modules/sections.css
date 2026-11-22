@@ -118,7 +118,7 @@
   border:2px solid;display:flex;align-items:center;justify-content:center;
   overflow:hidden;position:relative;
 }
-.sec-roster-portrait img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.sec-roster-portrait img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}
 .sec-roster-portrait-init{font-family:var(--fh);font-size:22px;font-weight:800}
 
 .sec-roster-name{
@@ -130,3 +130,54 @@
   display:flex;flex-wrap:wrap;gap:5px;justify-content:center;
 }
 .sec-roster-stats .badge-pill{font-size:10px;padding:3px 8px}
+
+.sec-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.sec-heading h1 { margin: 0; font: 800 1.7rem var(--fh); }
+.sec-heading p { color: var(--text-muted); margin: 4px 0 0; }
+.sec-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.sec-stats > div, .sec-empty {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+.sec-stats strong { display: block; font: 800 1.5rem var(--fh); }
+.sec-stats span, .sec-empty p { color: var(--text-muted); font-size: .85rem; }
+.sec-filter-bar { align-items: end; }
+.sec-filter-bar label { display: grid; gap: 5px; font-size: .8rem; color: var(--text-muted); }
+.sec-filter-bar :is(input, select) { min-height: 40px; }
+.sec-filter-bar select, .sec-card, .sec-roster-card {
+  background: var(--surface, #171717);
+}
+.sec-search { flex: 1 1 200px; }
+.sec-search input { width: 100%; }
+.sec-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 255px), 1fr)); }
+.sec-card-archived { opacity: 1; border-style: dashed; }
+.sec-card-meta { gap: 5px; margin: 12px 0 14px; line-height: 1.45; }
+.sec-card-meta strong { color: var(--on-surface); font-size: .9rem; }
+.sec-card-actions, .sec-roster-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.sec-card-actions .btn { flex: 0 1 auto; }
+.sec-card-actions button, .sec-manage summary { min-height: 36px; }
+.sec-manage { flex-basis: 100%; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
+.sec-manage summary { padding: 8px 0; cursor: pointer; font-size: .8rem; }
+.sec-manage > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.sec-empty { padding: 28px; }
+.sec-empty h2 { margin: 0; font-size: 1.1rem; }
+.sec-empty p { margin: 8px 0 12px; }
+@media (max-width: 540px) {
+  .sec-stats > div { padding: 10px; }
+  .sec-search { flex-basis: 100%; }
+  .sec-filter-bar > label:not(.sec-search) { flex: 1; }
+  .sec-sched-day-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -42,11 +42,14 @@ const spreadsheet = zipSync(Object.fromEntries(Object.entries({
       SectionRosterImport.open('room');
     });
     await page.locator('input[type=file]').setInputFiles({ name: 'class.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from(spreadsheet) });
-    await page.getByText('Alex Reyes', { exact: true }).waitFor();
+    await page.getByRole('textbox', { name: 'Row 2 student name' }).waitFor();
+    assert.equal(await page.getByRole('textbox', { name: 'Row 2 student name' }).inputValue(), 'Alex Reyes');
     assert.equal(await page.evaluate(() => requests.length), 0, 'Preview cannot create accounts');
     await page.getByRole('button', { name: 'Create 2 accounts' }).click();
-    await page.getByRole('button', { name: 'Retry 2 accounts' }).waitFor();
-    await page.getByRole('button', { name: 'Retry 2 accounts' }).click();
+    await page.getByRole('button', { name: 'Resume 2 accounts' }).waitFor();
+    await page.getByRole('button', { name: 'Close' }).click();
+    await page.evaluate(() => SectionRosterImport.open('room'));
+    await page.getByRole('button', { name: 'Resume 2 accounts' }).click();
     await page.getByText('Matching student already enrolled').waitFor();
     const requests = await page.evaluate(() => window.requests);
     assert.deepEqual(requests[0], requests[1], 'Retry retains the same credential attempt');
@@ -64,6 +67,22 @@ const spreadsheet = zipSync(Object.fromEntries(Object.entries({
       'Full Name\r\n"Reyes, Alex"\r\nBea Cruz\r\n bea  cruz \r\n<img>\r\n',
     ], 'class.csv')));
     assert.deepEqual(rows.map(row => row.status), ['ready', 'duplicate', 'duplicate', 'invalid']);
+    await page.evaluate(() => SectionRosterImport.open('room'));
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'teacher.csv', mimeType: 'text/csv',
+      buffer: Buffer.from('Room 1 roster\nNo.;Pupil\n1;Toni Tan\n2;Toni Tan\n3;Lia Santos\n'),
+    });
+    await page.getByRole('textbox', { name: 'Row 3 student name' }).waitFor();
+    await page.getByText('Spreadsheet options').click();
+    await page.locator('[data-field=start]').fill('3');
+    await page.locator('[data-field=full]').selectOption('1');
+    await page.getByRole('button', { name: 'Update preview' }).click();
+    await page.getByText('Same name appears in this file').first().waitFor();
+    await page.getByRole('checkbox', { name: 'Include row 4' }).uncheck();
+    await page.getByRole('textbox', { name: 'Row 3 student name' }).fill('Toni Marie Tan');
+    await page.getByRole('button', { name: 'Create 2 accounts' }).waitFor();
+    assert.equal(await page.evaluate(() => requests.length), 3, 'Editing and remapping the preview makes no API writes');
+    await page.getByRole('button', { name: 'Close' }).click();
     const html = fs.readFileSync('index.html', 'utf8');
     const start = html.indexOf('async function savePassword()');
     const end = html.indexOf('/* ── Save: Email', start);
@@ -102,7 +121,77 @@ const spreadsheet = zipSync(Object.fromEntries(Object.entries({
     assert.deepEqual(passwordResult.events, [false, ['gr-fixture@students.graderaid.example', 'StarterPassword'],
       { password: 'NewStudentPass', current_password: 'StarterPassword' }, { scope: 'local' }]);
     assert.equal(passwordResult.cleared, true);
-    console.log('PASS: real Excel parsing and preview, retry, duplicate skip, credential CSV, CSV validation, and real Auth password-update wiring.');
+    await page.setViewportSize({ width: 360, height: 760 });
+    await page.addStyleTag({ content: fs.readFileSync('styles/modules/sections.css', 'utf8') });
+    await page.addStyleTag({ content: fs.readFileSync('styles/modules/section-roster-import.css', 'utf8') });
+    await page.evaluate(() => {
+      document.body.innerHTML = '<main id="a-sections"></main><div id="modal-overlay" style="display:none"><div id="modal-content"></div></div>';
+      currentUser = { id: 'teacher', name: 'Morgan Lee' };
+      window.currentRole = 'teacher';
+      window._esc = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+      window._cssColor = () => '#64748b';
+      window.showModal = content => {
+        document.getElementById('modal-content').innerHTML = content;
+        document.getElementById('modal-overlay').style.display = 'flex';
+      };
+      window.closeModalForce = () => { document.getElementById('modal-overlay').style.display = 'none'; };
+      window.state = { classSections: [
+        { id: 'room', gradeLevel: '7', sectionName: 'Rizal', adviserId: 'teacher', archived: false },
+        { id: 'old', gradeLevel: '8', sectionName: 'Mabini', adviserId: 'teacher', archived: true },
+        { id: 'unrelated', gradeLevel: '7', sectionName: 'Other class', adviserId: 'someone-else', archived: false },
+      ], students: [] };
+      window.AppStore = { getState: () => state, subscribe: (_, callback) => { window.sectionUpdate = callback; }, unsubscribe: () => {} };
+      SectionService.getSection = id => state.classSections.find(section => section.id === id);
+      SectionService.createSection = async (gradeLevel, sectionName) => {
+        const section = { id: 'new-room', gradeLevel, sectionName, adviserId: 'teacher', archived: false };
+        state.classSections.push(section);
+        return { ok: true, section };
+      };
+    });
+    await page.addScriptTag({ content: fs.readFileSync('modules/admin/sections.js', 'utf8') });
+    await page.evaluate(() => renderSectionMaker());
+    assert.equal(await page.getByText('Other class', { exact: true }).count(), 0);
+    await page.getByRole('searchbox', { name: 'Search sections' }).fill('absent');
+    await page.getByRole('button', { name: 'Clear filters' }).click();
+    await page.getByRole('combobox', { name: 'Status' }).selectOption('archived');
+    await page.getByText('Mabini', { exact: true }).waitFor();
+    assert.equal(await page.getByText('Rizal', { exact: true }).count(), 0);
+    await page.evaluate(() => renderSectionMaker());
+    assert.equal(await page.getByRole('combobox', { name: 'Status' }).inputValue(), 'archived');
+    await page.getByRole('combobox', { name: 'Status' }).selectOption('active');
+    await page.getByText('Manage section').click();
+    await page.evaluate(() => sectionUpdate(state, { type: 'state:remote-sync' }));
+    assert.equal(await page.locator('.sec-manage[open]').count(), 1);
+    await page.getByRole('button', { name: 'View roster' }).click();
+    await page.evaluate(() => {
+      state.students.push({ classId: 'room', name: 'New Student' });
+      sectionUpdate(state, { type: 'state:remote-sync' });
+    });
+    await page.locator('#sec-roster-grid').getByText('New Student').waitFor();
+    await page.locator('#modal-content').getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'New section' }).click();
+    await page.locator('#sec-form-grade').selectOption('9');
+    await page.locator('#sec-form-name').fill('Sampaguita');
+    await page.locator('#sec-form-roster').setInputFiles({
+      name: 'new-section.csv', mimeType: 'text/csv', buffer: Buffer.from('Full Name\nLia Santos\n'),
+    });
+    await page.getByRole('button', { name: 'Create Section', exact: true }).click();
+    assert.equal(await page.locator('.roster-section').textContent(), 'Grade 9 · Sampaguita');
+    await page.getByRole('button', { name: 'Create 1 account', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.evaluate(() => {
+      DBService.getAuthClient = () => ({ functions: { invoke: async () => ({
+        error: { context: new Response('restricted', { status: 402 }) },
+      }) } });
+    });
+    await page.getByRole('button', { name: 'Create 1 account', exact: true }).click();
+    await page.getByRole('status').filter({ hasText: 'Supabase restricted requests' }).waitFor();
+    await page.locator('dialog').getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Resume import' }).click();
+    await page.getByRole('button', { name: 'Resume 1 account', exact: true }).waitFor();
+    await page.evaluate(() => SectionRosterImport.clear());
+    assert.equal(await page.locator('dialog[open]').count(), 0);
+    console.log('PASS: real Excel parsing and preview, retry, duplicate skip, credential CSV, CSV validation, Auth password-update wiring, and mobile Sections workflows.');
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));

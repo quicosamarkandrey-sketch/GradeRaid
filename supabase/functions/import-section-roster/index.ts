@@ -19,7 +19,11 @@ Deno.serve(async (request) => {
   try {
     const content = await request.text();
     if (content.length > 2048) return reply({ status: "invalid" }, 413);
-    const { section, name, attempt, password } = JSON.parse(content);
+    let body;
+    try { body = JSON.parse(content); }
+    catch { return reply({ status: "invalid" }, 400); }
+    if (!body || typeof body !== "object") return reply({ status: "invalid" }, 400);
+    const { section, name, attempt, password } = body;
     if (typeof section !== "string" || !section || section.length > 200 ||
       typeof name !== "string" || name.length > 120 ||
       typeof attempt !== "string" || !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(attempt) ||
@@ -30,7 +34,10 @@ Deno.serve(async (request) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const { data: { user } } = await supabase.auth.getUser(token);
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError?.status === 429) return reply({ status: "rate_limited" }, 429);
+    if (userError?.status === 402) return reply({ status: "quota" }, 402);
+    if (userError?.status && userError.status >= 500) return reply({ status: "retry" }, 503);
     if (!user) return reply({ status: "forbidden" }, 401);
 
     const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password));
@@ -39,16 +46,19 @@ Deno.serve(async (request) => {
       p_hash: Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join(""),
     };
     const { data: row, error } = await supabase.rpc("section_roster_import_row", params);
+    if (error?.code === "PGRST202" || error?.code === "42883") return reply({ status: "setup" }, 503);
     if (error || !row) return reply({ status: "retry" }, 503);
     if (row.status !== "reserved") return reply(row);
 
     if (!row.hasAccount) {
       // A network error can arrive after Auth commits. Finalization checks
       // the reservation marker, so a concurrent request or retry is safe.
-      await supabase.auth.admin.createUser({
+      const { error: createError } = await supabase.auth.admin.createUser({
         email: row.login, password, email_confirm: true,
         app_metadata: { graderaid_roster_id: row.reservation },
       });
+      if (createError?.status === 429) return reply({ status: "rate_limited" }, 429);
+      if (createError?.status === 402) return reply({ status: "quota" }, 402);
     }
 
     const { data, error: finishError } = await supabase.rpc("section_roster_import_row", {

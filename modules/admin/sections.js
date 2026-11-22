@@ -81,7 +81,7 @@ const SEC_DAY_DEFS = [
 
 let _secMounted = false;
 let _secGradeFilter = 'all';
-let _secShowArchived = false;
+let _secStatusFilter = 'active';
 let _secSearch = '';
 
 // Lazy-loaded, admin-only teacher roster for the adviser picker/reassign
@@ -112,27 +112,29 @@ window.renderSectionMaker = function () {
   _secTeacherDir = null; // re-fetch on every mount — roster may have changed
 
   document.getElementById('a-sections').innerHTML = `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
-    <div>
-      <div style="font-family:var(--fh);font-size:26px;font-weight:900">🏫 Section Maker</div>
-      <div style="color:var(--text-muted);font-size:13px;margin-top:4px" id="sec-header-sub"></div>
-    </div>
-    <button class="btn btn-primary" onclick="_secOpenCreateModal()">＋ New Section</button>
-  </div>
+  <header class="sec-heading">
+    <div><h1>Sections</h1><p id="sec-header-sub"></p></div>
+    <button class="btn btn-primary" onclick="_secOpenCreateModal()">New section</button>
+  </header>
 
-  <div id="sec-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px"></div>
-
+  <div id="sec-stats" class="sec-stats"></div>
   <div class="sec-filter-bar">
-    <select id="sec-grade-filter" onchange="_secGradeFilter=this.value;_secRenderList()">
-      <option value="all">All Grades</option>
-      ${GRADE_LEVELS.map(g => `<option value="${g}">Grade ${g}</option>`).join('')}
-    </select>
-    <label class="sec-archived-toggle">
-      <input type="checkbox" id="sec-show-archived" onchange="_secShowArchived=this.checked;_secRenderList()">
-      Show archived
+    <label class="sec-search">Search sections
+      <input id="sec-search" class="reg-search-input" type="search" placeholder="Section or adviser name"
+        value="${_esc(_secSearch)}" oninput="_secSearch=this.value;_secRenderList()">
     </label>
-    <input class="reg-search-input" type="text" placeholder="Search section name…" value="${_secSearch}"
-           oninput="_secSearch=this.value;_secRenderList()">
+    <label>Grade
+      <select id="sec-grade-filter" onchange="_secGradeFilter=this.value;_secRenderList()">
+        <option value="all">All grades</option>
+        ${GRADE_LEVELS.map(g => `<option value="${g}" ${g === _secGradeFilter ? 'selected' : ''}>Grade ${g}</option>`).join('')}
+      </select>
+    </label>
+    <label>Status
+      <select id="sec-status-filter" onchange="_secStatusFilter=this.value;_secRenderList()">
+        ${[['active','Active'], ['archived','Archived'], ['all','All sections']].map(([id, name]) =>
+          `<option value="${id}" ${id === _secStatusFilter ? 'selected' : ''}>${name}</option>`).join('')}
+      </select>
+    </label>
   </div>
 
   <div id="sec-list"></div>`;
@@ -143,6 +145,8 @@ window.renderSectionMaker = function () {
     if (!_secMounted) return;
     if (!event || event.type === 'state:updated' || event.type.indexOf('sections:') === 0 || event.type === 'state:remote-sync') {
       _secRenderList();
+      const grid = document.getElementById('sec-roster-grid');
+      if (grid?.dataset.section) _secRerenderRoster(grid.dataset.section);
     }
   });
 
@@ -163,33 +167,29 @@ window.unmountSectionMaker = function () {
 window._secRenderList = function () {
   if (!_secMounted) return;
   const state = AppStore.getState();
-  const all = state.classSections || [];
+  const all = (state.classSections || []).filter(section =>
+    currentRole === 'admin' || (currentRole === 'teacher' && currentUser?.id && section.adviserId === currentUser.id)
+  );
   const active = all.filter(s => !s.archived);
   const archived = all.filter(s => s.archived);
-  const gradesCovered = new Set(active.map(s => s.gradeLevel)).size;
-
+  const activeIds = new Set(active.map(section => section.id));
+  const enrolled = (state.students || []).filter(student => activeIds.has(student.classId)).length;
   const subEl = document.getElementById('sec-header-sub');
-  if (subEl) subEl.textContent = `${currentRole === 'admin' ? 'Every section, school-wide · ' : 'Your sections · '}${active.length} active section${active.length === 1 ? '' : 's'} · ${archived.length} archived`;
+  if (subEl) subEl.textContent = currentRole === 'admin' ? 'Manage school sections and rosters.' : 'Manage your classes and student rosters.';
 
   const statsEl = document.getElementById('sec-stats');
   if (statsEl) {
-    statsEl.innerHTML = `
-      <div class="glass-card" style="padding:14px;text-align:center;margin-bottom:0">
-        <div style="font-family:var(--fh);font-size:26px;font-weight:900;color:var(--primary)">${active.length}</div>
-        <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.08em;text-transform:uppercase">Active</div>
-      </div>
-      <div class="glass-card" style="padding:14px;text-align:center;margin-bottom:0">
-        <div style="font-family:var(--fh);font-size:26px;font-weight:900;color:var(--secondary)">${gradesCovered}</div>
-        <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.08em;text-transform:uppercase">Grades Covered</div>
-      </div>
-      <div class="glass-card" style="padding:14px;text-align:center;margin-bottom:0">
-        <div style="font-family:var(--fh);font-size:26px;font-weight:900;color:#ffb95f">${archived.length}</div>
-        <div style="font-size:10px;color:var(--text-muted);font-weight:700;letter-spacing:.08em;text-transform:uppercase">Archived</div>
-      </div>`;
+    statsEl.innerHTML = [
+      [active.length, 'Active sections'], [enrolled, 'Students in active sections'], [archived.length, 'Archived sections'],
+    ].map(([count, label]) => `<div><strong>${count}</strong><span>${label}</span></div>`).join('');
   }
 
   const listEl = document.getElementById('sec-list');
-  if (listEl) listEl.innerHTML = _secRenderListHTML(all);
+  if (listEl) {
+    const open = new Set(Array.from(listEl.querySelectorAll('.sec-manage[open]'), item => item.dataset.section));
+    listEl.innerHTML = _secRenderListHTML(all);
+    listEl.querySelectorAll('.sec-manage').forEach(item => { item.open = open.has(item.dataset.section); });
+  }
 };
 
 function _secStudentCount(state, sectionId) {
@@ -198,16 +198,23 @@ function _secStudentCount(state, sectionId) {
 
 function _secRenderListHTML(all) {
   const state = AppStore.getState();
-  let list = _secShowArchived ? all : all.filter(s => !s.archived);
-  if (_secGradeFilter !== 'all') list = list.filter(s => s.gradeLevel === _secGradeFilter);
-  const q = (_secSearch || '').trim().toLowerCase();
-  if (q) list = list.filter(s => s.sectionName.toLowerCase().includes(q));
+  let list = all.filter(section => _secStatusFilter === 'all' || Boolean(section.archived) === (_secStatusFilter === 'archived'));
+  if (_secGradeFilter !== 'all') list = list.filter(section => String(section.gradeLevel) === _secGradeFilter);
+  const query = _secSearch.trim().toLowerCase();
+  if (query) list = list.filter(section => [section.sectionName, _secAdviserName(section.adviserId, state)]
+    .some(value => String(value || '').toLowerCase().includes(query)));
 
   if (!list.length) {
-    return `<div style="text-align:center;padding:64px;background:rgba(35,31,56,.7);border:1px solid var(--border);border-radius:16px">
-      <div style="font-size:48px;margin-bottom:12px">🏫</div>
-      <div style="font-family:var(--fh);font-size:17px;font-weight:800;margin-bottom:6px">No sections found</div>
-      <div style="color:var(--text-muted);font-size:13px">${all.length === 0 ? 'Create your first section to get started — the kiosk, Live Monitor, and seating builder will pick it up automatically.' : 'Try a different filter or search term.'}</div>
+    const filtered = query || _secGradeFilter !== 'all' || _secStatusFilter !== 'active';
+    const hasSections = all.length > 0;
+    return `<div class="sec-empty">
+      <h2>${hasSections ? 'No matching sections' : 'Create your first section'}</h2>
+      <p>${hasSections ? 'Try a different name, grade, or status.' : 'Start with an empty section or attach your class roster.'}</p>
+      ${filtered
+        ? '<button type="button" class="btn btn-ghost" data-section-action="clear">Clear filters</button>'
+        : hasSections
+          ? '<button type="button" class="btn btn-ghost" data-section-action="archived">View archived sections</button>'
+          : '<button type="button" class="btn btn-primary" onclick="_secOpenCreateModal()">New section</button>'}
     </div>`;
   }
 
@@ -245,28 +252,32 @@ function _secCardHTML(s, state) {
       ${s.archived ? `<span class="badge-pill bp-muted">Archived</span>` : `<span class="badge-pill bp-primary">Active</span>`}
     </div>
     <div class="sec-card-meta">
-      <span>👥 ${count} student${count === 1 ? '' : 's'}</span>
-      <span>👤 ${adviserName ? _esc(adviserName) : 'No adviser assigned'}</span>
-      ${defaultSched
-        ? `<span title="Default — applies every day unless overridden">⏰ ${t(defaultSched.openTime)}–${t(defaultSched.closeTime)}${overrideCount ? ` <span style="color:var(--primary)">· 🗓 ${overrideCount} custom day${overrideCount === 1 ? '' : 's'}</span>` : ''}${dayOffCount ? ` <span style="color:#ff8a8a">· 🚫 ${dayOffCount} day${dayOffCount === 1 ? '' : 's'} off</span>` : ''}</span>`
-        : `<span style="color:var(--text-muted)">⏰ No attendance schedule set</span>`}
+      <strong>${count} student${count === 1 ? '' : 's'}</strong>
+      <span>${adviserName ? 'Adviser: ' + _esc(adviserName) : 'No adviser assigned'}</span>
+      <span>${defaultSched ? 'Attendance ' + t(defaultSched.openTime) + '–' + t(defaultSched.closeTime) : 'Attendance schedule not set'}${overrideCount ? ` · ${overrideCount} custom days` : ''}${dayOffCount ? ` · ${dayOffCount} days off` : ''}</span>
     </div>
-    <div class="sec-card-id" title="This is the classId value stored on students, schedules, seating layouts, and attendance logs.">id: ${_esc(s.id)}</div>
     <div class="sec-card-actions">
-      ${!s.archived ? `<button class="btn btn-ghost btn-xs" data-import-section="${_esc(s.id)}">Import roster</button>` : ''}
-      <button class="btn btn-ghost btn-xs" onclick="_secOpenRosterModal('${s.id}')">👥 Roster</button>
-      <button class="btn btn-ghost btn-xs" onclick="_secOpenEditModal('${s.id}')">✏️ Edit</button>
-      ${(!s.archived && currentRole === 'admin')
-        ? `<button class="btn btn-ghost btn-xs" onclick="_secOpenReassignModal('${s.id}')">🔁 Reassign</button>` : ''}
-      ${s.archived
-        ? `<button class="btn btn-ghost btn-xs" onclick="_secUnarchive('${s.id}')">↩ Restore</button>`
-        : `<button class="btn btn-danger btn-xs" onclick="_secConfirmArchive('${s.id}', ${count})">🗄 Archive</button>`}
+      <button class="btn btn-primary btn-sm" data-section-action="roster" data-section-id="${_esc(s.id)}">View roster</button>
+      ${!s.archived && s.id !== 'default-class' ? `<button class="btn btn-ghost btn-sm" data-import-section="${_esc(s.id)}">${window.SectionRosterImport?.hasDraft(s.id) ? 'Resume import' : 'Import roster'}</button>` : ''}
+      <details class="sec-manage" data-section="${_esc(s.id)}">
+        <summary>Manage section</summary>
+        <div>
+          <button class="btn btn-ghost btn-sm" data-section-action="edit" data-section-id="${_esc(s.id)}">Edit details and schedule</button>
+          ${!s.archived && currentRole === 'admin' ? `<button class="btn btn-ghost btn-sm" data-section-action="reassign" data-section-id="${_esc(s.id)}">Reassign adviser</button>` : ''}
+          ${s.archived
+            ? `<button class="btn btn-ghost btn-sm" data-section-action="restore" data-section-id="${_esc(s.id)}">Restore section</button>`
+            : `<button class="btn btn-danger btn-sm" data-section-action="archive" data-section-id="${_esc(s.id)}" data-student-count="${count}">Archive section</button>`}
+        </div>
+      </details>
     </div>
   </div>`;
 }
 
 function _secAdviserName(adviserId, state) {
   if (!adviserId) return null;
+  if (currentUser?.id === adviserId) return currentUser.name || currentUser.displayName || 'You';
+  const staff = _secTeacherDir?.find(teacher => teacher.id === adviserId);
+  if (staff?.displayName) return staff.displayName;
   if (state.admin && state.admin.id === adviserId) return state.admin.name;
   const s = (state.students || []).find(st => st.id === adviserId);
   return s ? s.name : adviserId;
@@ -360,7 +371,7 @@ function _secModalHTML(section) {
   <div id="sec-form-err" style="color:#ffb4ab;font-size:13px;margin-bottom:10px;display:none"></div>
 
   <div style="display:flex;gap:8px">
-    <button class="btn btn-ghost" style="flex:1" onclick="closeModalForce()">Cancel</button>
+    <button class="btn btn-ghost" data-section-form-cancel style="flex:1" onclick="closeModalForce()">Cancel</button>
     <button class="btn btn-primary" style="flex:1" onclick="_secSubmitForm(${isEdit ? `'${section.id}'` : 'null'})">${isEdit ? 'Save Changes' : 'Create Section'}</button>
   </div>`;
 }
@@ -600,13 +611,21 @@ window._secSyncDefaultIntoUnoverriddenDays = function () {
 
 window._secSubmitForm = async function (sectionId) {
   const button = document.querySelector('#modal-content button[onclick^="_secSubmitForm"]');
+  const cancel = document.querySelector('#modal-content [data-section-form-cancel]');
   if (button?.disabled) return;
   if (button) button.disabled = true;
-  try { await submitSectionForm(sectionId); }
-  finally { if (button) button.disabled = false; }
+  if (cancel) cancel.disabled = true;
+  try { await submitSectionForm(sectionId, button); }
+  catch { if (button?.isConnected) _secShowFormErr('Could not confirm the save. Check the section list before trying again.'); }
+  finally {
+    if (button) button.disabled = false;
+    if (cancel) cancel.disabled = false;
+  }
 };
 
-async function submitSectionForm(sectionId) {
+async function submitSectionForm(sectionId, submitButton) {
+  const owner = currentUser?.id;
+  const stillOpen = () => submitButton?.isConnected && document.getElementById('modal-overlay')?.style.display === 'flex';
   const grade = document.getElementById('sec-form-grade')?.value || '';
   const name = document.getElementById('sec-form-name')?.value.trim() || '';
   // The adviser <select> only exists in admin mode (_secAdviserFieldHTML) —
@@ -682,19 +701,17 @@ async function submitSectionForm(sectionId) {
   }
 
   const rosterFile = !sectionId && document.getElementById('sec-form-roster')?.files[0];
-  let rosterRows;
-  if (rosterFile) {
-    try { rosterRows = await SectionRosterImport.read(rosterFile); }
-    catch (error) { _secShowFormErr(error.message); return; }
-  }
-
   const result = sectionId
     ? await SectionService.updateSection(sectionId, adviserTouched
         ? { gradeLevel: grade, sectionName: name, adviserId, clearAdviser: !adviserId }
         : { gradeLevel: grade, sectionName: name })
     : await SectionService.createSection(grade, name, { adviserId, schedule, dayOverrides });
 
-  if (!result.ok) { _secShowFormErr(result.error || 'Something went wrong.'); return; }
+  if (currentUser?.id !== owner) return;
+  if (!result.ok) {
+    if (stillOpen()) _secShowFormErr(result.error || 'Could not save the section.');
+    return;
+  }
 
   // Create already folds the default schedule AND every day override into
   // SectionService.createSection()'s own sequence (see sections-service.js).
@@ -718,27 +735,65 @@ async function submitSectionForm(sectionId) {
     }
   }
 
-  closeModalForce();
+  if (currentUser?.id !== owner) return;
+  const continueToRoster = stillOpen();
+  if (continueToRoster) closeModalForce();
   if (schedErrors.length) {
-    toast(`⚠️ Section updated, but the schedule had ${schedErrors.length} issue${schedErrors.length === 1 ? '' : 's'}: ${schedErrors[0]}`, '#ffb95f');
+    toast(`⚠️ Section updated, but the schedule had ${schedErrors.length} issue${schedErrors.length === 1 ? '' : 's'}: ${_esc(schedErrors[0])}`, '#ffb95f');
   } else if (!sectionId && result.error) {
     // createSection() returns ok:true with an error string attached when
     // the section itself was created fine but one or more day overrides
     // failed to save (see sections-service.js) — the user shouldn't lose
     // the whole create over that, just be told to go fix the overrides.
-    toast(`⚠️ ${result.error}`, '#ffb95f');
+    toast(`⚠️ ${_esc(result.error)}`, '#ffb95f');
   } else {
     const overrideCount = dayOverrides.length;
     const schedNote = schedule ? ` — schedule saved${overrideCount ? ` (${overrideCount} day override${overrideCount === 1 ? '' : 's'})` : ''}.` : '.';
-    toast(sectionId ? `✅ Section updated${schedNote}` : `✅ "${name}" created${schedule ? ` with an attendance schedule${overrideCount ? ` (${overrideCount} day override${overrideCount === 1 ? '' : 's'})` : ''}` : ''}.`);
+    toast(sectionId ? `✅ Section updated${schedNote}` : `✅ "${_esc(name)}" created${schedule ? ` with an attendance schedule${overrideCount ? ` (${overrideCount} day override${overrideCount === 1 ? '' : 's'})` : ''}` : ''}.`);
   }
   _secRenderList();
-  if (rosterRows && result.section?.id) SectionRosterImport.open(result.section.id, rosterRows);
+  if (!sectionId && result.section?.id) {
+    _secGradeFilter = 'all';
+    _secStatusFilter = 'active';
+    _secSearch = '';
+    syncSectionFilters();
+    if (rosterFile && continueToRoster) SectionRosterImport.open(result.section.id, rosterFile);
+  }
+}
+
+function syncSectionFilters() {
+  const values = { 'sec-search': _secSearch, 'sec-grade-filter': _secGradeFilter, 'sec-status-filter': _secStatusFilter };
+  for (const [id, value] of Object.entries(values)) {
+    const field = document.getElementById(id);
+    if (field) field.value = value;
+  }
+  _secRenderList();
 }
 
 document.addEventListener('click', event => {
-  const button = event.target.closest('[data-import-section]');
-  if (button) SectionRosterImport.open(button.dataset.importSection);
+  const importButton = event.target.closest('[data-import-section]');
+  if (importButton) {
+    window.SectionRosterImport?.open(importButton.dataset.importSection);
+    return;
+  }
+  const button = event.target.closest('[data-section-action]');
+  if (!button) return;
+  const { sectionId, sectionAction, studentCount } = button.dataset;
+  switch (sectionAction) {
+    case 'roster': _secOpenRosterModal(sectionId); break;
+    case 'edit': _secOpenEditModal(sectionId); break;
+    case 'reassign': _secOpenReassignModal(sectionId); break;
+    case 'archive': _secConfirmArchive(sectionId, Number(studentCount)); break;
+    case 'restore': _secUnarchive(sectionId); break;
+    case 'clear':
+    case 'archived':
+      _secGradeFilter = 'all';
+      _secSearch = '';
+      _secStatusFilter = sectionAction === 'archived' ? 'archived' : 'active';
+      syncSectionFilters();
+      document.getElementById('sec-search')?.focus();
+      break;
+  }
 });
 
 function _secShowFormErr(msg) {
@@ -848,23 +903,29 @@ function _secRosterModalHTML(section, state) {
     <div>
       <div style="font-family:var(--fh);font-size:20px;font-weight:900">👥 Grade ${_esc(section.gradeLevel)} – ${_esc(section.sectionName)}</div>
       <div style="color:var(--text-muted);font-size:13px;margin-top:2px">
-        ${roster.length} student${roster.length === 1 ? '' : 's'} · Adviser: ${adviserName ? _esc(adviserName) : 'Unassigned'}
+        <span id="sec-roster-count">${roster.length} student${roster.length === 1 ? '' : 's'}</span> · Adviser: ${adviserName ? _esc(adviserName) : 'Unassigned'}
       </div>
     </div>
-    <button class="btn btn-ghost btn-xs" onclick="closeModalForce()">✕ Close</button>
+    <div class="sec-roster-actions">
+      ${!section.archived && section.id !== 'default-class' ? `<button class="btn btn-primary btn-sm" data-import-section="${_esc(section.id)}">Import roster</button>` : ''}
+      <button class="btn btn-ghost btn-sm" onclick="closeModalForce()">Close</button>
+    </div>
   </div>
 
-  <input class="reg-search-input" type="text" placeholder="Search students…" value="${_esc(_secRosterSearch)}"
+  <input aria-label="Search students" class="reg-search-input" type="search" placeholder="Search students…" value="${_esc(_secRosterSearch)}"
          style="width:100%;margin:14px 0" oninput="_secRosterSearch=this.value;_secRerenderRoster('${section.id}')">
 
-  <div id="sec-roster-grid">${_secRosterGridHTML(roster)}</div>`;
+  <div id="sec-roster-grid" data-section="${_esc(section.id)}">${_secRosterGridHTML(roster)}</div>`;
 }
 
 window._secRerenderRoster = function (sectionId) {
   const state = AppStore.getState();
   const roster = (state.students || []).filter(s => (s.classId || 'default-class') === sectionId);
   const gridEl = document.getElementById('sec-roster-grid');
-  if (gridEl) gridEl.innerHTML = _secRosterGridHTML(roster);
+  if (gridEl?.dataset.section !== sectionId) return;
+  gridEl.innerHTML = _secRosterGridHTML(roster);
+  const count = document.getElementById('sec-roster-count');
+  if (count) count.textContent = roster.length + (roster.length === 1 ? ' student' : ' students');
 };
 
 function _secRosterGridHTML(roster) {
@@ -890,13 +951,10 @@ function _secRosterGridHTML(roster) {
 function _secRosterCardHTML(s) {
   const color = _cssColor(s.color);
   const init = s.init || (s.name || '?').charAt(0).toUpperCase();
-  const portraitHtml = s.profilePic
-    ? `<div class="sec-roster-portrait" style="background:${color}22;border-color:${color}55">
-         <img src="${_esc(s.profilePic)}" alt="${_esc(s.name || '')}" onerror="this.parentElement.style.color='${color}';this.parentElement.innerHTML='<span class=&quot;sec-roster-portrait-init&quot;>${_esc(init)}</span>'">
-       </div>`
-    : `<div class="sec-roster-portrait" style="background:${color}22;color:${color};border-color:${color}55">
-         <span class="sec-roster-portrait-init">${_esc(init)}</span>
-       </div>`;
+  const portraitHtml = `<div class="sec-roster-portrait" style="background:${color}22;color:${color};border-color:${color}55">
+    <span class="sec-roster-portrait-init" aria-hidden="true">${_esc(init)}</span>
+    ${s.profilePic ? `<img src="${_esc(s.profilePic)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
+  </div>`;
 
   const level = (s.level !== undefined && s.level !== null) ? s.level : null;
   const attendance = (s.attendance !== undefined && s.attendance !== null) ? s.attendance : null;
