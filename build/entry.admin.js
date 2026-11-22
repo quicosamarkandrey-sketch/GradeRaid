@@ -53,6 +53,7 @@ import '../modules/leaderboard/hall-of-fame.js';
 import '../modules/leaderboard/admin-leaderboard.js';
 import '../modules/leaderboard/index.js';
 import '../modules/admin/sections-service.js';
+import '../modules/admin/section-roster-import.js';
 import '../modules/admin/sections.js';
 import '../modules/admin/sections_index.js';
 import '../modules/attendance/attendance-service.js';

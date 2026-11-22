@@ -102,7 +102,8 @@ export function selectRole(role){
 // selectedLoginRole is kept only as a cosmetic hint for the demo-text box;
 // it no longer gates which account type can log in.
 export async function doLogin(){
-  const email=document.getElementById('login-user').value.trim().toLowerCase();
+  const login=document.getElementById('login-user').value.trim().toLowerCase();
+  const email=/^gr-[a-f0-9]{20}$/.test(login) ? login+'@students.graderaid.example' : login;
   const p=document.getElementById('login-pass').value.trim();
   const err=document.getElementById('login-err');
   const pendingErr=document.getElementById('login-pending-err');
@@ -113,10 +114,10 @@ export async function doLogin(){
   if (btn?.dataset.eqLoading === '1') return;
   window.UXStates?.clearField('login-user');window.UXStates?.clearField('login-pass');
   if (!email || !p) {
-    if(!email)window.UXStates?.fieldError('login-user','Enter your email address.');
+    if(!email)window.UXStates?.fieldError('login-user','Enter your email or student login.');
     if(!p)window.UXStates?.fieldError('login-pass','Enter your password.');
     window.UXStates?.focusError(document.getElementById('login-screen'));
-    err.innerHTML='❌ Please enter your email and password.';
+    err.innerHTML='❌ Please enter your email or student login and password.';
     err.style.display='block';
     return;
   }

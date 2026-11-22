@@ -1,0 +1,28 @@
+.roster-import-dialog {
+  width: min(650px, calc(100% - 32px));
+  max-height: min(88vh, 720px);
+  overflow: auto;
+  color: var(--text, #f6f6f6);
+  background: var(--surface, #171717);
+  border: 1px solid var(--border, #525252);
+  border-radius: 16px;
+  padding: clamp(16px, 4vw, 28px);
+}
+.roster-import-dialog::backdrop { background: rgb(0 0 0 / 72%); }
+.roster-import-dialog h2 { margin: 0; }
+.roster-import-dialog p { margin: 10px 0; }
+.roster-import-dialog input { display: block; margin-top: 8px; max-width: 100%; }
+.roster-list { max-height: 280px; overflow: auto; margin: 12px 0; }
+.roster-list:empty { display: none; }
+.roster-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border, #525252);
+  overflow-wrap: anywhere;
+}
+.roster-list small { color: var(--text-muted, #bbb); }
+.roster-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.roster-actions [hidden] { display: none; }

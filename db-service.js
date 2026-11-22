@@ -1061,6 +1061,7 @@ const DBService = (function () {
 
     get storageKey() { return _localStorageProvider.key; },
 
+    refreshStudentRoster: function () { _schedulePullRefresh('profiles'); },
     liveSyncReady: function () { return _meta.tableSyncConnected && _meta.tableSyncVersion >= 2 && navigator.onLine; },
     watchRemoteChanges: function (tables, handler) {
       const key = Symbol(); _remoteWatchers.set(key, { tables: new Set(tables), handler });

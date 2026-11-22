@@ -33,7 +33,7 @@ function main() {
   const safeDefaultShared = new Set(['modules/shared/profile-image-transfer.js','repository/egress-cache.js','repository/live-sync.js','repository/egress-transport.js','modules/world-boss/visual-identity.js','modules/boss-studio/bs_rehearsal.js','modules/recitation/studio-room.js','modules/shared/motion.js','modules/shared/ux-states.js','modules/world-boss/motion-assets.js','modules/world-boss/pixi-battlefield.js','modules/boss-studio/bs_motion_assets.js','modules/attendance/arrival-station.js', 'modules/recitation/session-studio.js', ...split.neitherRole, 'modules/shared/presentation.js', 'modules/rewards/learning-rewards.js', 'modules/quests/study-studio.js', 'modules/quests/study-sync.js', 'modules/titles/titles-collection.js', 'modules/titles/title-materials.js', 'modules/titles/title-records.js', 'modules/world-boss/raid-service.js', 'modules/world-boss/raid-experience.js', 'modules/world-boss/battle-effects.js', 'modules/world-boss/loot-arena.js']);
 
   const studentSet = new Set([...split.shared, ...split.studentOnly, ...safeDefaultShared]);
-  const adminSet = new Set([...split.shared, ...split.adminOnly, ...safeDefaultShared, 'modules/seat-arrangement/classroom-editor.js']);
+  const adminSet = new Set([...split.shared, ...split.adminOnly, ...safeDefaultShared, 'modules/admin/section-roster-import.js', 'modules/seat-arrangement/classroom-editor.js']);
 
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const elements = getOrderedScriptElements(html);

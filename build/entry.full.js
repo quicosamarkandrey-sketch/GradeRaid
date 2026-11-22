@@ -64,6 +64,7 @@ import '../modules/recitation/logger.js';
 import '../modules/recitation/progress.js';
 import '../modules/recitation/recitation_index.js';
 import '../modules/admin/sections-service.js';
+import '../modules/admin/section-roster-import.js';
 import '../modules/admin/sections.js';
 import '../modules/admin/sections_index.js';
 import '../modules/attendance/attendance-service.js';

@@ -253,6 +253,7 @@ function _secCardHTML(s, state) {
     </div>
     <div class="sec-card-id" title="This is the classId value stored on students, schedules, seating layouts, and attendance logs.">id: ${_esc(s.id)}</div>
     <div class="sec-card-actions">
+      ${!s.archived ? `<button class="btn btn-ghost btn-xs" data-import-section="${_esc(s.id)}">Import roster</button>` : ''}
       <button class="btn btn-ghost btn-xs" onclick="_secOpenRosterModal('${s.id}')">👥 Roster</button>
       <button class="btn btn-ghost btn-xs" onclick="_secOpenEditModal('${s.id}')">✏️ Edit</button>
       ${(!s.archived && currentRole === 'admin')
@@ -349,6 +350,12 @@ function _secModalHTML(section) {
   ${_secAdviserFieldHTML(section)}
 
   ${_secScheduleFieldsHTML(section)}
+
+  ${!isEdit ? `<div class="form-group">
+    <label class="form-label" for="sec-form-roster">Student roster (optional)</label>
+    <input type="file" id="sec-form-roster" accept=".xlsx,.csv">
+    <small>Choose a roster to review and enroll after creating the section.</small>
+  </div>` : ''}
 
   <div id="sec-form-err" style="color:#ffb4ab;font-size:13px;margin-bottom:10px;display:none"></div>
 
@@ -592,6 +599,14 @@ window._secSyncDefaultIntoUnoverriddenDays = function () {
 };
 
 window._secSubmitForm = async function (sectionId) {
+  const button = document.querySelector('#modal-content button[onclick^="_secSubmitForm"]');
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  try { await submitSectionForm(sectionId); }
+  finally { if (button) button.disabled = false; }
+};
+
+async function submitSectionForm(sectionId) {
   const grade = document.getElementById('sec-form-grade')?.value || '';
   const name = document.getElementById('sec-form-name')?.value.trim() || '';
   // The adviser <select> only exists in admin mode (_secAdviserFieldHTML) —
@@ -666,6 +681,13 @@ window._secSubmitForm = async function (sectionId) {
     }
   }
 
+  const rosterFile = !sectionId && document.getElementById('sec-form-roster')?.files[0];
+  let rosterRows;
+  if (rosterFile) {
+    try { rosterRows = await SectionRosterImport.read(rosterFile); }
+    catch (error) { _secShowFormErr(error.message); return; }
+  }
+
   const result = sectionId
     ? await SectionService.updateSection(sectionId, adviserTouched
         ? { gradeLevel: grade, sectionName: name, adviserId, clearAdviser: !adviserId }
@@ -711,7 +733,13 @@ window._secSubmitForm = async function (sectionId) {
     toast(sectionId ? `✅ Section updated${schedNote}` : `✅ "${name}" created${schedule ? ` with an attendance schedule${overrideCount ? ` (${overrideCount} day override${overrideCount === 1 ? '' : 's'})` : ''}` : ''}.`);
   }
   _secRenderList();
-};
+  if (rosterRows && result.section?.id) SectionRosterImport.open(result.section.id, rosterRows);
+}
+
+document.addEventListener('click', event => {
+  const button = event.target.closest('[data-import-section]');
+  if (button) SectionRosterImport.open(button.dataset.importSection);
+});
 
 function _secShowFormErr(msg) {
   const errEl = document.getElementById('sec-form-err');

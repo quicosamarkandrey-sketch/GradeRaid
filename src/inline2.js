@@ -2604,68 +2604,57 @@ export async function saveProfileEdit() {
 
 /* ── Save: Password ── */
 
-export function savePassword() {
+export async function savePassword() {
   const errEl = document.getElementById('prof-pass-err');
   if (errEl) errEl.style.display = 'none';
+  const button = document.querySelector('[onclick="savePassword()"]');
+  if (button?.disabled) return;
 
-  const curPass  = document.getElementById('prof-cur-pass')?.value  || '';
-  const newPass  = document.getElementById('prof-new-pass')?.value  || '';
-  const confPass = document.getElementById('prof-conf-pass')?.value || '';
+  const currentPassword = document.getElementById('prof-cur-pass')?.value || '';
+  const password = document.getElementById('prof-new-pass')?.value || '';
+  const confirmed = document.getElementById('prof-conf-pass')?.value || '';
+  const showError = message => {
+    if (errEl) { errEl.textContent = message; errEl.style.display = 'block'; }
+  };
+  if (!currentPassword) return showError('Enter your current password.');
+  if (password.length < 8) return showError('Choose a password with at least 8 characters.');
+  if (password !== password.trim()) return showError('Remove spaces from the start and end of the password.');
+  if (password !== confirmed) return showError('Passwords do not match.');
 
-  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+  const client = DBService.getAuthClient();
+  const owner = currentUser?.id;
+  if (!client || !owner) return showError('Sign in before changing your password.');
+  if (button) button.disabled = true;
+  try {
+    const { data, error } = await client.auth.getUser();
+    if (error || data.user?.id !== owner || !data.user.email) return showError('Sign in again before changing your password.');
 
-  if (!curPass) { showErr('Current password is required.'); return; }
-  if (!newPass) { showErr('New password cannot be empty.'); return; }
-  if (newPass.length < 4) { showErr('New password must be at least 4 characters.'); return; }
-  if (newPass !== confPass) { showErr('Passwords do not match.'); return; }
-
-  // BIGGER GAP FOUND WHILE FIXING THE ROLE SPLIT (not fixed here, flagging
-  // clearly rather than silently patching over it): this whole function
-  // predates the real Supabase Auth login migration. Login now goes through
-  // client.auth.signInWithPassword() (see auth.js doLogin()) — it never
-  // reads DB.admin.pass or DB.students[i].pass. That means changing this
-  // local `.pass` field, for ANY role including admin and student, does NOT
-  // change the password someone actually logs in with. This panel currently
-  // just edits a local cache field nobody checks anymore. A real fix needs
-  // to call client.auth.updateUser({ password: newPass }) (after
-  // re-authenticating with curPass, since Supabase requires an active
-  // session to change a password) instead of touching DB.* at all — that's
-  // a real auth-flow change, out of scope for this pass, so left as-is
-  // below except for the teacher-specific silent-failure fix.
-  if (currentRole === 'admin') {
-    const _adminPass = AppStore.getSlice(s => s.admin?.pass);
-    if (_adminPass !== curPass) { showErr('Current password is incorrect.'); return; }
-    AppStore.updateState(draft => {
-      draft.admin.pass = newPass;
-    }, { type: 'profile:admin-password-changed', payload: {} });
-    currentUser = AppStore.getSlice(s => s.admin);
-  } else if (currentRole === 'teacher') {
-    // Role split fix: this branch used to be missing, so a teacher fell into
-    // the student branch, DB.students.findIndex() returned -1, and
-    // `if (stIdx < 0) return;` silently discarded the change with no error
-    // shown. DB.admin isn't safe to write into here either (shared record,
-    // possibly a different staff member) — update currentUser directly.
-    if (currentUser.pass && currentUser.pass !== curPass) { showErr('Current password is incorrect.'); return; }
-    currentUser.pass = newPass;
-  } else {
-    const stIdx = AppStore.getSlice(s => s.students || []).findIndex(s => s.id === currentUser.id);
-    if (stIdx < 0) return;
-    const _existing = AppStore.getSlice(s => (s.students||[])[stIdx]?.pass);
-    if (_existing !== curPass) { showErr('Current password is incorrect.'); return; }
-    AppStore.updateState(draft => {
-      const s = (draft.students || [])[stIdx];
-      if (s) s.pass = newPass;
-    }, { type: 'profile:password-changed', payload: { studentId: currentUser.id } });
-    currentUser = AppStore.getStudent(currentUser.id);
+    // Verify in a fresh Auth session so a password attempt cannot replace
+    // the active classroom session or require email reauthentication.
+    const passwordClient = window.supabase.createClient(
+      window.__EDUQUEST_SUPABASE_URL__, window.__EDUQUEST_SUPABASE_ANON_KEY__,
+      { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'graderaid-password-change' } }
+    );
+    const verified = await passwordClient.auth.signInWithPassword({ email: data.user.email, password: currentPassword });
+    if (verified.error) {
+      return showError(verified.error.code === 'invalid_credentials'
+        ? 'Current password is incorrect.' : 'Could not verify your password. Try again shortly.');
+    }
+    if (verified.data.user?.id !== owner || currentUser?.id !== owner) return showError('The signed-in account changed. Try again.');
+    const changed = await passwordClient.auth.updateUser({ password, current_password: currentPassword });
+    if (changed.error) return showError(changed.error.message || 'Could not change the password.');
+    await passwordClient.auth.signOut({ scope: 'local' }).catch(() => {});
+    if (currentUser?.id !== owner) return;
+    for (const id of ['prof-cur-pass', 'prof-new-pass', 'prof-conf-pass']) {
+      const field = document.getElementById(id);
+      if (field) field.value = '';
+    }
+    toast('Password changed. Use the new password next time you sign in.');
+  } catch {
+    showError('Could not confirm the password change. Try signing in with the new password.');
+  } finally {
+    if (button) button.disabled = false;
   }
-
-
-  // Clear the fields
-  ['prof-cur-pass','prof-new-pass','prof-conf-pass'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-  toast('🔒 Password changed successfully!', '#4edea3');
 }
 
 /* ── Save: Email ── */
