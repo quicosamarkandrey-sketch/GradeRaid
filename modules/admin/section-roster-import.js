@@ -24,7 +24,16 @@
     rate_limited: 'Supabase is busy. Wait briefly, then resume.',
     quota: 'Supabase restricted requests. Check the project billing status.',
     setup: 'Roster import needs to be activated in Supabase.',
-    auth: 'Session expired. Sign in again before continuing.',
+    auth: 'Supabase rejected this session. If you can sign in but imports fail, check that the roster function was deployed with --no-verify-jwt.',
+    migration_missing: 'Phase 86 is missing or the database API cannot see it. Run the migration in this project.',
+    server_config: 'The roster function is missing its Supabase server configuration.',
+    auth_unavailable: 'Supabase Auth is unavailable. Retry this row when Auth recovers.',
+    reservation_failed: 'The database could not reserve this import row. Check the roster function logs.',
+    auth_create_failed: 'Supabase Auth could not create the student account. Check the roster function logs.',
+    profile_failed: 'The student profile could not be confirmed. Keep this tab open and retry after checking the roster function logs.',
+    unreachable: 'The browser could not reach the roster function. Check its deployment and your connection.',
+    timeout: 'Account creation timed out. Resume this row to check if it was saved.',
+    function_error: 'Supabase returned a roster server error. Check the function’s Invocations and Logs.',
   };
 
   function parseCsv(input) {
@@ -160,7 +169,10 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  const retryable = new Set(['ready', 'retry', 'limit', 'rate_limited', 'quota', 'setup', 'auth']);
+  const retryable = new Set(['ready', 'retry', 'limit', 'rate_limited', 'quota', 'setup', 'auth',
+    'migration_missing', 'server_config', 'auth_unavailable', 'reservation_failed',
+    'auth_create_failed', 'profile_failed', 'unreachable', 'timeout', 'function_error',
+  ]);
   function protectDrafts(event) {
     if (draftOwner !== currentUser?.id) return;
     const hasUnconfirmedData = [...drafts.values()].some(draft =>
@@ -174,13 +186,18 @@
   }
 
   function statusFrom(result) {
-    const code = result.error?.context?.status;
+    const code = result.error?.context?.status ?? result.response?.status;
     if (code === 402) return 'quota';
     if (code === 429) return 'rate_limited';
     if (code === 401) return 'auth';
+    if (code === 403) return 'forbidden';
     if (code === 404) return 'setup';
     const outcome = result.data?.status;
-    return Object.hasOwn(statuses, outcome) && !['ready', 'duplicate', 'skipped'].includes(outcome) ? outcome : 'retry';
+    if (Object.hasOwn(statuses, outcome) && !['ready', 'duplicate', 'skipped'].includes(outcome)) return outcome;
+    const reason = result.error?.context?.name ?? result.error?.name;
+    if (code === 504 || reason === 'TimeoutError' || reason === 'AbortError') return 'timeout';
+    if (result.error?.name === 'FunctionsFetchError') return 'unreachable';
+    return (code >= 500 || result.error?.name === 'FunctionsRelayError') ? 'function_error' : 'retry';
   }
 
   function open(sectionId, rosterFile) {
@@ -389,7 +406,7 @@
             if (result.error?.context?.json) {
               try { result.data = await result.error.context.json(); } catch { /* Gateway errors may be plain text. */ }
             }
-          } catch { result = {}; }
+          } catch (error) { result = { error }; }
           if (drafts.get(sectionId) !== draft || currentUser?.id !== owner) break;
           row.status = statusFrom(result || {});
           if (row.status === 'created') {
@@ -399,10 +416,16 @@
           if (!retryable.has(row.status) && row.status !== 'created') delete row.password;
           paintRow(row, list.children[draft.rows.indexOf(row)]);
           paintControls();
-          if (retryable.has(row.status) || row.status === 'forbidden') { stopped = row.status; break; }
+          if (retryable.has(row.status) || row.status === 'forbidden') {
+            const reference = result?.data?.requestId;
+            const detail = typeof reference === 'string' && /^[a-f0-9-]{36}$/i.test(reference)
+              ? ' Reference ' + reference + '.' : '';
+            stopped = statuses[row.status] + detail;
+            break;
+          }
         }
         if (paused) status.textContent = 'Import paused. Resume from here or reopen it from this section in this tab.';
-        else if (stopped) status.textContent = statuses[stopped];
+        else if (stopped) status.textContent = stopped;
         else status.textContent = created().length
           ? 'Download the starter logins before refreshing or closing this tab. Share each student’s login privately.'
           : 'No new accounts were created. Review the result beside each name.';

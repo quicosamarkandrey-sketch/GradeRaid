@@ -8,9 +8,20 @@ Teachers can import only into their own active sections. Administrators can impo
 
 1. Run `supabase/phase86_section_roster_import.sql` in Supabase SQL Editor.
 2. With an authorized Supabase CLI session linked to the GradeRaid project, run `supabase functions deploy import-section-roster --no-verify-jwt`. The function verifies the bearer token itself with Supabase Auth and performs server-side authorization. Supabase supplies `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to the hosted function.
-   Redeploy the function if your project is still on the original importer. This update uses the existing phase86 database migration.
+   The repository config also sets `verify_jwt = false` for this function. From an unlinked checkout, use `supabase functions deploy import-section-roster --project-ref ptxzsllndtacrnpaoxvq --no-verify-jwt`. The gateway allows the browser preflight, and the handler verifies the signed-in teacher before any account creation. This update uses the existing phase86 database migration.
 3. Open the updated site and try a small roster in a test section. Verify sign-in, change a starter password, then sign in with the new password. The local tests exercise the spreadsheet UI and database logic against fixtures. Hosted Auth and quota availability need verification in the target project.
 
 The workbook is parsed in the browser, and only student names and provisioning fields reach Supabase. A 30-student import makes roughly 30 Edge Function calls plus their Auth/profile writes, with extra calls for retries. There are no signup emails, Storage uploads, or recurring roster-import downloads. The daily cap of 200 new reservations per staff account is an application limit. Supabase applies its own Auth rates, Edge Function limits, and organization quotas. A whole class signing in over shared Wi-Fi can encounter rate limits depending on project settings. If the organization has restrictions in effect, the import still depends on working Supabase Auth and database APIs.
 
 Free plan documentation lists 50,000 monthly active Auth users, 500,000 monthly Edge Function invocations, and 5 GB uncached egress across an organization. A small roster is unlikely to materially affect the egress budget, though sign-ins, lessons, raids and asset downloads count toward the appropriate service quotas. Check your own dashboard for the current allowance and usage. [Supabase billing and quotas](https://supabase.com/docs/guides/platform/billing-on-supabase#variable-usage-fees-and-quotas) · [Auth rate limits](https://supabase.com/docs/guides/auth/rate-limits) · [Edge Function limits](https://supabase.com/docs/guides/functions/limits)
+
+### If the browser reports a CORS preflight error
+
+In browser DevTools, open **Network**, select the `OPTIONS` request for `import-section-roster`, and read the HTTP status. A healthy deployment responds with **204** and an `Access-Control-Allow-Origin` header.
+
+- **404** usually means the function has not been deployed to the project the site uses.
+- **401 or 403** means the preflight was rejected. Check the deployment and the function-specific gateway verification setting.
+- **402** indicates a Supabase billing or quota restriction.
+- **5xx** means to check the function's Invocations and Logs for a boot or gateway error.
+
+Once `OPTIONS` succeeds, an account operation can reach the function. A failure inside the function can produce a reference shown in the import dialog. Match it against the structured log entry to see whether the failing stage was Auth or the database. Keep the original import tab open when retrying a request whose outcome is unknown.

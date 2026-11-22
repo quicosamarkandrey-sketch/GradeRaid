@@ -1,0 +1,6 @@
+project_id = "graderaid"
+
+[functions.import-section-roster]
+# The handler verifies the caller with Auth and checks section access in SQL.
+# Let the handler answer unauthenticated browser OPTIONS requests directly.
+verify_jwt = false

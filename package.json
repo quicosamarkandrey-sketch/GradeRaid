@@ -31,7 +31,7 @@
     "test:transfer-cache": "node tests/browser/transfer-cache.cjs",
     "test:recitation-live": "node tests/browser/recitation-live-sync.cjs",
     "test:profile-image-transfer": "node tests/browser/profile-image-transfer.cjs",
-    "test:section-roster": "node tests/database/section-roster-import.cjs && node tests/browser/section-roster-import.cjs",
+    "test:section-roster": "node tests/database/section-roster-import.cjs && node tests/database/section-roster-edge.cjs && node tests/browser/section-roster-import.cjs",
     "build:roster-xlsx": "esbuild build/roster-xlsx-entry.mjs --bundle --minify --format=esm --legal-comments=linked --outfile=assets/vendor/roster-xlsx.mjs"
   },
   "devDependencies": {
